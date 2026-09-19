@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.env
+# Downloaded and generated data are reproducible with `python -m kapacitet all`.
+data/raw/
+data/processed/
+web/node_modules/
+web/dist/
+web/*.tsbuildinfo

@@ -1,0 +1,16 @@
+Stationsnamn;Klimatnummer;Mäthöjd (meter över marken)
+Stockholm-Bromma;97200;2.0
+
+Parameternamn;Beskrivning;Enhet
+Lufttemperatur;momentanvärde, 1 gång/tim;degree celsius
+
+Tidsperiod (fr.o.m);Tidsperiod (t.o.m);Höjd (m);Latitud (decimalgrader);Longitud (decimalgrader)
+1961-01-01 00:00:00;2026-09-18 23:00:00;14.0;59.3537;17.9513
+
+Datum;Tid (UTC);Lufttemperatur;Kvalitet;;Tidsutsnitt:
+2025-01-01;00:00:00;-1.8;G;;
+2025-01-01;01:00:00;-2.1;G;;
+2025-01-01;02:00:00;-2.4;Y;;
+2025-01-01;03:00:00;;;;
+2025-01-01;04:00:00;-3.0;G;;
+2025-01-01;04:00:00;-9.9;G;;

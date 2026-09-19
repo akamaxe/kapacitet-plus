@@ -1,0 +1,527 @@
+# Model inputs of Kapacitet+. Every entry is shown in the UI's "Method & Data" page.
+#   tag = sourced          value taken from the cited source
+#         regulation       legal/standard limit
+#         library          standard component data (pandapower standard types, pvlib defaults)
+#         derived          computed from real data in this project (see note)
+#         team-assumption  our modelling choice, to be validated (always listed as such)
+
+# ---------------------------------------------------------------- voltage and thermal limits
+[v_max_pu]
+value = 1.10
+unit = "pu"
+tag = "regulation"
+label = "Upper voltage limit at customer connection"
+source = "Ei EIFS 2023:3 (slow voltage variations within ±10 % of the reference voltage, 10-min means); EN 50160"
+url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
+note = "Applied to hourly values; hourly means hide sub-hourly peaks (see v_margin_pu)."
+
+[v_min_pu]
+value = 0.90
+unit = "pu"
+tag = "regulation"
+label = "Lower voltage limit at customer connection"
+source = "Ei EIFS 2023:3; EN 50160"
+url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
+note = ""
+
+[v_margin_pu]
+value = 0.01
+unit = "pu"
+tag = "team-assumption"
+label = "Planning margin on voltage limits"
+source = "Covers the gap between hourly simulation and the 10-minute means of EIFS 2023:3"
+url = ""
+note = "Same margin for every method (static, time series, DOE). Varied in the tornado chart."
+
+[thermal_limit_pct]
+value = 100.0
+unit = "%"
+tag = "team-assumption"
+label = "Maximum loading of cables and transformer"
+source = "Continuous rating of the pandapower standard types"
+url = ""
+note = "Reverse power flow through the transformer is allowed up to its rating."
+
+[mv_voltage_pu]
+value = 1.00
+unit = "pu"
+tag = "team-assumption"
+label = "MV (10 kV) voltage at the secondary substation"
+source = "No measurement available; planning value, identical for every method"
+url = ""
+note = "Varied 0.98–1.03 pu in the tornado chart."
+
+[trafo_tap_pos]
+value = 0
+unit = "step"
+tag = "team-assumption"
+label = "Off-load tap position of the 10/0.4 kV transformer"
+source = "Neutral tap (pandapower standard type, ±2.5 %/step)"
+url = ""
+note = ""
+
+# ---------------------------------------------------------------- network components
+[main_cable_type]
+value = "NAYY 4x150 SE"
+unit = ""
+tag = "library"
+label = "Main (feeder) cable type"
+source = "pandapower standard types: R = 0.208 Ω/km, X = 0.080 Ω/km, Imax = 270 A"
+url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
+note = "Swedish mains are typically N1XE-AL 4x150/4x240; the NAYY type has comparable impedance."
+
+[service_cable_type]
+value = "NAYY 4x50 SE"
+unit = ""
+tag = "library"
+label = "Service cable type (cabinet to house)"
+source = "pandapower standard types: R = 0.642 Ω/km, X = 0.083 Ω/km, Imax = 142 A"
+url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
+note = ""
+
+[trafo_types]
+value = ["0.25 MVA 10/0.4 kV", "0.4 MVA 10/0.4 kV", "0.63 MVA 10/0.4 kV"]
+unit = ""
+tag = "library"
+label = "Candidate 10/0.4 kV transformers"
+source = "pandapower standard types (vk = 4 %)"
+url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
+note = "The smallest unit covering trafo_design_margin × Velander peak is chosen."
+
+[trafo_design_margin]
+value = 1.5
+unit = "×"
+tag = "team-assumption"
+label = "Transformer sizing margin over the Velander peak"
+source = "Growth margin chosen by us; transformer size is varied in the tornado chart"
+url = ""
+note = ""
+
+[velander_k1]
+value = 0.000249
+unit = "kW/kWh"
+tag = "sourced"
+label = "Velander constant, energy term (småhus ej elvärme)"
+source = "Persson & Jonsson (2018), Utvärdering av Velanders formel för toppeffektberäkning i eldistributionsnät, MDU / Mälarenergi Elnät, Tabell 4 (EL340)"
+url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
+note = "Velander (1952): P[kW] = k1·W + k2·√W, W in kWh/yr. Used to size cables and the transformer."
+
+[velander_k2]
+value = 0.0497
+unit = "kW/√kWh"
+tag = "sourced"
+label = "Velander constant, square-root term (småhus ej elvärme)"
+source = "Persson & Jonsson (2018), MDU / Mälarenergi Elnät, Tabell 4 (EL340)"
+url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
+note = ""
+
+[cable_design_utilisation]
+value = 0.7
+unit = "p.u. of Imax"
+tag = "team-assumption"
+label = "Maximum design utilisation of a main cable at the Velander peak"
+source = "Design rule chosen by us: parallel cables are added above this utilisation"
+url = ""
+note = ""
+
+[cabinet_max_services]
+value = 6
+unit = "services"
+tag = "team-assumption"
+label = "Services per cable cabinet (kabelskåp)"
+source = "Modelling choice for the synthetic topology"
+url = ""
+note = ""
+
+[cabinet_reach_m]
+value = 45.0
+unit = "m"
+tag = "team-assumption"
+label = "Maximum street distance from a cabinet to the houses it serves"
+source = "Modelling choice for the synthetic topology"
+url = ""
+note = ""
+
+[house_levels_default]
+value = 1.5
+unit = "storeys"
+tag = "team-assumption"
+label = "Storeys when OSM has no building:levels tag"
+source = "Typical 1920s–1930s Bromma villa (1 storey + attic); OSM value used when present"
+url = ""
+note = ""
+
+[fuse_thresholds_m2]
+value = [110.0, 170.0]
+unit = "m² floor area"
+tag = "team-assumption"
+label = "Main fuse by floor area: 16 A below, 20 A between, 25 A above"
+source = "Ellevio: 16–25 A most common; 16 A smaller villas, 20 A normal villas, 25 A larger loads"
+url = "https://www.ellevio.se/privat/om-din-el/elen-i-hemmet/valj-ratt-sakring/"
+note = "Fuse caps both import and export of each customer: 3 × 230 V × I (11.0 / 13.8 / 17.3 kVA)."
+
+[mv_short_circuit_mva]
+value = 150.0
+unit = "MVA"
+tag = "team-assumption"
+label = "Short-circuit power of the 10 kV network at the substation"
+source = "Typical urban 10 kV value; only used for the fault-current check"
+url = ""
+note = ""
+
+[load_power_factor]
+value = 0.97
+unit = "cos φ"
+tag = "team-assumption"
+label = "Power factor of household load (inductive)"
+source = "Modelling choice; PV inverters at unity power factor (Q(U) not enabled)"
+url = ""
+note = ""
+
+# ---------------------------------------------------------------- households
+[household_kwh_per_year]
+value = 5000.0
+unit = "kWh/yr"
+tag = "sourced"
+label = "Household electricity of a villa without electric heating"
+source = "Konsumenternas Energimarknadsbyrå: 'ofta omkring 5 000 kWh per år' when heating and hot water are not electric"
+url = "https://www.energimarknadsbyran.se/el/dina-elavtal-och-kostnader/elhandelsavtalet/elforbrukning/normal-elforbrukning-och-elkostnad-for-villa/"
+note = "Mean of the household base load; individual households vary (stochastic generator). Heat pumps are modelled separately."
+
+[feeder_max_customers]
+value = 25
+unit = "customers"
+tag = "team-assumption"
+label = "Maximum customers per LV feeder cable"
+source = "Design rule for the synthetic topology: each feeder is a separate cable from the substation busbar (feeders may share trenches)"
+url = ""
+note = ""
+
+# ---------------------------------------------------------------- rooftop PV
+[pv_roof_tilt_deg]
+value = 35.0
+unit = "°"
+tag = "team-assumption"
+label = "Roof pitch of the villas (pitched roofs)"
+source = "Typical pitch of 1920s–1930s Swedish villa roofs; OSM rarely maps roof pitch"
+url = ""
+note = "Roof azimuth is real: derived from each OSM footprint (ridge along the long side)."
+
+[pv_flat_roof_tilt_deg]
+value = 15.0
+unit = "°"
+tag = "team-assumption"
+label = "Racking tilt on flat roofs (roof:shape=flat)"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[pv_flat_roof_usable_fraction]
+value = 0.5
+unit = "share of footprint"
+tag = "team-assumption"
+label = "Usable share of a flat roof"
+source = "Modelling choice (row spacing, setbacks)"
+url = ""
+note = ""
+
+[pv_east_west_threshold_deg]
+value = 60.0
+unit = "°"
+tag = "team-assumption"
+label = "Deviation from south above which both roof faces (east–west) are used"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[pv_usable_roof_fraction]
+value = 0.6
+unit = "share of roof face"
+tag = "team-assumption"
+label = "Usable share of the chosen roof face"
+source = "Modelling choice (chimneys, windows, setbacks)"
+url = ""
+note = ""
+
+[pv_power_density_kwp_m2]
+value = 0.20
+unit = "kWp/m²"
+tag = "team-assumption"
+label = "Module power per roof area"
+source = "Corresponds to ~20 % module efficiency (current mono-Si modules)"
+url = ""
+note = ""
+
+[pv_min_kwp]
+value = 3.0
+unit = "kWp"
+tag = "team-assumption"
+label = "Smallest PV system"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[pv_max_kwp]
+value = 20.0
+unit = "kWp"
+tag = "team-assumption"
+label = "Largest PV system on a villa"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[pv_dc_ac_ratio]
+value = 1.2
+unit = "kWp/kW"
+tag = "team-assumption"
+label = "DC/AC ratio (inverter loading ratio)"
+source = "Common design value; the inverter is also capped at the main-fuse capacity"
+url = ""
+note = "Varied in the tornado chart."
+
+[pv_gamma_pdc_per_c]
+value = -0.0035
+unit = "1/°C"
+tag = "sourced"
+label = "Power temperature coefficient"
+source = "Dobos (2014), PVWatts Version 5 Manual, NREL/TP-6A20-62641 ('premium' module: −0.35 %/°C)"
+url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
+note = ""
+
+[pv_system_losses_pct]
+value = 14.08
+unit = "%"
+tag = "library"
+label = "DC system losses (soiling, shading, mismatch, wiring, LID, nameplate, availability)"
+source = "PVWatts v5 default losses (pvlib.pvsystem.pvwatts_losses)"
+url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
+note = ""
+
+[pv_inverter_eff]
+value = 0.96
+unit = ""
+tag = "library"
+label = "Nominal inverter efficiency"
+source = "PVWatts v5 default (pvlib.inverter.pvwatts)"
+url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
+note = ""
+
+[pv_albedo]
+value = 0.2
+unit = ""
+tag = "library"
+label = "Ground albedo"
+source = "PVWatts v5 manual (NREL): default ground reflectance"
+url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
+note = "Snow cover would raise it in winter; negligible for summer hosting capacity."
+
+[pv_wind_speed_ms]
+value = 1.0
+unit = "m/s"
+tag = "team-assumption"
+label = "Wind speed for cell temperature"
+source = "Constant low wind (conservative for module temperature)"
+url = ""
+note = ""
+
+# ---------------------------------------------------------------- heat pumps
+[hp_specific_heat_kwh_m2]
+value = 110.0
+unit = "kWh/m²·yr"
+tag = "sourced"
+label = "Energy for space heating and hot water, småhus built ≤1940"
+source = "Energimyndigheten, Energistatistik för småhus 2024 (news 2025): 110 kWh/m² for houses built 1940 or earlier"
+url = "https://www.energimyndigheten.se/nyhetsarkiv/2025/ny-energistatistik-for-smahus/"
+note = "Used as heat-demand proxy (it is purchased energy averaged over heating systems, so it tends to underestimate heat demand). Varied ±30 % in the tornado chart."
+
+[hp_dhw_share]
+value = 0.20
+unit = "share"
+tag = "team-assumption"
+label = "Hot-water share of the annual heat demand"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[hp_balance_temp_c]
+value = 17.0
+unit = "°C"
+tag = "sourced"
+label = "Base temperature for degree-hours"
+source = "SMHI graddagar (degree days): base temperature +17 °C (SS-EN ISO 15927-6)"
+url = "https://www.smhi.se/professionella-tjanster/hallbara-stader/smhi-energi-index-och-graddagar---normalarskorrigering-varme"
+note = "Space heating ∝ max(0, 17 °C − T_air) per hour with the real Bromma temperature."
+
+[hp_ground_source_share]
+value = 0.5
+unit = "share"
+tag = "team-assumption"
+label = "Share of ground-source (vs air-to-water) heat pumps"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[hp_cop_model]
+value = "when2heat"
+unit = ""
+tag = "sourced"
+label = "COP regression (air: 6.08 − 0.0941·ΔT + 0.000464·ΔT²; ground: 10.29 − 0.2084·ΔT + 0.001322·ΔT²; ×0.85)"
+source = "Ruhnau, Hirth & Praktiknjo (2019), Time series of heat demand and heat pump efficiency for energy system modeling, Scientific Data 6:189 (CC BY 4.0); coefficients from the when2heat code"
+url = "https://github.com/oruhnau/when2heat"
+note = "Radiator sink temperature 40 − T_air, hot water 50 °C, ΔT ≥ 15 K."
+
+[hp_capacity_share]
+value = 0.8
+unit = "share of design load"
+tag = "team-assumption"
+label = "Heat-pump thermal capacity relative to the design heat load"
+source = "Modelling choice; an electric backup heater (COP 1) covers the rest"
+url = ""
+note = "Design temperature = coldest hour at Bromma in the weather record."
+
+# ---------------------------------------------------------------- electric vehicles
+[ev_km_per_year]
+value = 11410.0
+unit = "km/yr"
+tag = "sourced"
+label = "Average annual mileage of a passenger car"
+source = "Trafikanalys, Körsträckor 2024: 1 141 mil per car"
+url = "https://prod.trafa.se/globalassets/statistik/vagtrafik/korstrackor/2024/korstrackor-2024.pdf"
+note = ""
+
+[ev_kwh_per_km]
+value = 0.20
+unit = "kWh/km"
+tag = "sourced"
+label = "Electricity use of an electric car"
+source = "Energimyndigheten, Drivmedel 2022 (ER 2023:19): 20 kWh per 100 km"
+url = "https://energimyndigheten.a-w2m.se/Arkitektkopia/GetTemplateResource/121?id=f65b4be60c404a1c85a6e8c772e31946&res=073093186b7a4fcbbb7c2ed6f6da23b1&lr=False&fn=ER+2023_19webb.pdf&elp=portal&elt=t&eloid=f65b4be60c404a1c85a6e8c772e31946"
+note = ""
+
+[ev_charging_efficiency]
+value = 0.90
+unit = ""
+tag = "team-assumption"
+label = "Charging efficiency (grid to battery)"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_charger_kw]
+value = 11.0
+unit = "kW"
+tag = "team-assumption"
+label = "Home wallbox power (three-phase 16 A)"
+source = "3 × 230 V × 16 A ≈ 11 kW"
+url = ""
+note = ""
+
+[ev_daily_km_sigma]
+value = 0.7
+unit = "log-sd"
+tag = "team-assumption"
+label = "Day-to-day spread of driven distance (lognormal)"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_drive_probability]
+value = 0.85
+unit = "share of days"
+tag = "team-assumption"
+label = "Share of days the car is used"
+source = "Modelling choice; the mean annual mileage is preserved by scaling"
+url = ""
+note = ""
+
+[ev_arrival_weekday_h]
+value = 17.5
+unit = "h"
+tag = "team-assumption"
+label = "Mean arrival time at home, weekdays"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_arrival_weekend_h]
+value = 15.0
+unit = "h"
+tag = "team-assumption"
+label = "Mean arrival time at home, weekends"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_arrival_sd_h]
+value = 1.5
+unit = "h"
+tag = "team-assumption"
+label = "Spread of arrival time"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_departure_weekday_h]
+value = 7.5
+unit = "h"
+tag = "team-assumption"
+label = "Departure time next morning, weekdays"
+source = "Modelling choice"
+url = ""
+note = ""
+
+[ev_departure_weekend_h]
+value = 10.0
+unit = "h"
+tag = "team-assumption"
+label = "Departure time next morning, weekends"
+source = "Modelling choice"
+url = ""
+note = ""
+
+# ---------------------------------------------------------------- scenarios
+[today_hp_share]
+value = 0.30
+unit = "share of houses"
+tag = "team-assumption"
+label = "Houses with a heat pump today"
+source = "Scenario assumption (heat pumps are the most common heating in Swedish småhus; Bromma also has district heating)"
+url = ""
+note = "Background demand in the PV analyses; varied in the 2030 scenarios."
+
+[today_ev_share]
+value = 0.15
+unit = "share of houses"
+tag = "team-assumption"
+label = "Houses with an electric car today"
+source = "Scenario assumption"
+url = ""
+note = "Background demand in the PV analyses; varied in the 2030 scenarios."
+
+[z_star_pct]
+value = 3.0
+unit = "% of annual PV energy"
+tag = "regulation"
+label = "Acceptable curtailment for non-firm customers (headline threshold)"
+source = "Anchor: German EnWG §11(2) 'Spitzenkappung' lets DSOs plan with up to 3 % curtailment of the annual energy of each PV/wind installation"
+url = "https://www.gesetze-im-internet.de/enwg_2005/__11.html"
+note = "The full hosting-capacity vs curtailment curve is shown; 3 % is only the headline point."
+
+# ---------------------------------------------------------------- sensitivity factors (1 = base case)
+[static_min_load_factor]
+value = 1.0
+unit = "×"
+tag = "team-assumption"
+label = "Scaling of the minimum load used in the static summer snapshot"
+source = "Base case 1.0 = lowest simulated daytime summer load; varied 0–2 in the tornado chart"
+url = ""
+note = ""
+
+[household_load_factor]
+value = 1.0
+unit = "×"
+tag = "team-assumption"
+label = "Scaling of all household base loads"
+source = "Base case 1.0 = 5 000 kWh/yr mean; varied ±20 % in the tornado chart"
+url = ""
+note = ""

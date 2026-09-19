@@ -1,0 +1,100 @@
+/* Design tokens. Light is the default; dark is the Nordic-night variant, selected (not flipped).
+   Data colours are the validated categorical slots (see dataviz validator run in the README). */
+:root {
+  color-scheme: light;
+  --paper: #f3f6f7;          /* page plane: cool technical-drawing paper */
+  --surface: #ffffff;        /* panels and chart surface */
+  --surface-2: #eef2f4;      /* recessed wells, inputs */
+  --ink: #102530;            /* primary text */
+  --ink-2: #4b5d68;          /* secondary text */
+  --muted: #83949e;          /* axis labels, captions */
+  --hairline: #dce3e7;       /* gridlines, dividers */
+  --baseline: #b9c6cd;       /* axes */
+  --focus: #2a78d6;
+
+  --series-1: #2a78d6;       /* dynamic envelope / primary series (blue) */
+  --series-2: #eb6834;       /* second series (orange) */
+  --series-3: #1baf7a;       /* third series (aqua, <3:1 on light: always with labels/table) */
+  --deemph: #a7b3ba;         /* de-emphasised comparison marks */
+
+  --good: #0ca30c;
+  --warning: #fab219;
+  --serious: #ec835a;
+  --critical: #d03b3b;
+  --good-text: #006300;
+
+  /* sequential (blue) ramp for magnitude */
+  --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec; --seq-400: #3987e5;
+  --seq-500: #256abf; --seq-600: #184f95; --seq-700: #0d366b;
+  /* diverging poles for voltage (blue low, red high) and neutral midpoint */
+  --div-low: #256abf;
+  --div-mid: #e6e8ea;
+  --div-high: #d03b3b;
+
+  --night: 16, 32, 48;       /* rgb of the daylight overlay */
+  --shadow: 0 1px 0 rgba(16, 37, 48, 0.06);
+  --radius-s: 4px;
+  --radius-m: 8px;
+
+  --font: "Schibsted Grotesk Variable", "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  /* type scale: major third on 15px */
+  --t-xs: 12px;
+  --t-s: 13.5px;
+  --t-m: 15px;
+  --t-l: 18.75px;
+  --t-xl: 23.4px;
+  --t-2xl: 29.3px;
+  --t-3xl: 36.6px;
+  --t-hero: 57px;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme="light"])) {
+    color-scheme: dark;
+    --paper: #0e1a22;
+    --surface: #15232c;
+    --surface-2: #1b2c36;
+    --ink: #eef3f5;
+    --ink-2: #b5c3cb;
+    --muted: #7f929d;
+    --hairline: #26363f;
+    --baseline: #3a4c56;
+    --focus: #6da7ec;
+    --series-1: #3987e5;
+    --series-2: #d95926;
+    --series-3: #199e70;
+    --deemph: #52646f;
+    --good-text: #0ca30c;
+    --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
+    --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
+    --div-low: #3987e5;
+    --div-mid: #3a4751;
+    --div-high: #e66767;
+    --night: 4, 10, 16;
+    --shadow: none;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #0e1a22;
+  --surface: #15232c;
+  --surface-2: #1b2c36;
+  --ink: #eef3f5;
+  --ink-2: #b5c3cb;
+  --muted: #7f929d;
+  --hairline: #26363f;
+  --baseline: #3a4c56;
+  --focus: #6da7ec;
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --deemph: #52646f;
+  --good-text: #0ca30c;
+  --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
+  --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
+  --div-low: #3987e5;
+  --div-mid: #3a4751;
+  --div-high: #e66767;
+  --night: 4, 10, 16;
+  --shadow: none;
+}
