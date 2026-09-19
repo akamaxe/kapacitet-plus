@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Publication_MarketDocument xmlns="urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3">
+  <mRID>test</mRID>
+  <TimeSeries>
+    <mRID>1</mRID>
+    <currency_Unit.name>EUR</currency_Unit.name>
+    <price_Measure_Unit.name>MWH</price_Measure_Unit.name>
+    <curveType>A03</curveType>
+    <Period>
+      <timeInterval>
+        <start>2025-01-01T00:00Z</start>
+        <end>2025-01-01T03:00Z</end>
+      </timeInterval>
+      <resolution>PT60M</resolution>
+      <Point><position>1</position><price.amount>12.34</price.amount></Point>
+      <Point><position>2</position><price.amount>-5.00</price.amount></Point>
+    </Period>
+  </TimeSeries>
+  <TimeSeries>
+    <mRID>2</mRID>
+    <curveType>A01</curveType>
+    <Period>
+      <timeInterval>
+        <start>2025-01-01T03:00Z</start>
+        <end>2025-01-01T04:00Z</end>
+      </timeInterval>
+      <resolution>PT15M</resolution>
+      <Point><position>1</position><price.amount>20.00</price.amount></Point>
+      <Point><position>2</position><price.amount>21.00</price.amount></Point>
+      <Point><position>3</position><price.amount>22.00</price.amount></Point>
+      <Point><position>4</position><price.amount>23.00</price.amount></Point>
+    </Period>
+  </TimeSeries>
+</Publication_MarketDocument>

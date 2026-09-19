@@ -1,0 +1,397 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
+import { MapView, fitTo } from "../components/MapView";
+import { YearStrip } from "../components/YearStrip";
+import { Chip, Meter, Status, Tile, Loading } from "../components/bits";
+import { useApi, useGridState } from "../lib/api";
+import { loadingColor, powerColor, tokens, voltageColor } from "../lib/colors";
+import { hourLabel, useFmt } from "../lib/format";
+import { useT } from "../lib/i18n";
+import { useStore, type Scenario } from "../lib/store";
+import { nightOpacity, solarElevation } from "../lib/sun";
+
+const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
+type ColorBy = "voltage" | "power";
+/** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
+const V_SPAN = 0.06;
+const P_SPAN = 8;
+
+export default function Twin() {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const hour = useStore((s) => s.hour);
+  const setHour = useStore((s) => s.setHour);
+  const scenario = useStore((s) => s.scenario);
+  const setScenario = useStore((s) => s.setScenario);
+  const playing = useStore((s) => s.playing);
+  const setPlaying = useStore((s) => s.setPlaying);
+  const theme = useStore((s) => s.theme);
+
+  const meta = useApi<any>("/meta");
+  const net = useApi<any>("/network");
+  const year = meta.data?.reference_year ?? 2025;
+  const series = useApi<any>(meta.data ? `/series/${year}` : null);
+  const show = useApi<any>("/showcase");
+  const st = useGridState(scenario);
+  const mapRef = useRef<MLMap | null>(null);
+  const [tip, setTip] = useState<{ x: number; y: number; kind: string; id: number } | null>(null);
+  const [colorBy, setColorBy] = useState<ColorBy>("voltage");
+  // setup/onReady run from map events, so they call the latest paint through this ref
+  const paintRef = useRef<(map: MLMap | null) => void>(() => {});
+
+  const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
+  const cables = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "cable") ?? [], [net.data]);
+
+  // bus / line → row in the state arrays
+  const rows = useMemo(() => {
+    if (!st.data) return null;
+    const busRow = new Map<number, number>();
+    st.data.header.bus_index.forEach((b, i) => busRow.set(b, i));
+    const lineRow = new Map<number, number>();
+    st.data.header.line_index.forEach((l, i) => lineRow.set(l, i));
+    return { busRow, lineRow };
+  }, [st.data]);
+
+  // ------------------------------------------------------------------ map layers
+  const setup = useCallback(
+    (map: MLMap) => {
+      if (!net.data) return;
+      const tk = tokens();
+      const fc = (features: any[]) => ({ type: "FeatureCollection", features });
+      const ctx = net.data.features.filter((x: any) => x.properties.layer === "context");
+      const cab = net.data.features.filter((x: any) => x.properties.layer === "cabinet");
+      const sub = net.data.features.filter((x: any) => x.properties.layer === "substation");
+      const hs = houses.map((h: any) => ({ ...h, properties: { ...h.properties, height: Math.max(1, h.properties.levels) * 3.2 } }));
+      const add = (id: string, data: any, promoteId?: string) => {
+        if (map.getSource(id)) return;
+        map.addSource(id, { type: "geojson", data, ...(promoteId ? { promoteId } : {}) } as any);
+      };
+      add("context", fc(ctx));
+      add("cables", fc(cables), "line");
+      add("houses", fc(hs), "cid");
+      add("cabinets", fc(cab));
+      add("substation", fc(sub));
+      if (!map.getLayer("context")) {
+        map.addLayer({ id: "context", type: "fill", source: "context", paint: { "fill-color": tk.hairline, "fill-opacity": 0.7 } });
+        map.addLayer({
+          id: "cables", type: "line", source: "cables",
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: {
+            "line-color": ["coalesce", ["feature-state", "color"], tk.seq[2]],
+            // zoom must be the top-level input of interpolate; the cable kind is decided inside
+            "line-width": ["interpolate", ["linear"], ["zoom"],
+              14, ["case", ["==", ["get", "kind"], "main"], 2, 0.8],
+              18, ["case", ["==", ["get", "kind"], "main"], 5.5, 2]],
+          },
+        });
+        map.addLayer({
+          id: "houses", type: "fill-extrusion", source: "houses",
+          paint: {
+            "fill-extrusion-color": ["coalesce", ["feature-state", "color"], tk.divMid],
+            "fill-extrusion-height": ["get", "height"],
+            "fill-extrusion-opacity": 0.92,
+          },
+        });
+        map.addLayer({
+          id: "houses-sel", type: "line", source: "houses",
+          paint: { "line-color": tk.ink, "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0] },
+        });
+        map.addLayer({ id: "cabinets", type: "circle", source: "cabinets", paint: { "circle-radius": 2.5, "circle-color": tk.ink2, "circle-stroke-width": 1.5, "circle-stroke-color": tk.surface } });
+        map.addLayer({ id: "substation", type: "circle", source: "substation", paint: { "circle-radius": 8, "circle-color": tk.ink, "circle-stroke-width": 3, "circle-stroke-color": tk.surface } });
+      }
+      paintRef.current(map);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [net.data, theme],
+  );
+
+  const paint = useCallback(
+    (map: MLMap | null) => {
+      if (!map || !st.data || !rows || !map.getSource("houses")) return;
+      const tk = tokens();
+      const h = hour;
+      for (const hs of houses) {
+        const r = rows.busRow.get(hs.properties.bus);
+        if (r === undefined) continue;
+        const color = colorBy === "voltage"
+          ? voltageColor(tk, st.data.voltage(r, h), V_SPAN)
+          : powerColor(tk, st.data.power(hs.properties.cid, h), P_SPAN);
+        map.setFeatureState({ source: "houses", id: hs.properties.cid }, { color });
+      }
+      for (const c of cables) {
+        const r = rows.lineRow.get(c.properties.line);
+        if (r === undefined) continue;
+        map.setFeatureState({ source: "cables", id: c.properties.line }, { color: loadingColor(tk, st.data.loading(r, h)) });
+      }
+      // the substation marker turns critical when the transformer is above its rating
+      if (map.getLayer("substation")) {
+        const over = st.data.header.aggregates.trafo_loading[h] > 100;
+        map.setPaintProperty("substation", "circle-color", over ? tk.critical : tk.ink);
+        map.setPaintProperty("substation", "circle-radius", over ? 11 : 8);
+      }
+    },
+    [st.data, rows, hour, houses, cables, colorBy],
+  );
+
+  paintRef.current = paint;
+  useEffect(() => paint(mapRef.current), [paint]);
+
+  // hover tooltip
+  const onReady = useCallback((map: MLMap) => {
+    mapRef.current = map;
+    if (net.data?.bbox) fitTo(map, net.data.bbox, 60);
+    let hovered: number | null = null;
+    map.on("mousemove", (e: MapMouseEvent) => {
+      const feats = map.queryRenderedFeatures(e.point, { layers: ["houses", "cables"] });
+      if (hovered !== null) map.setFeatureState({ source: "houses", id: hovered }, { hover: false });
+      hovered = null;
+      if (!feats.length) {
+        setTip(null);
+        map.getCanvas().style.cursor = "";
+        return;
+      }
+      const ft = feats[0];
+      map.getCanvas().style.cursor = "pointer";
+      if (ft.layer.id === "houses") {
+        hovered = ft.properties.cid as number;
+        map.setFeatureState({ source: "houses", id: hovered }, { hover: true });
+        setTip({ x: e.point.x, y: e.point.y, kind: "house", id: hovered });
+      } else {
+        setTip({ x: e.point.x, y: e.point.y, kind: "cable", id: ft.properties.line as number });
+      }
+    });
+    map.on("mouseout", () => setTip(null));
+    paintRef.current(map);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [net.data]);
+
+  // open on the most loaded hour of the year unless the viewer has already picked one
+  useEffect(() => {
+    const h = meta.data?.showcase_hour;
+    if (typeof h === "number" && !useStore.getState().hourTouched) useStore.setState({ hour: h });
+  }, [meta.data]);
+
+  // playback: one hour per frame tick
+  useEffect(() => {
+    if (!playing) return;
+    const H = st.data?.header.hours ?? 8760;
+    const id = window.setInterval(() => {
+      const cur = useStore.getState().hour;
+      setHour((cur + 1) % H);
+    }, 90);
+    return () => window.clearInterval(id);
+  }, [playing, st.data, setHour]);
+
+  if (!net.data || !meta.data) return <Loading />;
+
+  const sc = show.data?.data?.showcase;
+  const agg = st.data?.header.aggregates;
+  const center: [number, number] = meta.data.center;
+  const startUtc = Date.UTC(year, 0, 1) - 3600_000; // UTC+1 standard time year start
+  const elev = solarElevation(startUtc + (hour + 0.5) * 3600_000, center[1], center[0]);
+  const night = nightOpacity(elev);
+  const ser = series.data?.data;
+  const nNonfirm = sc ? sc.nonfirm_cids.length : 0;
+  const scnText = sc
+    ? scenario === "static"
+      ? t("scn.static.d", { n: sc.firm })
+      : scenario === "uncontrolled"
+        ? t("scn.uncontrolled.d", { n: sc.adopters, h: sc.verification.uncontrolled_violation_hours, year })
+        : t("scn.doe.d", { n: sc.adopters, k: nNonfirm })
+    : "";
+  const violation = agg ? agg.violation[hour] === 1 : false;
+  const trafoRev = agg ? agg.trafo_p_kw[hour] < 0 : false;
+
+  return (
+    <div className="split">
+      <div className="map-col">
+        <div className="map-wrap">
+          <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("twin.title", { n: houses.length })}>
+            <div className="daylight" style={{ backgroundColor: `rgba(var(--night), ${night})` }} />
+            <MapLegend colorBy={colorBy} />
+            <div className="map-note">
+              <Chip kind="real" />
+              
+              <Chip kind="synthetic" />
+            </div>
+            {tip && st.data && rows && <Tooltip tip={tip} houses={houses} cables={cables} rows={rows} hour={hour} />}
+          </MapView>
+        </div>
+        <div className="yearstrip">
+          <div className="yearstrip-controls">
+            <span className="yearstrip-when">{hourLabel(lang, year, hour)}</span>
+            <button className="btn ghost" onClick={() => setPlaying(!playing)} aria-pressed={playing}>
+              {playing ? t("twin.pause") : t("twin.play")}
+            </button>
+          </div>
+          {agg ? (
+            <YearStrip values={agg.trafo_loading} hours={st.data!.header.hours} label={t("twin.strip", { year })} />
+          ) : (
+            <div className="caption">{t("ui.loading")}</div>
+          )}
+          <div />
+          <p className="caption-muted">{t("twin.strip", { year })}</p>
+        </div>
+      </div>
+
+      <aside className="panel">
+        <div className="stack">
+          <h2>{t("twin.title", { n: houses.length })}</h2>
+          <p className="caption">{t("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
+        </div>
+
+        <div className="stack">
+          <div className="seg" role="group" aria-label="Scenario">
+            {SCENARIOS.map((s) => (
+              <button key={s} aria-pressed={scenario === s} onClick={() => setScenario(s)}>
+                {t(`scn.${s}`)}
+              </button>
+            ))}
+          </div>
+          <p className="caption">{scnText}</p>
+          <div className="row">
+            <span className="caption">{t("twin.colorBy")}</span>
+            <div className="seg small" role="group" aria-label={t("twin.colorBy")}>
+              {(["voltage", "power"] as ColorBy[]).map((c) => (
+                <button key={c} aria-pressed={colorBy === c} onClick={() => setColorBy(c)}>
+                  {t(c === "voltage" ? "twin.byVoltage" : "twin.byPower")}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <hr className="divider" />
+
+        <div className="stack">
+          <div className="row" style={{ justifyContent: "space-between" }}>
+            <h3>{hourLabel(lang, year, hour)}</h3>
+            {agg && (violation ? <Status kind="critical">{t("ui.exceeded")}</Status> : <Status kind="good">{t("ui.within")}</Status>)}
+          </div>
+          <div className="tiles">
+            <Tile label={t("twin.sun")} value={f(elev, 0)} unit="°" />
+            <Tile label={t("twin.ghi")} value={ser ? f(ser.ghi[hour], 0) : "–"} unit="W/m²" note={<Chip kind="real" />} />
+            <Tile label={t("twin.temp")} value={ser ? f(ser.t_air[hour], 1) : "–"} unit="°C" note={<Chip kind="real" />} />
+            <Tile label={t("twin.price")} value={ser?.price_sek_kwh ? f(ser.price_sek_kwh[hour], 2) : "–"} unit="kr/kWh" note={<Chip kind="real" />} />
+            <Tile label={t("twin.pv")} value={agg ? f(agg.pv_kw[hour], 0) : "–"} unit="kW" />
+            <Tile label={t("twin.load")} value={agg ? f(agg.load_kw[hour], 0) : "–"} unit="kW" />
+          </div>
+        </div>
+
+        {agg && (
+          <div className="stack">
+            <Meter label={`${t("twin.trafo")}${trafoRev ? " ⇡" : ""}`} value={agg.trafo_loading[hour]} max={140} limit={100} />
+            <Meter label={t("twin.line")} value={agg.max_line_loading[hour]} max={140} limit={100} />
+            <dl className="kv">
+              <dt>{t("twin.vmax")}</dt>
+              <dd>{f(agg.vmax[hour], 3)} pu</dd>
+              <dt>{t("twin.vmin")}</dt>
+              <dd>{f(agg.vmin[hour], 3)} pu</dd>
+              {scenario === "doe" && agg.curtailed_kw && (
+                <>
+                  <dt>{t("twin.curtailed")}</dt>
+                  <dd>{f(agg.curtailed_kw[hour], 1)} kW</dd>
+                </>
+              )}
+            </dl>
+          </div>
+        )}
+      </aside>
+    </div>
+  );
+}
+
+function MapLegend({ colorBy }: { colorBy: ColorBy }) {
+  const t = useT();
+  const f = useFmt();
+  const tk = tokens();
+  const theme = useStore((s) => s.theme);
+  void theme;
+  const seqGrad = `linear-gradient(90deg, ${tk.seq.join(",")})`;
+  const divGrad = colorBy === "voltage"
+    ? `linear-gradient(90deg, ${tk.divLow}, ${tk.divMid}, ${tk.divHigh})`
+    : `linear-gradient(90deg, ${tk.divLow}, ${tk.divMid}, ${tk.s2})`;
+  return (
+    <div className="map-legend">
+      <div className="scale">
+        <span>{t("twin.legend.cable")}</span>
+        <div className="scale-bar" style={{ background: seqGrad }} />
+        <div className="scale-ticks">
+          <span>0 %</span>
+          <span>50 %</span>
+          <span>100 %</span>
+        </div>
+        <span className="row" style={{ gap: 6 }}>
+          <i style={{ display: "inline-block", width: 12, height: 4, borderRadius: 2, background: tk.critical }} />
+          {t("twin.legend.over")}
+        </span>
+      </div>
+      {colorBy === "voltage" ? (
+        <div className="scale">
+          <span>{t("twin.legend.voltage")}</span>
+          <div className="scale-bar" style={{ background: divGrad }} />
+          <div className="scale-ticks">
+            <span>≤{f(1 - V_SPAN, 2)}</span>
+            <span>{f(1, 2)}</span>
+            <span>≥{f(1 + V_SPAN, 2)}</span>
+          </div>
+          <span className="caption-muted">{t("twin.legend.vnote", { p: f(V_SPAN * 100, 0) })}</span>
+        </div>
+      ) : (
+        <div className="scale">
+          <span>{t("twin.legend.power")}</span>
+          <div className="scale-bar" style={{ background: divGrad }} />
+          <div className="scale-ticks">
+            <span>{P_SPAN} {t("twin.legend.import")}</span>
+            <span>0</span>
+            <span>{P_SPAN} {t("twin.legend.export")}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Tooltip({ tip, houses, cables, rows, hour }: {
+  tip: { x: number; y: number; kind: string; id: number };
+  houses: any[]; cables: any[];
+  rows: { busRow: Map<number, number>; lineRow: Map<number, number> };
+  hour: number;
+}) {
+  const t = useT();
+  const f = useFmt();
+  const scenario = useStore((s) => s.scenario);
+  const st = useGridState(scenario);
+  if (!st.data) return null;
+  const style = { left: tip.x + 14, top: tip.y + 14 };
+  if (tip.kind === "house") {
+    const h = houses.find((x) => x.properties.cid === tip.id)?.properties;
+    if (!h) return null;
+    const r = rows.busRow.get(h.bus);
+    const v = r !== undefined ? st.data.voltage(r, hour) : NaN;
+    const p = st.data.power(h.cid, hour);
+    return (
+      <div className="map-tooltip" style={style}>
+        <div className="tt-title">{h.address || h.osm_id}</div>
+        <div className="tt-row"><span>{t("twin.tt.net")}</span><b>{f(Math.abs(p), 1)} kW {p >= 0 ? t("twin.tt.export") : t("twin.tt.import")}</b></div>
+        <div className="tt-row"><span>{t("twin.tt.voltage")}</span><b>{f(v, 3)} pu</b></div>
+        <div className="tt-row"><span>{t("twin.tt.status")}</span><b>{t(`twin.status.${h.pv_status}`)}</b></div>
+        <div className="tt-row"><span>{t("twin.tt.pv")}</span><b>{f(h.kwp, 1)} kWp</b></div>
+        <div className="tt-row"><span>{t("twin.tt.fuse")}</span><b>{h.fuse_a} A</b></div>
+      </div>
+    );
+  }
+  const c = cables.find((x) => x.properties.line === tip.id)?.properties;
+  if (!c) return null;
+  const r = rows.lineRow.get(c.line);
+  const l = r !== undefined ? st.data.loading(r, hour) : NaN;
+  return (
+    <div className="map-tooltip" style={style}>
+      <div className="tt-title">{c.kind === "main" ? t("twin.feeder", { n: c.feeder + 1 }) : t("twin.service")}</div>
+      <div className="tt-row"><span>{t("twin.tt.loading")}</span><b>{f(l, 0)} %</b></div>
+      <div className="tt-row"><span>{t("twin.type")}</span><b>{c.std_type}{c.parallel > 1 ? ` ×${c.parallel}` : ""}</b></div>
+      <div className="tt-row"><span>{t("twin.length")}</span><b>{f(c.length_m, 0)} m</b></div>
+    </div>
+  );
+}
