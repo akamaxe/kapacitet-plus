@@ -53,7 +53,7 @@ const DEFAULT_HOUR = (31 + 28 + 31 + 30 + 31 + 30 + 11) * 24 + 12;
 export const useStore = create<State>((set) => ({
   screen: screenFromHash(),
   lang: (readLS("kap.lang", "en") as "en" | "es"),
-  theme: (readLS("kap.theme", "system") as Theme),
+  theme: (readLS("kap.theme", "dark") as Theme),
   notes: false,
   hour: DEFAULT_HOUR,
   hourTouched: false,

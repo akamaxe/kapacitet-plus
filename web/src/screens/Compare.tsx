@@ -6,6 +6,8 @@ import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
+import { GridPreview } from "../components/GridPreview";
+import { Icon } from "../components/Icon";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -48,37 +50,49 @@ export default function Compare() {
     <div className="page">
       <div className="page-inner">
         {/* ---------------------------------------------------------------- headline */}
-        <section className="stack" style={{ gap: 18 }}>
-          <h1 className="headline">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</h1>
-          <p className="headline-sub">
-            {t("cmp.sub", { z: f(zDoeMedian, 1), n: H.summary.n_orders, years: years.length })}
-          </p>
-          <div className="hero-figures">
+        <section className="overview-hero">
+          <div className="overview-copy">
+            <span className="eyebrow"><span className="signal-line" />{t("overview.eyebrow")}</span>
+            <h1 className="headline">{t("overview.title")}<br /><span>{t("overview.titleAccent")}</span></h1>
+            <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
+            <div className="hero-actions"><a className="btn" href="#/twin">{t("overview.explore")}<Icon name="arrow" size={18} /></a><a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a></div>
+            <span className="hero-context">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>
+          </div>
+          <GridPreview />
+        </section>
+          <div className="hero-figures" aria-label={t("overview.metrics")}>
             <div className="figure">
+              <div className="metric-top"><span>{t("overview.baseline")}</span><Icon name="compare" /></div>
               <div className="value">{f(staticKw)}<small>kW</small></div>
               <div className="label"><span className="mark" style={{ background: "var(--deemph)" }} />{t("cmp.fig.static")}</div>
             </div>
-            <div className="figure">
+            <div className="figure featured">
+              <div className="metric-top"><span>{t("overview.dynamic")}</span><Icon name="bolt" /></div>
               <div className="value">{f(doeKw)}<small>kW</small></div>
               <div className="label"><span className="mark" style={{ background: "var(--series-1)" }} />{t("cmp.fig.doe")}</div>
             </div>
             <div className="figure">
+              <div className="metric-top"><span>{t("overview.uplift")}</span><Icon name="scenarios" /></div>
               <div className="value">×{f(ratio, 1)}</div>
               <div className="label">{t("cmp.fig.gain")}</div>
             </div>
+            <div className="figure">
+              <div className="metric-top"><span>{t("overview.curtailment")}</span><Icon name="sun" /></div>
+              <div className="value">{f(zDoeMedian, 1)}<small>%</small></div>
+              <div className="label">{t("overview.curtailmentNote")}</div>
+            </div>
           </div>
-          <div className="row">
+          <div className="data-provenance">
             <Chip kind="real" /><span className="caption-muted">{t("cmp.chips.real")}</span>
             <Chip kind="synthetic" /><span className="caption-muted">{t("cmp.chips.synthetic")}</span>
           </div>
-        </section>
 
         {/* ---------------------------------------------------------------- measures */}
         <section className="block">
           <div className="block-head"><h2>{t("cmp.bars")}</h2></div>
           <p className="caption">{t("cmp.bars.caption")}</p>
           <ChartOrTable
-            chart={<Chart ariaLabel={t("cmp.bars")} height={250} deps={[H]} build={(tk) => barsOption(tk, m, (k) => measureLabel(t, k, zStar))} />}
+            chart={<Chart ariaLabel={t("cmp.bars")} height={250} deps={[H]} build={(tk, width) => barsOption(tk, m, (k) => measureLabel(t, k, zStar), width)} />}
             table={
               <table className="data">
                 <thead><tr><th>{t("tbl.method")}</th><th className="r">{t("tbl.kwMedian")}</th><th className="r">P10</th><th className="r">P90</th><th className="r">{t("tbl.houses")}</th></tr></thead>
@@ -185,7 +199,7 @@ export default function Compare() {
               { color: "var(--deemph)", label: t("cmp.fig.static") },
             ]} />
             <ChartOrTable
-              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk) => tornadoOption(tk, H.tornado, t)} />}
+              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width) => tornadoOption(tk, H.tornado, t, width)} />}
               table={
                 <table className="data">
                   <thead><tr><th>{t("tbl.input")}</th><th>{t("tbl.value")}</th><th className="r">{t("tbl.staticKw")}</th><th className="r">{t("tbl.tsKw")}</th><th className="r">{t("tbl.doeKw")}</th></tr></thead>
@@ -211,22 +225,23 @@ function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
 
 // ------------------------------------------------------------------------------ chart options
 
-function barsOption(tk: Tokens, m: any, label: (k: string) => string) {
+function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: number) {
+  const compact = width < 520;
   const cats = MEASURES.map(label);
   const vals = MEASURES.map((k) => m[k].kw_ac.median);
   const lo = MEASURES.map((k) => m[k].kw_ac.p10);
   const hi = MEASURES.map((k) => m[k].kw_ac.p90);
   return {
-    grid: { left: 250, right: 70, top: 10, bottom: 30 },
+    grid: { left: compact ? 116 : 250, right: compact ? 58 : 70, top: 10, bottom: 30 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW", nameLocation: "end" },
-    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font, fontSize: 13 } },
+    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font, fontSize: compact ? 10 : 13, width: compact ? 106 : 240, overflow: "break" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${cats[p.dataIndex]}<br/><b>${Math.round(vals[p.dataIndex])} kW</b> (P10 ${Math.round(lo[p.dataIndex])}–P90 ${Math.round(hi[p.dataIndex])})` },
     series: [
       {
         type: "bar",
         barWidth: 22,
         data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.s1 : tk.deemph, borderRadius: [0, 4, 4, 0] } })),
-        label: { show: true, position: "right", distance: 26, color: tk.ink, fontWeight: 600, formatter: (p: any) => `${Math.round(p.value)} kW` },
+        label: { show: true, position: "right", distance: compact ? 8 : 26, fontSize: compact ? 10 : 12, color: tk.ink, fontWeight: 600, formatter: (p: any) => `${Math.round(p.value)} kW` },
         z: 2,
       },
       {
@@ -368,7 +383,8 @@ function riskOption(tk: Tokens, R: any, zStar: number) {
   };
 }
 
-function tornadoOption(tk: Tokens, T: any, t: (k: string) => string) {
+function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number) {
+  const compact = width < 520;
   const groups: Record<string, any[]> = {};
   for (const c of T.cases) (groups[c.label] ||= []).push(c);
   const labels = Object.keys(groups);
@@ -380,9 +396,9 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string) {
   const s = rng("static_kw");
   const levels = (l: string) => groups[l].map((c) => `${c.level}: ${t("m.static")} ${Math.round(c.static_kw)} kW, ${t("cmp.fig.doe")} ${Math.round(c.doe_kw)} kW`).join("<br/>");
   return {
-    grid: { left: 250, right: 40, top: 10, bottom: 34 },
+    grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },
-    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font } },
+    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font, fontSize: compact ? 9 : 12, width: compact ? 106 : 240, overflow: "truncate" } },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps: any[]) => `<b>${ps[0].name}</b><br/>${levels(ps[0].name)}` },
     series: [
       { type: "bar", stack: "d", data: d.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },

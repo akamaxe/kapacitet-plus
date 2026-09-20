@@ -14,7 +14,7 @@ export function Chart({
   onClick,
   ariaLabel,
 }: {
-  build: (tk: Tokens) => echarts.EChartsCoreOption;
+  build: (tk: Tokens, width: number) => echarts.EChartsCoreOption;
   height?: number;
   deps?: unknown[];
   onClick?: (params: any) => void;
@@ -24,15 +24,20 @@ export function Chart({
   const chartRef = useRef<echarts.ECharts | null>(null);
   const theme = useStore((s) => s.theme);
   const lang = useStore((s) => s.lang);
+  const renderRef = useRef<() => void>(() => {});
+  renderRef.current = () => {
+    const tk = tokens();
+    chartRef.current?.setOption(withBase(build(tk, ref.current?.clientWidth ?? 800), tk), true);
+  };
 
   useEffect(() => {
     if (!ref.current) return;
     const chart = echarts.init(ref.current, undefined, { renderer: "canvas" });
     chartRef.current = chart;
-    const ro = new ResizeObserver(() => chart.resize());
+    const ro = new ResizeObserver(() => { chart.resize(); renderRef.current(); });
     ro.observe(ref.current);
     const mq = window.matchMedia?.("(prefers-color-scheme: dark)");
-    const onScheme = () => chart.setOption(withBase(build(tokens()), tokens()), true);
+    const onScheme = () => renderRef.current();
     mq?.addEventListener?.("change", onScheme);
     return () => {
       ro.disconnect();
@@ -46,7 +51,8 @@ export function Chart({
     const chart = chartRef.current;
     if (!chart) return;
     // tokens are read after the theme attribute has been applied
-    requestAnimationFrame(() => chart.setOption(withBase(build(tokens()), tokens()), true));
+    const frame = requestAnimationFrame(() => renderRef.current());
+    return () => cancelAnimationFrame(frame);
   }, [theme, lang, ...deps]);
 
   useEffect(() => {
@@ -61,9 +67,12 @@ export function Chart({
 
 /** Shared chart chrome: hairline solid grid, muted axes, text tokens, sans typeface. */
 export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EChartsCoreOption {
+  const tooltip = typeof opt.tooltip === "object" && !Array.isArray(opt.tooltip) ? opt.tooltip : {};
   return {
+    ...opt,
+    animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     animationDuration: 300,
-    textStyle: { fontFamily: tk.font, color: tk.ink2, fontSize: 12 },
+    textStyle: { fontFamily: tk.font, color: tk.ink2, fontSize: 12, ...opt.textStyle },
     tooltip: {
       backgroundColor: tk.surface,
       borderColor: tk.hairline,
@@ -71,8 +80,8 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EC
       textStyle: { color: tk.ink, fontFamily: tk.font, fontSize: 12.5 },
       extraCssText: "box-shadow: 0 4px 16px rgba(16,37,48,0.12); border-radius: 8px;",
       confine: true,
+      ...tooltip,
     },
-    ...opt,
   };
 }
 

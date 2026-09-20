@@ -89,8 +89,16 @@ prices can be fetched from the source for all 11 weather years.
 ### Demo in five minutes
 
 Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for fullscreen and
-**N** for the presenter notes (arrow keys or PageUp/PageDown move between screens, **ES** switches
+**N** for the presenter notes (Ctrl + arrow keys or PageUp/PageDown move between screens, **ES** switches
 language).
+
+The control centre opens in dark mode for new visitors; the header offers light, dark and system
+themes and remembers the selection. Use the sidebar to navigate, or scroll the navigation strip
+on a phone. The capacity overview links directly to the geographic twin and connection study.
+In the twin, step an hour at a time, scrub the year, play at 1×/4×/8× speed, or return to the showcase
+hour. The reset-view button restores the map camera. Charts retain their table alternatives, and
+animations respect reduced-motion preferences. Use **Ctrl + Left/Right** or **PageUp/PageDown**
+to navigate screens without affecting form fields.
 
 1. **Sweden** — why this matters: production in the north, demand in the south, and connection
    queues as the new bottleneck.
