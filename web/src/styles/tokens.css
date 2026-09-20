@@ -1,23 +1,22 @@
-/* Design tokens. Light is the default; dark is the Nordic-night variant, selected (not flipped).
-   Data colours are the validated categorical slots (see dataviz validator run in the README). */
+/* Smart-grid palette. Semantic data colours stay distinct in both themes. */
 :root {
   color-scheme: light;
-  --paper: #f3f6f7;          /* page plane: cool technical-drawing paper */
+  --paper: #eef4f6;          /* page plane: cool technical-drawing paper */
   --surface: #ffffff;        /* panels and chart surface */
-  --surface-2: #eef2f4;      /* recessed wells, inputs */
-  --ink: #102530;            /* primary text */
-  --ink-2: #4b5d68;          /* secondary text */
-  --muted: #83949e;          /* axis labels, captions */
-  --hairline: #dce3e7;       /* gridlines, dividers */
+  --surface-2: #e8f0f3;      /* recessed wells, inputs */
+  --ink: #122c38;            /* primary text */
+  --ink-2: #506875;          /* secondary text */
+  --muted: #627d88;          /* axis labels, captions */
+  --hairline: #d6e3e8;       /* gridlines, dividers */
   --baseline: #b9c6cd;       /* axes */
-  --focus: #2a78d6;
+  --focus: #007f91;
 
-  --series-1: #2a78d6;       /* dynamic envelope / primary series (blue) */
+  --series-1: #007f91;       /* dynamic envelope / primary series (cyan) */
   --series-2: #eb6834;       /* second series (orange) */
-  --series-3: #1baf7a;       /* third series (aqua, <3:1 on light: always with labels/table) */
+  --series-3: #16866b;       /* third series (mint); also identified with labels */
   --deemph: #a7b3ba;         /* de-emphasised comparison marks */
 
-  --good: #0ca30c;
+  --good: #41bb86;
   --warning: #fab219;
   --serious: #ec835a;
   --critical: #d03b3b;
@@ -33,9 +32,10 @@
 
   --night: 16, 32, 48;       /* rgb of the daylight overlay */
   --shadow: 0 1px 0 rgba(16, 37, 48, 0.06);
-  --radius-s: 4px;
-  --radius-m: 8px;
+  --radius-s: 8px;
+  --radius-m: 14px;
 
+  --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
   --font: "Schibsted Grotesk Variable", "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
   /* type scale: major third on 15px */
   --t-xs: 12px;
@@ -45,56 +45,56 @@
   --t-xl: 23.4px;
   --t-2xl: 29.3px;
   --t-3xl: 36.6px;
-  --t-hero: 57px;
+  --t-hero: 44px;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme="light"])) {
     color-scheme: dark;
-    --paper: #0e1a22;
-    --surface: #15232c;
-    --surface-2: #1b2c36;
-    --ink: #eef3f5;
-    --ink-2: #b5c3cb;
-    --muted: #7f929d;
-    --hairline: #26363f;
-    --baseline: #3a4c56;
-    --focus: #6da7ec;
-    --series-1: #3987e5;
-    --series-2: #d95926;
-    --series-3: #199e70;
-    --deemph: #52646f;
-    --good-text: #0ca30c;
+    --paper: #080f18;
+    --surface: #101c29;
+    --surface-2: #152536;
+    --ink: #edf5fb;
+    --ink-2: #a6bacb;
+    --muted: #8099ad;
+    --hairline: #223447;
+    --baseline: #3e576d;
+    --focus: #66dce7;
+    --series-1: #36c9da;
+    --series-2: #f2a46d;
+    --series-3: #62dcb2;
+    --deemph: #536d86;
+    --good-text: #41bb86;
     --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
     --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
     --div-low: #3987e5;
     --div-mid: #3a4751;
     --div-high: #e66767;
     --night: 4, 10, 16;
-    --shadow: none;
+    --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
   }
 }
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #0e1a22;
-  --surface: #15232c;
-  --surface-2: #1b2c36;
-  --ink: #eef3f5;
-  --ink-2: #b5c3cb;
-  --muted: #7f929d;
-  --hairline: #26363f;
-  --baseline: #3a4c56;
-  --focus: #6da7ec;
-  --series-1: #3987e5;
-  --series-2: #d95926;
-  --series-3: #199e70;
-  --deemph: #52646f;
-  --good-text: #0ca30c;
+  --paper: #080f18;
+  --surface: #101c29;
+  --surface-2: #152536;
+  --ink: #edf5fb;
+  --ink-2: #a6bacb;
+  --muted: #8099ad;
+  --hairline: #223447;
+  --baseline: #3e576d;
+  --focus: #66dce7;
+  --series-1: #36c9da;
+  --series-2: #f2a46d;
+  --series-3: #62dcb2;
+  --deemph: #536d86;
+  --good-text: #41bb86;
   --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
   --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
   --div-low: #3987e5;
   --div-mid: #3a4751;
   --div-high: #e66767;
   --night: 4, 10, 16;
-  --shadow: none;
+  --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
 }

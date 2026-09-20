@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect } from "react";
-import { TopBar } from "./components/TopBar";
+import { SideNav, StatusBar, TopBar } from "./components/Shell";
+import { Icon } from "./components/Icon";
+import { useT } from "./lib/i18n";
 import { Loading } from "./components/bits";
 import { NOTES } from "./lib/notes";
 import { SCREENS, useStore } from "./lib/store";
@@ -12,13 +14,14 @@ const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
 
 function Notes() {
+  const t = useT();
   const screen = useStore((s) => s.screen);
   const lang = useStore((s) => s.lang);
   const open = useStore((s) => s.notes);
   if (!open) return null;
   return (
-    <aside className="notes" aria-label="Presenter notes">
-      <h4>{SCREENS.indexOf(screen) + 1} / {SCREENS.length}</h4>
+    <aside className="notes" aria-label={t("ui.notes")}>
+      <div className="block-head"><h4>{t("ui.notes")} · {SCREENS.indexOf(screen) + 1} / {SCREENS.length}</h4><button className="icon-btn" aria-label={t("shell.close")} onClick={() => useStore.getState().toggleNotes()}><Icon name="close" size={16} /></button></div>
       <ul>
         {NOTES[lang][screen].map((n) => (
           <li key={n}>{n}</li>
@@ -29,13 +32,14 @@ function Notes() {
 }
 
 export default function App() {
+  const t = useT();
   const screen = useStore((s) => s.screen);
 
   // Presentation keys: PageDown/PageUp or Ctrl+→/← move between screens, N toggles notes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target && (target.tagName === "INPUT" || target.tagName === "SELECT" || target.tagName === "CANVAS")) return;
+      if (target?.closest("input, select, textarea, canvas, [contenteditable='true']") || e.altKey) return;
       const st = useStore.getState();
       const i = SCREENS.indexOf(st.screen);
       if (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight")) {
@@ -46,7 +50,7 @@ export default function App() {
         e.preventDefault();
       } else if (e.key.toLowerCase() === "n" && !e.ctrlKey && !e.metaKey) {
         st.toggleNotes();
-      } else if (e.key === "f" && !e.ctrlKey) {
+      } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
         if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined);
         else document.exitFullscreen?.().catch(() => undefined);
       }
@@ -57,9 +61,10 @@ export default function App() {
 
   return (
     <div className="app">
-      <a className="skip" href="#main">Skip to content</a>
+      <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
+      <SideNav />
       <TopBar />
-      <main id="main">
+      <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
         <Suspense fallback={<Loading />}>
           {screen === "national" && <National />}
           {screen === "twin" && <Twin />}
@@ -69,6 +74,7 @@ export default function App() {
           {screen === "method" && <Method />}
         </Suspense>
       </main>
+      <StatusBar />
       <Notes />
     </div>
   );

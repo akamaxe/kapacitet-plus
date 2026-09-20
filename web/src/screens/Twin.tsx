@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { YearStrip } from "../components/YearStrip";
-import { Chip, Meter, Status, Tile, Loading } from "../components/bits";
+import { Chip, Meter, Status, Tile, Loading, Missing } from "../components/bits";
+import { Icon } from "../components/Icon";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, tokens, voltageColor } from "../lib/colors";
 import { hourLabel, useFmt } from "../lib/format";
@@ -37,6 +38,7 @@ export default function Twin() {
   const mapRef = useRef<MLMap | null>(null);
   const [tip, setTip] = useState<{ x: number; y: number; kind: string; id: number } | null>(null);
   const [colorBy, setColorBy] = useState<ColorBy>("voltage");
+  const [speed, setSpeed] = useState(1);
   // setup/onReady run from map events, so they call the latest paint through this ref
   const paintRef = useRef<(map: MLMap | null) => void>(() => {});
 
@@ -179,14 +181,17 @@ export default function Twin() {
     const id = window.setInterval(() => {
       const cur = useStore.getState().hour;
       setHour((cur + 1) % H);
-    }, 90);
+    }, 600 / speed);
     return () => window.clearInterval(id);
-  }, [playing, st.data, setHour]);
+  }, [playing, st.data, setHour, speed]);
 
+  useEffect(() => () => setPlaying(false), [setPlaying]);
+
+  if (net.isError || meta.isError || st.isError) return <Missing />;
   if (!net.data || !meta.data) return <Loading />;
 
   const sc = show.data?.data?.showcase;
-  const agg = st.data?.header.aggregates;
+  const agg = st.isPlaceholderData ? undefined : st.data?.header.aggregates;
   const center: [number, number] = meta.data.center;
   const startUtc = Date.UTC(year, 0, 1) - 3600_000; // UTC+1 standard time year start
   const elev = solarElevation(startUtc + (hour + 0.5) * 3600_000, center[1], center[0]);
@@ -209,6 +214,8 @@ export default function Twin() {
         <div className="map-wrap">
           <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("twin.title", { n: houses.length })}>
             <div className="daylight" style={{ backgroundColor: `rgba(var(--night), ${night})` }} />
+            {(st.isLoading || st.isPlaceholderData) && <div className="map-loading" role="status">{t("ui.loading")}</div>}
+            <div className="map-toolbar"><button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={() => { if (mapRef.current && net.data.bbox) { mapRef.current.jumpTo({ pitch: 50, bearing: -18 }); fitTo(mapRef.current, net.data.bbox, 60); } }}><Icon name="reset" size={17} /></button></div>
             <MapLegend colorBy={colorBy} />
             <div className="map-note">
               <Chip kind="real" />
@@ -220,18 +227,22 @@ export default function Twin() {
         </div>
         <div className="yearstrip">
           <div className="yearstrip-controls">
+            <span className="eyebrow">{t("twin.timeline")}</span>
             <span className="yearstrip-when">{hourLabel(lang, year, hour)}</span>
-            <button className="btn ghost" onClick={() => setPlaying(!playing)} aria-pressed={playing}>
-              {playing ? t("twin.pause") : t("twin.play")}
-            </button>
+            <div className="timeline-buttons">
+              <button className="icon-btn" title={t("twin.previous")} aria-label={t("twin.previous")} disabled={!agg || hour === 0} onClick={() => { setPlaying(false); setHour(Math.max(0, hour - 1)); }}><Icon name="previous" size={17} /></button>
+              <button className="icon-btn play-button" disabled={!agg} onClick={() => setPlaying(!playing)} aria-pressed={playing} aria-label={playing ? t("twin.pause") : t("twin.play")}><Icon name={playing ? "pause" : "play"} size={16} />{playing ? t("twin.pause") : t("twin.play")}</button>
+              <button className="icon-btn" title={t("twin.next")} aria-label={t("twin.next")} disabled={!agg || hour >= (st.data?.header.hours ?? 8760) - 1} onClick={() => { setPlaying(false); setHour(Math.min((st.data?.header.hours ?? 8760) - 1, hour + 1)); }}><Icon name="next" size={17} /></button>
+            </div>
+            <div className="timeline-tools"><select className="theme-select" aria-label={t("twin.speed")} value={speed} onChange={(e) => setSpeed(Number(e.target.value))}>{[1, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>)}</select><button className="icon-btn" disabled={typeof meta.data.showcase_hour !== "number"} onClick={() => { setPlaying(false); setHour(meta.data.showcase_hour); }}>{t("twin.peak")}</button></div>
           </div>
           {agg ? (
             <YearStrip values={agg.trafo_loading} hours={st.data!.header.hours} label={t("twin.strip", { year })} />
           ) : (
-            <div className="caption">{t("ui.loading")}</div>
+            <div className="caption">{t(st.isError ? "ui.unavailable" : "ui.loading")}</div>
           )}
           <div />
-          <p className="caption-muted">{t("twin.strip", { year })}</p>
+          <div className="timeline-caption"><input className="timeline-scrubber" type="range" min={0} max={(st.data?.header.hours ?? 8760) - 1} value={hour} disabled={!agg} aria-label={t("twin.hour")} aria-valuetext={hourLabel(lang, year, hour)} onChange={(e) => { setPlaying(false); setHour(Number(e.target.value)); }} /><p className="caption-muted">{t("twin.strip", { year })}</p></div>
         </div>
       </div>
 
@@ -242,7 +253,7 @@ export default function Twin() {
         </div>
 
         <div className="stack">
-          <div className="seg" role="group" aria-label="Scenario">
+          <div className="seg" role="group" aria-label={t("twin.scenario")}>
             {SCENARIOS.map((s) => (
               <button key={s} aria-pressed={scenario === s} onClick={() => setScenario(s)}>
                 {t(`scn.${s}`)}

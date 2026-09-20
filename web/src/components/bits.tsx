@@ -1,4 +1,6 @@
 import { useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
 
 export function Chip({ kind }: { kind: "real" | "synthetic" | "reference" }) {
@@ -82,9 +84,9 @@ export function ChartOrTable({ chart, table }: { chart: ReactNode; table: ReactN
   const [asTable, setAsTable] = useState(false);
   return (
     <div className="stack">
-      {asTable ? table : chart}
+      {asTable ? <div className="table-scroll">{table}</div> : chart}
       <div>
-        <button className="table-toggle" onClick={() => setAsTable(!asTable)}>
+        <button className="table-toggle" aria-pressed={asTable} onClick={() => setAsTable(!asTable)}>
           {asTable ? t("ui.chart") : t("ui.table")}
         </button>
       </div>
@@ -107,10 +109,11 @@ export function Legend({ items }: { items: { color: string; label: string; line?
 
 export function Loading() {
   const t = useT();
-  return <div className="empty">{t("ui.loading")}</div>;
+  return <div className="empty" role="status"><span className="loading-orbit"><Icon name="grid" size={30} /></span><span>{t("ui.loading")}</span></div>;
 }
 
 export function Missing() {
   const t = useT();
-  return <div className="empty">{t("ui.missing")}</div>;
+  const client = useQueryClient();
+  return <div className="empty" role="status"><Icon name="grid" size={36} /><h2>{t("ui.unavailable")}</h2><p className="caption">{t("ui.missing")}</p><button className="btn ghost" onClick={() => void client.refetchQueries({ type: "active" })}><Icon name="reset" size={16} />{t("ui.retry")}</button></div>;
 }

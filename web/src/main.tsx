@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import "@fontsource-variable/schibsted-grotesk";
 import "./styles/app.css";
+import "./styles/shell.css";
 import App from "./App";
 import { applyTheme, useStore } from "./lib/store";
 
