@@ -178,6 +178,43 @@ source = "Modelling choice; PV inverters at unity power factor (Q(U) not enabled
 url = ""
 note = ""
 
+# ------------------------------------------------- zero sequence (unbalanced three-phase model)
+[cable_r0_r1_ratio]
+value = 4.0
+unit = "-"
+tag = "team-assumption"
+label = "Zero- to positive-sequence resistance ratio of the four-core LV cables"
+source = "Z0 = Z1 + 3*Zn for a cable whose neutral has the same cross-section as the phases; NAYY 4x150 SE and 4x50 SE are four-core of equal section, so Zn = Z1 and the ratio is 4"
+url = ""
+note = "The IEEE European LV Test Feeder, whose cable data is measured rather than derived, gives 3.4 for its own cables."
+
+[cable_x0_x1_ratio]
+value = 4.0
+unit = "-"
+tag = "team-assumption"
+label = "Zero- to positive-sequence reactance ratio of the four-core LV cables"
+source = "Same four-wire derivation as the resistance ratio"
+url = ""
+note = "Weaker than the resistance ratio, because the zero-sequence reactance depends on conductor geometry and on the earth return path. The IEEE European LV Test Feeder gives 1.2 for its cables. This is the dominant uncertainty of the unbalanced model and has to be swept once it drives the engine."
+
+[trafo_vk0_vk_ratio]
+value = 1.0
+unit = "-"
+tag = "team-assumption"
+label = "Zero- to positive-sequence short-circuit voltage of the Dyn transformer"
+source = "Follows the Dyn unit of pandapower's IEEE European LV Test Feeder, which sets vk0 = vk and scales vkr0 with it"
+url = ""
+note = "A Dyn transformer keeps zero-sequence current on the LV side, so this ratio sets how stiff that path is."
+
+[trafo_mag0_percent]
+value = 100.0
+unit = "%"
+tag = "team-assumption"
+label = "Zero-sequence magnetising impedance of the transformer, over its short-circuit impedance"
+source = "Set high on purpose, so the delta winding provides the zero-sequence path and the magnetising branch does not"
+url = ""
+note = "pandapower's split of the zero-sequence impedance between windings (si0_hv_partial) is kept at the 0.9 its own Dyn examples use."
+
 # ---------------------------------------------------------------- households
 [household_kwh_per_year]
 value = 5000.0
