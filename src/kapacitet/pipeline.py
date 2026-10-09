@@ -6,6 +6,7 @@ Commands
   profiles  build hourly weather, PV, household, heat-pump and EV profiles
   compute   hosting capacity, DOE, risk, scenarios and UI payloads
   check     data-quality report on an operator's network export
+  import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
   serve     run the API and the web UI on one port
   all       fetch + build + profiles + compute
@@ -112,6 +113,23 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_compute(args)
 
 
+def cmd_import(args: argparse.Namespace) -> None:
+    """Replace the built network with an operator's own, from an export directory."""
+    from .importer.build import ImportError_, import_directory
+
+    try:
+        with step(f"Import network from {args.directory}"):
+            network, report, fallbacks = import_directory(args.directory)
+    except ImportError_ as err:
+        print(err)
+        sys.exit(1)
+    print(report.text())
+    log.info("Imported: %s", network.summary)
+    for what, n in sorted(fallbacks.items()):
+        log.warning("  fallback applied: %s (%d)", what, n)
+    log.info("Next: python -m kapacitet profiles && python -m kapacitet compute")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -154,6 +172,10 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--stage", choices=["all", "extra"], default="all",
                            help="extra: only request baselines, 2030 scenarios, tornado and validation")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("import", help="build the engine's tables from a network export")
+    p.add_argument("directory", help="directory holding the contract CSV files")
+    p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")
