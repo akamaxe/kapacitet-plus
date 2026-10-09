@@ -232,3 +232,16 @@ def test_an_unusable_export_refuses_to_import(tmp_path):
         df.to_csv(tmp_path / f"{name}.csv", index=False)
     with pytest.raises(ImportError_, match="orphan customer"):
         import_directory(tmp_path, save_to_disk=False)
+
+
+def test_the_published_contract_document_matches_the_code():
+    """docs/network-export-contract.md is what we send an operator. It has to be current."""
+    from pathlib import Path
+
+    doc = Path(__file__).resolve().parents[1] / "docs" / "network-export-contract.md"
+    assert doc.exists(), "the contract document is missing"
+    body = doc.read_text(encoding="utf-8")
+    assert body.endswith(as_markdown()), (
+        "docs/network-export-contract.md is out of date; regenerate it from "
+        "kapacitet.importer.as_markdown()"
+    )
