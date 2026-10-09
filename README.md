@@ -59,7 +59,7 @@ cd web && npm install && npm run build && cd ..                # the interface (
 
 .venv/Scripts/python -m kapacitet all      # fetch + build + profiles + compute (~15 min)
 .venv/Scripts/python -m kapacitet serve    # http://127.0.0.1:8000  (API + UI on one port)
-.venv/Scripts/python -m pytest             # the test suite
+.venv/Scripts/python -m pytest             # 91 tests
 ```
 
 `python -m kapacitet all --quick` runs a reduced version (fewer years and adoption orders) in a
@@ -191,11 +191,21 @@ Tests that need pipeline output skip themselves on a fresh clone.
 
 Stated openly on the Method screen and repeated here: envelopes use perfect foresight (real
 ones are issued from forecasts, so curtailment would be higher); the model is hourly while the
-Swedish voltage limit applies to 10-minute means (covered by a 1 % margin); the network is
-balanced three-phase, so single-phase unbalance is not modelled; the LV topology is synthetic;
+Swedish voltage limit applies to 10-minute means (covered by a 1 % margin); **every published
+number comes from the balanced three-phase model**, so single-phase unbalance is not in them;
+the LV topology is synthetic;
 household demand comes from a UK behaviour model scaled to Swedish consumption; the MV supply is
 held at 1.00 pu; economics use the SE3 spot price only. Protection (minimum fault current at
 feeder ends versus fuse ratings) is not checked yet.
+
+An unbalanced three-phase solver now exists (`engine/powerflow3ph.py`), validated against
+pandapower on the IEEE European Low Voltage Test Feeder, but it does not drive the hosting
+capacity or the envelopes yet. What it already shows on this network, with 120 villas each
+exporting 4.6 kW of single-phase PV: the balanced model reports 1.048 pu at the worst bus and
+stays inside the limit, while the same case with phases allocated at random reaches 1.094 pu
+and breaks it. Spreading the connections evenly over the three phases brings that back to
+1.067 pu. The balanced model is therefore optimistic, and knowing the phase of each service is
+worth real capacity.
 
 ## Licence
 
