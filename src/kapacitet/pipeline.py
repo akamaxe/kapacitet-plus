@@ -5,6 +5,8 @@ Commands
   build     build the synthetic LV network on the OSM neighbourhood
   profiles  build hourly weather, PV, household, heat-pump and EV profiles
   compute   hosting capacity, DOE, risk, scenarios and UI payloads
+  check     data-quality report on an operator's network export
+  export-grid  write the built network in that same export contract
   serve     run the API and the web UI on one port
   all       fetch + build + profiles + compute
 """
@@ -110,6 +112,26 @@ def cmd_all(args: argparse.Namespace) -> None:
     cmd_compute(args)
 
 
+def cmd_check(args: argparse.Namespace) -> None:
+    """Data-quality report on a network export, before anybody promises a capacity."""
+    from .importer import check_directory
+
+    report = check_directory(args.directory)
+    print(report.text())
+    if not report.usable:
+        sys.exit(1)
+
+
+def cmd_export_grid(args: argparse.Namespace) -> None:
+    """Write the built network in the export contract, as a worked example."""
+    from .importer import export_grid
+
+    with step(f"Export contract to {args.directory}"):
+        tables = export_grid(args.directory)
+    for name, df in tables.items():
+        log.info("  %s.csv: %d rows", name, len(df))
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(prog="kapacitet", description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -132,6 +154,14 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--stage", choices=["all", "extra"], default="all",
                            help="extra: only request baselines, 2030 scenarios, tornado and validation")
         p.set_defaults(func=func)
+
+    p = sub.add_parser("check", help="data-quality report on a network export")
+    p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")
+    p.set_defaults(func=cmd_check)
+
+    p = sub.add_parser("export-grid", help="write the built network in the export contract")
+    p.add_argument("directory", help="directory to write the CSV files into")
+    p.set_defaults(func=cmd_export_grid)
 
     p = sub.add_parser("serve", help="serve API + web UI")
     p.add_argument("--host", default="127.0.0.1")

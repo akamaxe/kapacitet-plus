@@ -187,6 +187,24 @@ envelopes verify with the nonlinear power flow, the radiality of the built netwo
 on offline fixtures, the API contract, and that the published results are internally consistent.
 Tests that need pipeline output skip themselves on a fresh clone.
 
+## Running it on someone else's network
+
+The engine does not have to stay on the reference neighbourhood. `src/kapacitet/importer/`
+defines a four-file CSV contract an operator can produce from any GIS, and checks an export
+against it before anyone promises a capacity:
+
+```bash
+.venv/Scripts/python -m kapacitet export-grid example/   # the contract, filled with our grid
+.venv/Scripts/python -m kapacitet check  example/        # the data-quality report
+```
+
+The report is the point. It separates what stops the engine from what only costs accuracy,
+and it prices the gap: a missing cable type falls back to the site default, missing
+coordinates cost the map and nothing else, while no phase column means every service is
+taken as three-phase, which on this grid understates things by up to a third of the hosting
+capacity. Errors, such as a cable to a bus that does not exist or a section of zero length,
+stop the import rather than being guessed around.
+
 ## Limitations
 
 Stated openly on the Method screen and repeated here: envelopes use perfect foresight (real
