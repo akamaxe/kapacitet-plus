@@ -595,8 +595,37 @@ def save(nw: Network) -> None:
                                                   encoding="utf-8")
 
 
+def add_zero_sequence(net: pp.pandapowerNet) -> pp.pandapowerNet:
+    """Zero-sequence data for the unbalanced model, which the standard types do not carry.
+
+    Applied when the network is loaded rather than when it is built, so a sweep over the
+    sequence ratios needs no rebuild, and so a network saved before this existed still works.
+    The balanced solver ignores all of it.
+    """
+    net.line["r0_ohm_per_km"] = net.line["r_ohm_per_km"] * A("cable_r0_r1_ratio")
+    net.line["x0_ohm_per_km"] = net.line["x_ohm_per_km"] * A("cable_x0_x1_ratio")
+    net.line["c0_nf_per_km"] = net.line["c_nf_per_km"]      # negligible at LV cable lengths
+
+    # pandapower's three-phase flow wants the bare vector group, without the clock number.
+    net.trafo["vector_group"] = "Dyn"
+    ratio = A("trafo_vk0_vk_ratio")
+    net.trafo["vk0_percent"] = net.trafo["vk_percent"] * ratio
+    net.trafo["vkr0_percent"] = net.trafo["vkr_percent"] * ratio
+    net.trafo["mag0_percent"] = A("trafo_mag0_percent")
+    net.trafo["mag0_rx"] = 0.0
+    net.trafo["si0_hv_partial"] = 0.9
+
+    # Only `runpp_3ph` reads these: our own solver holds the MV source balanced and stiff,
+    # and the error that costs is bounded in tests/test_powerflow3ph.py.
+    net.ext_grid["s_sc_max_mva"] = A("mv_short_circuit_mva")
+    net.ext_grid["rx_max"] = 0.1
+    net.ext_grid["x0x_max"] = 1.0
+    net.ext_grid["r0x0_max"] = 0.1
+    return net
+
+
 def load_net() -> pp.pandapowerNet:
-    return pp.from_json(str(processed("grid", "net.json")))
+    return add_zero_sequence(pp.from_json(str(processed("grid", "net.json"))))
 
 
 def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
