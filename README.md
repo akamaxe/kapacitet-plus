@@ -47,15 +47,19 @@ Every number above is computed by this repository — nothing in the interface i
 
 ## Quickstart
 
-Requires Python 3.12 with the packages in `constraints.txt` (numpy, pandas, scipy, pandapower,
-cvxpy, pvlib, geopandas, fastapi, duckdb, pyarrow) and Node 20+ for the interface.
+Requires Python 3.12 and Node 20+ for the interface. The engine needs a combination of numpy,
+scipy, pandas and pandapower that all four support, so it lives in its own virtual environment
+rather than in whatever the machine happens to have; `constraints.txt` pins that combination and
+says why.
 
 ```bash
-pip install -e . --no-deps --no-build-isolation      # the package itself
-cd web && npm install && npm run build && cd ..      # the interface (writes web/dist)
+python -m venv .venv                                           # once
+.venv/Scripts/python -m pip install -c constraints.txt -e ".[dev]"   # Linux/macOS: .venv/bin/python
+cd web && npm install && npm run build && cd ..                # the interface (writes web/dist)
 
-python -m kapacitet all                              # fetch + build + profiles + compute (~15 min)
-python -m kapacitet serve                            # http://127.0.0.1:8000  (API + UI on one port)
+.venv/Scripts/python -m kapacitet all      # fetch + build + profiles + compute (~15 min)
+.venv/Scripts/python -m kapacitet serve    # http://127.0.0.1:8000  (API + UI on one port)
+.venv/Scripts/python -m pytest             # the test suite
 ```
 
 `python -m kapacitet all --quick` runs a reduced version (fewer years and adoption orders) in a

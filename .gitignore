@@ -3,6 +3,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .env
+.venv/
 # Downloaded and generated data are reproducible with `python -m kapacitet all`.
 data/raw/
 data/processed/
