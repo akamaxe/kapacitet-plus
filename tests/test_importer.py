@@ -173,3 +173,62 @@ def test_the_reference_network_round_trips_through_the_contract(tmp_path):
     # only the metered-consumption column is genuinely absent from a synthetic network
     assert {f.check for f in findings(report, WARNING)} == {"annual_kwh missing"}
     assert (tmp_path / "README.md").exists()
+
+
+@needs_grid
+def test_the_contract_round_trips_electrically(tmp_path):
+    """Export, import, and the network has to be the same one, not merely a similar one.
+
+    If the imported network is electrically identical then every stage after it, the
+    profiles, the capacity, the envelopes, gives the same answer by construction, which is
+    the only way to claim the engine runs on someone else's records.
+    """
+    import numpy as np
+
+    from kapacitet.engine.powerflow import PowerFlowModel
+    from kapacitet.grid.builder import load_net, load_tables
+    from kapacitet.importer import export_grid
+    from kapacitet.importer.build import build_from_export
+    from kapacitet.importer.validate import read_export
+
+    export_grid(tmp_path)
+    imported, fallbacks = build_from_export(read_export(tmp_path))
+    assert fallbacks == {}, "a complete export must need no fallback"
+
+    original_cust = load_tables()[2]
+    a = PowerFlowModel(load_net(), original_cust["bus"].to_numpy())
+    b = PowerFlowModel(imported.net, imported.customers["bus"].to_numpy())
+    rng = np.random.default_rng(12)
+    p = rng.uniform(-6.0, 9.0, size=(len(original_cust), 6))
+    q = -0.05 * p
+    ra, rb = a.solve(p, q, 1.0), b.solve(p, q, 1.0)
+
+    assert np.abs(np.abs(ra.v[a.customer_bus]) - np.abs(rb.v[b.customer_bus])).max() < 1e-9
+    assert np.abs(ra.trafo_loading - rb.trafo_loading).max() < 1e-9
+    assert np.abs(np.sort(ra.line_loading, 0) - np.sort(rb.line_loading, 0)).max() < 1e-6
+
+
+@needs_grid
+def test_fallbacks_are_counted_not_hidden(tmp_path):
+    from kapacitet.importer import export_grid
+    from kapacitet.importer.build import build_from_export
+    from kapacitet.importer.validate import read_export
+
+    export_grid(tmp_path)
+    lines = pd.read_csv(tmp_path / "lines.csv")
+    lines.loc[:4, "std_type"] = None
+    lines.to_csv(tmp_path / "lines.csv", index=False)
+
+    _, fallbacks = build_from_export(read_export(tmp_path))
+    assert fallbacks.get("cable type assumed") == 5
+
+
+def test_an_unusable_export_refuses_to_import(tmp_path):
+    from kapacitet.importer.build import ImportError_, import_directory
+
+    data = good()
+    data["customers"].loc[1, "bus"] = "S99"
+    for name, df in data.items():
+        df.to_csv(tmp_path / f"{name}.csv", index=False)
+    with pytest.raises(ImportError_, match="orphan customer"):
+        import_directory(tmp_path, save_to_disk=False)

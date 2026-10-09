@@ -35,6 +35,16 @@ def roof_geometry(customers: pd.DataFrame) -> pd.DataFrame:
     tilt_default = A("pv_roof_tilt_deg")
     rows = []
     for c in customers.itertuples():
+        if not c.polygon:
+            # An imported network has no roof outline, so the fallback the contract
+            # documents applies: one south-facing pitched face of half the footprint.
+            face = float(c.footprint_m2) / 2.0 / math.cos(math.radians(tilt_default))
+            kwp = float(np.clip(face * A("pv_usable_roof_fraction") * A("pv_power_density_kwp_m2"),
+                                A("pv_min_kwp"), A("pv_max_kwp")))
+            rows.append(dict(cid=c.cid, ridge_bearing=90.0, azimuth=180.0, tilt=float(tilt_default),
+                             east_west=False, usable_area_m2=round(face, 1), kwp=round(kwp, 2),
+                             inverter_kw=round(min(kwp / A("pv_dc_ac_ratio"), float(c.fuse_kva)), 2)))
+            continue
         ll = json.loads(c.polygon)
         xs, ys = TO_M.transform([p[0] for p in ll], [p[1] for p in ll])
         poly = Polygon(list(zip(xs, ys)))
