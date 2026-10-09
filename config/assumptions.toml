@@ -178,6 +178,25 @@ source = "Modelling choice; PV inverters at unity power factor (Q(U) not enabled
 url = ""
 note = ""
 
+# ------------------------------------------------------- phase of each connection (unbalance)
+[pv_single_phase_max_kva]
+value = 4.6
+unit = "kVA"
+tag = "team-assumption"
+label = "Inverter rating at or below which rooftop PV is connected to a single phase"
+source = "The single-phase infeed limit used across Europe (VDE-AR-N 4105 caps the unbalance a single-phase generator may cause at 4.6 kVA); EN 50549-1 leaves the figure to national rules"
+url = ""
+note = "To be confirmed against the Swedish connection rules (Energiforetagen AMP) before this leaves a demonstration. Above the limit the inverter is three-phase and contributes no unbalance."
+
+[phase_allocation]
+value = "round_robin"
+unit = "-"
+tag = "team-assumption"
+label = "How single-phase connections are spread over the three phases"
+source = "Modelling choice: an installer working along a street balances the phases as it goes, which is the favourable case"
+url = ""
+note = "The alternative value is 'random', the unfavourable case where nobody keeps track. The gap between the two is the cost of not recording the phase of each service, and it is worth reporting."
+
 # ------------------------------------------------- zero sequence (unbalanced three-phase model)
 [cable_r0_r1_ratio]
 value = 4.0
