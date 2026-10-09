@@ -85,3 +85,31 @@ def test_run_metadata_records_versions_and_time():
     assert meta["computed_at"] and meta["site"] and meta["years"]
     assert meta["reference_year"] in meta["years"]
     assert meta["versions"]["numpy"] and meta["versions"]["pandapower"]
+
+
+@needs_results
+def test_the_engine_still_reproduces_the_published_capacity(model, results):
+    """The published numbers have to be recomputable, not just internally consistent.
+
+    This is the guard that catches an assumption, a package version or a refactor that
+    quietly moves a result. It recomputes the static hosting capacity of the first adoption
+    orders and holds them against hosting_summary.json.
+    """
+    import numpy as np
+
+    from kapacitet.config import A
+    from kapacitet.engine import hosting
+    from kapacitet.engine.scenario import adoption_order, mask_from_share
+
+    summary = results("hosting_summary")
+    C = model.C
+    hp = mask_from_share(adoption_order(101, C), A("today_hp_share"))
+    ev = mask_from_share(adoption_order(202, C), A("today_ev_share"))
+    cap = hosting.cap_kw()
+
+    for record in summary["per_order"][:4]:
+        order = adoption_order(record["order"], C)
+        adopters = hosting.static_adopters(model, order, hp, ev)
+        kw = float(cap[order[:adopters]].sum())
+        assert adopters == record["static"]["adopters"], f"order {record['order']}"
+        assert np.isclose(kw, record["static"]["kw_ac"], rtol=1e-9)
