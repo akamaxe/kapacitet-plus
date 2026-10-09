@@ -60,6 +60,16 @@ class Report:
             return 0
         return max(0, 100 - 10 * len(self.warnings))
 
+    def to_dict(self) -> dict:
+        """Serialisable form, for the API and for storing next to a result."""
+        return {
+            "usable": self.usable,
+            "score": self.score,
+            "tables": self.tables,
+            "findings": [f.__dict__ for f in self.findings],
+            "text": self.text(),
+        }
+
     def text(self) -> str:
         head = [f"{name}: {n} rows" for name, n in self.tables.items()]
         lines = ["Network export check", "=" * 20, "  ".join(head), ""]
