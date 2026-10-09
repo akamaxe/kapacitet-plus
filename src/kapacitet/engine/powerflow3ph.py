@@ -278,5 +278,32 @@ class PowerFlow3Ph:
         res.trafo_p_mw = (v_lv * np.conj(leaving)).real.sum(axis=0) * self.base_mva
 
 
+    def solve_chunked(self, p_kw: np.ndarray, q_kvar: np.ndarray | None, phase_idx: np.ndarray,
+                      vm_slack: float | np.ndarray = 1.0, chunk: int = 2048,
+                      flows: bool = True) -> PF3Result:
+        """Same as solve() but in column chunks, because a year of three-phase state is large."""
+        p_kw = np.atleast_2d(np.asarray(p_kw, dtype=float))
+        H = p_kw.shape[1]
+        if H <= chunk:
+            return self.solve(p_kw, q_kvar, phase_idx, vm_slack, flows=flows)
+        q_kvar = np.zeros_like(p_kw) if q_kvar is None else np.asarray(q_kvar, dtype=float)
+        vs = np.broadcast_to(np.asarray(vm_slack, dtype=float), (H,))
+        parts = [self.solve(p_kw[:, a:a + chunk], q_kvar[:, a:a + chunk], phase_idx,
+                            vs[a:a + chunk], flows=flows)
+                 for a in range(0, H, chunk)]
+        cat = lambda name, axis: np.concatenate([getattr(r, name) for r in parts], axis=axis)
+        return PF3Result(
+            v=cat("v", 1),
+            iterations=max(r.iterations for r in parts),
+            max_mismatch=max(r.max_mismatch for r in parts),
+            i_line_ka=cat("i_line_ka", 1) if flows else None,
+            line_loading=cat("line_loading", 1) if flows else None,
+            i_neutral_ka=cat("i_neutral_ka", 1) if flows else None,
+            trafo_loading=cat("trafo_loading", 0) if flows else None,
+            trafo_p_mw=cat("trafo_p_mw", 0) if flows else None,
+        )
+
+
 def build_model(net: pp.pandapowerNet, customer_bus: np.ndarray) -> PowerFlow3Ph:
     return PowerFlow3Ph(net, np.asarray(customer_bus))
+

@@ -198,14 +198,21 @@ household demand comes from a UK behaviour model scaled to Swedish consumption; 
 held at 1.00 pu; economics use the SE3 spot price only. Protection (minimum fault current at
 feeder ends versus fuse ratings) is not checked yet.
 
-An unbalanced three-phase solver now exists (`engine/powerflow3ph.py`), validated against
-pandapower on the IEEE European Low Voltage Test Feeder, but it does not drive the hosting
-capacity or the envelopes yet. What it already shows on this network, with 120 villas each
-exporting 4.6 kW of single-phase PV: the balanced model reports 1.048 pu at the worst bus and
-stays inside the limit, while the same case with phases allocated at random reaches 1.094 pu
-and breaks it. Spreading the connections evenly over the three phases brings that back to
-1.067 pu. The balanced model is therefore optimistic, and knowing the phase of each service is
-worth real capacity.
+An unbalanced three-phase model now exists alongside the balanced one
+(`engine/powerflow3ph.py` and `engine/netmodel3ph.py`), validated against pandapower on the
+IEEE European Low Voltage Test Feeder. It does not drive the published results yet, but it
+has already been used to check them, and they hold: with the inverter sizes this model
+produces, a median of 7.0 kW AC, only 6 of the 120 villas fall below the 4.6 kVA
+single-phase infeed limit, so almost every connection is three-phase, voltage unbalance
+stays at 0.27 %, and the static hosting capacity is identical to the balanced answer, 45
+adopters and 402 kW on adoption order 0.
+
+Where it does bite is a neighbourhood of small installations. Forcing every connection
+single-phase on the same grid: 43 adopters and 388 kW when the phases are spread evenly,
+and 31 adopters and 270 kW when nobody keeps track of which phase each house went on. A
+third of the hosting capacity rides on a record the operator may not have. Under the same
+export pattern the balanced model sees 1 violating hour out of 300 where the unbalanced one
+sees 75.
 
 ## Licence
 
