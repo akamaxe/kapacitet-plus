@@ -168,6 +168,52 @@ def get_assumptions() -> dict:
     return {"assumptions": [a.__dict__ for a in assumptions().values()]}
 
 
+# ---------------------------------------------------------------- network export check
+
+class ExportCheck(BaseModel):
+    """The contract CSV files as text, one entry per table."""
+
+    files: dict[str, str] = Field(
+        description="table name to CSV contents, for example {'buses': 'bus_id,kind\n...'}")
+
+
+@app.get(f"{API}/contract", tags=["import"])
+def get_contract() -> dict:
+    """What an operator's network export has to contain, and what each column is for."""
+    from ..importer.contract import TABLES, as_markdown
+
+    return {
+        "markdown": as_markdown(),
+        "tables": [
+            {"name": t.name, "description": t.description, "key": t.key,
+             "columns": [c.__dict__ for c in t.columns]}
+            for t in TABLES
+        ],
+    }
+
+
+@app.post(f"{API}/check", tags=["import"])
+def post_check(body: ExportCheck) -> dict:
+    """Data-quality report on an export, before anybody promises a capacity for it."""
+    import io
+
+    import pandas as pd
+
+    from ..importer.contract import BY_NAME
+    from ..importer.validate import validate
+
+    unknown = set(body.files) - set(BY_NAME)
+    if unknown:
+        raise HTTPException(422, f"not part of the contract: {', '.join(sorted(unknown))}")
+    data = {}
+    for name, text in body.files.items():
+        try:
+            data[name] = pd.read_csv(io.StringIO(text))
+        except Exception as err:
+            raise HTTPException(422, f"{name}.csv could not be read: {err}") from err
+    return validate(data).to_dict()
+
+
 # ------------------------------------------------------------------------------ live "now" strip
 
 _NOW_CACHE: dict[str, Any] = {"t": 0.0, "data": None}
