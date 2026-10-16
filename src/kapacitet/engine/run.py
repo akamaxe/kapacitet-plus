@@ -279,6 +279,8 @@ def compute_extra(quick: bool = False, t0: float | None = None) -> None:
     log.info("2030 scenarios done (%.0f s)", time.perf_counter() - t0)
     run_extra.tornado(o, years, z_star, workers=4)
     log.info("tornado done (%.0f s)", time.perf_counter() - t0)
+    run_extra.foresight(years, z_star, workers=4)
+    log.info("foresight done (%.0f s)", time.perf_counter() - t0)
     run_extra.validation()
     _write("meta.json", {"computed_at": pd.Timestamp.now(tz="UTC").isoformat(), "quick": quick,
                          "seconds": time.perf_counter() - t0, "site": cfg.site.name,

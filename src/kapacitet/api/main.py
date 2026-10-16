@@ -369,7 +369,7 @@ def state_bin(name: str, request: Request) -> Response:
 @app.get(f"{API}/hosting", tags=["hosting"])
 def hosting_summary() -> dict:
     out = {"summary": result("hosting_summary.json"), "curve": result("zcurve.json"), "nodal": result("nodal.json")}
-    for name in ("tornado.json",):
+    for name in ("tornado.json", "foresight.json"):
         if processed("results", name).exists():
             out[name.split(".")[0]] = result(name)
     return with_prov(out, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid")

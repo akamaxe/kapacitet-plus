@@ -102,6 +102,72 @@ def tornado(o: int, years, z_star: float, workers: int = 8) -> None:
                             "cases": rows[1:]})
 
 
+# ------------------------------------------------------------------- the cost of the forecast
+
+def _foresight_case(args) -> dict:
+    """The capacity one adoption order carries on envelopes issued a day ahead."""
+    warnings.filterwarnings("ignore")
+    o, ms, mts, yd, years, z_star, window = args
+    from . import forecast
+    from .run import background_masks, model
+    m = model()
+    hp, ev = background_masks(m.C)
+    order = adoption_order(o, m.C)
+    cap = doe.customer_caps()
+    t0 = time.perf_counter()
+    k, det = forecast.adopters(m, order, ms, mts, years, hp, ev, "climatological", z_star,
+                               window_days=window, hi=yd)
+    return {"order": o, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum()),
+            "z_pct": det["z_pct"], "violation_hours": det["violation_hours"],
+            "seconds": time.perf_counter() - t0}
+
+
+def foresight(years, z_star: float, window_days: int | None = None, workers: int = 4) -> None:
+    """What the published capacity owes to perfect foresight, measured rather than caveated.
+
+    The published envelopes are allocated knowing the hour they apply to. This stage repeats
+    the same capacity search against a *dominating* planning state — generation at the
+    highest the same fortnight reached in the other weather years, load at the static
+    method's minimum — which needs no weather forecast at all and is therefore the
+    pessimistic end of what any operator could do. The published figure and this one bracket
+    real day-ahead practice.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from . import forecast
+    from .run import _init_worker, background_masks
+    window = forecast.WINDOW_DAYS if window_days is None else window_days
+    summary = json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8"))
+    cap_total = summary["total_cap_kw"]
+    hp, ev = background_masks(summary["customers"])
+    jobs = [(r["order"], r["static"]["adopters"], r["timeseries"]["adopters"],
+             r["doe"]["adopters"], tuple(years), z_star, window) for r in summary["per_order"]]
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
+        rows = list(ex.map(_foresight_case, jobs))
+
+    by_order = {r["order"]: r for r in rows}
+    med = lambda xs: float(np.median(xs))
+    published = {m: med([r[m]["kw_ac"] for r in summary["per_order"]])
+                 for m in ("static", "timeseries", "fixed_cap", "doe")}
+    climatological_kw = med([r["kw_ac"] for r in rows])
+    _write("foresight.json", {
+        "years": list(years), "z_star_pct": z_star, "window_days": window,
+        "n_orders": len(rows), "total_cap_kw": cap_total,
+        "exceedance": forecast.exceedance_audit(settings().reference_year, hp, ev, window),
+        "median_kw": {**published, "climatological": climatological_kw},
+        "median_adopters": {"climatological": med([r["adopters"] for r in rows]),
+                            "doe": med([r["doe"]["adopters"] for r in summary["per_order"]]),
+                            "static": med([r["static"]["adopters"] for r in summary["per_order"]])},
+        "foresight_premium_kw": published["doe"] - climatological_kw,
+        "violation_hours": int(sum(r["violation_hours"] for r in rows)),
+        "per_order": [{**by_order[r["order"]], "doe_kw": r["doe"]["kw_ac"],
+                       "static_kw": r["static"]["kw_ac"]} for r in summary["per_order"]],
+    })
+    log.info("foresight: climatological %.0f kW vs published %.0f kW (%.0f kW of the gain is "
+             "the forecast), %d violation hours", climatological_kw, published["doe"],
+             published["doe"] - climatological_kw, sum(r["violation_hours"] for r in rows))
+
+
 # ------------------------------------------------------------------------------ 2030 scenarios
 
 PV_SHARES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)

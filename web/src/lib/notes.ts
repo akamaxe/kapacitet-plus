@@ -32,7 +32,8 @@ export const NOTES: Record<"en" | "es", Record<Screen, string[]>> = {
     method: [
       "Where every number comes from: live status of each API, the cached files with hashes, and every assumption with its source or marked as ours.",
       "Validation: the fast power flow matches pandapower to 1e-12 pu; timestamps, diffuse irradiance and the household load shape are checked against real data.",
-      "Limitations are listed openly: perfect foresight, hourly resolution, balanced three-phase model.",
+      "What foresight is worth: the same capacity search against a day-ahead state that uses no weather forecast at all, and what it costs.",
+      "Limitations are listed openly: hourly resolution, balanced three-phase model, synthetic LV topology.",
     ],
   },
   es: {
@@ -65,7 +66,8 @@ export const NOTES: Record<"en" | "es", Record<Screen, string[]>> = {
     method: [
       "De dónde sale cada número: estado en vivo de cada API, los archivos en caché con su hash y cada supuesto con su fuente o marcado como nuestro.",
       "Validación: el flujo de potencia rápido coincide con pandapower a 1e-12 pu; las marcas de tiempo, la irradiancia difusa y la forma del consumo se contrastan con datos reales.",
-      "Las limitaciones se muestran abiertamente: previsión perfecta, resolución horaria, modelo trifásico equilibrado.",
+      "Lo que vale la previsión: la misma búsqueda de capacidad contra un estado del día anterior que no usa ningún pronóstico, y lo que cuesta.",
+      "Las limitaciones se muestran abiertamente: resolución horaria, modelo trifásico equilibrado, topología de BT sintética.",
     ],
   },
 };

@@ -344,6 +344,15 @@ const en: Dict = {
   "met.limits": "Limitations",
   "met.refs": "References",
   "met.how": "How it works",
+  "met.fc": "What the forecast is worth",
+  "met.fc.caption": "The published envelopes are allocated knowing the hour they apply to. The same capacity search run against a weather-blind day-ahead state — generation at the highest the same fortnight reached in the other {years} weather years, demand at its lowest — needs no forecast at all, and every envelope it issues was checked against the year that followed. The two figures bracket real day-ahead practice.",
+  "met.fc.static": "Static worst case",
+  "met.fc.climo": "Day ahead, no forecast",
+  "met.fc.doe": "Published (perfect foresight)",
+  "met.fc.premium": "Attributable to foresight",
+  "met.fc.violations": "Limit violations, all {n} adoption orders",
+  "met.fc.record": "Hours the year beat its own record",
+  "met.fc.record.note": "of 8 760, on the neighbourhood total; worst {r}× the bound",
 };
 
 const es: Dict = {
@@ -682,6 +691,15 @@ const es: Dict = {
   "met.limits": "Limitaciones",
   "met.refs": "Referencias",
   "met.how": "Cómo funciona",
+  "met.fc": "Lo que vale el pronóstico",
+  "met.fc.caption": "Las envolventes publicadas se reparten conociendo la hora a la que se aplican. La misma búsqueda de capacidad contra un estado del día anterior ciego al tiempo — generación en lo más alto que alcanzó la misma quincena en los otros {years} años meteorológicos, demanda en lo más bajo — no necesita ningún pronóstico, y cada envolvente que emite se comprobó contra el año que vino después. Las dos cifras acotan la práctica real del día anterior.",
+  "met.fc.static": "Peor caso estático",
+  "met.fc.climo": "Día anterior, sin pronóstico",
+  "met.fc.doe": "Publicado (previsión perfecta)",
+  "met.fc.premium": "Atribuible a la previsión",
+  "met.fc.violations": "Violaciones de límites, los {n} órdenes de adopción",
+  "met.fc.record": "Horas en que el año batió su propio récord",
+  "met.fc.record.note": "de 8 760, en el total del barrio; la peor {r}× la cota",
 };
 
 export const DICTS: Record<string, Dict> = { en, es };

@@ -11,7 +11,7 @@ const TAGS = ["sourced", "regulation", "library", "derived", "team-assumption"];
 
 const LIMITS: Record<"en" | "es", string[]> = {
   en: [
-    "Envelopes use perfect foresight of each household's load and solar production; real envelopes are issued from forecasts, so curtailment would be somewhat higher.",
+    "The published envelopes use perfect foresight of each household's load and solar production. What that is worth is measured above rather than left as a caveat: the same search against a day-ahead state that uses no forecast at all carries less capacity, and the two bracket a real operator.",
     "Hourly resolution: the Swedish limit (Ei EIFS 2023:3) applies to 10-minute means. A 1 % voltage margin covers the difference; the 1-minute household data shows how much higher 10-minute peaks are.",
     "Balanced three-phase model. Single-phase inverters and chargers create unbalance that is not modelled here.",
     "The LV network is synthetic: real building and street geometry, but cable routes, cabinets, cable types and the transformer size follow design rules, not a DSO's records.",
@@ -22,7 +22,7 @@ const LIMITS: Record<"en" | "es", string[]> = {
     "Protection is not checked yet: minimum fault currents at the feeder ends against fuse ratings are a next step.",
   ],
   es: [
-    "Las envolventes usan previsión perfecta del consumo y la producción solar de cada vivienda; las reales se calculan con pronósticos, así que el recorte sería algo mayor.",
+    "Las envolventes publicadas usan previsión perfecta del consumo y la producción solar de cada vivienda. Lo que eso vale se mide arriba en vez de quedar como advertencia: la misma búsqueda contra un estado del día anterior que no usa ningún pronóstico sostiene menos capacidad, y las dos acotan a un operador real.",
     "Resolución horaria: el límite sueco (Ei EIFS 2023:3) se aplica a medias de 10 minutos. Un margen de tensión del 1 % cubre la diferencia; los datos de 1 minuto de los hogares muestran cuánto más altos son los picos de 10 minutos.",
     "Modelo trifásico equilibrado. Los inversores y cargadores monofásicos crean desequilibrio que aquí no se modela.",
     "La red de BT es sintética: geometría real de edificios y calles, pero el trazado de cables, los armarios, los tipos de cable y la potencia del transformador siguen reglas de diseño, no los registros de una distribuidora.",
@@ -57,8 +57,10 @@ export default function Method() {
   const ass = useApi<any>("/assumptions");
   const val = useApi<any>("/validation");
   const meta = useApi<any>("/meta");
+  const host = useApi<any>("/hosting");
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
+  const F = host.data?.data?.foresight;
 
   const statusByKey = useMemo(() => {
     const m = new Map<string, any>();
@@ -196,6 +198,28 @@ export default function Method() {
               </div>
             </section>
           </>
+        )}
+
+        {/* ---------------------------------------------------------------- the cost of foresight */}
+        {F && (
+          <section className="block stack">
+            <div className="block-head"><h2>{t("met.fc")}</h2></div>
+            <p className="caption">{t("met.fc.caption", { years: F.years.length - 1 })}</p>
+            <div className="tiles" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+              <Tile label={t("met.fc.static")} value={f(F.median_kw.static, 0)} unit="kW" />
+              <Tile label={t("met.fc.climo")} value={f(F.median_kw.climatological, 0)} unit="kW" />
+              <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
+              <Tile label={t("met.fc.premium")} value={f(F.foresight_premium_kw, 0)} unit="kW" />
+            </div>
+            <div className="tiles" style={{ gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
+              <Tile label={t("met.fc.violations", { n: F.n_orders })} value={F.violation_hours} />
+              <Tile
+                label={t("met.fc.record")}
+                value={F.exceedance.pv_aggregate_hours_over}
+                note={t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
+              />
+            </div>
+          </section>
         )}
 
         {/* ---------------------------------------------------------------- limitations & refs */}
