@@ -76,12 +76,14 @@ sources and assumptions behind it.
 | `kapacitet build` | Build the synthetic LV network on the real OSM neighbourhood (feeders, cabinets, service cables, transformer) |
 | `kapacitet profiles` | Hourly weather, PV, household, heat-pump and EV profiles for every year |
 | `kapacitet compute` | Hosting capacity, envelopes, risk, 2030 scenarios, validation and the UI payloads |
+| `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
+| `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet all` | The four build steps in order |
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
 `--quick` shortens a compute run, `compute --stage extra` recomputes only the scenario,
-tornado and validation blocks.
+tornado, foresight and validation blocks.
 
 ### Optional: ENTSO-E token
 
@@ -177,13 +179,14 @@ loses its source.
 ## Tests
 
 ```bash
-python -m pytest            # 84 tests
+python -m pytest            # 157 tests
 ```
 
 They check the things the demo claims: the Z-bus solver against pandapower, the water-filling
 allocation against a lexicographic max-min LP written independently for the test, the
 conservativeness of the linear screens (they may never miss a violating hour), that published
-envelopes verify with the nonlinear power flow, the radiality of the built network, the parsers
+envelopes verify with the nonlinear power flow, that a planning state issued a day ahead
+dominates the year it plans, the radiality of the built network, the parsers
 on offline fixtures, the API contract, and that the published results are internally consistent.
 Tests that need pipeline output skip themselves on a fresh clone.
 
@@ -231,10 +234,72 @@ report and its evidence cannot drift apart: 43 agreements, 7 261 kWh curtailed, 
 what those customers would have exported, zero violations left after verification, and the
 allocation policy that decided who bore it.
 
+## What the forecast is worth
+
+Every figure above is computed with perfect foresight: the envelope for 11:00 is allocated
+knowing exactly what the sun and the houses will do at 11:00. A real envelope is issued the
+day before. That was the caveat most often held against these numbers, so it is now
+measured instead of stated:
+
+```bash
+.venv/Scripts/python -m kapacitet forecast
+```
+
+The measurement rests on one property. Call a planning state **dominating** if, hour by
+hour, it assumes at least as much generation and at most as much load as actually occurs.
+Every export-side constraint is monotone in those two quantities, so an envelope that is
+feasible against a dominating state is feasible against what happens — including in the
+hours the planner never flagged as critical, which is exactly where a point forecast fails.
+Safety then needs no forecast skill at all; what it costs is how loose the bound is.
+
+The bound used here is weather-blind: generation at the highest the same fortnight reached
+in the other ten weather years, demand at the lowest, hour of the day by hour of the day. A
+clock and eleven years of history, no forecast. On the published showcase deployment, 43
+non-firm customers in 2025:
+
+| scheme | envelopes issued | limit violations | curtailed | % of export |
+|---|---|---|---|---|
+| static worst case, no envelope | – | 0 | 267 559 kWh | 98.54 |
+| day ahead, no forecast | 1 400 h | **0** | 48 681 kWh | 17.93 |
+| day ahead, yesterday's weather | 148 h | **109** | 3 998 kWh | 1.47 |
+| perfect foresight (published) | 148 h | 0 | 7 261 kWh | 2.67 |
+
+The persistence row is the instructive failure. It curtails *less* than the published
+envelopes and breaks the limits in 109 hours while doing it, because the failure mode is
+not an envelope that comes out slightly too generous — it is an hour dropping out of the
+critical set altogether, after which no envelope is issued and the customer runs to its
+inverter rating. A point forecast is not a weaker version of foresight; it is a different
+thing, and it needs a bound.
+
+The static row is the alternative on offer today. On a grid already at its static limit the
+worst-case-feasible share of an extra inverter is 0.3 % of its rating, which is why there is
+anything to discuss.
+
+Curtailment is one half of the question; the other is how much capacity each scheme carries
+at the same 3 % budget. `compute --stage extra` runs the published capacity search again
+against the day-ahead state over all 20 adoption orders and writes `foresight.json`, which
+the Method screen reads. On adoption order 0 it carries 73 adopters and 622 kW where perfect
+foresight carries 96 and 801 kW, against 45 and 402 kW static — so on that order roughly two
+thirds of what the envelopes add survives with no forecast at all, and the rest is what a
+forecast buys.
+
+History is a bound on the record, not a guarantee. In 2025 the neighbourhood total beat its
+own eleven-year envelope in **1 hour of 8 760**, by 2.8 %, and that hour produced no
+violation. The per-house exceptions — 333 customer-hours of 1 051 200 — are counted in
+`exceedance_audit` rather than argued away.
+
+Two things this is not. The climatology leaves out the year it plans, which for 2025 is also
+strictly causal because every other weather year precedes it; planning an early year uses
+years that came later, so the multi-year medians are leave-one-out rather than real-time.
+And nobody would run a grid on this bound by choice — a real day-ahead forecast is far
+better than the climatological extreme, so the honest reading is a bracket: the published
+figure is what a perfect forecast buys, this one is what no forecast at all still carries,
+and an operator lands between them.
+
 ## Limitations
 
-Stated openly on the Method screen and repeated here: envelopes use perfect foresight (real
-ones are issued from forecasts, so curtailment would be higher); the model is hourly while the
+Stated openly on the Method screen and repeated here: the published envelopes use perfect
+foresight (measured against a forecast-free alternative in the section above); the model is hourly while the
 Swedish voltage limit applies to 10-minute means (covered by a 1 % margin); **every published
 number comes from the balanced three-phase model**, so single-phase unbalance is not in them;
 the LV topology is synthetic;

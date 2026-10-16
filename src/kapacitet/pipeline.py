@@ -6,6 +6,7 @@ Commands
   profiles  build hourly weather, PV, household, heat-pump and EV profiles
   compute   hosting capacity, DOE, risk, scenarios and UI payloads
   compliance  audit trail and annual filing for a computed year
+  forecast  what the published envelopes owe to perfect foresight
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -16,6 +17,7 @@ Commands
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import sys
@@ -146,6 +148,26 @@ def cmd_compliance(args: argparse.Namespace) -> None:
         print(f"\nEvent-level audit trail: {rows} rows in {trail}")
 
 
+def cmd_forecast(args: argparse.Namespace) -> None:
+    """What the published envelopes owe to perfect foresight."""
+    from .engine import forecast
+    from .engine.netmodel import get_model
+    from .paths import processed
+
+    show_path = processed("results", "showcase.json")
+    if not show_path.exists():
+        print("No showcase yet. Run: python -m kapacitet compute")
+        sys.exit(1)
+    show = json.loads(show_path.read_text(encoding="utf-8"))
+    cap_path = processed("results", "foresight.json")
+    capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
+    with step("Issuing envelopes a day ahead"):
+        rows = forecast.ladder(get_model(), show)
+    print(forecast.ladder_text(rows, show["year"], capacity))
+    if capacity is None:
+        print("\n(Capacity under each scheme needs: python -m kapacitet compute --stage extra)")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -195,6 +217,9 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("compliance", help="audit trail and annual filing for a computed year")
     p.set_defaults(func=cmd_compliance)
+
+    p = sub.add_parser("forecast", help="what the published envelopes owe to perfect foresight")
+    p.set_defaults(func=cmd_forecast)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")
