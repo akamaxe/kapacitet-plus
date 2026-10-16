@@ -93,10 +93,10 @@ p {
   border-left: 1px solid var(--border);
   overflow-y: auto;
   min-height: 0;
-  padding: 22px 22px 40px;
+  padding: var(--space-5) var(--space-5) var(--space-6);
   display: flex;
   flex-direction: column;
-  gap: 22px;
+  gap: var(--space-5);
 }
 
 .page {
@@ -107,29 +107,29 @@ p {
 .page-inner {
   max-width: 1320px;
   margin: 0 auto;
-  padding: 30px 28px 64px;
+  padding: var(--space-6) var(--space-5) var(--space-8);
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  gap: var(--space-6);
 }
 
 .grid-2 {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
+  gap: var(--space-5);
 }
 
 .grid-3 {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px;
+  gap: var(--space-5);
 }
 
 .block {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 18px 20px 16px;
+  padding: var(--space-4) var(--space-4) var(--space-4);
   min-width: 0;
 }
 
@@ -137,8 +137,8 @@ p {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 4px;
+  gap: var(--space-3);
+  margin-bottom: var(--space-1);
 }
 
 .block h2,
@@ -165,12 +165,12 @@ p {
 .stack {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-2);
 }
 
 .row {
   display: flex;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: center;
   flex-wrap: wrap;
 }
@@ -200,7 +200,7 @@ p {
 
 .hero-figures {
   display: flex;
-  gap: 44px;
+  gap: var(--space-7);
   flex-wrap: wrap;
   align-items: flex-end;
 }
@@ -215,12 +215,12 @@ p {
 .figure .value small {
   font-size: var(--text-h2);
   font-weight: 500;
-  margin-left: 4px;
+  margin-left: var(--space-1);
   color: var(--text-secondary);
 }
 
 .figure .label {
-  margin-top: 8px;
+  margin-top: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--text-small);
   max-width: 26ch;
@@ -231,7 +231,7 @@ p {
   width: 14px;
   height: 4px;
   border-radius: 2px;
-  margin-right: 8px;
+  margin-right: var(--space-2);
   vertical-align: middle;
 }
 
@@ -248,7 +248,7 @@ p {
 
 .tile {
   background: var(--bg-surface);
-  padding: 12px 14px;
+  padding: var(--space-3) var(--space-3);
   min-width: 0;
 }
 
@@ -280,10 +280,10 @@ p {
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-1);
   border: 1px solid var(--border);
   border-radius: 999px;
-  padding: 1px 9px 1px 7px;
+  padding: 1px var(--space-2) 1px var(--space-2);
   font-size: var(--text-caption);
   color: var(--text-secondary);
   background: var(--bg-surface);
@@ -313,7 +313,7 @@ p {
 .status {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
   font-weight: 600;
 }
 
@@ -351,7 +351,7 @@ p {
 .seg button {
   border: 0;
   background: transparent;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 3px;
   cursor: pointer;
   color: var(--text-secondary);
@@ -369,7 +369,7 @@ p {
 .btn {
   border: 0;
   border-radius: var(--radius-md);
-  padding: 9px 16px;
+  padding: var(--space-2) var(--space-4);
   background: var(--text-primary);
   color: var(--bg-surface);
   font-weight: 600;
@@ -390,7 +390,7 @@ p {
 .field {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 4px 12px;
+  gap: var(--space-1) var(--space-3);
   align-items: center;
 }
 
@@ -413,7 +413,7 @@ p {
 /* ---------------------------------------------------------------- meter */
 .meter {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .meter-head {
@@ -462,7 +462,7 @@ p {
 
 .legend {
   display: flex;
-  gap: 16px;
+  gap: var(--space-4);
   flex-wrap: wrap;
   font-size: var(--text-small);
   color: var(--text-secondary);
@@ -471,7 +471,7 @@ p {
 .legend span {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
 }
 
 .legend i {
@@ -489,7 +489,7 @@ p {
 
 .scale {
   display: grid;
-  gap: 4px;
+  gap: var(--space-1);
   font-size: var(--text-caption);
   color: var(--text-secondary);
 }
@@ -531,12 +531,12 @@ table.data th {
   color: var(--text-secondary);
   font-weight: 500;
   border-bottom: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: var(--space-1) var(--space-2);
 }
 
 table.data td {
   border-bottom: 1px solid var(--border);
-  padding: 6px 8px;
+  padding: var(--space-1) var(--space-2);
   vertical-align: top;
 }
 
@@ -553,9 +553,9 @@ table.data th.r {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 10px 12px;
+  padding: var(--space-2) var(--space-3);
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
   width: 250px;
   font-size: var(--text-caption);
   box-shadow: var(--shadow-popover);
@@ -568,7 +568,7 @@ table.data th.r {
   top: 14px;
   z-index: 2;
   display: flex;
-  gap: 6px;
+  gap: var(--space-1);
   flex-wrap: wrap;
   justify-content: flex-end;
   max-width: 60%;
@@ -580,9 +580,9 @@ table.data th.r {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  padding: 9px 11px;
+  padding: var(--space-2) var(--space-3);
   font-size: var(--text-small);
-  box-shadow: 0 4px 16px rgba(16, 37, 48, 0.12);
+  box-shadow: var(--shadow-popover);
   z-index: 5;
   min-width: 190px;
   max-width: 280px;
@@ -590,13 +590,13 @@ table.data th.r {
 
 .map-tooltip .tt-title {
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: var(--space-1);
 }
 
 .map-tooltip .tt-row {
   display: flex;
   justify-content: space-between;
-  gap: 14px;
+  gap: var(--space-3);
   color: var(--text-secondary);
 }
 
@@ -609,7 +609,7 @@ table.data th.r {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transition: background-color 0.25s linear;
+  transition: background-color var(--dur-panel) var(--ease);
   z-index: 1;
 }
 
@@ -617,17 +617,17 @@ table.data th.r {
 .yearstrip {
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
-  padding: 10px 16px 12px;
+  padding: var(--space-2) var(--space-4) var(--space-3);
   display: grid;
   grid-template-columns: auto minmax(0, 1fr);
-  gap: 6px 14px;
+  gap: var(--space-1) var(--space-3);
   align-items: center;
 }
 
 .yearstrip-controls {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-1);
   align-items: flex-start;
   width: 9.5em; /* fixed, so the strip does not shift while the hour label changes during playback */
 }
@@ -663,7 +663,7 @@ table.data th.r {
 .step {
   display: grid;
   grid-template-columns: 18px 1fr auto;
-  gap: 10px;
+  gap: var(--space-2);
   align-items: center;
   font-size: var(--text-small);
   color: var(--text-muted);
@@ -694,18 +694,12 @@ table.data th.r {
 
 .step.active .dot {
   border-color: var(--accent);
-  animation: pulse 1s ease-in-out infinite;
+  background: var(--accent-quiet);
 }
 
 .step .ms {
   color: var(--text-muted);
   font-size: var(--text-caption);
-}
-
-@keyframes pulse {
-  50% {
-    transform: scale(1.35);
-  }
 }
 
 /* ---------------------------------------------------------------- verdicts */
@@ -721,9 +715,9 @@ table.data th.r {
 
 .verdict {
   background: var(--bg-surface);
-  padding: 14px;
+  padding: var(--space-3);
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
   align-content: start;
 }
 
@@ -755,24 +749,24 @@ table.data th.r {
   background: var(--text-primary);
   color: var(--bg-surface);
   border-radius: var(--radius-lg);
-  padding: 14px 16px;
+  padding: var(--space-3) var(--space-4);
   z-index: 50;
   font-size: var(--text-small);
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+  box-shadow: var(--shadow-popover);
 }
 
 .notes h4 {
   font-size: var(--text-small);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-2);
   opacity: 0.75;
   font-weight: 500;
 }
 
 .notes ul {
   margin: 0;
-  padding-left: 18px;
+  padding-left: var(--space-4);
   display: grid;
-  gap: 6px;
+  gap: var(--space-1);
 }
 
 /* ---------------------------------------------------------------- misc */
@@ -781,14 +775,14 @@ table.data th.r {
   place-items: center;
   height: 100%;
   color: var(--text-secondary);
-  padding: 40px;
+  padding: var(--space-6);
   text-align: center;
 }
 
 .kv {
   display: grid;
   grid-template-columns: auto 1fr;
-  gap: 4px 14px;
+  gap: var(--space-1) var(--space-3);
   font-size: var(--text-small);
 }
 
@@ -804,14 +798,14 @@ table.data th.r {
 
 .src-list {
   display: grid;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .src {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 2px 14px;
-  padding-bottom: 12px;
+  gap: 2px var(--space-3);
+  padding-bottom: var(--space-3);
   border-bottom: 1px solid var(--border);
 }
 
@@ -831,7 +825,7 @@ table.data th.r {
 
 .loading {
   opacity: 0.55;
-  transition: opacity 0.2s;
+  transition: opacity var(--dur-micro) var(--ease);
 }
 
 .skip {
@@ -844,7 +838,7 @@ table.data th.r {
   top: 12px;
   z-index: 100;
   background: var(--bg-surface);
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
 }
 
 @media (max-width: 1100px) {
@@ -878,7 +872,7 @@ table.data th.r {
 @media (max-width: 640px) {
 
   .page-inner {
-    padding: 20px 16px 48px;
+    padding: var(--space-4) var(--space-4) var(--space-7);
   }
 
   .figure .value {
@@ -896,7 +890,7 @@ table.data th.r {
 }
 
 .seg.small button {
-  padding: 3px 10px;
+  padding: 3px var(--space-2);
   font-size: var(--text-caption);
 }
 
