@@ -144,8 +144,8 @@ Without it, values jitter as the hour slider moves.
 |---|---|---|---|
 | `--text-display` | 3.0 rem | 1.05 | The one hero number per screen |
 | `--text-h1` | 1.75 rem | 1.2 | Screen title |
-| `--text-h2` | 1.25 rem | 1.3 | Panel title |
-| `--text-h3` | 1.0 rem | 1.4 | Sub-heading, card title |
+| `--text-h2` | 1.25 rem | 1.3 | Region heading |
+| `--text-h3` | 1.0 rem | 1.4 | Panel or table title |
 | `--text-body` | 0.9375 rem | 1.55 | Body copy |
 | `--text-small` | 0.8125 rem | 1.45 | Labels, axis ticks |
 | `--text-caption` | 0.75 rem | 1.4 | Sources, footnotes |
@@ -154,6 +154,8 @@ Without it, values jitter as the hour slider moves.
 
 **Rules**
 
+- Heading ladder: `h1` is the screen title, `h2` a region heading, `h3` the title of a panel or
+  of a table inside it. One `--text-display` number per screen, and nothing else at that size.
 - Letter-spaced uppercase is allowed in exactly **one** place: the sidebar section label. Nowhere else.
 - No two-tone headlines (a second line in the accent colour). One colour per heading.
 - Maximum 68 characters per line of prose.
@@ -180,6 +182,24 @@ Base unit 4 px. Every margin, padding and gap is a multiple.
 - Panel gap in a grid: `--space-4`.
 - Radius: `--radius-sm` 4 px (inputs, badges, segmented controls), `--radius-md` 8 px (cards, panels), `--radius-lg` 12 px (dialogs, the command palette). Nothing is fully rounded except status dots and the real/synthetic chips.
 - Elevation: borders do the work. One shadow only, for things that float above the page — popovers, dialogs, the command palette, map overlays: `0 8px 24px rgba(0,0,0,0.35)` dark, `0 6px 20px rgba(21,27,32,0.12)` light. A panel that sits *in* the page never has a shadow; give it a border. **No glows.** No `box-shadow` in an accent colour, and no decorative gradient behind the page or a card.
+
+**Three weights inside a screen.** A long screen is a document, not a tray of cards. Each
+region declares which of three weights it carries, and a screen that uses only one of them
+reads as assembled by machine:
+
+| Weight | How it looks | What it carries |
+|---|---|---|
+| Lead — `.region` | no surface and no border: it sits on the page background, parted from the next by one hairline rule and `--space-6` | the screen's own divisions. The default |
+| Panel — `.block` | `--bg-surface`, 1 px border, `--radius-md`, `--space-5` of padding | a self-contained instrument inside a region |
+| Well — `.well` | `--bg-inset`, a hairline above and below, no radius, across the whole content column | one dense band per screen: a long table, a year of hours |
+
+Two panels of equal weight side by side is the card stack again: change one of the weights, or
+make it a single panel. A region's heading is `h2`, a panel's or a well's is `h3`.
+
+**The screen bar.** A screen with more than three regions carries a sticky bar at the top of
+its scroller — `--toolbar-h` tall, at `--z-sticky` — with its sections on the left and the
+basis of its figures on the right. A control that belongs to one region stays in that region's
+head row and never moves to the bar: the bar is for navigation and provenance, not for data.
 
 **Chrome bands.** The frame's three fixed rows are tokens, because a sticky region inside a
 screen has to know how much of the viewport is already spoken for:

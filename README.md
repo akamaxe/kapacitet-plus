@@ -112,6 +112,14 @@ from the substation, and the voltage and net power of the hour on screen, read f
 state the map is painted from. Picking a row selects the house, and so does clicking it on the map;
 either way the panel leads with it.
 
+The two long screens — **Static vs DOE** and **Method & data** — carry a bar of their own at
+the top of the scroller: their sections on the left, which follow the scroll and jump when
+clicked, and the basis of every figure on that screen on the right. Each of them leads with one
+number at display size and nothing else competes with it. Within a screen, most regions sit on
+the page itself, a few are panels, and the densest one — a year of hours, or the table of model
+inputs — runs edge to edge on its own ground. The 63 model inputs are searchable and sortable:
+filter by where a value comes from, or search a word in any column.
+
 The address bar carries what you are looking at — `#/twin?hour=4000&scenario=uncontrolled&cid=14`
 — so a view can be sent to someone and reproduce exactly. Scrubbing the year does not fill your
 history: only changing screen does. Charts retain their table alternatives, and
