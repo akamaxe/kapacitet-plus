@@ -43,6 +43,17 @@
   --dur-micro: 120ms;
   --dur-panel: 180ms;
 
+  /* chrome bands (§3): a sticky region has to know what the frame already takes */
+  --topbar-h: 72px;
+  --toolbar-h: 48px;
+  --statusbar-h: 32px;
+
+  /* stacking (§3) */
+  --z-sticky: 3;
+  --z-overlay: 40;
+  --z-dialog: 50;
+  --z-toast: 60;
+
   /* production and consumption, national view (§1.4) */
   --data-production: #3e8fb0;
   --data-consumption: #d9a33a;

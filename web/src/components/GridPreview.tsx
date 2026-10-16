@@ -19,10 +19,8 @@ export function GridPreview() {
     if (map.getSource("preview")) return;
     map.addSource("preview", { type: "geojson", data: net.data });
     map.addLayer({ id: "preview-context", type: "fill", source: "preview", filter: ["==", ["get", "layer"], "context"], paint: { "fill-color": tk.borderStrong, "fill-opacity": 0.18 } });
-    map.addLayer({ id: "preview-halo", type: "line", source: "preview", filter: ["==", ["get", "layer"], "cable"], paint: { "line-color": tk.accent, "line-width": 9, "line-opacity": 0.10, "line-blur": 4 } });
     map.addLayer({ id: "preview-cables", type: "line", source: "preview", filter: ["==", ["get", "layer"], "cable"], paint: { "line-color": tk.accent, "line-width": 1.5, "line-opacity": 0.8 } });
     map.addLayer({ id: "preview-homes", type: "fill-extrusion", source: "preview", filter: ["==", ["get", "layer"], "house"], paint: { "fill-extrusion-color": tk.accent, "fill-extrusion-height": 9, "fill-extrusion-opacity": 0.55 } });
-    map.addLayer({ id: "preview-sub-halo", type: "circle", source: "preview", filter: ["==", ["get", "layer"], "substation"], paint: { "circle-color": tk.cat[2], "circle-radius": 20, "circle-opacity": 0.15 } });
     map.addLayer({ id: "preview-sub", type: "circle", source: "preview", filter: ["==", ["get", "layer"], "substation"], paint: { "circle-color": tk.cat[2], "circle-radius": 5, "circle-stroke-width": 2, "circle-stroke-color": tk.text } });
   }, [net.data, theme]);
   return (
