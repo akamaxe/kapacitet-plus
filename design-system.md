@@ -178,8 +178,26 @@ Base unit 4 px. Every margin, padding and gap is a multiple.
 
 - Card padding: `--space-5`. Dense data panels: `--space-4`. Consistent across every panel — mismatched padding is the fastest way to look assembled rather than designed.
 - Panel gap in a grid: `--space-4`.
-- Radius: `--radius-sm` 4 px (inputs, badges), `--radius-md` 8 px (cards, panels), `--radius-lg` 12 px (modals). Nothing is fully rounded except status dots.
-- Elevation: borders do the work. One shadow only, for popovers: `0 8px 24px rgba(0,0,0,0.35)` dark, `0 6px 20px rgba(21,27,32,0.12)` light. **No glows.** No `box-shadow` in an accent colour.
+- Radius: `--radius-sm` 4 px (inputs, badges, segmented controls), `--radius-md` 8 px (cards, panels), `--radius-lg` 12 px (dialogs, the command palette). Nothing is fully rounded except status dots and the real/synthetic chips.
+- Elevation: borders do the work. One shadow only, for things that float above the page — popovers, dialogs, the command palette, map overlays: `0 8px 24px rgba(0,0,0,0.35)` dark, `0 6px 20px rgba(21,27,32,0.12)` light. A panel that sits *in* the page never has a shadow; give it a border. **No glows.** No `box-shadow` in an accent colour, and no decorative gradient behind the page or a card.
+
+**Chrome bands.** The frame's three fixed rows are tokens, because a sticky region inside a
+screen has to know how much of the viewport is already spoken for:
+
+| Token | Value | What |
+|---|---|---|
+| `--topbar-h` | 72 px | breadcrumb and global actions |
+| `--toolbar-h` | 48 px | a screen's own sticky controls |
+| `--statusbar-h` | 32 px | model, reference year, shortcut hint |
+
+**Stacking.** Four named steps, so nothing is layered by trial and error:
+
+| Token | Value | What |
+|---|---|---|
+| `--z-sticky` | 3 | a toolbar or table header stuck inside a screen |
+| `--z-overlay` | 40 | map overlays, the presenter drawer |
+| `--z-dialog` | 50 | dialogs and the command palette |
+| `--z-toast` | 60 | toasts, which must clear a dialog |
 
 ---
 
@@ -252,6 +270,13 @@ Base unit 4 px. Every margin, padding and gap is a multiple.
 
 Create `src/styles/tokens.css` with this structure and import it once, at the root. Components reference variables only.
 
+The block below is the core set. `tokens.css` also defines the line heights (`--lh-display`
+… `--lh-caption`), the data scales of section 1.4 (`--cat-1` … `--cat-6`, `--load-0/50/85`,
+`--load-over`, `--volt-low/mid/high`, `--data-production`, `--data-consumption`), the
+semantic fills (`--warning-fill`, `--danger-fill`), and `--night`, the RGB triple the map's
+daylight overlay multiplies. Those are tokens like any other: a value missing from here is
+still added to this file first.
+
 ```css
 :root {
   /* spacing */
@@ -268,6 +293,10 @@ Create `src/styles/tokens.css` with this structure and import it once, at the ro
   /* motion */
   --ease: cubic-bezier(0.2, 0, 0, 1);
   --dur-micro: 120ms; --dur-panel: 180ms;
+  /* chrome bands */
+  --topbar-h: 72px; --toolbar-h: 48px; --statusbar-h: 32px;
+  /* stacking */
+  --z-sticky: 3; --z-overlay: 40; --z-dialog: 50; --z-toast: 60;
 }
 
 :root[data-theme="dark"] {
