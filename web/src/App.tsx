@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { SideNav, StatusBar, TopBar } from "./components/Shell";
 import { Icon } from "./components/Icon";
 import { useT } from "./lib/i18n";
@@ -9,7 +9,7 @@ import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts } from "./components/Toast";
 import { NOTES } from "./lib/notes";
-import { SCREENS, useStore } from "./lib/store";
+import { SCREENS, scrollPositions, useStore } from "./lib/store";
 
 const National = lazy(() => import("./screens/National"));
 const Twin = lazy(() => import("./screens/Twin"));
@@ -93,6 +93,43 @@ export default function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // Each screen owns its own scroller above 1100 px, so there is no single position to
+  // keep: remember one per screen and put it back when the screen comes round again.
+  const previous = useRef(screen);
+  useLayoutEffect(() => {
+    const leaving = previous.current;
+    if (leaving !== screen) {
+      scrollPositions.set(leaving, lastScroll.current);
+      previous.current = screen;
+      lastScroll.current = 0;
+    }
+    // The screen is lazy, so its scroller does not exist yet when this runs. Try for a
+    // few frames and give up rather than hold a handle on a screen the viewer has left.
+    const want = scrollPositions.get(screen) ?? 0;
+    let tries = 0;
+    let raf = 0;
+    const put = () => {
+      const el = document.querySelector<HTMLElement>("main .page");
+      // The element appears before its charts and tables have height, so an early
+      // assignment clamps to nothing. Keep asking until the position sticks.
+      if (el) el.scrollTop = want;
+      const settled = el && (want === 0 || Math.abs(el.scrollTop - want) < 2);
+      if (!settled && ++tries < 60) raf = requestAnimationFrame(put);
+    };
+    put();
+    return () => cancelAnimationFrame(raf);
+  }, [screen, attempt]);
+
+  const lastScroll = useRef(0);
+  useEffect(() => {
+    const onScroll = (e: Event) => {
+      const t = e.target as HTMLElement;
+      if (t?.classList?.contains("page")) lastScroll.current = t.scrollTop;
+    };
+    document.addEventListener("scroll", onScroll, true);
+    return () => document.removeEventListener("scroll", onScroll, true);
   }, []);
 
   return (

@@ -10,10 +10,9 @@ import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, tokens, voltageColor } from "../lib/colors";
 import { hourLabel, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { useStore, type Scenario } from "../lib/store";
+import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
-const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
 type ColorBy = "voltage" | "power";
 /** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
 const V_SPAN = 0.06;
@@ -144,7 +143,7 @@ export default function Twin() {
       const r = rows?.busRow.get(p.bus);
       return {
         cid: p.cid as number,
-        address: (p.address as string) || `#${p.cid}`,
+        address: (p.address as string) || t("dt.unnamed", { id: p.cid }),
         feeder: p.feeder as number,
         status: p.pv_status as "firm" | "nonfirm" | "none",
         kwp: p.kwp as number,
@@ -155,7 +154,7 @@ export default function Twin() {
         curtailed: cut.get(p.cid) ?? null,
       };
     });
-  }, [houses, rows, st.data, hour, show.data]);
+  }, [houses, rows, st.data, hour, show.data, t]);
 
   const houseCols: Col<HouseRow>[] = useMemo(
     () => [
@@ -367,7 +366,7 @@ export default function Twin() {
         {picked && (
           <div className="stack inspector">
             <div className="row" style={{ justifyContent: "space-between" }}>
-              <h3>{picked.properties.address || `#${picked.properties.cid}`}</h3>
+              <h3>{picked.properties.address || t("dt.unnamed", { id: picked.properties.cid })}</h3>
               <button className="icon-btn" aria-label={t("twin.clear")} title={t("twin.clear")} onClick={() => select(null)}>
                 <Icon name="close" size={15} />
               </button>
