@@ -54,7 +54,7 @@ export default function Compare() {
           <div className="overview-copy">
             <h1 className="headline">{t("overview.title")}</h1>
             <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
-            <div className="hero-actions"><a className="btn" href="#/twin">{t("overview.explore")}<Icon name="arrow" size={18} /></a><a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a></div>
+            <div className="hero-actions"><a className="btn" href="#/twin"><Icon name="twin" size={17} />{t("overview.explore")}</a><a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a></div>
             <span className="hero-context">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>
           </div>
           <GridPreview />
@@ -325,7 +325,7 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
       formatter: (ps: any[]) => {
         const i = ps[0].dataIndex;
         const p = pts[i];
-        return `<b>${Math.round(p.kw_ac)} kW</b> · ${p.adopters} houses<br/>${t("cmp.curve.doe")}: <b>${p.z_doe_pct.toFixed(2)} %</b> (${minY[i].toFixed(1)}–${maxY[i].toFixed(1)} %)<br/>${t("cmp.curve.fixed")}: <b>${p.z_fixed_pct.toFixed(1)} %</b>`;
+        return `<b>${Math.round(p.kw_ac)} kW</b>, ${p.adopters} houses<br/>${t("cmp.curve.doe")}: <b>${p.z_doe_pct.toFixed(2)} %</b> (${minY[i].toFixed(1)}–${maxY[i].toFixed(1)} %)<br/>${t("cmp.curve.fixed")}: <b>${p.z_fixed_pct.toFixed(1)} %</b>`;
       },
     },
     series: [

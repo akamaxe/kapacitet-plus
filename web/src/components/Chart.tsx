@@ -77,8 +77,9 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EC
       backgroundColor: tk.surface,
       borderColor: tk.border,
       borderWidth: 1,
-      textStyle: { color: tk.text, fontFamily: tk.font, fontSize: 12.5 },
-      extraCssText: "box-shadow: 0 4px 16px rgba(16,37,48,0.12); border-radius: 8px;",
+      // a tooltip is all values, so §4.8 puts it in the mono face
+      textStyle: { color: tk.text, fontFamily: tk.mono, fontSize: 12 },
+      extraCssText: "box-shadow: var(--shadow-popover); border-radius: var(--radius-md);",
       confine: true,
       ...tooltip,
     },

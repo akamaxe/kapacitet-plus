@@ -35,14 +35,21 @@ export default function App() {
   const t = useT();
   const screen = useStore((s) => s.screen);
 
-  // Presentation keys: PageDown/PageUp or Ctrl+→/← move between screens, N toggles notes.
+  // Presentation keys: PageDown/PageUp or Ctrl+→/← move between screens, 1–6 jump
+  // straight to one, N toggles notes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target?.closest("input, select, textarea, canvas, [contenteditable='true']") || e.altKey) return;
+      // closest() only exists on elements: a key event whose target is the document
+      // itself would otherwise throw and take the whole handler with it.
+      if (target?.closest?.("input, select, textarea, canvas, [contenteditable='true']") || e.altKey) return;
       const st = useStore.getState();
       const i = SCREENS.indexOf(st.screen);
-      if (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight")) {
+      const digit = Number(e.key);
+      if (digit >= 1 && digit <= SCREENS.length && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        st.setScreen(SCREENS[digit - 1]);
+        e.preventDefault();
+      } else if (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight")) {
         st.setScreen(SCREENS[Math.min(SCREENS.length - 1, i + 1)]);
         e.preventDefault();
       } else if (e.key === "PageUp" || (e.ctrlKey && e.key === "ArrowLeft")) {
