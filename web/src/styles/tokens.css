@@ -1,100 +1,178 @@
-/* Smart-grid palette. Semantic data colours stay distinct in both themes. */
+/* Kapacitet+ design tokens. The source of truth is design-system.md at the repository
+   root: every value here comes from it, and nothing here is invented. Components
+   reference these variables only, never a raw colour, size, spacing value or radius.
+
+   An engineering instrument for grid operators, not a sci-fi console. */
+
 :root {
-  color-scheme: light;
-  --paper: #eef4f6;          /* page plane: cool technical-drawing paper */
-  --surface: #ffffff;        /* panels and chart surface */
-  --surface-2: #e8f0f3;      /* recessed wells, inputs */
-  --ink: #122c38;            /* primary text */
-  --ink-2: #506875;          /* secondary text */
-  --muted: #627d88;          /* axis labels, captions */
-  --hairline: #d6e3e8;       /* gridlines, dividers */
-  --baseline: #b9c6cd;       /* axes */
-  --focus: #007f91;
+  /* spacing, base unit 4px (design-system.md §3) */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+  --space-6: 2rem;
+  --space-7: 3rem;
+  --space-8: 4rem;
 
-  --series-1: #007f91;       /* dynamic envelope / primary series (cyan) */
-  --series-2: #eb6834;       /* second series (orange) */
-  --series-3: #16866b;       /* third series (mint); also identified with labels */
-  --deemph: #a7b3ba;         /* de-emphasised comparison marks */
+  /* radius: nothing is fully rounded except status dots */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
-  --good: #41bb86;
-  --warning: #fab219;
-  --serious: #ec835a;
-  --critical: #d03b3b;
-  --good-text: #006300;
+  /* type (§2). Monospace is for data only. */
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
+  --text-display: 3rem;
+  --text-h1: 1.75rem;
+  --text-h2: 1.25rem;
+  --text-h3: 1rem;
+  --text-body: 0.9375rem;
+  --text-small: 0.8125rem;
+  --text-caption: 0.75rem;
+  --lh-display: 1.05;
+  --lh-h1: 1.2;
+  --lh-h2: 1.3;
+  --lh-h3: 1.4;
+  --lh-body: 1.55;
+  --lh-small: 1.45;
+  --lh-caption: 1.4;
 
-  /* sequential (blue) ramp for magnitude */
-  --seq-100: #cde2fb; --seq-200: #9ec5f4; --seq-300: #6da7ec; --seq-400: #3987e5;
-  --seq-500: #256abf; --seq-600: #184f95; --seq-700: #0d366b;
-  /* diverging poles for voltage (blue low, red high) and neutral midpoint */
-  --div-low: #256abf;
-  --div-mid: #e6e8ea;
-  --div-high: #d03b3b;
+  /* motion (§7). Nothing pulses, nothing loops. */
+  --ease: cubic-bezier(0.2, 0, 0, 1);
+  --dur-micro: 120ms;
+  --dur-panel: 180ms;
 
-  --night: 16, 32, 48;       /* rgb of the daylight overlay */
-  --shadow: 0 1px 0 rgba(16, 37, 48, 0.06);
-  --radius-s: 8px;
-  --radius-m: 14px;
-
-  --mono: "Cascadia Code", "SFMono-Regular", Consolas, monospace;
-  --font: "Schibsted Grotesk Variable", "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
-  /* type scale: major third on 15px */
-  --t-xs: 12px;
-  --t-s: 13.5px;
-  --t-m: 15px;
-  --t-l: 18.75px;
-  --t-xl: 23.4px;
-  --t-2xl: 29.3px;
-  --t-3xl: 36.6px;
-  --t-hero: 44px;
+  /* production and consumption, national view (§1.4) */
+  --data-production: #3e8fb0;
+  --data-consumption: #d9a33a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root:where(:not([data-theme="light"])) {
-    color-scheme: dark;
-    --paper: #080f18;
-    --surface: #101c29;
-    --surface-2: #152536;
-    --ink: #edf5fb;
-    --ink-2: #a6bacb;
-    --muted: #8099ad;
-    --hairline: #223447;
-    --baseline: #3e576d;
-    --focus: #66dce7;
-    --series-1: #36c9da;
-    --series-2: #f2a46d;
-    --series-3: #62dcb2;
-    --deemph: #536d86;
-    --good-text: #41bb86;
-    --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
-    --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
-    --div-low: #3987e5;
-    --div-mid: #3a4751;
-    --div-high: #e66767;
-    --night: 4, 10, 16;
-    --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
-  }
-}
+/* ---------------------------------------------------------------- dark, the default */
+:root,
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --paper: #080f18;
-  --surface: #101c29;
-  --surface-2: #152536;
-  --ink: #edf5fb;
-  --ink-2: #a6bacb;
-  --muted: #8099ad;
-  --hairline: #223447;
-  --baseline: #3e576d;
-  --focus: #66dce7;
-  --series-1: #36c9da;
-  --series-2: #f2a46d;
-  --series-3: #62dcb2;
-  --deemph: #536d86;
-  --good-text: #41bb86;
-  --seq-100: #173a5e; --seq-200: #184f95; --seq-300: #256abf; --seq-400: #3987e5;
-  --seq-500: #6da7ec; --seq-600: #9ec5f4; --seq-700: #cde2fb;
-  --div-low: #3987e5;
-  --div-mid: #3a4751;
-  --div-high: #e66767;
+  --bg-base: #0e1317;
+  --bg-surface: #171d22;
+  --bg-elevated: #1e252b;
+  --bg-inset: #0a0e11;
+  --border: #2a333a;
+  --border-strong: #3c474f;
+  --text-primary: #e8edf0;
+  --text-secondary: #a8b4bc;
+  --text-muted: #7a878f;
+  --accent: #2e9e8f;
+  --accent-hover: #39b5a4;
+  --accent-quiet: #1c4a45;
+  --on-accent: #0e1317;
+  --warning: #d9a33a;
+  --warning-quiet: #4a3a17;
+  --danger: #e05c4b;
+  --danger-quiet: #4a211b;
+  --neutral-series: #8a99a4;
+
+  /* production mix, categorical, max 6, distinguishable under deuteranopia (§1.4) */
+  --cat-1: #3e8fb0;  /* hydro */
+  --cat-2: #b07fd1;  /* nuclear */
+  --cat-3: #52b3a4;  /* wind */
+  --cat-4: #e0a93b;  /* solar */
+  --cat-5: #c8705f;  /* thermal */
+  --cat-6: #8a99a4;  /* other */
+
+  /* cable and transformer loading, sequential; above the rating is flat, not a gradient */
+  --load-0: #24424a;
+  --load-50: #2e9e8f;
+  --load-85: #d9a33a;
+  --load-over: #e05c4b;
+
+  /* voltage, diverging around 1.00 pu: blue and amber, never red and green */
+  --volt-low: #4a7fc1;
+  --volt-mid: #d4d9dc;
+  --volt-high: #d9772f;
+
+  /* one shadow only, for popovers (§3). No glows. */
+  --shadow-popover: 0 8px 24px rgba(0, 0, 0, 0.35);
   --night: 4, 10, 16;
-  --shadow: 0 8px 30px rgba(0, 0, 0, 0.18);
+}
+
+/* ---------------------------------------------------------------- light, designed */
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg-base: #f7f8f8;
+  --bg-surface: #ffffff;
+  --bg-elevated: #ffffff;
+  --bg-inset: #edf0f1;
+  --border: #dce1e4;
+  --border-strong: #b9c2c7;
+  --text-primary: #151b20;
+  --text-secondary: #4c585f;
+  --text-muted: #6b777e;
+  --accent: #1f7d71;
+  --accent-hover: #176258;
+  --accent-quiet: #dff0ed;
+  --on-accent: #ffffff;
+  --warning: #8a6314;
+  --warning-quiet: #fbf0d8;
+  --warning-fill: #e8a62e;
+  --danger: #b33f30;
+  --danger-quiet: #fbe4e0;
+  --danger-fill: #e05c4b;
+  --neutral-series: #5e6e79;
+
+  --cat-1: #2f7694;
+  --cat-2: #8e5cb0;
+  --cat-3: #2e8d7f;
+  --cat-4: #b5801c;
+  --cat-5: #a2503f;
+  --cat-6: #5e6e79;
+
+  --load-0: #d7e6e3;
+  --load-50: #2e9e8f;
+  --load-85: #d9a33a;
+  --load-over: #e05c4b;
+
+  --volt-low: #4a7fc1;
+  --volt-mid: #6b777e;
+  --volt-high: #d9772f;
+
+  --shadow-popover: 0 6px 20px rgba(21, 27, 32, 0.12);
+  --night: 16, 32, 48;
+}
+
+/* Dark is also what "system" resolves to on a dark desktop; the block above already
+   covers the no-attribute case, so only the light preference needs restating. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --bg-base: #f7f8f8;
+    --bg-surface: #ffffff;
+    --bg-elevated: #ffffff;
+    --bg-inset: #edf0f1;
+    --border: #dce1e4;
+    --border-strong: #b9c2c7;
+    --text-primary: #151b20;
+    --text-secondary: #4c585f;
+    --text-muted: #6b777e;
+    --accent: #1f7d71;
+    --accent-hover: #176258;
+    --accent-quiet: #dff0ed;
+    --on-accent: #ffffff;
+    --warning: #8a6314;
+    --warning-quiet: #fbf0d8;
+    --warning-fill: #e8a62e;
+    --danger: #b33f30;
+    --danger-quiet: #fbe4e0;
+    --danger-fill: #e05c4b;
+    --neutral-series: #5e6e79;
+    --cat-1: #2f7694;
+    --cat-2: #8e5cb0;
+    --cat-3: #2e8d7f;
+    --cat-4: #b5801c;
+    --cat-5: #a2503f;
+    --cat-6: #5e6e79;
+    --load-0: #d7e6e3;
+    --volt-mid: #6b777e;
+    --shadow-popover: 0 6px 20px rgba(21, 27, 32, 0.12);
+    --night: 16, 32, 48;
+  }
 }

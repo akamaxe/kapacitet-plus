@@ -72,12 +72,12 @@ export default function Request() {
       map.addSource("houses", { type: "geojson", data: fc(hs), promoteId: "cid" } as any);
     }
     if (!map.getLayer("houses")) {
-      map.addLayer({ id: "context", type: "fill", source: "context", paint: { "fill-color": tk.hairline, "fill-opacity": 0.7 } });
-      map.addLayer({ id: "mains", type: "line", source: "mains", paint: { "line-color": tk.baseline, "line-width": 1.5 } });
+      map.addLayer({ id: "context", type: "fill", source: "context", paint: { "fill-color": tk.border, "fill-opacity": 0.7 } });
+      map.addLayer({ id: "mains", type: "line", source: "mains", paint: { "line-color": tk.borderStrong, "line-width": 1.5 } });
       map.addLayer({
         id: "houses", type: "fill-extrusion", source: "houses",
         paint: {
-          "fill-extrusion-color": ["coalesce", ["feature-state", "color"], tk.baseline],
+          "fill-extrusion-color": ["coalesce", ["feature-state", "color"], tk.borderStrong],
           "fill-extrusion-height": ["case", ["boolean", ["feature-state", "sel"], false], ["*", ["get", "height"], 1.8], ["get", "height"]],
           "fill-extrusion-opacity": 0.95,
         },
@@ -93,7 +93,7 @@ export default function Request() {
     houses.forEach((h: any) => {
       const c = h.properties.cid;
       const s = status.get(c);
-      const color = c === cid ? tk.s2 : s === "firm" ? tk.ink2 : s === "nonfirm" ? tk.s1 : tk.baseline;
+      const color = c === cid ? tk.cat[0] : s === "firm" ? tk.text2 : s === "nonfirm" ? tk.accent : tk.borderStrong;
       map.setFeatureState({ source: "houses", id: c }, { color, sel: c === cid });
     });
   }, [houses, status, cid]);
@@ -163,10 +163,10 @@ export default function Request() {
           <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
             <div className="map-legend" style={{ width: 220 }}>
               <Legend items={[
-                { color: tokens().ink2, label: `${t("twin.status.firm")}` },
-                ...(baseline === "doe" ? [{ color: tokens().s1, label: t("twin.status.nonfirm") }] : []),
-                { color: tokens().baseline, label: t("twin.status.none") },
-                { color: tokens().s2, label: t("req.house") },
+                { color: tokens().text2, label: `${t("twin.status.firm")}` },
+                ...(baseline === "doe" ? [{ color: tokens().accent, label: t("twin.status.nonfirm") }] : []),
+                { color: tokens().borderStrong, label: t("twin.status.none") },
+                { color: tokens().cat[0], label: t("req.house") },
               ]} />
             </div>
           </MapView>
@@ -369,9 +369,9 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
       <h3>{anyCurtailed ? t("req.week") : t("req.weekNone")}</h3>
       <p className="caption-muted">{hourLabel(lang, year, a)}</p>
       <Legend items={[
-        { color: "var(--series-1)", label: t("req.week.pv") },
-        { color: "var(--series-2)", label: t("req.week.limit"), line: true },
-        { color: "var(--series-3)", label: t("req.week.curtailed") },
+        { color: "var(--accent)", label: t("req.week.pv") },
+        { color: "var(--cat-1)", label: t("req.week.limit"), line: true },
+        { color: "var(--cat-3)", label: t("req.week.curtailed") },
       ]} />
       <ChartOrTable
         chart={<Chart ariaLabel={t("req.week")} height={220} deps={[prof, lang]} build={(tk) => weekOption(tk, prof, hours, year, lang, t)} />}
@@ -407,7 +407,7 @@ function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string
     visualMap: {
       min: 0, max: cap, orient: "vertical", right: 0, top: "middle", itemHeight: 120, itemWidth: 10,
       textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${cap.toFixed(1)} kW`, "0"],
-      inRange: { color: [tk.seq[6], tk.seq[4], tk.seq[2], tk.seq[0]] },
+      inRange: { color: [tk.load[6], tk.load[4], tk.load[2], tk.load[0]] },
     },
     tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${p.value[2].toFixed(1)} kW</b>` },
     series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: 2 } }],
@@ -422,9 +422,9 @@ function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: 
     yAxis: { type: "value", ...axisStyle(tk), name: "kW" },
     tooltip: { trigger: "axis" },
     series: [
-      { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.s1 }, areaStyle: { color: tk.s1, opacity: 0.1 } },
-      { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.s2 } },
-      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.s3, borderRadius: [2, 2, 0, 0] }, barWidth: 3 },
+      { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.accent }, areaStyle: { color: tk.accent, opacity: 0.1 } },
+      { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.cat[0] } },
+      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.cat[2], borderRadius: [2, 2, 0, 0] }, barWidth: 3 },
     ],
   };
 }
@@ -436,6 +436,6 @@ function histOption(tk: Tokens, hist: { counts: number[]; edges: number[] }, t: 
     xAxis: { type: "category", data: mids.map((m) => m.toFixed(2)), ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5, formatter: (v: string) => `${Number(v).toFixed(1)} %` } },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { show: false } },
     tooltip: { trigger: "item", formatter: (p: any) => `${Number(p.name).toFixed(2)} %<br/><b>${p.value}</b> ${t("req.tt.years")}` },
-    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.s1, borderRadius: [4, 4, 0, 0] }, barCategoryGap: "12%" }],
+    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barCategoryGap: "12%" }],
   };
 }

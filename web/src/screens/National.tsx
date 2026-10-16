@@ -20,7 +20,7 @@ function slotColors(tk: Tokens): string[] {
     (!document.documentElement.getAttribute("data-theme") && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
   // slots 4–6 of the validated palette (light / dark steps)
   const extra = dark ? ["#c98500", "#d55181", "#008300"] : ["#eda100", "#e87ba4", "#008300"];
-  return [tk.s1, tk.s2, tk.s3, ...extra];
+  return [tk.accent, tk.cat[0], tk.cat[2], ...extra];
 }
 
 export default function National() {
@@ -62,11 +62,11 @@ export default function National() {
       const z = ft.properties.zone;
       const [lon, lat] = centroid(ft.geometry);
       const el = document.createElement("div");
-      el.style.cssText = "background:var(--surface);border:1px solid var(--hairline);border-radius:6px;padding:3px 8px;font:600 13px var(--font);color:var(--ink);text-align:center;box-shadow:0 1px 0 rgba(0,0,0,.05)";
+      el.style.cssText = "background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font:600 13px var(--font-sans);color:var(--text-primary);text-align:center;box-shadow:0 1px 0 rgba(0,0,0,.05)";
       const b = document.createElement("div");
       b.textContent = z;
       const s = document.createElement("div");
-      s.style.cssText = "font-weight:500;font-size:12px;color:var(--ink-2)";
+      s.style.cssText = "font-weight:500;font-size:12px;color:var(--text-secondary)";
       s.textContent = `${N.zones[z].price_mean_sek_kwh.toFixed(2)} kr/kWh`;
       el.append(b, s);
       new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
@@ -85,7 +85,7 @@ export default function National() {
             <div className="map-legend">
               <div className="scale">
                 <span>{t("nat.mapLegend", { year: N.year })}</span>
-                <div className="scale-bar" style={{ background: `linear-gradient(90deg, ${tk.seq.slice(1).join(",")})` }} />
+                <div className="scale-bar" style={{ background: `linear-gradient(90deg, ${tk.load.slice(1).join(",")})` }} />
                 <div className="scale-ticks"><span>{f(priceRange[0], 2)}</span><span>{f(priceRange[1], 2)}</span></div>
               </div>
             </div>
@@ -94,14 +94,14 @@ export default function National() {
       </div>
       <aside className="panel">
         <div className="stack">
-          <h2 style={{ fontSize: "var(--t-xl)" }}>{t("nat.title")}</h2>
+          <h2 style={{ fontSize: "var(--text-h2)" }}>{t("nat.title")}</h2>
           <p className="caption">{t("nat.sub", { year: N.year })}</p>
           <div className="row"><Chip kind="real" /><span className="caption-muted">{t("nat.sources")}</span></div>
         </div>
 
         <section className="stack">
           <h3>{t("nat.prodcons")}</h3>
-          <Legend items={[{ color: "var(--series-1)", label: t("nat.production") }, { color: "var(--series-2)", label: t("nat.consumption") }]} />
+          <Legend items={[{ color: "var(--accent)", label: t("nat.production") }, { color: "var(--cat-1)", label: t("nat.consumption") }]} />
           <ChartOrTable
             chart={<Chart ariaLabel={t("nat.prodcons")} height={220} deps={[N]} build={(tk) => prodConsOption(tk, N, t)} />}
             table={
@@ -166,8 +166,8 @@ function prodConsOption(tk: Tokens, N: any, t: (k: string) => string) {
     yAxis: { type: "value", ...axisStyle(tk), name: "TWh" },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     series: [
-      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.s1, borderRadius: [4, 4, 0, 0] }, barWidth: 20, barGap: "10%" },
-      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.s2, borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
+      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barWidth: 20, barGap: "10%" },
+      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.cat[0], borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
     ],
   };
 }
@@ -201,8 +201,8 @@ function negOption(tk: Tokens, N: any) {
     tooltip: { trigger: "item", formatter: (p: any) => `${p.name}: <b>${p.value}</b> h` },
     series: [{
       type: "bar", barWidth: 14, data: ZONES.map((z) => N.zones[z].negative_price_hours),
-      itemStyle: { color: tk.s1, borderRadius: [0, 4, 4, 0] },
-      label: { show: true, position: "right", color: tk.ink, formatter: "{c} h" },
+      itemStyle: { color: tk.accent, borderRadius: [0, 4, 4, 0] },
+      label: { show: true, position: "right", color: tk.text, formatter: "{c} h" },
     }],
   };
 }

@@ -43,7 +43,7 @@ export default function Scenarios() {
     <div className="page">
       <div className="page-inner">
         <section className="stack" style={{ gap: 14 }}>
-          <h1 className="headline" style={{ fontSize: "var(--t-2xl)", maxWidth: "34ch" }}>{t("scn.title")}</h1>
+          <h1 className="headline" style={{ fontSize: "var(--text-h1)", maxWidth: "34ch" }}>{t("scn.title")}</h1>
           <p className="headline-sub">{t("scn.sub", { year: D.year })}</p>
           {firstStaticFail && lastDoe && (
             <p className="caption">{t("scn.breaking", { pv: Math.round(firstStaticFail.pv * 100), pv2: Math.round(lastDoe.pv * 100) })}</p>
@@ -122,14 +122,14 @@ export default function Scenarios() {
 }
 
 function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t: (k: string) => string, sel: { pv: number; ev: number } | null) {
-  const colors = [tk.good, tk.warning, tk.critical];
+  const colors = [tk.accent, tk.warning, tk.danger];
   const glyph = ["✓", "◐", "✕"];
   const data = cells.map((c) => {
     const s = stateOf(c);
     const isSel = sel && sel.pv === c.pv && sel.ev === c.ev;
     return {
       value: [pvs.indexOf(c.pv), evs.indexOf(c.ev), s],
-      itemStyle: { color: colors[s], borderColor: isSel ? tk.ink : tk.surface, borderWidth: isSel ? 4 : 3 },
+      itemStyle: { color: colors[s], borderColor: isSel ? tk.text : tk.surface, borderWidth: isSel ? 4 : 3 },
       label: { formatter: glyph[s], color: s === 1 ? "#102530" : "#ffffff" },
     };
   });
@@ -147,7 +147,7 @@ function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t
     series: [{
       type: "heatmap", data,
       label: { show: true, fontSize: 16, fontWeight: 700 },
-      emphasis: { itemStyle: { borderColor: tk.ink, borderWidth: 3 } },
+      emphasis: { itemStyle: { borderColor: tk.text, borderWidth: 3 } },
     }],
   };
 }

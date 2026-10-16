@@ -6,27 +6,31 @@ export function token(name: string): string {
 
 export function tokens() {
   return {
-    paper: token("--paper"),
-    surface: token("--surface"),
-    surface2: token("--surface-2"),
-    ink: token("--ink"),
-    ink2: token("--ink-2"),
-    muted: token("--muted"),
-    hairline: token("--hairline"),
-    baseline: token("--baseline"),
-    s1: token("--series-1"),
-    s2: token("--series-2"),
-    s3: token("--series-3"),
-    deemph: token("--deemph"),
-    good: token("--good"),
+    bg: token("--bg-base"),
+    surface: token("--bg-surface"),
+    inset: token("--bg-inset"),
+    elevated: token("--bg-elevated"),
+    text: token("--text-primary"),
+    text2: token("--text-secondary"),
+    muted: token("--text-muted"),
+    border: token("--border"),
+    borderStrong: token("--border-strong"),
+    accent: token("--accent"),
+    neutralSeries: token("--neutral-series"),
     warning: token("--warning"),
-    serious: token("--serious"),
-    critical: token("--critical"),
-    seq: ["--seq-100", "--seq-200", "--seq-300", "--seq-400", "--seq-500", "--seq-600", "--seq-700"].map(token),
-    divLow: token("--div-low"),
-    divMid: token("--div-mid"),
-    divHigh: token("--div-high"),
-    font: token("--font"),
+    danger: token("--danger"),
+    production: token("--data-production"),
+    consumption: token("--data-consumption"),
+    cat: ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5", "--cat-6"].map(token),
+    // cable and transformer loading: stops at 0, 50 and 85 %, flat above the rating
+    load: ["--load-0", "--load-50", "--load-85"].map(token),
+    loadOver: token("--load-over"),
+    // voltage: diverging around 1.00 pu, blue and amber
+    voltLow: token("--volt-low"),
+    voltMid: token("--volt-mid"),
+    voltHigh: token("--volt-high"),
+    font: token("--font-sans"),
+    mono: token("--font-mono"),
   };
 }
 
@@ -45,28 +49,29 @@ function mix(a: string, b: string, t: number): string {
   return `rgb(${c(r1, r2)},${c(g1, g2)},${c(b1, b2)})`;
 }
 
-/** Sequential ramp: t in [0,1] → one-hue light→dark colour. */
+/** Loading ramp: stops at 0, 50 and 85 % of the rating (design-system.md 1.4). */
 export function seqColor(tk: Tokens, t: number): string {
-  const s = tk.seq;
-  const x = Math.max(0, Math.min(1, t)) * (s.length - 1);
-  const i = Math.min(s.length - 2, Math.floor(x));
-  return mix(s[i], s[i + 1], x - i);
+  const stops = tk.load;
+  const x = Math.max(0, Math.min(1, t)) * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(x));
+  return mix(stops[i], stops[i + 1], x - i);
 }
 
-/** Diverging voltage colour: 1.0 pu neutral, low → blue, high → red, saturating at ±span. */
-export function voltageColor(tk: Tokens, v: number, span = 0.1): string {
+/** Voltage: 1.00 pu neutral, 0.94 pu blue, 1.06 pu amber. Never red and green. */
+export function voltageColor(tk: Tokens, v: number, span = 0.06): string {
   const d = Math.max(-1, Math.min(1, (v - 1) / span));
-  return d < 0 ? mix(tk.divMid, tk.divLow, -d) : mix(tk.divMid, tk.divHigh, d);
+  return d < 0 ? mix(tk.voltMid, tk.voltLow, -d) : mix(tk.voltMid, tk.voltHigh, d);
 }
 
-/** Net power at a house: import (blue) ← 0 (neutral) → export (orange), saturating at ±span kW. */
+/** Net power at a house: import to the left, export to the right, on the voltage poles. */
 export function powerColor(tk: Tokens, kw: number, span = 8): string {
   const d = Math.max(-1, Math.min(1, kw / span));
-  return d < 0 ? mix(tk.divMid, tk.divLow, -d) : mix(tk.divMid, tk.s2, d);
+  return d < 0 ? mix(tk.voltMid, tk.voltLow, -d) : mix(tk.voltMid, tk.voltHigh, d);
 }
 
-/** Cable loading: sequential up to 100 %, reserved critical colour above the rating. */
+/** Cable loading: the ramp up to the rating, then one flat colour. Exceeding it is binary. */
 export function loadingColor(tk: Tokens, pct: number): string {
-  if (pct > 100) return tk.critical;
-  return seqColor(tk, pct / 100);
+  if (pct > 100) return tk.loadOver;
+  // the ramp's last stop is 85 %, and it holds from there to the rating
+  return seqColor(tk, Math.min(pct, 85) / 85);
 }
