@@ -18,6 +18,13 @@ const paths = {
   bolt: "m13 2-9 12h7l-1 8 10-13h-8l1-7Z",
   sun: "M12 2v2m0 16v2M2 12h2m16 0h2M5 5l2 2m10 10 2 2M5 19l2-2M17 7l2-2M16 12a4 4 0 1 1-8 0 4 4 0 0 1 8 0",
   check: "m5 12 4 4L19 6",
+  alert: "M12 8v5m0 3h.01M12 3 2 20h20L12 3Z",
+  search: "M11 19a8 8 0 1 1 0-16 8 8 0 0 1 0 16Zm6.5-1.5L21 21",
+  command: "M6 3a3 3 0 1 1 3 3H6a3 3 0 0 1 0-6Zm12 0a3 3 0 1 0-3 3h3a3 3 0 0 0 0-6ZM6 21a3 3 0 1 1 3-3H6a3 3 0 0 0 0 6Zm12 0a3 3 0 1 0-3-3h3a3 3 0 0 1 0 6ZM9 9h6v6H9V9Z",
+  sort: "M8 9 12 5l4 4M8 15l4 4 4-4",
+  copy: "M9 9h10v10H9V9Zm-4 6V5h10",
+  download: "M12 4v10m-4-4 4 4 4-4M5 19h14",
+  filter: "M4 5h16l-6 7v6l-4 2v-8L4 5Z",
 } as const;
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths; size?: number }) {

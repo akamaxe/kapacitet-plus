@@ -1,8 +1,13 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { SideNav, StatusBar, TopBar } from "./components/Shell";
 import { Icon } from "./components/Icon";
 import { useT } from "./lib/i18n";
 import { Loading } from "./components/bits";
+import { useDismissable } from "./components/Dialog";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { Palette } from "./components/Palette";
+import { Shortcuts } from "./components/Shortcuts";
+import { Toasts } from "./components/Toast";
 import { NOTES } from "./lib/notes";
 import { SCREENS, useStore } from "./lib/store";
 
@@ -18,10 +23,18 @@ function Notes() {
   const screen = useStore((s) => s.screen);
   const lang = useStore((s) => s.lang);
   const open = useStore((s) => s.notes);
+  const close = useCallback(() => useStore.getState().toggleNotes(), []);
+  // not modal: the drawer sits beside the screen it annotates, so Tab leaves it
+  const panel = useDismissable(open, close, false);
   if (!open) return null;
   return (
-    <aside className="notes" aria-label={t("ui.notes")}>
-      <div className="block-head"><h4>{t("ui.notes")} · {SCREENS.indexOf(screen) + 1} / {SCREENS.length}</h4><button className="icon-btn" aria-label={t("shell.close")} onClick={() => useStore.getState().toggleNotes()}><Icon name="close" size={16} /></button></div>
+    <aside className="notes" aria-label={t("ui.notes")} ref={panel}>
+      <div className="block-head">
+        <h4>{t("ui.notesOf", { n: SCREENS.indexOf(screen) + 1, total: SCREENS.length })}</h4>
+        <button className="icon-btn" aria-label={t("shell.close")} onClick={close}>
+          <Icon name="close" size={16} />
+        </button>
+      </div>
       <ul>
         {NOTES[lang][screen].map((n) => (
           <li key={n}>{n}</li>
@@ -34,20 +47,36 @@ function Notes() {
 export default function App() {
   const t = useT();
   const screen = useStore((s) => s.screen);
+  const [palette, setPalette] = useState(false);
+  const [keys, setKeys] = useState(false);
+  const [attempt, setAttempt] = useState(0);
 
-  // Presentation keys: PageDown/PageUp or Ctrl+→/← move between screens, 1–6 jump
-  // straight to one, N toggles notes.
+  // Keys: 1–6 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
+  // sheet, N the notes, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       // closest() only exists on elements: a key event whose target is the document
       // itself would otherwise throw and take the whole handler with it.
-      if (target?.closest?.("input, select, textarea, canvas, [contenteditable='true']") || e.altKey) return;
+      const typing = !!target?.closest?.("input, select, textarea, canvas, [contenteditable='true']");
+      if (e.altKey) return;
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        setPalette(true);
+        e.preventDefault();
+        return;
+      }
+      if (typing) return;
       const st = useStore.getState();
       const i = SCREENS.indexOf(st.screen);
       const digit = Number(e.key);
       if (digit >= 1 && digit <= SCREENS.length && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         st.setScreen(SCREENS[digit - 1]);
+        e.preventDefault();
+      } else if (e.key === "/" ) {
+        setPalette(true);
+        e.preventDefault();
+      } else if (e.key === "?") {
+        setKeys(true);
         e.preventDefault();
       } else if (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight")) {
         st.setScreen(SCREENS[Math.min(SCREENS.length - 1, i + 1)]);
@@ -69,20 +98,25 @@ export default function App() {
   return (
     <div className="app">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
-      <SideNav />
-      <TopBar />
+      <SideNav onSearch={() => setPalette(true)} />
+      <TopBar onSearch={() => setPalette(true)} />
       <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
-        <Suspense fallback={<Loading />}>
-          {screen === "national" && <National />}
-          {screen === "twin" && <Twin />}
-          {screen === "compare" && <Compare />}
-          {screen === "request" && <Request />}
-          {screen === "scenarios" && <Scenarios />}
-          {screen === "method" && <Method />}
-        </Suspense>
+        <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
+          <Suspense fallback={<Loading />}>
+            {screen === "national" && <National />}
+            {screen === "twin" && <Twin />}
+            {screen === "compare" && <Compare />}
+            {screen === "request" && <Request />}
+            {screen === "scenarios" && <Scenarios />}
+            {screen === "method" && <Method />}
+          </Suspense>
+        </ErrorBoundary>
       </main>
-      <StatusBar />
+      <StatusBar onKeys={() => setKeys(true)} />
       <Notes />
+      <Palette open={palette} onClose={() => setPalette(false)} />
+      <Shortcuts open={keys} onClose={() => setKeys(false)} />
+      <Toasts />
     </div>
   );
 }
