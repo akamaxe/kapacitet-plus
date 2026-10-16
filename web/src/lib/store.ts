@@ -21,9 +21,74 @@ function writeLS(key: string, value: string) {
   }
 }
 
-function screenFromHash(): Screen {
-  const h = window.location.hash.replace("#/", "").replace("#", "");
-  return (SCREENS as string[]).includes(h) ? (h as Screen) : "compare";
+/**
+ * `#/<screen>?hour=…&scenario=…&cid=…` — what someone is looking at, so a view can be
+ * sent to a colleague and a figure in a report can be traced back to it.
+ *
+ * Only things that change what the numbers mean travel: the hour, the scenario and the
+ * selected house. A link that autoplays, or that pre-fills a request form with an answer
+ * nobody computed, would be worse than no link at all.
+ */
+export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
+
+export interface UrlView {
+  screen: Screen;
+  hour?: number;
+  scenario?: Scenario;
+  cid?: number;
+}
+
+function parseHash(): UrlView {
+  const raw = window.location.hash.replace(/^#\/?/, "");
+  const [path, search] = raw.split("?");
+  const screen = (SCREENS as string[]).includes(path) ? (path as Screen) : "compare";
+  const q = new URLSearchParams(search ?? "");
+  const out: UrlView = { screen };
+  // Number(null) is 0, so every one of these needs the presence check first: without it
+  // a link with no hour reads as hour 0 and resets the view on every tab click.
+  const num = (key: string) => {
+    const raw = q.get(key);
+    if (raw === null || raw.trim() === "") return undefined;
+    const n = Number(raw);
+    return Number.isInteger(n) ? n : undefined;
+  };
+  const hour = num("hour");
+  if (hour !== undefined && hour >= 0 && hour < 8784) out.hour = hour;
+  const scenario = q.get("scenario");
+  if (scenario && (SCENARIOS as string[]).includes(scenario)) out.scenario = scenario as Scenario;
+  const cid = num("cid");
+  if (cid !== undefined && cid >= 0) out.cid = cid;
+  return out;
+}
+
+/** The last hash this module wrote, so our own replaceState does not look like a visit. */
+let written = "";
+
+function writeHash(push: boolean) {
+  const st = useStore.getState();
+  const q = new URLSearchParams();
+  // omit anything at its default, and anything this screen does not read: an hour on the
+  // method appendix is noise in a link somebody is meant to paste somewhere
+  const usesHour = st.screen === "twin" || st.screen === "request";
+  if (usesHour && st.hourTouched) q.set("hour", String(st.hour));
+  if (st.screen === "twin" && st.scenario !== "doe") q.set("scenario", st.scenario);
+  if (usesHour && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
+  const qs = q.toString();
+  const hash = `#/${st.screen}${qs ? `?${qs}` : ""}`;
+  if (hash === written) return;
+  written = hash;
+  // replaceState, not location.hash: the hour changes up to eight times a second during
+  // playback and once per drag frame on the year strip, and each one would otherwise be
+  // a history entry, which destroys the back button.
+  history[push ? "pushState" : "replaceState"](null, "", hash);
+}
+
+let hourTimer: number | undefined;
+
+function scheduleHashWrite() {
+  if (useStore.getState().playing) return; // written once when playback stops
+  window.clearTimeout(hourTimer);
+  hourTimer = window.setTimeout(() => writeHash(false), 250);
 }
 
 interface State {
@@ -50,19 +115,21 @@ interface State {
 // Fallback hour (12 July, 12:00 local standard time) until /meta provides the showcase hour.
 const DEFAULT_HOUR = (31 + 28 + 31 + 30 + 31 + 30 + 11) * 24 + 12;
 
+const initial = parseHash();
+
 export const useStore = create<State>((set) => ({
-  screen: screenFromHash(),
+  screen: initial.screen,
   lang: (readLS("kap.lang", "en") as "en" | "es"),
   theme: (readLS("kap.theme", "dark") as Theme),
   notes: false,
-  hour: DEFAULT_HOUR,
-  hourTouched: false,
-  scenario: "doe",
+  hour: initial.hour ?? DEFAULT_HOUR,
+  hourTouched: initial.hour !== undefined,
+  scenario: initial.scenario ?? "doe",
   playing: false,
-  selectedCid: null,
+  selectedCid: initial.cid ?? null,
   setScreen: (screen) => {
-    window.location.hash = `#/${screen}`;
     set({ screen });
+    writeHash(true); // a screen is a place, so it gets a history entry
   },
   setLang: (lang) => {
     writeLS("kap.lang", lang);
@@ -75,10 +142,22 @@ export const useStore = create<State>((set) => ({
     set({ theme });
   },
   toggleNotes: () => set((s) => ({ notes: !s.notes })),
-  setHour: (hour) => set({ hour, hourTouched: true }),
-  setScenario: (scenario) => set({ scenario }),
-  setPlaying: (playing) => set({ playing }),
-  select: (selectedCid) => set({ selectedCid }),
+  setHour: (hour) => {
+    set({ hour, hourTouched: true });
+    scheduleHashWrite();
+  },
+  setScenario: (scenario) => {
+    set({ scenario });
+    writeHash(false);
+  },
+  setPlaying: (playing) => {
+    set({ playing });
+    if (!playing) writeHash(false); // catch up with where playback left the hour
+  },
+  select: (selectedCid) => {
+    set({ selectedCid });
+    writeHash(false);
+  },
 }));
 
 export function applyTheme(theme: Theme) {
@@ -94,6 +173,21 @@ export function isDark(): boolean {
 }
 
 window.addEventListener("hashchange", () => {
-  const s = screenFromHash();
-  if (useStore.getState().screen !== s) useStore.setState({ screen: s });
+  if (window.location.hash === written) return; // our own write, echoed back
+  const v = parseHash();
+  written = window.location.hash;
+  useStore.setState({
+    screen: v.screen,
+    ...(v.hour !== undefined ? { hour: v.hour, hourTouched: true } : {}),
+    ...(v.scenario ? { scenario: v.scenario } : {}),
+    // a link without a parameter means "this screen", not "forget what I had selected"
+    ...(v.cid !== undefined ? { selectedCid: v.cid } : {}),
+    playing: false,
+  });
+  // A tab link carries only the screen, but the view still has an hour and a selection.
+  // Put them back in the address bar so what is on screen is always what the link says.
+  writeHash(false);
 });
+
+/** Each screen owns its own scroller above 1100 px, so there is no single position. */
+export const scrollPositions = new Map<Screen, number>();
