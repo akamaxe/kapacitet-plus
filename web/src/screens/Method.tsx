@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
-import { ChartOrTable, Chip, Legend, Loading, Status, Tile } from "../components/bits";
+import { PageSkeleton } from "../components/Skeleton";
+import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -68,7 +69,8 @@ export default function Method() {
     return m;
   }, [status.data]);
 
-  if (src.isLoading || ass.isLoading) return <Loading />;
+  if (src.isLoading || ass.isLoading) return <PageSkeleton blocks={3} />;
+  if (src.isError || ass.isError) return <Missing of={[src, ass, val, meta]} />;
   const assumptions = (ass.data?.assumptions ?? []).filter((a: any) => tag === "all" || a.tag === tag);
   const counts = TAGS.map((tg) => (ass.data?.assumptions ?? []).filter((a: any) => a.tag === tg).length);
 

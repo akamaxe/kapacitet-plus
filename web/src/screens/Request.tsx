@@ -2,7 +2,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { Chart, axisStyle } from "../components/Chart";
-import { ChartOrTable, Legend, Loading, Status, Tile } from "../components/bits";
+import { Icon } from "../components/Icon";
+import { toast } from "../components/Toast";
+import { SplitSkeleton } from "../components/Skeleton";
+import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { hourLabel, monthNames, useFmt } from "../lib/format";
@@ -11,6 +14,8 @@ import { useStore } from "../lib/store";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
 const STAGES: Stage[] = ["static", "envelope", "verify", "risk", "economics"];
+/** The most curtailed non-firm customer of the published year (compliance.json). */
+const EXAMPLE_CID = 84;
 
 interface Job {
   id: string;
@@ -118,6 +123,11 @@ export default function Request() {
   }, [net.data]);
 
   // ------------------------------------------------------------------ evaluation
+  const fail = (why: string) => {
+    setJob((j) => ({ id: j?.id ?? "", stages: j?.stages ?? {}, result: null, error: why }));
+    toast.error(t("req.failed", { why }));
+  };
+
   const evaluate = async () => {
     if (cid === null) return;
     esRef.current?.close();
@@ -128,7 +138,8 @@ export default function Request() {
       body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, baseline }),
     });
     if (!r.ok) {
-      setJob({ id: "", stages: {}, result: null, error: `${r.status}` });
+      const why = `${r.status} ${(await r.text()).slice(0, 120)}`.trim();
+      fail(why);
       return;
     }
     const { id } = await r.json();
@@ -144,14 +155,34 @@ export default function Request() {
       const res = await fetch(`${API}/requests/${id}`).then((x) => x.json());
       setJob((j) => (j ? { ...j, stages: { ...j.stages, done: 0 }, result: res } : j));
     });
+    // The engine reports its own failure as a named event. Without this the stepper
+    // simply stopped, indistinguishable from a transport drop, and the button never
+    // came back.
+    es.addEventListener("failed", (e: MessageEvent) => {
+      es.close();
+      fail(JSON.parse(e.data)?.error ?? "");
+    });
+    // The server always ends the stream. If it ends with no result, something went
+    // wrong between the stages, so this is the signal that stops the spinner.
+    es.addEventListener("end", () => {
+      es.close();
+      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.ended") } : j));
+    });
+    es.addEventListener("timeout", () => {
+      es.close();
+      fail(t("req.timeout"));
+    });
+    // the native EventSource error: the stream dropped rather than the job failing
     es.addEventListener("error", () => {
       es.close();
+      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.dropped") } : j));
     });
   };
 
   useEffect(() => () => esRef.current?.close(), []);
 
-  if (!net.data || !meta.data) return <Loading />;
+  if (net.isError || meta.isError) return <Missing of={[net, meta]} />;
+  if (!net.data || !meta.data) return <SplitSkeleton wide />;
   const year = meta.data.reference_year;
   const res = job?.result;
   const running = !!job && !job.result && !job.error;
@@ -186,7 +217,29 @@ export default function Request() {
         </div>
 
         {!house ? (
-          <p className="caption">{t("req.pick")}</p>
+          <div className="blank">
+            <span className="loading-orbit"><Icon name="request" size={26} /></span>
+            <h3>{t("req.blank.title")}</h3>
+            <p className="caption">{t("req.pick")}</p>
+            <div className="row">
+              <button
+                className="btn"
+                onClick={() => {
+                  // the most curtailed non-firm house in the published year: the one
+                  // whose answer is worth seeing, rather than an arbitrary roof
+                  const h = houses.find((x: any) => x.properties.cid === EXAMPLE_CID) ?? houses[0];
+                  if (h) {
+                    // the PV size follows the roof: an effect below sizes it from the
+                    // house's own potential, which beats any number written here
+                    select(h.properties.cid);
+                    setEv(11);
+                  }
+                }}
+              >
+                {t("req.blank.example")}
+              </button>
+            </div>
+          </div>
         ) : (
           <>
             <div className="stack">
@@ -238,6 +291,12 @@ export default function Request() {
               );
             })}
             {res && <p className="caption-muted">{t("req.seconds", { s: f(res.seconds, 2) })}</p>}
+            {job.error && (
+              <p className="step-error" role="alert">
+                <Icon name="alert" size={15} />
+                {t("req.failed", { why: job.error })}
+              </p>
+            )}
           </div>
         )}
 

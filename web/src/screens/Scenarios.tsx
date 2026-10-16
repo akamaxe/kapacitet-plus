@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
-import { ChartOrTable, Loading, Missing, Status, Tile } from "../components/bits";
+import { PageSkeleton } from "../components/Skeleton";
+import { ChartOrTable, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { token, type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -25,8 +26,8 @@ export default function Scenarios() {
   const hpNow = hp ?? D?.hp_shares?.[0] ?? 0.3;
   const cells: Cell[] = useMemo(() => (D ? D.cases.filter((c: Cell) => Math.abs(c.hp - hpNow) < 1e-9) : []), [D, hpNow]);
 
-  if (sc.isLoading) return <Loading />;
-  if (!D) return <Missing />;
+  if (sc.isLoading) return <PageSkeleton blocks={2} />;
+  if (!D) return <Missing of={[sc]} />;
 
   const pvs: number[] = D.pv_shares;
   const evs: number[] = D.ev_shares;

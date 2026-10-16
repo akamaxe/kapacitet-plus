@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { YearStrip } from "../components/YearStrip";
-import { Chip, Meter, Status, Tile, Loading, Missing } from "../components/bits";
+import { SplitSkeleton } from "../components/Skeleton";
+import { Chip, Meter, Status, Tile, Missing } from "../components/bits";
 import { Icon } from "../components/Icon";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, tokens, voltageColor } from "../lib/colors";
@@ -187,8 +188,8 @@ export default function Twin() {
 
   useEffect(() => () => setPlaying(false), [setPlaying]);
 
-  if (net.isError || meta.isError || st.isError) return <Missing />;
-  if (!net.data || !meta.data) return <Loading />;
+  if (net.isError || meta.isError || st.isError) return <Missing of={[net, meta, st]} />;
+  if (!net.data || !meta.data) return <SplitSkeleton />;
 
   const sc = show.data?.data?.showcase;
   const agg = st.isPlaceholderData ? undefined : st.data?.header.aggregates;
