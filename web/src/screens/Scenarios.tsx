@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { ChartOrTable, Loading, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
-import { type Tokens } from "../lib/colors";
+import { token, type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 
@@ -130,7 +130,7 @@ function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t
     return {
       value: [pvs.indexOf(c.pv), evs.indexOf(c.ev), s],
       itemStyle: { color: colors[s], borderColor: isSel ? tk.text : tk.surface, borderWidth: isSel ? 4 : 3 },
-      label: { formatter: glyph[s], color: s === 1 ? "#102530" : "#ffffff" },
+      label: { formatter: glyph[s], color: token("--on-accent") },
     };
   });
   return {

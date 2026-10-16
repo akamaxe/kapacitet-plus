@@ -92,7 +92,7 @@ export function gridLines(tk: Tokens) {
 
 export function axisStyle(tk: Tokens) {
   return {
-    axisLine: { lineStyle: { color: tk.borderStrong } },
+    axisLine: { lineStyle: { color: tk.border } },
     axisTick: { show: false },
     axisLabel: { color: tk.muted, fontFamily: tk.font },
     splitLine: { show: false, lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
