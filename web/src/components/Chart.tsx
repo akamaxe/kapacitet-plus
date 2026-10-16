@@ -85,12 +85,17 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EC
   };
 }
 
+/** Horizontal gridlines, for the charts where a value has to be read off the axis. */
+export function gridLines(tk: Tokens) {
+  return { splitLine: { show: true, lineStyle: { color: tk.border, width: 1, type: "solid" as const } } };
+}
+
 export function axisStyle(tk: Tokens) {
   return {
     axisLine: { lineStyle: { color: tk.borderStrong } },
     axisTick: { show: false },
     axisLabel: { color: tk.muted, fontFamily: tk.font },
-    splitLine: { lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
+    splitLine: { show: false, lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
     nameTextStyle: { color: tk.muted, fontFamily: tk.font },
   };
 }

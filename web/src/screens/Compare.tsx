@@ -52,35 +52,23 @@ export default function Compare() {
         {/* ---------------------------------------------------------------- headline */}
         <section className="overview-hero">
           <div className="overview-copy">
-            <span className="eyebrow"><span className="signal-line" />{t("overview.eyebrow")}</span>
-            <h1 className="headline">{t("overview.title")}<br /><span>{t("overview.titleAccent")}</span></h1>
+            <h1 className="headline">{t("overview.title")}</h1>
             <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
             <div className="hero-actions"><a className="btn" href="#/twin">{t("overview.explore")}<Icon name="arrow" size={18} /></a><a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a></div>
             <span className="hero-context">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>
           </div>
           <GridPreview />
         </section>
-          <div className="hero-figures" aria-label={t("overview.metrics")}>
-            <div className="figure">
-              <div className="metric-top"><span>{t("overview.baseline")}</span><Icon name="compare" /></div>
-              <div className="value">{f(staticKw)}<small>kW</small></div>
-              <div className="label"><span className="mark" style={{ background: "var(--neutral-series)" }} />{t("cmp.fig.static")}</div>
-            </div>
-            <div className="figure featured">
-              <div className="metric-top"><span>{t("overview.dynamic")}</span><Icon name="bolt" /></div>
-              <div className="value">{f(doeKw)}<small>kW</small></div>
-              <div className="label"><span className="mark" style={{ background: "var(--accent)" }} />{t("cmp.fig.doe")}</div>
-            </div>
-            <div className="figure">
-              <div className="metric-top"><span>{t("overview.uplift")}</span><Icon name="scenarios" /></div>
-              <div className="value">×{f(ratio, 1)}</div>
-              <div className="label">{t("cmp.fig.gain")}</div>
-            </div>
-            <div className="figure">
-              <div className="metric-top"><span>{t("overview.curtailment")}</span><Icon name="sun" /></div>
-              <div className="value">{f(zDoeMedian, 1)}<small>%</small></div>
-              <div className="label">{t("overview.curtailmentNote")}</div>
-            </div>
+          <div className="hero-compare">
+            <Chart
+              ariaLabel={t("cmp.hero.aria")}
+              height={184}
+              deps={[H, lang]}
+              build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, ratio, t, width)}
+            />
+            <p className="caption">
+              {t("cmp.hero.cost", { pct: f(zDoeMedian, 1) })}
+            </p>
           </div>
           <div className="data-provenance">
             <Chip kind="real" /><span className="caption-muted">{t("cmp.chips.real")}</span>
@@ -224,6 +212,55 @@ function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
 }
 
 // ------------------------------------------------------------------------------ chart options
+
+/** The static-versus-dynamic comparison: two bars on one axis, the multiplier between them
+    (design-system.md 4.9). No legend, no gridlines: both series are labelled directly. */
+function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number, ratio: number,
+                           t: (k: string, v?: any) => string, width: number) {
+  const compact = width < 520;
+  const cats = [t("cmp.fig.static"), t("cmp.fig.doe")];
+  const vals = [staticKw, doeKw];
+  return {
+    grid: { left: compact ? 108 : 190, right: 96, top: 10, bottom: 34 },
+    xAxis: {
+      type: "value", ...axisStyle(tk), name: "kW", nameLocation: "end",
+      splitLine: { show: false }, max: Math.ceil(doeKw / 100) * 100,
+    },
+    yAxis: {
+      type: "category", data: cats, inverse: true, ...axisStyle(tk),
+      splitLine: { show: false },
+      axisLabel: { color: tk.text2, fontFamily: tk.font, fontSize: compact ? 11 : 13,
+                   width: compact ? 100 : 180, overflow: "break" },
+    },
+    tooltip: {
+      trigger: "item",
+      formatter: (p: any) => `${cats[p.dataIndex]}<br/><b>${Math.round(p.value)} kW</b>`,
+    },
+    series: [
+      {
+        type: "bar",
+        barWidth: 26,
+        barCategoryGap: "55%",
+        data: vals.map((v, i) => ({
+          value: v,
+          itemStyle: { color: i === 0 ? tk.neutralSeries : tk.accent, borderRadius: [0, 4, 4, 0] },
+        })),
+        label: {
+          show: true, position: "right", distance: 10, fontFamily: tk.mono,
+          fontSize: compact ? 12 : 14, color: tk.text, fontWeight: 500,
+          formatter: (p: any) => `${Math.round(p.value)} kW`,
+        },
+      },
+    ],
+    graphic: [{
+      type: "text", right: compact ? 4 : 10, top: "middle",
+      style: {
+        text: `×${ratio.toFixed(1)}`, fill: tk.accent, fontFamily: tk.mono,
+        fontSize: compact ? 20 : 26, fontWeight: 500,
+      },
+    }],
+  };
+}
 
 function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: number) {
   const compact = width < 520;
