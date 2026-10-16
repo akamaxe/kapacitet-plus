@@ -27,7 +27,7 @@ export function GridPreview() {
     <div className="grid-preview">
       {net.data && meta.data ? <MapView center={meta.data.center} zoom={15.5} pitch={45} bearing={-25} basemap={false} interactive={false} setup={setup} onReady={(map) => { fitTo(map, net.data.bbox, 42); map.on("resize", () => fitTo(map, net.data.bbox, 42)); }} ariaLabel={t("overview.mapLabel")} /> : <div className="preview-placeholder"><Icon name="twin" size={48} /><span>{t(net.isError || meta.isError ? "overview.mapUnavailable" : "ui.loading")}</span></div>}
       <div className="preview-heading"><span className="eyebrow">{t("overview.twin")}</span><span className="preview-location">Smedslätten / SE3</span></div>
-      <a className="preview-open" href="#/twin"><span><Icon name="twin" size={16} />{t("overview.explore")}</span><Icon name="arrow" size={18} /></a>
+      <a className="preview-open" href="#/twin"><span><Icon name="twin" size={16} />{t("overview.explore")}</span></a>
     </div>
   );
 }

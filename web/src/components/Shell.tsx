@@ -19,14 +19,14 @@ export function SideNav() {
       <nav className="tabs" aria-label={t("shell.navigation")}>
         {SCREENS.map((s, i) => (
           <a key={s} href={`#/${s}`} className="tab" aria-current={screen === s ? "page" : undefined} title={t(`tab.${s}`)}>
-            <Icon name={s} /><span>{t(`tab.${s}`)}</span><b>{String(i + 1).padStart(2, "0")}</b>
+            <Icon name={s} /><span>{t(`tab.${s}`)}</span><kbd>{i + 1}</kbd>
           </a>
         ))}
       </nav>
       <div className="sidebar-bottom">
-        <div className="site-card"><span className="site-glyph"><Icon name="twin" size={25} /></span><div><strong>Smedslätten</strong><span>Bromma · Stockholm · SE3</span></div><span className="site-caption">{t("shell.site")}</span></div>
+        <div className="site-card"><span className="site-glyph"><Icon name="twin" size={25} /></span><div><strong>Smedslätten</strong><span>{t("shell.place")}</span></div><span className="site-caption">{t("shell.site")}</span></div>
         <button className="notes-toggle" aria-pressed={notes} onClick={toggleNotes} title={`${t("ui.notes")} (N)`}><Icon name="notes" /><span>{t("ui.notes")}</span><kbd>N</kbd></button>
-        <span className="project-credit">KTH · EI2600 <span>{t("shell.research")}</span></span>
+        <span className="project-credit">KTH EI2600 <span>{t("shell.research")}</span></span>
       </div>
     </aside>
   );
@@ -43,7 +43,7 @@ function LiveStrip() {
   return (
     <div className="live" title="SMHI (CC BY 4.0) · Elpriser tillhandahålls av Elpriset just nu.se">
       <span><span className={`live-dot ${online ? "" : "off"}`} />{online ? t("shell.connected") : data || isError ? t("shell.cached") : t("shell.connecting")}</span>
-      {online && data.temperature?.value_c != null && <span><strong>{f(data.temperature.value_c, 1)} °C</strong> · Bromma</span>}
+      {online && data.temperature?.value_c != null && <span>{t("live.temp")} <strong>{f(data.temperature.value_c, 1)} °C</strong></span>}
       {online && cur && <span>SE3 <strong>{f(cur.sek_kwh, 2)} kr/kWh</strong></span>}
     </div>
   );

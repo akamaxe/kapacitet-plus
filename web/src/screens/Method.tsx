@@ -105,13 +105,13 @@ export default function Method() {
                     <span className="src-name">{s.name}</span> <Chip kind={s.tag} />
                   </div>
                   <div>
-                    {st ? (st.ok ? <Status kind="good">{t("met.online")} · {st.ms} ms</Status> : <Status kind="serious">{t("met.offline")}</Status>) : null}
+                    {st ? (st.ok ? <Status kind="good">{t("met.online")}, {st.ms} ms</Status> : <Status kind="serious">{t("met.offline")}</Status>) : null}
                   </div>
                   <div className="src-meta">
                     {s.provider}. {s.used_for}. <em>{s.license}</em>.{" "}
                     {s.files.length > 0 && (s.files.length === 1 ? t("met.file") : t("met.files", { n: s.files.length }))}
                     {s.files.length > 0 && `, ${s.files[0].fetched_at.slice(0, 10)}`}
-                    {s.homepage && <> · <a href={s.homepage} target="_blank" rel="noreferrer">{s.homepage.replace(/^https?:\/\//, "").split("/")[0]}</a></>}
+                    {s.homepage && <> <a href={s.homepage} target="_blank" rel="noreferrer">{s.homepage.replace(/^https?:\/\//, "").split("/")[0]}</a></>}
                   </div>
                 </div>
               );
