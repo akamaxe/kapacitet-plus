@@ -1352,3 +1352,149 @@ table.data tbody tr:hover { background: var(--bg-inset); }
 
 .blank h3 { margin: 0; font-size: var(--text-h3); }
 .blank .caption { max-width: 44ch; }
+
+/* ---------------------------------------------------------------- the house table */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.houses-region {
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.houses-region.open { max-height: 46vh; }
+
+.region-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.region-toggle:hover { background: var(--bg-inset); }
+.region-toggle svg { color: var(--text-muted); }
+.region-toggle .caption-muted { margin-left: auto; }
+
+.dt {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-top: 1px solid var(--border);
+}
+
+.dt-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.dt-search {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: 1;
+  max-width: 34ch;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-inset);
+  color: var(--text-muted);
+}
+
+.dt-search input {
+  flex: 1;
+  min-height: 40px;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-small);
+  outline: none;
+}
+
+.dt-search:focus-within { border-color: var(--border-strong); }
+.dt-search input::-webkit-search-cancel-button { display: none; }
+
+.dt-scroll {
+  overflow: auto;
+  min-height: 0;
+}
+
+.dt-scroll table.data th {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  padding: 0;
+}
+
+.dt-sort {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  min-height: 40px;
+  padding: 0 var(--space-2);
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+th.r .dt-sort { justify-content: flex-end; }
+.dt-sort svg { color: var(--text-muted); opacity: 0.45; }
+.dt-sort:hover svg { opacity: 1; }
+th[aria-sort="ascending"] .dt-sort svg,
+th[aria-sort="descending"] .dt-sort svg { color: var(--accent); opacity: 1; }
+th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
+
+.dt tbody tr { cursor: pointer; }
+
+.dt tbody tr[aria-selected="true"] {
+  background: var(--accent-quiet);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+
+.dt-none {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  justify-content: center;
+  padding: var(--space-6) var(--space-3);
+  color: var(--text-muted);
+}
+
+.inspector {
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.inspector h3 { margin: 0; font-size: var(--text-h3); }
+
+@media (max-width: 1100px) {
+  .houses-region.open { max-height: none; }
+}
