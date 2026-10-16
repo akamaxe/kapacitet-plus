@@ -24,7 +24,7 @@ Design intent: this is an engineering instrument for grid operators, not a sci-f
 | `--bg-elevated` | `#1E252B` | Popovers, tooltips, dropdowns |
 | `--bg-inset` | `#0A0E11` | Map canvas, code blocks, wells |
 | `--border` | `#2A333A` | 1 px dividers and card outlines |
-| `--border-strong` | `#3C474F` | Focused or selected outlines |
+| `--border-strong` | `#67747C` | Focused or selected outlines (3.9:1, the floor for a focus ring) |
 | `--text-primary` | `#E8EDF0` | Headings, values (15.8:1) |
 | `--text-secondary` | `#A8B4BC` | Body copy, labels (8.8:1) |
 | `--text-muted` | `#7A878F` | Captions, source notes (5.1:1) |
@@ -40,6 +40,12 @@ Design intent: this is an engineering instrument for grid operators, not a sci-f
 
 All text ratios above are measured against `--bg-base` and pass WCAG 2.1 AA for normal text.
 
+`--border-strong` and the light `--text-muted` were corrected on 2026-10-16 after measuring
+them rather than assuming: the focus ring that section 7 builds from `--border-strong` came
+out at 1.96:1 in dark and 1.70:1 in light, against the 3:1 that section 9 requires of a UI
+border, and the light `--text-muted` reached 4.6:1 only against a white panel, not against
+the page. The values in the tables are the corrected ones.
+
 ### 1.3 Light theme
 
 | Token | Value | Use |
@@ -49,10 +55,10 @@ All text ratios above are measured against `--bg-base` and pass WCAG 2.1 AA for 
 | `--bg-elevated` | `#FFFFFF` + shadow | Popovers |
 | `--bg-inset` | `#EDF0F1` | Map canvas, wells |
 | `--border` | `#DCE1E4` | Dividers |
-| `--border-strong` | `#B9C2C7` | Focus and selection |
+| `--border-strong` | `#808D95` | Focus and selection (3.2:1) |
 | `--text-primary` | `#151B20` | Headings and values (16.3:1) |
 | `--text-secondary` | `#4C585F` | Body copy (6.9:1) |
-| `--text-muted` | `#6B777E` | Captions (4.6:1) |
+| `--text-muted` | `#67727A` | Captions (4.6:1 on a panel, 4.6:1 on the page) |
 | `--accent` | `#1F7D71` | Actions, dynamic series (5.0:1) |
 | `--accent-hover` | `#176258` | Hover |
 | `--accent-quiet` | `#DFF0ED` | Selected nav, accent fills |
@@ -266,7 +272,7 @@ Create `src/styles/tokens.css` with this structure and import it once, at the ro
 
 :root[data-theme="dark"] {
   --bg-base: #0E1317; --bg-surface: #171D22; --bg-elevated: #1E252B; --bg-inset: #0A0E11;
-  --border: #2A333A; --border-strong: #3C474F;
+  --border: #2A333A; --border-strong: #67747C;
   --text-primary: #E8EDF0; --text-secondary: #A8B4BC; --text-muted: #7A878F;
   --accent: #2E9E8F; --accent-hover: #39B5A4; --accent-quiet: #1C4A45; --on-accent: #0E1317;
   --warning: #D9A33A; --warning-quiet: #4A3A17;
@@ -276,8 +282,8 @@ Create `src/styles/tokens.css` with this structure and import it once, at the ro
 
 :root[data-theme="light"] {
   --bg-base: #F7F8F8; --bg-surface: #FFFFFF; --bg-elevated: #FFFFFF; --bg-inset: #EDF0F1;
-  --border: #DCE1E4; --border-strong: #B9C2C7;
-  --text-primary: #151B20; --text-secondary: #4C585F; --text-muted: #6B777E;
+  --border: #DCE1E4; --border-strong: #808D95;
+  --text-primary: #151B20; --text-secondary: #4C585F; --text-muted: #67727A;
   --accent: #1F7D71; --accent-hover: #176258; --accent-quiet: #DFF0ED; --on-accent: #FFFFFF;
   --warning: #8A6314; --warning-quiet: #FBF0D8;
   --danger: #B33F30;  --danger-quiet: #FBE4E0;

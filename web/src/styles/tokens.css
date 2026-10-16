@@ -21,7 +21,7 @@
   --radius-lg: 12px;
 
   /* type (§2). Monospace is for data only. */
-  --font-sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "IBM Plex Sans Variable", "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Code", Consolas, monospace;
   --text-display: 3rem;
   --text-h1: 1.75rem;
@@ -57,7 +57,7 @@
   --bg-elevated: #1e252b;
   --bg-inset: #0a0e11;
   --border: #2a333a;
-  --border-strong: #3c474f;
+  --border-strong: #67747c;
   --text-primary: #e8edf0;
   --text-secondary: #a8b4bc;
   --text-muted: #7a878f;
@@ -103,10 +103,10 @@
   --bg-elevated: #ffffff;
   --bg-inset: #edf0f1;
   --border: #dce1e4;
-  --border-strong: #b9c2c7;
+  --border-strong: #808d95;
   --text-primary: #151b20;
   --text-secondary: #4c585f;
-  --text-muted: #6b777e;
+  --text-muted: #67727a;
   --accent: #1f7d71;
   --accent-hover: #176258;
   --accent-quiet: #dff0ed;
@@ -149,10 +149,10 @@
     --bg-elevated: #ffffff;
     --bg-inset: #edf0f1;
     --border: #dce1e4;
-    --border-strong: #b9c2c7;
+    --border-strong: #808d95;
     --text-primary: #151b20;
     --text-secondary: #4c585f;
-    --text-muted: #6b777e;
+    --text-muted: #67727a;
     --accent: #1f7d71;
     --accent-hover: #176258;
     --accent-quiet: #dff0ed;

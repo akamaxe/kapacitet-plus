@@ -13,25 +13,25 @@ const ICONS: Record<string, ReactNode> = {
   good: (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
       <circle cx="8" cy="8" r="7" fill="currentColor" />
-      <path d="M4.6 8.2l2.2 2.2 4.6-4.8" stroke="#fff" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4.6 8.2l2.2 2.2 4.6-4.8" stroke="var(--on-accent)" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   warning: (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
       <path d="M8 1.5l7 12.5H1z" fill="currentColor" />
-      <path d="M8 6v3.6M8 11.6v.1" stroke="#102530" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 6v3.6M8 11.6v.1" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   ),
   serious: (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
       <rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="currentColor" />
-      <path d="M8 4.5v4.2M8 11.2v.1" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M8 4.5v4.2M8 11.2v.1" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   ),
   critical: (
     <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
       <circle cx="8" cy="8" r="7" fill="currentColor" />
-      <path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   ),
 };

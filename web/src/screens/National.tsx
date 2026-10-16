@@ -15,12 +15,18 @@ const SWEDEN_BBOX: [number, number, number, number] = [10.9, 55.2, 24.2, 69.1];
 // production types in fixed categorical order (offshore wind and storage fold into "other")
 const TYPES = ["hydro", "nuclear", "wind", "solar", "thermal", "other"] as const;
 
+/** 5.1: the basemap's own labels are off in the national view, so no foreign toponym can
+    appear. Our zone labels are HTML markers and are unaffected. */
+function hideBasemapLabels(map: MLMap) {
+  for (const layer of map.getStyle()?.layers ?? []) {
+    if (layer.type === "symbol") map.setLayoutProperty(layer.id, "visibility", "none");
+  }
+}
+
 function slotColors(tk: Tokens): string[] {
-  const dark = document.documentElement.getAttribute("data-theme") === "dark" ||
-    (!document.documentElement.getAttribute("data-theme") && window.matchMedia?.("(prefers-color-scheme: dark)").matches);
-  // slots 4–6 of the validated palette (light / dark steps)
-  const extra = dark ? ["#c98500", "#d55181", "#008300"] : ["#eda100", "#e87ba4", "#008300"];
-  return [tk.accent, tk.cat[0], tk.cat[2], ...extra];
+  // The production mix of design-system.md 1.4: six categorical colours, in order, each
+  // already given a light and a dark step by the theme.
+  return tk.cat;
 }
 
 export default function National() {
@@ -51,6 +57,7 @@ export default function National() {
       map.addLayer({ id: "zones-fill", type: "fill", source: "zones", paint: { "fill-color": ["get", "color"], "fill-opacity": 0.78 } });
       map.addLayer({ id: "zones-line", type: "line", source: "zones", paint: { "line-color": tk.surface, "line-width": 2 } });
     }
+    hideBasemapLabels(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones.data, N, theme]);
 
@@ -101,7 +108,7 @@ export default function National() {
 
         <section className="stack">
           <h3>{t("nat.prodcons")}</h3>
-          <Legend items={[{ color: "var(--accent)", label: t("nat.production") }, { color: "var(--cat-1)", label: t("nat.consumption") }]} />
+          <Legend items={[{ color: "var(--data-production)", label: t("nat.production") }, { color: "var(--data-consumption)", label: t("nat.consumption") }]} />
           <ChartOrTable
             chart={<Chart ariaLabel={t("nat.prodcons")} height={220} deps={[N]} build={(tk) => prodConsOption(tk, N, t)} />}
             table={
@@ -166,8 +173,8 @@ function prodConsOption(tk: Tokens, N: any, t: (k: string) => string) {
     yAxis: { type: "value", ...axisStyle(tk), name: "TWh" },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     series: [
-      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barWidth: 20, barGap: "10%" },
-      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.cat[0], borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
+      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.production, borderRadius: [4, 4, 0, 0] }, barWidth: 20, barGap: "10%" },
+      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.consumption, borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
     ],
   };
 }
