@@ -4,7 +4,7 @@ import { useT } from "../lib/i18n";
 import { SCREENS, useStore, type Theme } from "../lib/store";
 import { Icon } from "./Icon";
 
-export function SideNav() {
+export function SideNav({ onSearch }: { onSearch: () => void }) {
   const t = useT();
   const screen = useStore((s) => s.screen);
   const notes = useStore((s) => s.notes);
@@ -15,6 +15,9 @@ export function SideNav() {
         <span className="brand-symbol"><Icon name="grid" size={25} /></span>
         <span className="brand-word"><span className="brand-mark">kapacitet<span>+</span></span><span className="brand-tag">{t("shell.tagline")}</span></span>
       </a>
+      <button className="nav-search" onClick={onSearch} title={`${t("pal.title")} (Ctrl + K)`}>
+        <Icon name="search" size={17} /><span>{t("pal.search")}</span><kbd>K</kbd>
+      </button>
       <span className="nav-label">{t("shell.workspace")}</span>
       <nav className="tabs" aria-label={t("shell.navigation")}>
         {SCREENS.map((s, i) => (
@@ -49,7 +52,7 @@ function LiveStrip() {
   );
 }
 
-export function TopBar() {
+export function TopBar({ onSearch }: { onSearch: () => void }) {
   const t = useT();
   const screen = useStore((s) => s.screen);
   const lang = useStore((s) => s.lang);
@@ -58,7 +61,13 @@ export function TopBar() {
   const setTheme = useStore((s) => s.setTheme);
   return (
     <header className="topbar">
-      <div className="breadcrumb"><span>{t("shell.workspace")}</span><span>/</span><strong>{t(`tab.${screen}`)}</strong></div>
+      <nav className="breadcrumb" aria-label={t("shell.breadcrumb")}>
+        <a href="#/compare">{t("shell.workspace")}</a>
+        <span aria-hidden="true">/</span>
+        <button className="crumb-current" onClick={onSearch} title={`${t("pal.title")} (Ctrl + K)`} aria-haspopup="dialog">
+          {t(`tab.${screen}`)}<Icon name="sort" size={14} />
+        </button>
+      </nav>
       <div className="topbar-right">
         <LiveStrip /><div className="toolbar-divider" />
         <button className="icon-btn language-btn" onClick={() => setLang(lang === "en" ? "es" : "en")} aria-label={t("shell.language")} title={t("shell.language")}>{lang === "en" ? "ES" : "EN"}</button>
@@ -74,8 +83,8 @@ export function TopBar() {
   );
 }
 
-export function StatusBar() {
+export function StatusBar({ onKeys }: { onKeys: () => void }) {
   const t = useT();
   const meta = useApi<any>("/meta");
-  return <footer className="statusbar"><span><Icon name="grid" size={13} />{t("shell.model")}</span><span>{meta.data?.reference_year ? t("shell.year", { year: meta.data.reference_year }) : t("shell.research")}</span><span className="statusbar-hint">{t("shell.shortcuts")}</span></footer>;
+  return <footer className="statusbar"><span><Icon name="grid" size={13} />{t("shell.model")}</span><span>{meta.data?.reference_year ? t("shell.year", { year: meta.data.reference_year }) : t("shell.research")}</span><button className="statusbar-hint" onClick={onKeys} aria-haspopup="dialog">{t("shell.shortcuts")}<kbd>?</kbd></button></footer>;
 }
