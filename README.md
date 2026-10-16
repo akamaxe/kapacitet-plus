@@ -95,14 +95,26 @@ prices can be fetched from the source for all 11 weather years.
 ### Demo in five minutes
 
 Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for fullscreen and
-**N** for the presenter notes (Ctrl + arrow keys or PageUp/PageDown move between screens, **ES** switches
-language).
+**N** for the presenter notes. **1**–**6** jump straight to a screen, Ctrl + arrow keys or
+PageUp/PageDown step through them, **ES** switches language, and **?** lists every key.
+
+**Ctrl + K** is the way in if you know what you are looking for: it searches the six screens,
+all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
+handful of actions the chrome offers. Picking a house selects it everywhere.
 
 The control centre opens in dark mode for new visitors; the header offers light, dark and system
 themes and remembers the selection. Use the sidebar to navigate, or scroll the navigation strip
 on a phone. The capacity overview links directly to the geographic twin and connection study.
 In the twin, step an hour at a time, scrub the year, play at 1×/4×/8× speed, or return to the showcase
-hour. The reset-view button restores the map camera. Charts retain their table alternatives, and
+hour. The reset-view button restores the map camera. Under the year strip, **120 houses** opens the
+neighbourhood as a table you can search and sort: address, feeder, connection, solar, fuse, distance
+from the substation, and the voltage and net power of the hour on screen, read from the same decoded
+state the map is painted from. Picking a row selects the house, and so does clicking it on the map;
+either way the panel leads with it.
+
+The address bar carries what you are looking at — `#/twin?hour=4000&scenario=uncontrolled&cid=14`
+— so a view can be sent to someone and reproduce exactly. Scrubbing the year does not fill your
+history: only changing screen does. Charts retain their table alternatives, and
 animations respect reduced-motion preferences. Use **Ctrl + Left/Right** or **PageUp/PageDown**
 to navigate screens without affecting form fields.
 
