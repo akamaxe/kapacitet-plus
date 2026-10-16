@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
+import { DataTable, type Col } from "../components/DataTable";
 import { YearStrip } from "../components/YearStrip";
 import { SplitSkeleton } from "../components/Skeleton";
 import { Chip, Meter, Status, Tile, Missing } from "../components/bits";
@@ -16,6 +17,22 @@ const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
 type ColorBy = "voltage" | "power";
 /** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
 const V_SPAN = 0.06;
+/** The policy the published per-customer figures use (engine/run.py REF_POLICY). */
+const REF_POLICY = "maxmin";
+
+/** One house as the table sees it: what the network says, plus this hour's state. */
+interface HouseRow {
+  cid: number;
+  address: string;
+  feeder: number;
+  status: "firm" | "nonfirm" | "none";
+  kwp: number;
+  fuse: number;
+  dist: number;
+  v: number | null;
+  p: number | null;
+  curtailed: number | null;
+}
 const P_SPAN = 8;
 
 export default function Twin() {
@@ -40,11 +57,19 @@ export default function Twin() {
   const [tip, setTip] = useState<{ x: number; y: number; kind: string; id: number } | null>(null);
   const [colorBy, setColorBy] = useState<ColorBy>("voltage");
   const [speed, setSpeed] = useState(1);
+  const [openTable, setOpenTable] = useState(false);
+  const selectedCid = useStore((s) => s.selectedCid);
+  const select = useStore((s) => s.select);
   // setup/onReady run from map events, so they call the latest paint through this ref
   const paintRef = useRef<(map: MLMap | null) => void>(() => {});
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
   const cables = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "cable") ?? [], [net.data]);
+
+  const picked = useMemo(
+    () => (selectedCid == null ? null : houses.find((h: any) => h.properties.cid === selectedCid) ?? null),
+    [houses, selectedCid],
+  );
 
   // bus / line → row in the state arrays
   const rows = useMemo(() => {
@@ -109,6 +134,72 @@ export default function Twin() {
     [net.data, theme],
   );
 
+  /** One row per house, carrying this hour's voltage and net power from the loaded state. */
+  const tableRows: HouseRow[] = useMemo(() => {
+    const per = show.data?.data?.showcase?.policies?.[REF_POLICY]?.per_customer;
+    const cut = new Map<number, number>();
+    if (per) per.cid.forEach((c: number, i: number) => cut.set(c, per.curtailed_kwh[i]));
+    return houses.map((h: any) => {
+      const p = h.properties;
+      const r = rows?.busRow.get(p.bus);
+      return {
+        cid: p.cid as number,
+        address: (p.address as string) || `#${p.cid}`,
+        feeder: p.feeder as number,
+        status: p.pv_status as "firm" | "nonfirm" | "none",
+        kwp: p.kwp as number,
+        fuse: p.fuse_a as number,
+        dist: p.dist_m as number,
+        v: st.data && r !== undefined ? st.data.voltage(r, hour) : null,
+        p: st.data ? st.data.power(p.cid, hour) : null,
+        curtailed: cut.get(p.cid) ?? null,
+      };
+    });
+  }, [houses, rows, st.data, hour, show.data]);
+
+  const houseCols: Col<HouseRow>[] = useMemo(
+    () => [
+      { key: "address", label: t("dt.address"), value: (r) => r.address },
+      { key: "feeder", label: t("dt.feeder"), value: (r) => r.feeder, numeric: true },
+      {
+        key: "status",
+        label: t("dt.status"),
+        value: (r) => t(`twin.status.${r.status === "none" ? "noPv" : r.status}`),
+        // a house without solar is not a warning, it is simply not in this study, so it
+        // gets no status colour at all (§1.4: colour here means something)
+        cell: (r) =>
+          r.status === "none" ? (
+            <span className="caption-muted">{t("twin.status.noPv")}</span>
+          ) : (
+            <Status kind={r.status === "firm" ? "good" : "warning"}>{t(`twin.status.${r.status}`)}</Status>
+          ),
+      },
+      { key: "kwp", label: t("dt.kwp"), unit: "kWp", value: (r) => r.kwp, cell: (r) => f(r.kwp, 1), numeric: true },
+      { key: "fuse", label: t("dt.fuse"), unit: "A", value: (r) => r.fuse, numeric: true },
+      { key: "dist", label: t("dt.dist"), unit: "m", value: (r) => r.dist, cell: (r) => f(r.dist, 0), numeric: true },
+      {
+        key: "v",
+        label: t("dt.voltage"),
+        unit: "pu",
+        value: (r) => r.v,
+        cell: (r) => (r.v == null ? "–" : <span style={{ color: voltageColor(tokens(), r.v, V_SPAN) }}>{f(r.v, 3)}</span>),
+        numeric: true,
+      },
+      { key: "p", label: t("dt.net"), unit: "kW", value: (r) => r.p, cell: (r) => (r.p == null ? "–" : f(r.p, 1)), numeric: true },
+      {
+        key: "curtailed",
+        label: t("dt.curtailed"),
+        unit: "kWh",
+        value: (r) => r.curtailed,
+        cell: (r) => (r.curtailed == null ? "–" : f(r.curtailed, 0)),
+        numeric: true,
+      },
+    ],
+    [t, f],
+  );
+
+  const pickedNow = useMemo(() => tableRows.find((r) => r.cid === selectedCid) ?? null, [tableRows, selectedCid]);
+
   const paint = useCallback(
     (map: MLMap | null) => {
       if (!map || !st.data || !rows || !map.getSource("houses")) return;
@@ -144,6 +235,12 @@ export default function Twin() {
   const onReady = useCallback((map: MLMap) => {
     mapRef.current = map;
     if (net.data?.bbox) fitTo(map, net.data.bbox, 60);
+    // the map could hover a house but never select one: the table, the panel and the
+    // map all read the same selectedCid now, so picking in any of them moves the others
+    map.on("click", "houses", (e: MapMouseEvent & { features?: any[] }) => {
+      const cid = e.features?.[0]?.properties?.cid;
+      if (cid != null) select(Number(cid));
+    });
     let hovered: number | null = null;
     map.on("mousemove", (e: MapMouseEvent) => {
       const feats = map.queryRenderedFeatures(e.point, { layers: ["houses", "cables"] });
@@ -245,9 +342,54 @@ export default function Twin() {
           <div />
           <div className="timeline-caption"><input className="timeline-scrubber" type="range" min={0} max={(st.data?.header.hours ?? 8760) - 1} value={hour} disabled={!agg} aria-label={t("twin.hour")} aria-valuetext={hourLabel(lang, year, hour)} onChange={(e) => { setPlaying(false); setHour(Number(e.target.value)); }} /><p className="caption-muted">{t("twin.strip", { year })}</p></div>
         </div>
+        <div className={`houses-region ${openTable ? "open" : ""}`}>
+          <button className="region-toggle" aria-expanded={openTable} onClick={() => setOpenTable(!openTable)}>
+            <Icon name={openTable ? "sort" : "next"} size={15} />
+            <span>{t("dt.houses", { n: houses.length })}</span>
+            <span className="caption-muted">{t("dt.hint")}</span>
+          </button>
+          {openTable && (
+            <DataTable
+              rows={tableRows}
+              cols={houseCols}
+              rowKey={(r) => r.cid}
+              caption={t("dt.caption", { n: houses.length, when: hourLabel(lang, year, hour) })}
+              searchLabel={t("dt.searchHouses")}
+              selected={selectedCid}
+              onSelect={(r) => select(r.cid)}
+              initialSort="address"
+            />
+          )}
+        </div>
       </div>
 
       <aside className="panel">
+        {picked && (
+          <div className="stack inspector">
+            <div className="row" style={{ justifyContent: "space-between" }}>
+              <h3>{picked.properties.address || `#${picked.properties.cid}`}</h3>
+              <button className="icon-btn" aria-label={t("twin.clear")} title={t("twin.clear")} onClick={() => select(null)}>
+                <Icon name="close" size={15} />
+              </button>
+            </div>
+            <div className="tiles">
+              <Tile label={t("dt.voltage")} value={pickedNow ? f(pickedNow.v, 3) : "–"} unit="pu" />
+              <Tile label={t("dt.net")} value={pickedNow ? f(pickedNow.p, 1) : "–"} unit="kW" />
+            </div>
+            <dl className="kv">
+              <dt>{t("dt.status")}</dt>
+              <dd>{t(`twin.status.${picked.properties.pv_status === "none" ? "noPv" : picked.properties.pv_status}`)}</dd>
+              <dt>{t("dt.feeder")}</dt>
+              <dd>{picked.properties.feeder}</dd>
+              <dt>{t("dt.kwp")}</dt>
+              <dd>{f(picked.properties.kwp, 1)} kWp</dd>
+              <dt>{t("dt.fuse")}</dt>
+              <dd>{picked.properties.fuse_a} A</dd>
+              <dt>{t("dt.dist")}</dt>
+              <dd>{f(picked.properties.dist_m, 0)} m</dd>
+            </dl>
+          </div>
+        )}
         <div className="stack">
           <h2>{t("twin.title", { n: houses.length })}</h2>
           <p className="caption">{t("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
