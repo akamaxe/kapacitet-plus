@@ -3,7 +3,8 @@ import * as maplibregl from "maplibre-gl";
 import type { Map as MLMap } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { Chart, axisStyle } from "../components/Chart";
-import { ChartOrTable, Chip, Legend, Loading, Missing } from "../components/bits";
+import { SplitSkeleton } from "../components/Skeleton";
+import { ChartOrTable, Chip, Legend, Missing } from "../components/bits";
 import { useApi } from "../lib/api";
 import { seqColor, tokens, type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -80,8 +81,8 @@ export default function National() {
     }
   }, [zones.data, N]);
 
-  if (nat.isLoading || zones.isLoading) return <Loading />;
-  if (!N || !zones.data) return <Missing />;
+  if (nat.isLoading || zones.isLoading) return <SplitSkeleton wide />;
+  if (!N || !zones.data) return <Missing of={[nat, zones]} />;
   const tk = tokens();
 
   return (

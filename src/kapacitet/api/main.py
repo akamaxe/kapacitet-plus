@@ -475,7 +475,9 @@ def _run_job(job_id: str, body: RequestIn) -> None:
         log.exception("request failed")
         job["status"] = "error"
         job["error"] = str(exc)
-        job["events"].append({"stage": "error", "payload": {"error": str(exc)}, "t": time.time()})
+        # not "error": EventSource fires its own `error` event for transport trouble, and
+        # a stage of the same name is indistinguishable from the stream simply dropping.
+        job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
 
 
 @app.post(f"{API}/requests", tags=["requests"])

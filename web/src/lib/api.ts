@@ -2,12 +2,36 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 export const API = "/api/v1";
 
-export async function getJSON<T = any>(path: string): Promise<T> {
-  const r = await fetch(`${API}${path}`);
-  if (!r.ok) {
-    const text = await r.text();
-    throw new Error(`${r.status} ${text.slice(0, 160)}`);
+/**
+ * A failure that still knows what it was asking for. §7 wants an error to name the
+ * source, and the plain Error this used to throw lost the path on the way up, so no
+ * screen could say which endpoint had let it down.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly path: string,
+    readonly status: number,
+    readonly detail: string,
+  ) {
+    super(`${status} ${API}${path}${detail ? ` — ${detail}` : ""}`);
+    this.name = "ApiError";
   }
+
+  /** `GET /api/v1/hosting` — what the user is shown, and what a bug report needs. */
+  get endpoint() {
+    return `GET ${API}${this.path}`;
+  }
+}
+
+export async function getJSON<T = any>(path: string): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(`${API}${path}`);
+  } catch (e) {
+    // the server is down, or the network is: status 0 says "never answered"
+    throw new ApiError(path, 0, (e as Error)?.message ?? "");
+  }
+  if (!r.ok) throw new ApiError(path, r.status, (await r.text()).slice(0, 160));
   return r.json();
 }
 

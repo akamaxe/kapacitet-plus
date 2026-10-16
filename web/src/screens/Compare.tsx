@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
-import { ChartOrTable, Chip, Legend, Loading, Missing, Status, Tile } from "../components/bits";
+import { PageSkeleton } from "../components/Skeleton";
+import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
@@ -33,8 +34,8 @@ export default function Compare() {
     return zs[Math.floor(zs.length / 2)];
   }, [H]);
 
-  if (hosting.isLoading || show.isLoading) return <Loading />;
-  if (!H || !S) return <Missing />;
+  if (hosting.isLoading || show.isLoading) return <PageSkeleton blocks={4} />;
+  if (!H || !S) return <Missing of={[hosting, show, risk, val]} />;
 
   const m = H.summary.measures;
   const zStar = H.summary.z_star_pct;

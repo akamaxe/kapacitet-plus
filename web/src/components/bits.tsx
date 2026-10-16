@@ -1,5 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "../lib/api";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
 
@@ -112,8 +113,25 @@ export function Loading() {
   return <div className="empty" role="status"><span className="loading-orbit"><Icon name="grid" size={30} /></span><span>{t("ui.loading")}</span></div>;
 }
 
-export function Missing() {
+/**
+ * What failed, which source, and what to do about it (§7). Pass the queries the screen
+ * depends on and the first one that broke names itself; with none, it still says the
+ * general thing rather than nothing.
+ */
+export function Missing({ of }: { of?: { isError?: boolean; error?: unknown }[] }) {
   const t = useT();
   const client = useQueryClient();
-  return <div className="empty" role="status"><Icon name="grid" size={36} /><h2>{t("ui.unavailable")}</h2><p className="caption">{t("ui.missing")}</p><button className="btn ghost" onClick={() => void client.refetchQueries({ type: "active" })}><Icon name="reset" size={16} />{t("ui.retry")}</button></div>;
+  const failed = of?.map((q) => q.error).find((e): e is ApiError => e instanceof ApiError);
+  const gone = failed?.status === 0;
+  return (
+    <div className="empty" role="alert">
+      <span className="loading-orbit"><Icon name="alert" size={28} /></span>
+      <h2>{t("ui.unavailable")}</h2>
+      <p className="caption">{gone ? t("ui.offline") : t("ui.missing")}</p>
+      {failed && <p className="caption-muted mono">{failed.endpoint}{failed.status ? ` → ${failed.status}` : ""}</p>}
+      <button className="btn ghost" onClick={() => void client.refetchQueries({ type: "active" })}>
+        <Icon name="reset" size={16} />{t("ui.retry")}
+      </button>
+    </div>
+  );
 }
