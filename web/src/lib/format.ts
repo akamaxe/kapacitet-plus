@@ -1,12 +1,18 @@
 import { useStore } from "./store";
 import { locale } from "./i18n";
 
+/** Narrow no-break space: thousands separator, Swedish convention (design-system.md 6). */
+const THIN = " ";
+
 export function fmt(lang: string, value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "–";
-  return new Intl.NumberFormat(locale(lang), {
+  const out = new Intl.NumberFormat(locale(lang), {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   }).format(value);
+  // Intl gives a comma in English and a dot in Spanish; both become a thin space so a
+  // value reads the same whichever language the interface is in.
+  return out.replace(/[,.  ](?=\d{3})/g, THIN);
 }
 
 export function useFmt() {
