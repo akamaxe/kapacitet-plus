@@ -104,9 +104,16 @@ p {
 .page {
   height: 100%;
   overflow-y: auto;
+  /* without this, an absolutely positioned descendant (a table's sr-only caption, a
+     hit-target pseudo-element) takes `main` as its containing block, escapes this
+     scroller and makes the document itself scrollable: any focus() or scroll-to then
+     lifts the whole frame off the top of the window. */
+  position: relative;
 }
 
 .page-inner {
+  /* a .well bleeds to the edge of the viewport by cancelling exactly this much */
+  --gutter: var(--space-6);
   max-width: 1550px;
   margin: 0 auto;
   padding: var(--space-6) var(--space-6) var(--space-7);
@@ -145,7 +152,7 @@ p {
 
 .block h3,
 .panel h3 {
-  font-size: var(--text-body);
+  font-size: var(--text-h3);
 }
 
 .caption {
@@ -973,8 +980,9 @@ main:focus { outline: none; }
 .preview-open span { display: flex; align-items: center; gap: var(--space-2); }
 .preview-open:hover { color: var(--accent); border-color: var(--accent); }
 .preview-placeholder { height: 100%; min-height: 345px; display: flex; flex-direction: column; gap: var(--space-4); align-items: center; justify-content: center; color: var(--text-muted); font-size: var(--text-small); }
-.hero-compare { border: 1px solid var(--border); border-radius: var(--radius-md); padding: var(--space-5); background: var(--bg-surface); }
-.hero-compare .caption { margin: var(--space-3) 0 0; color: var(--text-muted); font-size: var(--text-caption); }
+/* the hero number's own figure: it belongs to the number, so it has no card of its own */
+.hero-figure { align-self: stretch; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.hero-figure > .caption { margin: var(--space-2) 0 0; color: var(--text-muted); font-size: var(--text-caption); }
 .data-provenance { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; padding: 0 2px; }
 .data-provenance .caption-muted { margin-right: var(--space-2); }
 
@@ -1023,7 +1031,7 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   .tab { justify-content: center; padding: var(--space-3) 0; }
   .tab[aria-current="page"]::before { left: -11px; }
   .notes-toggle { justify-content: center; margin-bottom: var(--space-4); }
-  .page-inner { padding: var(--space-5); }
+  .page-inner { padding: var(--space-5); --gutter: var(--space-5); }
   .live > span:not(:first-child) { display: none; }
   .statusbar-hint { display: none !important; }
 }
@@ -1047,7 +1055,7 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   .topbar { padding: 0 var(--space-4); }
   .topbar-right { gap: var(--space-1); }
   .fullscreen-btn { display: none; }
-  .page-inner { padding: var(--space-4) var(--space-4) var(--space-6); gap: var(--space-4); }
+  .page-inner { padding: var(--space-4) var(--space-4) var(--space-6); gap: var(--space-4); --gutter: var(--space-4); }
   .overview-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
   .overview-copy { padding: 0; }
   .overview-copy .headline { margin: var(--space-4) 0 var(--space-3); }
@@ -1474,7 +1482,7 @@ th[aria-sort="ascending"] .dt-sort svg,
 th[aria-sort="descending"] .dt-sort svg { color: var(--accent); opacity: 1; }
 th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 
-.dt tbody tr { cursor: pointer; }
+.dt tbody tr[tabindex] { cursor: pointer; }
 
 .dt tbody tr[aria-selected="true"] {
   background: var(--accent-quiet);
@@ -1499,4 +1507,219 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 
 @media (max-width: 1100px) {
   .houses-region.open { max-height: none; }
+}
+
+/* ---------------------------------------------------------------- screen regions
+   Three weights (design-system.md 3). A `.region` is a division of the screen and
+   carries no surface of its own; a `.block` inside it is a panel; a `.well` is the one
+   dense band. A screen built out of a single weight reads as a tray of cards, which is
+   what this layer exists to prevent. */
+.region {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+  /* a section scrolled to by name has to clear the sticky bar above it */
+  scroll-margin-top: var(--toolbar-h);
+}
+
+.region + .region {
+  border-top: 1px solid var(--border);
+  padding-top: var(--space-6);
+}
+
+.region-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.region-title {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.region-head h2 {
+  font-size: var(--text-h2);
+}
+
+.region-head .seg {
+  flex: 0 0 auto;
+}
+
+/* one dense band per screen: it keeps the page's own alignment and lets only its
+   ground run to the edge, so nothing ever overflows sideways */
+.well {
+  min-width: 0;
+  margin-inline: calc(var(--gutter, 0px) * -1);
+  padding: var(--space-4) var(--gutter, 0px);
+  background: var(--bg-inset);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.well .dt {
+  border-top: 0;
+}
+
+.well .dt-scroll {
+  max-height: min(62vh, 620px);
+}
+
+/* A band of tiles says how many it is, instead of every caller passing a grid template
+   as an inline style with a raw pixel gap in it. */
+.tiles.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tiles.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.tiles.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+
+@media (max-width: 1350px) {
+  .tiles.cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 900px) {
+  .tiles.cols-3,
+  .tiles.cols-4,
+  .tiles.cols-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* ---------------------------------------------------------------- the hero number
+   One per screen, and nothing else at this size (11). Mono, because it is a reading. */
+.hero-stat {
+  display: grid;
+  gap: var(--space-1);
+  min-width: 0;
+  margin-top: var(--space-5);
+}
+
+.hero-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-display);
+  line-height: var(--lh-display);
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.hero-value small {
+  font-size: var(--text-h2);
+  font-weight: 400;
+  color: var(--text-secondary);
+  margin-left: var(--space-2);
+  letter-spacing: 0;
+}
+
+.hero-label {
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  color: var(--text-secondary);
+  max-width: 52ch;
+}
+
+.hero-note {
+  font-size: var(--text-caption);
+  color: var(--text-muted);
+  max-width: 62ch;
+}
+
+/* ---------------------------------------------------------------- the screen bar
+   A screen's own sections, stuck to the top of its scroller, with the basis of its
+   figures on the right. Navigation and provenance only: a region's controls stay in
+   that region's head row. */
+.screen-bar {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-height: var(--toolbar-h);
+  padding: 0 var(--space-6);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.screen-sections {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.screen-sections::-webkit-scrollbar {
+  display: none;
+}
+
+.screen-sections button {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 var(--space-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-size: var(--text-small);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.screen-sections button:hover {
+  color: var(--text-primary);
+  background: var(--bg-inset);
+}
+
+.screen-sections button[aria-current="true"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-surface));
+  border-color: color-mix(in srgb, var(--accent) 25%, var(--border));
+}
+
+.screen-basis {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 1200px) {
+  .screen-bar { padding: 0 var(--space-5); }
+}
+
+@media (max-width: 900px) {
+  .screen-basis { display: none; }
+}
+
+@media (max-width: 700px) {
+  .screen-bar { padding: 0 var(--space-4); }
+  .region + .region { padding-top: var(--space-5); }
+  .hero-value { font-size: var(--text-h1); }
+}
+
+/* A sub-heading inside a region is the third step of the ladder (§2), whether or not it
+   sits in a panel. Without this it would fall back to the browser's own 1.17 em. */
+.region h3 {
+  font-size: var(--text-h3);
+}
+
+/* Lists used to carry their indentation and their gap as inline pixel values. */
+ul.list,
+ol.list {
+  margin: 0;
+  padding-left: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.nowrap {
+  white-space: nowrap;
 }

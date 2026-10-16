@@ -1,12 +1,26 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
-import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
+import { SectionBar, type Section } from "../components/SectionBar";
+import { DataTable, type Col } from "../components/DataTable";
+import { ChartOrTable, Chip, Hero, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
+
+/** One entry of config/assumptions.toml, as /assumptions serves it. */
+interface Input {
+  key: string;
+  label: string;
+  value: number | string | (number | string)[];
+  unit?: string;
+  tag: string;
+  source: string;
+  url?: string;
+  note?: string;
+}
 
 const TAGS = ["sourced", "regulation", "library", "derived", "team-assumption"];
 
@@ -69,21 +83,76 @@ export default function Method() {
     return m;
   }, [status.data]);
 
+  const cols: Col<Input>[] = useMemo(() => [
+    { key: "label", label: t("tbl.input"), value: (a) => a.label },
+    {
+      key: "value",
+      label: t("tbl.value"),
+      numeric: true,
+      value: (a) => (typeof a.value === "number" ? a.value : Array.isArray(a.value) ? a.value.join(", ") : String(a.value)),
+      cell: (a) => (
+        <span className="nowrap">
+          {Array.isArray(a.value) ? a.value.join(", ") : String(a.value)} {a.unit}
+        </span>
+      ),
+    },
+    { key: "tag", label: t("tbl.tag"), value: (a) => t(`met.tag.${a.tag}`), cell: (a) => <span className="nowrap">{t(`met.tag.${a.tag}`)}</span> },
+    {
+      key: "source",
+      label: t("tbl.source"),
+      value: (a) => a.source,
+      cell: (a) => (
+        <>
+          {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.source}</a> : a.source}
+          {a.note ? <div className="caption-muted">{a.note}</div> : null}
+        </>
+      ),
+    },
+  ], [lang]);
+
   if (src.isLoading || ass.isLoading) return <PageSkeleton blocks={3} />;
   if (src.isError || ass.isError) return <Missing of={[src, ass, val, meta]} />;
-  const assumptions = (ass.data?.assumptions ?? []).filter((a: any) => tag === "all" || a.tag === tag);
-  const counts = TAGS.map((tg) => (ass.data?.assumptions ?? []).filter((a: any) => a.tag === tg).length);
+
+  const inputs: Input[] = ass.data?.assumptions ?? [];
+  const shown = inputs.filter((a) => tag === "all" || a.tag === tag);
+  const counts = TAGS.map((tg) => inputs.filter((a) => a.tag === tg).length);
+  // everything that is not the team's own judgement, however the tags are distributed
+  const ours = counts[TAGS.indexOf("team-assumption")];
+
+  const sections: Section[] = [
+    { id: "how", label: t("met.how") },
+    { id: "sources", label: t("met.sources") },
+    { id: "inputs", label: t("met.assumptions") },
+    ...(V ? [{ id: "validation", label: t("met.validation") }] : []),
+    ...(F ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    { id: "limits", label: t("met.limits") },
+  ];
 
   return (
     <div className="page">
+      <SectionBar
+        sections={sections}
+        basis={status.data?.checked_at
+          ? <span>{t("met.status")}: {new Date(status.data.checked_at).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB")}</span>
+          : undefined}
+      />
       <div className="page-inner">
-        <section className="stack">
-          <h1 className="headline" style={{ fontSize: "var(--text-h1)" }}>{t("met.title")}</h1>
+        {/* ---------------------------------------------------------------- the claim */}
+        <section className="region">
+          <h1 className="headline">{t("met.title")}</h1>
           <p className="headline-sub">{t("met.sub")}</p>
+          <Hero
+            value={f(inputs.length)}
+            label={t("met.hero.label")}
+            note={t("met.hero.note", { rest: inputs.length - ours, team: ours })}
+          />
         </section>
 
-        <section className="block">
-          <div className="block-head"><h2>{t("met.how")}</h2></div>
+        {/* ---------------------------------------------------------------- how it works */}
+        <section className="region" id="how">
+          <div className="region-head">
+            <div className="region-title"><h2>{t("met.how")}</h2></div>
+          </div>
           <HowItWorks
             lang={lang}
             houses={meta.data?.grid?.customers ?? "–"}
@@ -93,38 +162,42 @@ export default function Method() {
         </section>
 
         {/* ---------------------------------------------------------------- sources */}
-        <section className="block">
-          <div className="block-head">
-            <h2>{t("met.sources")}</h2>
-            <span className="caption-muted">{status.data?.checked_at ? `${t("met.status")}: ${new Date(status.data.checked_at).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB")}` : ""}</span>
+        <section className="region" id="sources">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("met.sources")}</h2>
+              <p className="caption">{t("met.sources.caption")}</p>
+            </div>
           </div>
-          <div className="src-list" style={{ marginTop: 10 }}>
-            {src.data?.sources.map((s: any) => {
-              const st = statusByKey.get(s.key);
-              return (
-                <div key={s.key} className="src">
-                  <div>
-                    <span className="src-name">{s.name}</span> <Chip kind={s.tag} />
+          <div className="well">
+            <div className="src-list">
+              {src.data?.sources.map((s: any) => {
+                const st = statusByKey.get(s.key);
+                return (
+                  <div key={s.key} className="src">
+                    <div>
+                      <span className="src-name">{s.name}</span> <Chip kind={s.tag} />
+                    </div>
+                    <div>
+                      {st ? (st.ok ? <Status kind="good">{t("met.online")}, {st.ms} ms</Status> : <Status kind="serious">{t("met.offline")}</Status>) : null}
+                    </div>
+                    <div className="src-meta">
+                      {s.provider}. {s.used_for}. <em>{s.license}</em>.{" "}
+                      {s.files.length > 0 && (s.files.length === 1 ? t("met.file") : t("met.files", { n: s.files.length }))}
+                      {s.files.length > 0 && `, ${s.files[0].fetched_at.slice(0, 10)}`}
+                      {s.homepage && <> <a href={s.homepage} target="_blank" rel="noreferrer">{s.homepage.replace(/^https?:\/\//, "").split("/")[0]}</a></>}
+                    </div>
                   </div>
-                  <div>
-                    {st ? (st.ok ? <Status kind="good">{t("met.online")}, {st.ms} ms</Status> : <Status kind="serious">{t("met.offline")}</Status>) : null}
-                  </div>
-                  <div className="src-meta">
-                    {s.provider}. {s.used_for}. <em>{s.license}</em>.{" "}
-                    {s.files.length > 0 && (s.files.length === 1 ? t("met.file") : t("met.files", { n: s.files.length }))}
-                    {s.files.length > 0 && `, ${s.files[0].fetched_at.slice(0, 10)}`}
-                    {s.homepage && <> <a href={s.homepage} target="_blank" rel="noreferrer">{s.homepage.replace(/^https?:\/\//, "").split("/")[0]}</a></>}
-                  </div>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         </section>
 
-        {/* ---------------------------------------------------------------- assumptions */}
-        <section className="block">
-          <div className="block-head">
-            <h2>{t("met.assumptions")}</h2>
+        {/* ---------------------------------------------------------------- model inputs */}
+        <section className="region" id="inputs">
+          <div className="region-head">
+            <div className="region-title"><h2>{t("met.assumptions")}</h2></div>
             <div className="seg">
               <button aria-pressed={tag === "all"} onClick={() => setTag("all")}>{t("met.all")}</button>
               {TAGS.map((tg, i) => counts[i] > 0 && (
@@ -132,55 +205,57 @@ export default function Method() {
               ))}
             </div>
           </div>
-          <div style={{ overflowX: "auto" }}>
-            <table className="data">
-              <thead><tr><th>{t("tbl.input")}</th><th className="r">{t("tbl.value")}</th><th>{t("tbl.tag")}</th><th>{t("tbl.source")}</th></tr></thead>
-              <tbody>
-                {assumptions.map((a: any) => (
-                  <tr key={a.key}>
-                    <td style={{ minWidth: 220 }}>{a.label}</td>
-                    <td className="r" style={{ whiteSpace: "nowrap" }}>{Array.isArray(a.value) ? a.value.join(", ") : String(a.value)} {a.unit}</td>
-                    <td style={{ whiteSpace: "nowrap" }}>{t(`met.tag.${a.tag}`)}</td>
-                    <td>{a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.source}</a> : a.source}{a.note ? <div className="caption-muted">{a.note}</div> : null}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          {/* the long table of the screen: searchable, sortable, on its own ground */}
+          <div className="well">
+            <DataTable
+              rows={shown}
+              cols={cols}
+              rowKey={(a) => a.key}
+              caption={t("met.inputs.caption")}
+              searchLabel={t("met.inputs.search")}
+            />
           </div>
         </section>
 
         {/* ---------------------------------------------------------------- validation */}
         {V && (
-          <>
-            <section className="block stack">
-              <div className="block-head"><h2>{t("met.pf")}</h2></div>
-              <div className="tiles" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+          <section className="region" id="validation">
+            <div className="region-head">
+              <div className="region-title"><h2>{t("met.validation")}</h2></div>
+            </div>
+
+            <div className="stack">
+              <h3>{t("met.pf")}</h3>
+              <div className="tiles cols-4">
                 <Tile label={t("met.pf.dv")} value={V.powerflow.max_abs_dv_pu.toExponential(1)} unit="pu" note={`${V.powerflow.cases} random operating points`} />
                 <Tile label={t("met.pf.dl")} value={V.powerflow.max_abs_dloading_pct.toExponential(1)} unit="%" />
                 <Tile label={t("met.pf.speed")} value={f(V.powerflow.zbus_seconds_per_year, 1)} unit="s" note={t("met.pf.size", { b: V.powerflow.buses, l: V.powerflow.lines })} />
                 <Tile label={t("met.pf.nr")} value={f(V.powerflow.pandapower_ms_per_case, 0)} unit="ms" />
               </div>
-            </section>
-
-            <div className="grid-2">
-              <section className="block">
-                <div className="block-head"><h2>{t("met.strang")}</h2></div>
-                <p className="caption">{t("met.strang.caption")}</p>
-                <Legend items={[{ color: "var(--accent)", label: t("met.strang.morning"), line: true }, { color: "var(--cat-1)", label: t("met.strang.afternoon"), line: true }]} />
-                <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk) => strangOption(tk, V.strang_timestamp.shifts)} />
-              </section>
-              {V.household_shape && (
-                <section className="block">
-                  <div className="block-head"><h2>{t("met.shape")}</h2></div>
-                  <p className="caption">{t("met.shape.caption", { year: V.household_shape.year, r: f(V.household_shape.corr_hour_of_day, 2) })}</p>
-                  <Legend items={[{ color: "var(--accent)", label: t("met.shape.sim"), line: true }, { color: "var(--cat-1)", label: t("met.shape.real"), line: true }]} />
-                  <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk) => shapeOption(tk, V.household_shape)} />
-                </section>
-              )}
             </div>
 
+            {/* the two input checks are one instrument, so they share one panel */}
             <section className="block">
-              <div className="block-head"><h2>{t("met.weather")}</h2></div>
+              <div className="grid-2">
+                <div className="stack">
+                  <h3>{t("met.strang")}</h3>
+                  <p className="caption">{t("met.strang.caption")}</p>
+                  <Legend items={[{ color: "var(--accent)", label: t("met.strang.morning"), line: true }, { color: "var(--cat-1)", label: t("met.strang.afternoon"), line: true }]} />
+                  <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk) => strangOption(tk, V.strang_timestamp.shifts)} />
+                </div>
+                {V.household_shape && (
+                  <div className="stack">
+                    <h3>{t("met.shape")}</h3>
+                    <p className="caption">{t("met.shape.caption", { year: V.household_shape.year, r: f(V.household_shape.corr_hour_of_day, 2) })}</p>
+                    <Legend items={[{ color: "var(--accent)", label: t("met.shape.sim"), line: true }, { color: "var(--cat-1)", label: t("met.shape.real"), line: true }]} />
+                    <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk) => shapeOption(tk, V.household_shape)} />
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <div className="stack">
+              <h3>{t("met.weather")}</h3>
               <ChartOrTable
                 chart={<Chart ariaLabel={t("met.weather")} height={200} deps={[V]} build={(tk) => weatherOption(tk, V.weather)} />}
                 table={
@@ -192,28 +267,32 @@ export default function Method() {
                   </table>
                 }
               />
-              <div className="tiles" style={{ marginTop: 12, gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+              <div className="tiles cols-4">
                 <Tile label="Diffuse closure vs SMHI (param 122)" value={f(V.diffuse_closure?.mean_abs_w_m2, 2)} unit="W/m²" note="mean absolute difference, 2025" />
                 <Tile label="PV yield, median roof" value={f(V.pv_yield_kwh_per_kwp.median)} unit="kWh/kWp" note={`${V.pv_yield_kwh_per_kwp.year}`} />
                 <Tile label="Household energy, P10–P90" value={`${f(V.households.p10_kwh)}–${f(V.households.p90_kwh)}`} unit="kWh" note={`CREST raw mean ${f(V.households.crest_raw_mean_kwh)} kWh, scaled ×${f(V.households.scale_factor, 2)}`} />
                 <Tile label="Household peak, 10-min vs hourly" value={`${f(V.households.peak_10min_kw_median, 1)} / ${f(V.households.peak_hourly_kw_median, 1)}`} unit="kW" note="median household" />
               </div>
-            </section>
-          </>
+            </div>
+          </section>
         )}
 
         {/* ---------------------------------------------------------------- the cost of foresight */}
         {F && (
-          <section className="block stack">
-            <div className="block-head"><h2>{t("met.fc")}</h2></div>
-            <p className="caption">{t("met.fc.caption", { years: F.years.length - 1 })}</p>
-            <div className="tiles" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+          <section className="region" id="forecast">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("met.fc")}</h2>
+                <p className="caption">{t("met.fc.caption", { years: F.years.length - 1 })}</p>
+              </div>
+            </div>
+            <div className="tiles cols-4">
               <Tile label={t("met.fc.static")} value={f(F.median_kw.static, 0)} unit="kW" />
               <Tile label={t("met.fc.climo")} value={f(F.median_kw.climatological, 0)} unit="kW" />
               <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
               <Tile label={t("met.fc.premium")} value={f(F.foresight_premium_kw, 0)} unit="kW" />
             </div>
-            <div className="tiles" style={{ gridTemplateColumns: "repeat(2, minmax(0,1fr))" }}>
+            <div className="tiles">
               <Tile label={t("met.fc.violations", { n: F.n_orders })} value={F.violation_hours} />
               <Tile
                 label={t("met.fc.record")}
@@ -224,21 +303,23 @@ export default function Method() {
           </section>
         )}
 
-        {/* ---------------------------------------------------------------- limitations & refs */}
-        <div className="grid-2">
-          <section className="block">
-            <div className="block-head"><h2>{t("met.limits")}</h2></div>
-            <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 8 }} className="caption">
+        {/* ---------------------------------------------------------------- limits & refs */}
+        <section className="region" id="limits">
+          <div className="region-head">
+            <div className="region-title"><h2>{t("met.limits")}</h2></div>
+          </div>
+          <div className="grid-2">
+            <ul className="list caption">
               {LIMITS[lang].map((l) => <li key={l}>{l}</li>)}
             </ul>
-          </section>
-          <section className="block">
-            <div className="block-head"><h2>{t("met.refs")}</h2></div>
-            <ol style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 8 }} className="caption">
-              {REFS.map(([r, u]) => <li key={r}>{u ? <a href={u} target="_blank" rel="noreferrer">{r}</a> : r}</li>)}
-            </ol>
-          </section>
-        </div>
+            <section className="block">
+              <div className="block-head"><h3>{t("met.refs")}</h3></div>
+              <ol className="list caption">
+                {REFS.map(([r, u]) => <li key={r}>{u ? <a href={u} target="_blank" rel="noreferrer">{r}</a> : r}</li>)}
+              </ol>
+            </section>
+          </div>
+        </section>
       </div>
     </div>
   );
@@ -257,7 +338,7 @@ function HowItWorks({ lang, houses, pool, years }: { lang: string; houses: numbe
        `Engine: Z-bus power flow on pandapower's exact model for 8 760 hours × ${years} years; static, time-series and verified envelope hosting capacity.`,
        "API and web: FastAPI serves precomputed results and evaluates requests live; this interface shows them."];
   return (
-    <ol style={{ margin: 0, paddingLeft: 20, display: "grid", gap: 8 }}>
+    <ol className="list">
       {steps.map((s) => <li key={s}>{s}</li>)}
     </ol>
   );

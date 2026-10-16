@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
-import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
+import { SectionBar, type Section } from "../components/SectionBar";
+import { ChartOrTable, Chip, Hero, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
@@ -47,39 +48,64 @@ export default function Compare() {
   const ver = S.verification;
   const fixedZ = (H.curve.points as any[]).map((p) => p.z_fixed_pct).filter((v: number) => v > 0);
 
+  // only the sections that have data behind them, so the bar never points at nothing
+  const sections: Section[] = [
+    { id: "capacity", label: t("cmp.sec.capacity") },
+    { id: "verify", label: t("cmp.sec.verify") },
+    ...(HM ? [{ id: "when", label: t("cmp.sec.when") }] : []),
+    { id: "fair", label: t("cmp.sec.fair") },
+    ...(H.tornado ? [{ id: "sensitivity", label: t("cmp.sec.sensitivity") }] : []),
+  ];
+
   return (
     <div className="page">
+      <SectionBar
+        sections={sections}
+        basis={<span>{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>}
+      />
       <div className="page-inner">
-        {/* ---------------------------------------------------------------- headline */}
-        <section className="overview-hero">
-          <div className="overview-copy">
-            <h1 className="headline">{t("overview.title")}</h1>
-            <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
-            <div className="hero-actions"><a className="btn" href="#/twin"><Icon name="twin" size={17} />{t("overview.explore")}</a><a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a></div>
-            <span className="hero-context">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>
-          </div>
-          <GridPreview />
-        </section>
-          <div className="hero-compare">
-            <Chart
-              ariaLabel={t("cmp.hero.aria")}
-              height={184}
-              deps={[H, lang]}
-              build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, ratio, t, width)}
-            />
-            <p className="caption">
-              {t("cmp.hero.cost", { pct: f(zDoeMedian, 1) })}
-            </p>
+        {/* ---------------------------------------------------------------- the claim */}
+        <section className="region">
+          <div className="overview-hero">
+            <div className="overview-copy">
+              <h1 className="headline">{t("overview.title")}</h1>
+              <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
+              <Hero
+                value={f(doeKw)}
+                unit="kW"
+                label={t("cmp.hero.label")}
+                note={t("cmp.hero.ratio", { r: f(ratio, 1), static: f(staticKw) })}
+              />
+              <div className="hero-figure">
+                <Chart
+                  ariaLabel={t("cmp.hero.aria")}
+                  height={160}
+                  deps={[H, lang]}
+                  build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, ratio, t, width)}
+                />
+                <p className="caption">{t("cmp.hero.cost", { pct: f(zDoeMedian, 1) })}</p>
+              </div>
+              <div className="hero-actions">
+                <a className="btn" href="#/twin"><Icon name="twin" size={17} />{t("overview.explore")}</a>
+                <a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a>
+              </div>
+            </div>
+            <GridPreview />
           </div>
           <div className="data-provenance">
             <Chip kind="real" /><span className="caption-muted">{t("cmp.chips.real")}</span>
             <Chip kind="synthetic" /><span className="caption-muted">{t("cmp.chips.synthetic")}</span>
           </div>
+        </section>
 
-        {/* ---------------------------------------------------------------- measures */}
-        <section className="block">
-          <div className="block-head"><h2>{t("cmp.bars")}</h2></div>
-          <p className="caption">{t("cmp.bars.caption")}</p>
+        {/* ---------------------------------------------------------------- capacity */}
+        <section className="region" id="capacity">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("cmp.bars")}</h2>
+              <p className="caption">{t("cmp.bars.caption")}</p>
+            </div>
+          </div>
           <ChartOrTable
             chart={<Chart ariaLabel={t("cmp.bars")} height={250} deps={[H]} build={(tk, width) => barsOption(tk, m, (k) => measureLabel(t, k, zStar), width)} />}
             table={
@@ -93,12 +119,9 @@ export default function Compare() {
               </table>
             }
           />
-        </section>
-
-        <div className="grid-2">
-          {/* -------------------------------------------------------------- curve */}
+          {/* the cost of the last kilowatt is a figure in its own right, so it gets a panel */}
           <section className="block">
-            <div className="block-head"><h2>{t("cmp.curve")}</h2></div>
+            <div className="block-head"><h3>{t("cmp.curve")}</h3></div>
             <p className="caption">{t("cmp.curve.caption")}</p>
             <Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk) => curveOption(tk, H, t, zStar)} />
             {fixedZ.length > 0 && (
@@ -107,67 +130,74 @@ export default function Compare() {
               </p>
             )}
           </section>
+        </section>
 
-          {/* -------------------------------------------------------------- verification */}
-          <section className="block stack">
-            <div className="block-head"><h2>{t("cmp.verify")}</h2></div>
-            <div className="tiles">
-              <Tile label={t("cmp.verify.doe")} value={<Status kind={ver.doe_full_year_violations === 0 ? "good" : "critical"}>{f(ver.doe_full_year_violations)}</Status>} note={`${S.year}, 8 760 h`} />
-              <Tile label={t("cmp.verify.unc")} value={<Status kind="critical">{f(ver.uncontrolled_violation_hours)}</Status>} note={`${S.year}`} />
-              <Tile label={t("cmp.verify.vmax")} value={f(ver.doe_max_voltage_pu, 3)} unit="pu" />
-              <Tile label={t("cmp.verify.trafo")} value={f(ver.doe_max_trafo_loading_pct, 1)} unit="%" />
-              <Tile label={t("cmp.verify.screen")} value={f(ver.screen_missed_hours)} note={t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) })} />
-              <Tile label={t("cmp.verify.zbus")} value={PF ? PF.max_abs_dv_pu.toExponential(0) : "–"} unit="pu" note={PF ? t("cmp.verify.zbusNote", { n: PF.cases }) : undefined} />
-            </div>
-            <p className="caption">{t("cmp.binding", { v: f(ver.uncontrolled_max_voltage_pu, 3) })}</p>
-          </section>
-        </div>
+        {/* ---------------------------------------------------------------- verification */}
+        <section className="region" id="verify">
+          <div className="region-head">
+            <div className="region-title"><h2>{t("cmp.verify")}</h2></div>
+          </div>
+          <div className="tiles cols-6">
+            <Tile label={t("cmp.verify.doe")} value={<Status kind={ver.doe_full_year_violations === 0 ? "good" : "critical"}>{f(ver.doe_full_year_violations)}</Status>} note={`${S.year}, 8 760 h`} />
+            <Tile label={t("cmp.verify.unc")} value={<Status kind="critical">{f(ver.uncontrolled_violation_hours)}</Status>} note={`${S.year}`} />
+            <Tile label={t("cmp.verify.vmax")} value={f(ver.doe_max_voltage_pu, 3)} unit="pu" />
+            <Tile label={t("cmp.verify.trafo")} value={f(ver.doe_max_trafo_loading_pct, 1)} unit="%" />
+            <Tile label={t("cmp.verify.screen")} value={f(ver.screen_missed_hours)} note={t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) })} />
+            <Tile label={t("cmp.verify.zbus")} value={PF ? PF.max_abs_dv_pu.toExponential(0) : "–"} unit="pu" note={PF ? t("cmp.verify.zbusNote", { n: PF.cases }) : undefined} />
+          </div>
+          <p className="caption">{t("cmp.binding", { v: f(ver.uncontrolled_max_voltage_pu, 3) })}</p>
+        </section>
 
-        {/* ---------------------------------------------------------------- heatmap */}
+        {/* ---------------------------------------------------------------- when it binds */}
         {HM && (
-          <section className="block">
-            <div className="block-head">
-              <h2>{t("cmp.heat", { year: HM.year })}</h2>
+          <section className="region" id="when">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("cmp.heat", { year: HM.year })}</h2>
+                <p className="caption">{t("cmp.heat.caption")}</p>
+              </div>
               <div className="seg">
                 <button aria-pressed={heat === "limited"} onClick={() => setHeat("limited")}>{t("cmp.heat.limited")}</button>
                 <button aria-pressed={heat === "unc"} onClick={() => setHeat("unc")}>{t("scn.uncontrolled")}</button>
               </div>
             </div>
-            <p className="caption">{t("cmp.heat.caption")}</p>
-            <Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk) => heatOption(tk, HM, heat, lang, t)} />
+            {/* the dense band of this screen: a year of hours, on its own ground */}
+            <div className="well">
+              <Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk) => heatOption(tk, HM, heat, lang, t)} />
+            </div>
           </section>
         )}
 
-        <div className="grid-2">
-          {/* -------------------------------------------------------------- fairness */}
-          <section className="block">
-            <div className="block-head"><h2>{t("cmp.fair")}</h2></div>
-            <p className="caption">{t("cmp.fair.caption")}</p>
+        {/* ---------------------------------------------------------------- fairness */}
+        <section className="region" id="fair">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("cmp.fair")}</h2>
+              <p className="caption">{t("cmp.fair.caption")}</p>
+            </div>
             <Legend items={[
               { color: "var(--accent)", label: t("pol.maxmin") },
               { color: "var(--cat-1)", label: t("pol.prorata") },
             ]} />
-            <ChartOrTable
-              chart={<Chart ariaLabel={t("cmp.fair")} height={270} deps={[S]} build={(tk) => fairOption(tk, pol, t)} />}
-              table={
-                <table className="data">
-                  <thead><tr><th>{t("tbl.policy")}</th><th className="r">{t("tbl.curtailment")}</th><th className="r">{t("tbl.worst")}</th><th className="r">{t("tbl.jain")}</th><th className="r">{t("tbl.custHours")}</th></tr></thead>
-                  <tbody>
-                    {Object.entries(pol).map(([k, v]: any) => (
-                      <tr key={k}><td>{t(`pol.${k}`)}</td><td className="r">{f(v.z_pct, 2)}</td><td className="r">{f(v.max_customer_z_pct, 1)}</td><td className="r">{f(v.jain_index, 2)}</td><td className="r">{f(v.customer_hours_limited)}</td></tr>
-                    ))}
-                  </tbody>
-                </table>
-              }
-            />
-          </section>
-
-          {/* -------------------------------------------------------------- risk */}
+          </div>
+          <ChartOrTable
+            chart={<Chart ariaLabel={t("cmp.fair")} height={270} deps={[S]} build={(tk) => fairOption(tk, pol, t)} />}
+            table={
+              <table className="data">
+                <thead><tr><th>{t("tbl.policy")}</th><th className="r">{t("tbl.curtailment")}</th><th className="r">{t("tbl.worst")}</th><th className="r">{t("tbl.jain")}</th><th className="r">{t("tbl.custHours")}</th></tr></thead>
+                <tbody>
+                  {Object.entries(pol).map(([k, v]: any) => (
+                    <tr key={k}><td>{t(`pol.${k}`)}</td><td className="r">{f(v.z_pct, 2)}</td><td className="r">{f(v.max_customer_z_pct, 1)}</td><td className="r">{f(v.jain_index, 2)}</td><td className="r">{f(v.customer_hours_limited)}</td></tr>
+                  ))}
+                </tbody>
+              </table>
+            }
+          />
           {R && (
             <section className="block stack">
-              <div className="block-head"><h2>{t("cmp.risk")}</h2></div>
+              <div className="block-head"><h3>{t("cmp.risk")}</h3></div>
               <p className="caption">{t("cmp.risk.caption")}</p>
-              <div className="tiles" style={{ gridTemplateColumns: "repeat(4, minmax(0,1fr))" }}>
+              <div className="tiles cols-4">
                 <Tile label={t("cmp.risk.mean")} value={f(R.stats.mean_z_pct, 1)} unit="%" />
                 <Tile label={t("cmp.risk.p90")} value={f(R.stats.p90_z_pct, 1)} unit="%" />
                 <Tile label={t("cmp.risk.worst")} value={f(R.stats.worst_z_pct, 1)} unit="%" />
@@ -176,17 +206,21 @@ export default function Compare() {
               <Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk) => riskOption(tk, R, zStar)} />
             </section>
           )}
-        </div>
+        </section>
 
-        {/* ---------------------------------------------------------------- tornado */}
+        {/* ---------------------------------------------------------------- sensitivity */}
         {H.tornado && (
-          <section className="block">
-            <div className="block-head"><h2>{t("cmp.tornado")}</h2></div>
-            <p className="caption">{t("cmp.tornado.caption")}</p>
-            <Legend items={[
-              { color: "var(--accent)", label: t("cmp.fig.doe") },
-              { color: "var(--neutral-series)", label: t("cmp.fig.static") },
-            ]} />
+          <section className="region" id="sensitivity">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("cmp.tornado")}</h2>
+                <p className="caption">{t("cmp.tornado.caption")}</p>
+              </div>
+              <Legend items={[
+                { color: "var(--accent)", label: t("cmp.fig.doe") },
+                { color: "var(--neutral-series)", label: t("cmp.fig.static") },
+              ]} />
+            </div>
             <ChartOrTable
               chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width) => tornadoOption(tk, H.tornado, t, width)} />}
               table={

@@ -412,6 +412,20 @@ const en: Dict = {
   "met.fc.violations": "Limit violations, all {n} adoption orders",
   "met.fc.record": "Hours the year beat its own record",
   "met.fc.record.note": "of 8 760, on the neighbourhood total; worst {r}× the bound",
+  "shell.sections": "Sections",
+  "cmp.sec.capacity": "Capacity",
+  "cmp.sec.verify": "Verification",
+  "cmp.sec.when": "When it binds",
+  "cmp.sec.fair": "Fairness",
+  "cmp.sec.sensitivity": "Sensitivity",
+  "cmp.hero.label": "Hosting capacity with verified envelopes",
+  "cmp.hero.ratio": "×{r} the {static} kW the static worst-case study allows",
+  "met.nav.fc": "Forecast",
+  "met.hero.label": "model inputs, every one with a value, a unit and a source",
+  "met.hero.note": "{rest} come from published data, a regulation or a library, or are derived from those. The other {team} are the team’s own, each with the reason it was chosen.",
+  "met.inputs.search": "Search an input, a source or a value",
+  "met.inputs.caption": "Every input the model takes, with its value, unit, kind and source.",
+  "met.sources.caption": "Every external source the pipeline reads, with its licence, what it is used for, and whether it answered just now.",
 };
 
 const es: Dict = {
@@ -818,6 +832,20 @@ const es: Dict = {
   "met.fc.violations": "Violaciones de límites, los {n} órdenes de adopción",
   "met.fc.record": "Horas en que el año batió su propio récord",
   "met.fc.record.note": "de 8 760, en el total del barrio; la peor {r}× la cota",
+  "shell.sections": "Secciones",
+  "cmp.sec.capacity": "Capacidad",
+  "cmp.sec.verify": "Verificación",
+  "cmp.sec.when": "Cuándo actúan",
+  "cmp.sec.fair": "Equidad",
+  "cmp.sec.sensitivity": "Sensibilidad",
+  "cmp.hero.label": "Capacidad de acogida con envolventes verificadas",
+  "cmp.hero.ratio": "×{r} los {static} kW que permite el estudio estático de peor caso",
+  "met.nav.fc": "Pronóstico",
+  "met.hero.label": "datos de entrada del modelo, cada uno con valor, unidad y fuente",
+  "met.hero.note": "{rest} vienen de datos publicados, de normativa o de una biblioteca, o se derivan de ellos. Los otros {team} son del equipo, cada uno con la razón por la que se eligió.",
+  "met.inputs.search": "Buscar un dato, una fuente o un valor",
+  "met.inputs.caption": "Todos los datos de entrada del modelo, con su valor, unidad, tipo y fuente.",
+  "met.sources.caption": "Todas las fuentes externas que lee la tubería, con su licencia, para qué se usa y si ha respondido ahora mismo.",
 };
 
 export const DICTS: Record<string, Dict> = { en, es };

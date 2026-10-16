@@ -60,6 +60,25 @@ export function Tile({ label, value, unit, note }: { label: string; value: React
   );
 }
 
+/**
+ * The one number a screen is about (§11), and the only thing on it at this size.
+ *
+ * `label` says what the number is, `note` what it is relative to. It is set in the mono
+ * face because it is a reading off an instrument, not a headline.
+ */
+export function Hero({ value, unit, label, note }: { value: ReactNode; unit?: string; label: string; note?: ReactNode }) {
+  return (
+    <div className="hero-stat">
+      <div className="hero-value">
+        {value}
+        {unit ? <small>{unit}</small> : null}
+      </div>
+      <div className="hero-label">{label}</div>
+      {note ? <div className="hero-note">{note}</div> : null}
+    </div>
+  );
+}
+
 export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits = 0 }: {
   label: string; value: number; max?: number; limit?: number; unit?: string; digits?: number;
 }) {
