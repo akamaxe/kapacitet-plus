@@ -74,7 +74,7 @@ export default function Method() {
     <div className="page">
       <div className="page-inner">
         <section className="stack">
-          <h1 className="headline" style={{ fontSize: "var(--t-2xl)" }}>{t("met.title")}</h1>
+          <h1 className="headline" style={{ fontSize: "var(--text-h1)" }}>{t("met.title")}</h1>
           <p className="headline-sub">{t("met.sub")}</p>
         </section>
 
@@ -162,14 +162,14 @@ export default function Method() {
               <section className="block">
                 <div className="block-head"><h2>{t("met.strang")}</h2></div>
                 <p className="caption">{t("met.strang.caption")}</p>
-                <Legend items={[{ color: "var(--series-1)", label: t("met.strang.morning"), line: true }, { color: "var(--series-2)", label: t("met.strang.afternoon"), line: true }]} />
+                <Legend items={[{ color: "var(--accent)", label: t("met.strang.morning"), line: true }, { color: "var(--cat-1)", label: t("met.strang.afternoon"), line: true }]} />
                 <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk) => strangOption(tk, V.strang_timestamp.shifts)} />
               </section>
               {V.household_shape && (
                 <section className="block">
                   <div className="block-head"><h2>{t("met.shape")}</h2></div>
                   <p className="caption">{t("met.shape.caption", { year: V.household_shape.year, r: f(V.household_shape.corr_hour_of_day, 2) })}</p>
-                  <Legend items={[{ color: "var(--series-1)", label: t("met.shape.sim"), line: true }, { color: "var(--series-2)", label: t("met.shape.real"), line: true }]} />
+                  <Legend items={[{ color: "var(--accent)", label: t("met.shape.sim"), line: true }, { color: "var(--cat-1)", label: t("met.shape.real"), line: true }]} />
                   <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk) => shapeOption(tk, V.household_shape)} />
                 </section>
               )}
@@ -244,8 +244,8 @@ function strangOption(tk: Tokens, shifts: any[]) {
     yAxis: { type: "value", ...axisStyle(tk), scale: true },
     tooltip: { trigger: "axis" },
     series: [
-      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.morning_k.toFixed(4))]), lineStyle: { width: 2, color: tk.s1 }, itemStyle: { color: tk.s1, borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
-      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.afternoon_k.toFixed(4))]), lineStyle: { width: 2, color: tk.s2 }, itemStyle: { color: tk.s2, borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
+      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.morning_k.toFixed(4))]), lineStyle: { width: 2, color: tk.accent }, itemStyle: { color: tk.accent, borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
+      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.afternoon_k.toFixed(4))]), lineStyle: { width: 2, color: tk.cat[0] }, itemStyle: { color: tk.cat[0], borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
     ],
   };
 }
@@ -258,8 +258,8 @@ function shapeOption(tk: Tokens, sh: any) {
     yAxis: { type: "value", ...axisStyle(tk), scale: true, name: "× mean" },
     tooltip: { trigger: "axis" },
     series: [
-      { type: "line", data: sh.hour_of_day_sim, lineStyle: { width: 2, color: tk.s1 }, symbol: "none" },
-      { type: "line", data: sh.hour_of_day_real, lineStyle: { width: 2, color: tk.s2 }, symbol: "none" },
+      { type: "line", data: sh.hour_of_day_sim, lineStyle: { width: 2, color: tk.accent }, symbol: "none" },
+      { type: "line", data: sh.hour_of_day_real, lineStyle: { width: 2, color: tk.cat[0] }, symbol: "none" },
     ],
   };
 }
@@ -270,6 +270,6 @@ function weatherOption(tk: Tokens, w: any[]) {
     xAxis: { type: "category", data: w.map((x) => String(x.year)), ...axisStyle(tk), splitLine: { show: false } },
     yAxis: { type: "value", ...axisStyle(tk), name: "kWh/m²", min: 0 },
     tooltip: { trigger: "axis" },
-    series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.s1, borderRadius: [4, 4, 0, 0] }, barWidth: 18 }],
+    series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barWidth: 18 }],
   };
 }

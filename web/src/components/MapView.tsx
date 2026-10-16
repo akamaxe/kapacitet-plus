@@ -20,7 +20,7 @@ function offlineStyle(): StyleSpecification {
   return {
     version: 8,
     sources: {},
-    layers: [{ id: "bg", type: "background", paint: { "background-color": token("--paper") } }],
+    layers: [{ id: "bg", type: "background", paint: { "background-color": token("--bg-base") } }],
   };
 }
 

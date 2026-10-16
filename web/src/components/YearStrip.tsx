@@ -27,7 +27,7 @@ export function YearStrip({ values, hours, label }: { values: number[]; hours: n
       cv.height = Math.round(h * dpr);
       const ctx = cv.getContext("2d")!;
       ctx.scale(dpr, dpr);
-      ctx.fillStyle = tk.surface2;
+      ctx.fillStyle = tk.inset;
       ctx.fillRect(0, 0, w, h);
       const cw = w / days;
       const ch = h / 24;
@@ -43,7 +43,7 @@ export function YearStrip({ values, hours, label }: { values: number[]; hours: n
       // current hour marker: vertical hairline + cell ring
       const d = Math.floor(hour / 24);
       const hh = hour % 24;
-      ctx.strokeStyle = tk.ink;
+      ctx.strokeStyle = tk.text;
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(d * cw + cw / 2, 0);
@@ -53,7 +53,7 @@ export function YearStrip({ values, hours, label }: { values: number[]; hours: n
       ctx.strokeStyle = tk.surface;
       ctx.strokeRect(d * cw - 3, hh * ch - 3, Math.max(cw, 2) + 6, ch + 6);
       ctx.lineWidth = 1.5;
-      ctx.strokeStyle = tk.ink;
+      ctx.strokeStyle = tk.text;
       ctx.strokeRect(d * cw - 2, hh * ch - 2, Math.max(cw, 2) + 4, ch + 4);
     };
     draw();

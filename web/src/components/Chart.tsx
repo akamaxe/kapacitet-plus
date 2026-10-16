@@ -72,12 +72,12 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EC
     ...opt,
     animation: !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     animationDuration: 300,
-    textStyle: { fontFamily: tk.font, color: tk.ink2, fontSize: 12, ...opt.textStyle },
+    textStyle: { fontFamily: tk.font, color: tk.text2, fontSize: 12, ...opt.textStyle },
     tooltip: {
       backgroundColor: tk.surface,
-      borderColor: tk.hairline,
+      borderColor: tk.border,
       borderWidth: 1,
-      textStyle: { color: tk.ink, fontFamily: tk.font, fontSize: 12.5 },
+      textStyle: { color: tk.text, fontFamily: tk.font, fontSize: 12.5 },
       extraCssText: "box-shadow: 0 4px 16px rgba(16,37,48,0.12); border-radius: 8px;",
       confine: true,
       ...tooltip,
@@ -87,10 +87,10 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens): echarts.EC
 
 export function axisStyle(tk: Tokens) {
   return {
-    axisLine: { lineStyle: { color: tk.baseline } },
+    axisLine: { lineStyle: { color: tk.borderStrong } },
     axisTick: { show: false },
     axisLabel: { color: tk.muted, fontFamily: tk.font },
-    splitLine: { lineStyle: { color: tk.hairline, width: 1, type: "solid" as const } },
+    splitLine: { lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
     nameTextStyle: { color: tk.muted, fontFamily: tk.font },
   };
 }

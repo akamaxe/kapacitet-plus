@@ -64,12 +64,12 @@ export default function Compare() {
             <div className="figure">
               <div className="metric-top"><span>{t("overview.baseline")}</span><Icon name="compare" /></div>
               <div className="value">{f(staticKw)}<small>kW</small></div>
-              <div className="label"><span className="mark" style={{ background: "var(--deemph)" }} />{t("cmp.fig.static")}</div>
+              <div className="label"><span className="mark" style={{ background: "var(--neutral-series)" }} />{t("cmp.fig.static")}</div>
             </div>
             <div className="figure featured">
               <div className="metric-top"><span>{t("overview.dynamic")}</span><Icon name="bolt" /></div>
               <div className="value">{f(doeKw)}<small>kW</small></div>
-              <div className="label"><span className="mark" style={{ background: "var(--series-1)" }} />{t("cmp.fig.doe")}</div>
+              <div className="label"><span className="mark" style={{ background: "var(--accent)" }} />{t("cmp.fig.doe")}</div>
             </div>
             <div className="figure">
               <div className="metric-top"><span>{t("overview.uplift")}</span><Icon name="scenarios" /></div>
@@ -155,8 +155,8 @@ export default function Compare() {
             <div className="block-head"><h2>{t("cmp.fair")}</h2></div>
             <p className="caption">{t("cmp.fair.caption")}</p>
             <Legend items={[
-              { color: "var(--series-1)", label: t("pol.maxmin") },
-              { color: "var(--series-2)", label: t("pol.prorata") },
+              { color: "var(--accent)", label: t("pol.maxmin") },
+              { color: "var(--cat-1)", label: t("pol.prorata") },
             ]} />
             <ChartOrTable
               chart={<Chart ariaLabel={t("cmp.fair")} height={270} deps={[S]} build={(tk) => fairOption(tk, pol, t)} />}
@@ -195,8 +195,8 @@ export default function Compare() {
             <div className="block-head"><h2>{t("cmp.tornado")}</h2></div>
             <p className="caption">{t("cmp.tornado.caption")}</p>
             <Legend items={[
-              { color: "var(--series-1)", label: t("cmp.fig.doe") },
-              { color: "var(--deemph)", label: t("cmp.fig.static") },
+              { color: "var(--accent)", label: t("cmp.fig.doe") },
+              { color: "var(--neutral-series)", label: t("cmp.fig.static") },
             ]} />
             <ChartOrTable
               chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width) => tornadoOption(tk, H.tornado, t, width)} />}
@@ -234,14 +234,14 @@ function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: num
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 58 : 70, top: 10, bottom: 30 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW", nameLocation: "end" },
-    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font, fontSize: compact ? 10 : 13, width: compact ? 106 : 240, overflow: "break" } },
+    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? 10 : 13, width: compact ? 106 : 240, overflow: "break" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${cats[p.dataIndex]}<br/><b>${Math.round(vals[p.dataIndex])} kW</b> (P10 ${Math.round(lo[p.dataIndex])}–P90 ${Math.round(hi[p.dataIndex])})` },
     series: [
       {
         type: "bar",
         barWidth: 22,
-        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.s1 : tk.deemph, borderRadius: [0, 4, 4, 0] } })),
-        label: { show: true, position: "right", distance: compact ? 8 : 26, fontSize: compact ? 10 : 12, color: tk.ink, fontWeight: 600, formatter: (p: any) => `${Math.round(p.value)} kW` },
+        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.accent : tk.neutralSeries, borderRadius: [0, 4, 4, 0] } })),
+        label: { show: true, position: "right", distance: compact ? 8 : 26, fontSize: compact ? 10 : 12, color: tk.text, fontWeight: 600, formatter: (p: any) => `${Math.round(p.value)} kW` },
         z: 2,
       },
       {
@@ -253,9 +253,9 @@ function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: num
           return {
             type: "group",
             children: [
-              { type: "line", shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: tk.ink, lineWidth: 1.5 } },
-              { type: "line", shape: { x1: a[0], y1: a[1] - 5, x2: a[0], y2: a[1] + 5 }, style: { stroke: tk.ink, lineWidth: 1.5 } },
-              { type: "line", shape: { x1: b[0], y1: b[1] - 5, x2: b[0], y2: b[1] + 5 }, style: { stroke: tk.ink, lineWidth: 1.5 } },
+              { type: "line", shape: { x1: a[0], y1: a[1], x2: b[0], y2: b[1] }, style: { stroke: tk.text, lineWidth: 1.5 } },
+              { type: "line", shape: { x1: a[0], y1: a[1] - 5, x2: a[0], y2: a[1] + 5 }, style: { stroke: tk.text, lineWidth: 1.5 } },
+              { type: "line", shape: { x1: b[0], y1: b[1] - 5, x2: b[0], y2: b[1] + 5 }, style: { stroke: tk.text, lineWidth: 1.5 } },
             ],
           };
         },
@@ -293,14 +293,14 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
     },
     series: [
       { type: "line", data: xs.map((x, i) => [x, minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
-      { type: "line", data: xs.map((x, i) => [x, maxY[i] - minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: tk.s1, opacity: 0.12 }, silent: true, tooltip: { show: false } },
+      { type: "line", data: xs.map((x, i) => [x, maxY[i] - minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: tk.accent, opacity: 0.12 }, silent: true, tooltip: { show: false } },
       {
         type: "line", name: t("cmp.curve.doe"), data: xs.map((x, i) => [x, pts[i].z_doe_pct]), symbol: "circle", symbolSize: 7,
-        lineStyle: { width: 2, color: tk.s1 }, itemStyle: { color: tk.s1, borderColor: tk.surface, borderWidth: 2 },
+        lineStyle: { width: 2, color: tk.accent }, itemStyle: { color: tk.accent, borderColor: tk.surface, borderWidth: 2 },
         markLine: {
           symbol: "none", silent: true,
-          lineStyle: { color: tk.baseline, type: "solid", width: 1 },
-          label: { color: tk.ink2, fontFamily: tk.font, fontSize: 11 },
+          lineStyle: { color: tk.borderStrong, type: "solid", width: 1 },
+          label: { color: tk.text2, fontFamily: tk.font, fontSize: 11 },
           data: [
             { yAxis: zStar, label: { formatter: t("cmp.curve.limit", { z: zStar }), position: "insideStartTop" } },
             ...marks.map((mk) => ({ xAxis: mk.x, label: { formatter: mk.name, position: "insideEndTop", rotate: 90 } })),
@@ -334,7 +334,7 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
       min: which === "limited" ? 1 : 0, max: which === "limited" ? Math.max(1, vmax) : 130, calculable: false, orient: "vertical", right: 0, top: "middle",
       itemHeight: 140, itemWidth: 10,
       textStyle: { color: tk.muted, fontFamily: tk.font },
-      inRange: { color: which === "limited" ? [tk.seq[1], tk.seq[3], tk.seq[5], tk.seq[6]] : [tk.seq[0], tk.seq[2], tk.seq[4], tk.seq[6], tk.critical] },
+      inRange: { color: which === "limited" ? [tk.load[1], tk.load[3], tk.load[5], tk.load[6]] : [tk.load[0], tk.load[2], tk.load[4], tk.load[6], tk.danger] },
       text: which === "limited" ? [String(vmax), "1"] : ["130 %", "0 %"],
     },
     tooltip: {
@@ -363,7 +363,7 @@ function fairOption(tk: Tokens, pol: any, t: (k: string, v?: any) => string) {
     xAxis: { type: "value", ...axisStyle(tk), name: "m", nameLocation: "middle", nameGap: 28, scale: true },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${p.seriesName}<br/>${t("cmp.tt.house", { id: p.value[2], m: Math.round(p.value[0]) })}<br/>${t("cmp.tt.curtailed")}: <b>${p.value[1].toFixed(2)} %</b>` },
-    series: [mk("maxmin", tk.s1), mk("prorata", tk.s2)],
+    series: [mk("maxmin", tk.accent), mk("prorata", tk.cat[0])],
   };
 }
 
@@ -376,9 +376,9 @@ function riskOption(tk: Tokens, R: any, zStar: number) {
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${p.value[0]}<br/><b>${p.value[1].toFixed(2)} %</b>` },
     series: [{
-      type: "scatter", symbolSize: 8, itemStyle: { color: tk.s1, borderColor: tk.surface, borderWidth: 2 },
+      type: "scatter", symbolSize: 8, itemStyle: { color: tk.accent, borderColor: tk.surface, borderWidth: 2 },
       data: cases.map((c) => [String(c.year), c.z_pct]),
-      markLine: { symbol: "none", silent: true, lineStyle: { color: tk.baseline, type: "solid" }, label: { color: tk.ink2, fontFamily: tk.font, formatter: `${zStar} %`, position: "insideEndTop" }, data: [{ yAxis: zStar }] },
+      markLine: { symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid" }, label: { color: tk.text2, fontFamily: tk.font, formatter: `${zStar} %`, position: "insideEndTop" }, data: [{ yAxis: zStar }] },
     }],
   };
 }
@@ -398,15 +398,15 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },
-    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.ink, fontFamily: tk.font, fontSize: compact ? 9 : 12, width: compact ? 106 : 240, overflow: "truncate" } },
+    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? 9 : 12, width: compact ? 106 : 240, overflow: "truncate" } },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps: any[]) => `<b>${ps[0].name}</b><br/>${levels(ps[0].name)}` },
     series: [
       { type: "bar", stack: "d", data: d.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
-      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.s1, borderRadius: 4 }, barWidth: 10 },
+      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.accent, borderRadius: 4 }, barWidth: 10 },
       { type: "bar", stack: "s", data: s.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
-      { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.deemph, borderRadius: 4 }, barWidth: 10 },
-      { type: "scatter", data: labels.map((l) => [T.base.doe_kw, l]), symbolSize: 9, itemStyle: { color: tk.ink, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
-      { type: "scatter", data: labels.map((l) => [T.base.static_kw, l]), symbolSize: 9, itemStyle: { color: tk.ink2, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
+      { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.neutralSeries, borderRadius: 4 }, barWidth: 10 },
+      { type: "scatter", data: labels.map((l) => [T.base.doe_kw, l]), symbolSize: 9, itemStyle: { color: tk.text, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
+      { type: "scatter", data: labels.map((l) => [T.base.static_kw, l]), symbolSize: 9, itemStyle: { color: tk.text2, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
     ],
   };
 }

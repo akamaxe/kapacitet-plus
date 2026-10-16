@@ -75,12 +75,12 @@ export default function Twin() {
       add("cabinets", fc(cab));
       add("substation", fc(sub));
       if (!map.getLayer("context")) {
-        map.addLayer({ id: "context", type: "fill", source: "context", paint: { "fill-color": tk.hairline, "fill-opacity": 0.7 } });
+        map.addLayer({ id: "context", type: "fill", source: "context", paint: { "fill-color": tk.border, "fill-opacity": 0.7 } });
         map.addLayer({
           id: "cables", type: "line", source: "cables",
           layout: { "line-cap": "round", "line-join": "round" },
           paint: {
-            "line-color": ["coalesce", ["feature-state", "color"], tk.seq[2]],
+            "line-color": ["coalesce", ["feature-state", "color"], tk.load[2]],
             // zoom must be the top-level input of interpolate; the cable kind is decided inside
             "line-width": ["interpolate", ["linear"], ["zoom"],
               14, ["case", ["==", ["get", "kind"], "main"], 2, 0.8],
@@ -90,17 +90,17 @@ export default function Twin() {
         map.addLayer({
           id: "houses", type: "fill-extrusion", source: "houses",
           paint: {
-            "fill-extrusion-color": ["coalesce", ["feature-state", "color"], tk.divMid],
+            "fill-extrusion-color": ["coalesce", ["feature-state", "color"], tk.voltMid],
             "fill-extrusion-height": ["get", "height"],
             "fill-extrusion-opacity": 0.92,
           },
         });
         map.addLayer({
           id: "houses-sel", type: "line", source: "houses",
-          paint: { "line-color": tk.ink, "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0] },
+          paint: { "line-color": tk.text, "line-width": ["case", ["boolean", ["feature-state", "hover"], false], 2, 0] },
         });
-        map.addLayer({ id: "cabinets", type: "circle", source: "cabinets", paint: { "circle-radius": 2.5, "circle-color": tk.ink2, "circle-stroke-width": 1.5, "circle-stroke-color": tk.surface } });
-        map.addLayer({ id: "substation", type: "circle", source: "substation", paint: { "circle-radius": 8, "circle-color": tk.ink, "circle-stroke-width": 3, "circle-stroke-color": tk.surface } });
+        map.addLayer({ id: "cabinets", type: "circle", source: "cabinets", paint: { "circle-radius": 2.5, "circle-color": tk.text2, "circle-stroke-width": 1.5, "circle-stroke-color": tk.surface } });
+        map.addLayer({ id: "substation", type: "circle", source: "substation", paint: { "circle-radius": 8, "circle-color": tk.text, "circle-stroke-width": 3, "circle-stroke-color": tk.surface } });
       }
       paintRef.current(map);
     },
@@ -129,7 +129,7 @@ export default function Twin() {
       // the substation marker turns critical when the transformer is above its rating
       if (map.getLayer("substation")) {
         const over = st.data.header.aggregates.trafo_loading[h] > 100;
-        map.setPaintProperty("substation", "circle-color", over ? tk.critical : tk.ink);
+        map.setPaintProperty("substation", "circle-color", over ? tk.danger : tk.text);
         map.setPaintProperty("substation", "circle-radius", over ? 11 : 8);
       }
     },
@@ -319,10 +319,10 @@ function MapLegend({ colorBy }: { colorBy: ColorBy }) {
   const tk = tokens();
   const theme = useStore((s) => s.theme);
   void theme;
-  const seqGrad = `linear-gradient(90deg, ${tk.seq.join(",")})`;
+  const seqGrad = `linear-gradient(90deg, ${tk.load.join(",")})`;
   const divGrad = colorBy === "voltage"
-    ? `linear-gradient(90deg, ${tk.divLow}, ${tk.divMid}, ${tk.divHigh})`
-    : `linear-gradient(90deg, ${tk.divLow}, ${tk.divMid}, ${tk.s2})`;
+    ? `linear-gradient(90deg, ${tk.voltLow}, ${tk.voltMid}, ${tk.voltHigh})`
+    : `linear-gradient(90deg, ${tk.voltLow}, ${tk.voltMid}, ${tk.cat[0]})`;
   return (
     <div className="map-legend">
       <div className="scale">
@@ -334,7 +334,7 @@ function MapLegend({ colorBy }: { colorBy: ColorBy }) {
           <span>100 %</span>
         </div>
         <span className="row" style={{ gap: 6 }}>
-          <i style={{ display: "inline-block", width: 12, height: 4, borderRadius: 2, background: tk.critical }} />
+          <i style={{ display: "inline-block", width: 12, height: 4, borderRadius: 2, background: tk.danger }} />
           {t("twin.legend.over")}
         </span>
       </div>
