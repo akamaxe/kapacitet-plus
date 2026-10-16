@@ -209,6 +209,28 @@ stop the import rather than being guessed around, and every fallback that is app
 
 The import is faithful, not approximate. Writing the reference network out in the contract and reading it back gives a network that is electrically the same one: voltages at the 120 services agree to 1e-14 pu and the transformer loading to 1e-13 per cent, so every stage after it returns the same answer by construction.
 
+## The paperwork the agreement leaves behind
+
+Ei permits a conditional connection agreement only where scarcity is real, on approved
+terms, with curtailment as a last resort and annual reporting. Two of those four are
+evidence the operator has to produce afterwards, so the engine produces them:
+
+```bash
+.venv/Scripts/python -m kapacitet compliance
+```
+
+`audit_trail.csv` is one row per curtailment: the hour, the customer, what they asked for,
+what they were granted, and **which component was out of room**, together with the load that
+component would have carried had no envelope been issued. That last column is what makes
+"last resort" a claim anybody can check. On the reference year it reads 3 533 rows over 148
+hours, every one of them bound by the transformer, which would have reached 126 % of its
+rating at 11:00 on 19 May.
+
+`compliance.json` and `compliance.txt` are the annual filing derived from that trail, so the
+report and its evidence cannot drift apart: 43 agreements, 7 261 kWh curtailed, 2.67 % of
+what those customers would have exported, zero violations left after verification, and the
+allocation policy that decided who bore it.
+
 ## Limitations
 
 Stated openly on the Method screen and repeated here: envelopes use perfect foresight (real

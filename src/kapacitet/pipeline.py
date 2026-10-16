@@ -5,6 +5,7 @@ Commands
   build     build the synthetic LV network on the OSM neighbourhood
   profiles  build hourly weather, PV, household, heat-pump and EV profiles
   compute   hosting capacity, DOE, risk, scenarios and UI payloads
+  compliance  audit trail and annual filing for a computed year
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -130,6 +131,21 @@ def cmd_import(args: argparse.Namespace) -> None:
     log.info("Next: python -m kapacitet profiles && python -m kapacitet compute")
 
 
+def cmd_compliance(args: argparse.Namespace) -> None:
+    """The audit trail and the annual filing for a computed year."""
+    from .paths import processed
+
+    path = processed("results", "compliance.txt")
+    if not path.exists():
+        print("No compliance report yet. Run: python -m kapacitet compute")
+        sys.exit(1)
+    print(path.read_text(encoding="utf-8"))
+    trail = processed("results", "audit_trail.csv")
+    if trail.exists():
+        rows = sum(1 for _ in trail.open(encoding="utf-8")) - 1
+        print(f"\nEvent-level audit trail: {rows} rows in {trail}")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -176,6 +192,9 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("import", help="build the engine's tables from a network export")
     p.add_argument("directory", help="directory holding the contract CSV files")
     p.set_defaults(func=cmd_import)
+
+    p = sub.add_parser("compliance", help="audit trail and annual filing for a computed year")
+    p.set_defaults(func=cmd_compliance)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")

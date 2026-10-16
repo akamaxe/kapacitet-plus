@@ -15,7 +15,7 @@ from .. import __version__
 from ..config import A, settings
 from ..paths import processed
 from ..timeindex import day_of_year, hour_of_day, year_index
-from . import doe, economics, hosting
+from . import compliance, doe, economics, hosting
 from .netmodel import NetModel
 from .scenario import Scenario, adoption_order, customers, mask_from_share
 
@@ -395,6 +395,16 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
         },
     }
     _write("showcase.json", showcase_obj)
+
+    # The paperwork the agreement leaves behind: one row per curtailment with the component
+    # that was out of room, and the annual filing derived from it.
+    trail = compliance.audit_trail(m, r, arr, y, cids=cust["cid"].to_numpy())
+    trail.events.to_csv(processed("results", "audit_trail.csv"), index=False)
+    report = compliance.annual_report(trail, r, cids=cust["cid"].to_numpy())
+    _write("compliance.json", report)
+    processed("results", "compliance.txt").write_text(compliance.report_text(report), encoding="utf-8")
+    log.info("compliance: %d events in %d hours, %.0f kWh",
+             len(trail.events), trail.hours_with_curtailment, trail.energy_kwh)
 
     # State payloads for the time slider (uint8, time-major) and per-hour aggregates.
     write_state("static", res_st, v_st, p_static["p_net"], p_static["pv"], p_static["load"], None)
