@@ -60,6 +60,10 @@ class DoeResult:
     backoff_hours: int = 0
     base_violation_hours: int = 0  # hours where the firm state alone violates a limit
     verified_violations: int = 0   # hours with violations after verification (must be 0)
+    binding: np.ndarray | None = None   # (Hc,) which limit bound each critical hour: 0 voltage,
+                                        # 1 cable, 2 transformer. The evidence a regulator needs
+                                        # that curtailment was a last resort, not a preference.
+    binding_line: np.ndarray | None = None  # (Hc,) pandapower line index when a cable bound, else -1
     info: dict = field(default_factory=dict)
 
     def envelope(self, H: int) -> np.ndarray:
@@ -269,10 +273,23 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     verified_bad = int((final.export_side & ~firm_bad).sum())
 
     curtailed[:, hours] = np.maximum(desired[:, hours] - E, 0.0)
+
+    # Which limit bound each critical hour: the row of A E <= b with the least slack. A
+    # regulator asking why a customer was curtailed gets the component, not just the fact.
+    b_final = np.vstack([model.v_max - v0 - m_v, Pbar_l - P0_l - m_l, (Pbar_T - P0_T)[None, :] - m_t])
+    slack = b_final - A @ E
+    scale = np.concatenate([np.full(Kv, 0.01),                      # pu, so 1 % is "tight"
+                            model.line_s_max_kw[line_idx] * 0.01,   # kW, 1 % of the rating
+                            [model.trafo_s_max_kw * 0.01]])
+    tight = np.argmin(slack / scale[:, None], axis=0)
+    binding = np.where(tight < Kv, 0, np.where(tight < Kv + Kl, 1, 2)).astype(np.int8)
+    binding_line = np.where(binding == 1, line_idx[np.clip(tight - Kv, 0, max(Kl - 1, 0))], -1)
+
     return DoeResult(nonfirm=nonfirm, hours=hours, E=E.astype(np.float32), desired=desired.astype(np.float32),
                      cap=cap.astype(np.float32), curtailed=curtailed.astype(np.float32), iterations=it,
                      backoff_hours=backoff, base_violation_hours=int(firm_bad.sum()),
                      verified_violations=verified_bad,
+                     binding=binding, binding_line=binding_line.astype(np.int32),
                      info={"critical_hours": int(Hc), "policy": policy})
 
 
