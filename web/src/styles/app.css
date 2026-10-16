@@ -75,7 +75,9 @@ p {
   position: relative;
   min-height: 0;
   display: grid;
-  grid-template-rows: 1fr auto;
+  /* the map keeps a floor: opening the house table under it must not squeeze the map
+     to a strip where its own legend covers everything */
+  grid-template-rows: minmax(240px, 1fr) auto auto;
 }
 
 .map-wrap {
@@ -1373,7 +1375,7 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   flex-direction: column;
 }
 
-.houses-region.open { max-height: 46vh; }
+.houses-region.open { max-height: min(38vh, 400px); }
 
 .region-toggle {
   display: flex;
