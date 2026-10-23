@@ -96,9 +96,13 @@ def cmd_profiles(args: argparse.Namespace) -> None:
 def cmd_compute(args: argparse.Namespace) -> None:
     from .engine import run
 
+    only = {s.strip() for s in getattr(args, "only", "").split(",") if s.strip()} or None
+    if only and not only <= set(run.EXTRA_STAGES):
+        print(f"--only takes: {', '.join(run.EXTRA_STAGES)}")
+        sys.exit(2)
     with step("Engine"):
         if getattr(args, "stage", "all") == "extra":
-            run.compute_extra(quick=args.quick)
+            run.compute_extra(quick=args.quick, only=only, workers=args.workers)
         else:
             run.compute_all(quick=args.quick)
 
@@ -163,6 +167,8 @@ def cmd_forecast(args: argparse.Namespace) -> None:
     capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
     with step("Issuing envelopes a day ahead"):
         rows = forecast.ladder(get_model(), show)
+    processed("results", "forecast.json").write_text(
+        json.dumps(forecast.ladder_payload(rows, show["year"]), indent=1), encoding="utf-8")
     print(forecast.ladder_text(rows, show["year"], capacity))
     if capacity is None:
         print("\n(Capacity under each scheme needs: python -m kapacitet compute --stage extra)")
@@ -208,7 +214,13 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("--quick", action="store_true", help="fewer years/orders for a fast run")
         if name == "compute":
             p.add_argument("--stage", choices=["all", "extra"], default="all",
-                           help="extra: only request baselines, 2030 scenarios, tornado and validation")
+                           help="extra: only the stages that build on the showcase (baselines, 2030 "
+                                "scenarios, tornado, foresight, over-installation, phases, validation)")
+            p.add_argument("--only", default="",
+                           help="with --stage extra: comma list of national,requests,scenarios,tornado,"
+                                "foresight,overinstallation,phases,validation")
+            p.add_argument("--workers", type=int, default=4,
+                           help="with --stage extra: worker processes for the heavy stages")
         p.set_defaults(func=func)
 
     p = sub.add_parser("import", help="build the engine's tables from a network export")

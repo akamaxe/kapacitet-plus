@@ -38,7 +38,7 @@ bound bracket the cost of the forecast rather than guessing at it.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from functools import lru_cache
 
 import numpy as np
@@ -440,6 +440,13 @@ LADDER_LABEL = {
     "persistence": "day ahead, yesterday's weather",
     "foresight": "perfect foresight (published)",
 }
+
+
+def ladder_payload(rows: list[Issued], year: int, window_days: int = WINDOW_DAYS) -> dict:
+    """The ladder as data, written to results/forecast.json by `kapacitet forecast`."""
+    return {"year": year, "window_days": window_days,
+            "rows": [{**asdict(r), "label": LADDER_LABEL.get(r.scheme, r.scheme), "safe": r.safe}
+                     for r in rows]}
 
 
 def ladder_text(rows: list[Issued], year: int, capacity: dict | None = None) -> str:

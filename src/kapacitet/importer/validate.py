@@ -227,8 +227,9 @@ def _check_customers(data: dict[str, pd.DataFrame], report: Report) -> None:
     if "phase" not in cust.columns:
         report.add(WARNING, "phase not recorded",
                    "no phase column, so every service is taken as three-phase and voltage "
-                   "unbalance is understated; on our reference grid that assumption is worth "
-                   "up to a third of the hosting capacity", len(cust))
+                   "unbalance is understated; on our reference grid with single-phase inverters, "
+                   "not knowing the phases costs 44 % of the static hosting capacity in the "
+                   "median placement", len(cust))
     else:
         blank = int(cust["phase"].isna().sum())
         if blank == len(cust):
