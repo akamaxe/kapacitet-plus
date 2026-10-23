@@ -77,13 +77,20 @@ sources and assumptions behind it.
 | `kapacitet profiles` | Hourly weather, PV, household, heat-pump and EV profiles for every year |
 | `kapacitet compute` | Hosting capacity, envelopes, risk, 2030 scenarios, validation and the UI payloads |
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
-| `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative |
+| `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet all` | The four build steps in order |
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
 `--quick` shortens a compute run, `compute --stage extra` recomputes only the scenario,
-tornado, foresight and validation blocks.
+tornado, foresight, over-installation, phase and validation blocks, `--only foresight,phases`
+narrows that to a comma list, and `--workers 2` runs the heavy stages on fewer processes when
+memory is short.
+
+`compute --stage extra --only overinstallation` writes `overinstallation.json`: for the
+deployment points of `zcurve.json`, the energy the customers beyond the static limit produce and
+lose to envelopes in every weather year, and its spot value in the years with price data. It is
+the profit curve of connecting more than the static study allows.
 
 ### Optional: ENTSO-E token
 
@@ -226,8 +233,8 @@ against it before anyone promises a capacity:
 The report is the point. It separates what stops the engine from what only costs accuracy,
 and it prices the gap: a missing cable type falls back to the site default, missing
 coordinates cost the map and nothing else, while no phase column means every service is
-taken as three-phase, which on this grid understates things by up to a third of the hosting
-capacity. Errors, such as a cable to a bus that does not exist or a section of zero length,
+taken as three-phase, which on this grid with single-phase inverters reports 402 kW of static
+hosting capacity where the median placement of unknown phases allows 225 kW. Errors, such as a cable to a bus that does not exist or a section of zero length,
 stop the import rather than being guessed around, and every fallback that is applied is counted and printed next to the result.
 
 The import is faithful, not approximate. Writing the reference network out in the contract and reading it back gives a network that is electrically the same one: voltages at the 120 services agree to 1e-14 pu and the transformer loading to 1e-13 per cent, so every stage after it returns the same answer by construction.
@@ -338,8 +345,10 @@ adopters and 402 kW on adoption order 0.
 
 Where it does bite is a neighbourhood of small installations. Forcing every connection
 single-phase on the same grid: 43 adopters and 388 kW when the phases are spread evenly,
-and 31 adopters and 270 kW when nobody keeps track of which phase each house went on. A
-third of the hosting capacity rides on a record the operator may not have. Under the same
+and, when nobody keeps track of which phase each house went on, a median of 225 kW over 20
+random placements, anywhere between 125 and 375 kW (`compute --stage extra --only phases`
+writes `phases.json`). In the median placement 44 % of the static hosting capacity rides on a
+record the operator may not have. Under the same
 export pattern the balanced model sees 1 violating hour out of 300 where the unbalanced one
 sees 75.
 

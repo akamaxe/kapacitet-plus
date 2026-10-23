@@ -258,10 +258,16 @@ def compute_all(quick: bool = False) -> None:
     compute_extra(quick, t0=t0)
 
 
-def compute_extra(quick: bool = False, t0: float | None = None) -> None:
-    """Stages that build on the showcase: request baselines, 2030 scenarios, tornado, validation.
+EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "foresight", "overinstallation",
+                "phases", "validation")
 
-    Heavy stages use 4 worker processes so the run fits next to a desktop session in 16 GB.
+
+def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] | None = None,
+                  workers: int = 4) -> None:
+    """Stages that build on the showcase: request baselines, 2030 scenarios, tornado, foresight,
+    over-installation, validation. `only` runs a subset of EXTRA_STAGES and leaves meta.json alone.
+
+    Heavy stages use `workers` processes (4 fits next to a desktop session in 16 GB).
     """
     from . import national, run_extra
 
@@ -272,16 +278,32 @@ def compute_extra(quick: bool = False, t0: float | None = None) -> None:
     z_star = A("z_star_pct")
     sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
     o, ms = sc["order"], sc["firm"]
-    national.build()
-    run_extra.request_baselines(years)
-    log.info("request baselines done (%.0f s)", time.perf_counter() - t0)
-    run_extra.scenarios_2030(o, ms, cfg.reference_year, quick, workers=4)
-    log.info("2030 scenarios done (%.0f s)", time.perf_counter() - t0)
-    run_extra.tornado(o, years, z_star, workers=4)
-    log.info("tornado done (%.0f s)", time.perf_counter() - t0)
-    run_extra.foresight(years, z_star, workers=4)
-    log.info("foresight done (%.0f s)", time.perf_counter() - t0)
-    run_extra.validation()
+    want = (lambda name: True) if only is None else (lambda name: name in only)
+    if want("national"):
+        national.build()
+    if want("requests"):
+        run_extra.request_baselines(years)
+        log.info("request baselines done (%.0f s)", time.perf_counter() - t0)
+    if want("scenarios"):
+        run_extra.scenarios_2030(o, ms, cfg.reference_year, quick, workers=workers)
+        log.info("2030 scenarios done (%.0f s)", time.perf_counter() - t0)
+    if want("tornado"):
+        run_extra.tornado(o, years, z_star, workers=workers)
+        log.info("tornado done (%.0f s)", time.perf_counter() - t0)
+    if want("foresight"):
+        run_extra.foresight(years, z_star, workers=workers)
+        log.info("foresight done (%.0f s)", time.perf_counter() - t0)
+    if want("overinstallation"):
+        run_extra.overinstallation(workers=workers)
+        log.info("over-installation done (%.0f s)", time.perf_counter() - t0)
+    if want("phases"):
+        run_extra.phase_cost()
+        log.info("phase cost done (%.0f s)", time.perf_counter() - t0)
+    if want("validation"):
+        run_extra.validation()
+    if only is not None:
+        log.info("stages %s finished in %.0f s", ",".join(sorted(only)), time.perf_counter() - t0)
+        return
     _write("meta.json", {"computed_at": pd.Timestamp.now(tz="UTC").isoformat(), "quick": quick,
                          "seconds": time.perf_counter() - t0, "site": cfg.site.name,
                          "reference_year": cfg.reference_year, "policy": REF_POLICY,

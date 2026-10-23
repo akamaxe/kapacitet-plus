@@ -168,6 +168,110 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
              published["doe"] - climatological_kw, sum(r["violation_hours"] for r in rows))
 
 
+# ------------------------------------------------------------------- over-installation
+
+def _overinstall_point(args) -> dict:
+    """What the non-firm adopters order[ms:k] produce, lose to envelopes, and are worth at spot."""
+    warnings.filterwarnings("ignore")
+    o, ms, k, years = args
+    from . import economics
+    from .run import REF_POLICY, background_masks, model, pv_mask
+    m = model()
+    hp, ev = background_masks(m.C)
+    order = adoption_order(o, m.C)
+    nf = order[ms:k]
+    cap = doe.customer_caps()
+    per_year = []
+    for y in years:
+        arr = Scenario(year=y, pv=pv_mask(order, k, m.C), hp=hp, ev=ev).arrays()
+        pv = arr["pv"][nf].astype(float)
+        cut = (doe.compute(m, arr, nf, policy=REF_POLICY).curtailed.astype(float) if len(nf)
+               else np.zeros_like(pv))
+        per_year.append({"year": y, "potential_kwh": float(pv.sum()), "curtailed_kwh": float(cut.sum()),
+                         "delivered_value": economics.value_sek(pv - cut, y),
+                         "curtailed_value": economics.value_sek(cut, y)})
+    return {"adopters": int(k), "kw_ac": float(cap[order[:k]].sum()),
+            "kw_ac_nonfirm": float(cap[nf].sum()), "per_year": per_year}
+
+
+def overinstallation(workers: int = 4) -> None:
+    """Connecting beyond the static limit: energy gained and lost, and its value at spot prices.
+
+    Same showcase order and the same deployment points as `zcurve.json`, so the two curves line
+    up. Values are spot only (no network tariff, energy tax or compensation), on the years with
+    price data; energies cover every weather year.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from . import economics
+    from .run import _init_worker
+    zc = json.loads(processed("results", "zcurve.json").read_text(encoding="utf-8"))
+    o, ms, years = zc["order"], zc["static_adopters"], tuple(zc["years"])
+    ks = [p["adopters"] for p in zc["points"]]
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
+        pts = list(ex.map(_overinstall_point, [(o, ms, k, years) for k in ks]))
+    priced = [y for y in economics.price_years() if y in years]
+    for p in pts:
+        rows = p["per_year"]
+        pot = sum(r["potential_kwh"] for r in rows)
+        cut = sum(r["curtailed_kwh"] for r in rows)
+        pr = [r for r in rows if r["delivered_value"] is not None]
+        p["mean"] = {"potential_kwh": pot / len(rows), "curtailed_kwh": cut / len(rows),
+                     "z_pct": 100.0 * cut / pot if pot else 0.0}
+        p["mean_priced"] = {key: float(np.mean([r[src][field] for r in pr])) if pr else None
+                            for key, src, field in (("delivered_net_sek", "delivered_value", "net_sek"),
+                                                    ("delivered_gross_sek", "delivered_value", "gross_sek"),
+                                                    ("curtailed_net_sek", "curtailed_value", "net_sek"),
+                                                    ("curtailed_gross_sek", "curtailed_value", "gross_sek"))}
+    _write("overinstallation.json", {"order": o, "static_adopters": ms, "doe_adopters": zc["doe_adopters"],
+                                     "z_star_pct": zc["z_star_pct"], "years": list(years),
+                                     "price_years": priced, "value_basis": "spot price of the bidding zone",
+                                     "points": pts})
+
+
+# ------------------------------------------------------------------- what the phase record is worth
+
+def phase_cost(order_index: int = 0, random_seeds: int = 20) -> None:
+    """Static hosting capacity with the phase of every PV connection modelled, spread or unknown.
+
+    The published figures come from the balanced model. This stage repeats the static search on
+    the unbalanced one: with the inverter sizes the model produces, then with every connection
+    forced single-phase and the phases either spread evenly or placed at random, which is what an
+    operator without a phase column in its records is effectively assuming.
+    """
+    from . import phases
+    from .netmodel3ph import NetModel3Ph
+    from .run import background_masks, model
+    m = model()
+    hp, ev = background_masks(m.C)
+    order = adoption_order(order_index, m.C)
+    cap = doe.customer_caps()
+    base3 = NetModel3Ph()
+    everyone = np.zeros(base3.C)                 # every inverter at or below the single-phase limit
+    cases = [("balanced", "balanced three-phase model (published figures)", m),
+             ("unbalanced", "unbalanced model, inverter sizes as built", base3),
+             ("single_spread", "every connection single-phase, phases spread evenly",
+              NetModel3Ph(phase=phases.phase_of(base3.cust, everyone, "round_robin")))]
+    rows = []
+    for key, label, mdl in cases:
+        k = hosting.static_adopters(mdl, order, hp, ev)
+        rows.append({"key": key, "label": label, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum())})
+    # an unknown phase is a draw, not a number: report the spread over seeded draws
+    rand = []
+    for seed in range(random_seeds):
+        mdl = NetModel3Ph(phase=phases.phase_of(base3.cust, everyone, "random", seed=seed))
+        k = hosting.static_adopters(mdl, order, hp, ev)
+        rand.append({"seed": seed, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum())})
+    kw = np.array([r["kw_ac"] for r in rand])
+    rows.append({"key": "single_random", "label": "every connection single-phase, phases unknown (random)",
+                 "kw_ac_median": float(np.median(kw)), "kw_ac_min": float(kw.min()), "kw_ac_max": float(kw.max()),
+                 "adopters_median": float(np.median([r["adopters"] for r in rand])), "draws": rand})
+    _write("phases.json", {"order": order_index,
+                           "single_phase_limit_kva": A("pv_single_phase_max_kva"),
+                           "single_phase_as_built": int(np.count_nonzero(base3.phase != phases.THREE_PHASE)),
+                           "customers": int(base3.C), "cases": rows})
+
+
 # ------------------------------------------------------------------------------ 2030 scenarios
 
 PV_SHARES = (0.0, 0.2, 0.4, 0.6, 0.8, 1.0)
