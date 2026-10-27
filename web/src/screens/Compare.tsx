@@ -402,13 +402,25 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
       axisLabel: { color: tk.muted, interval: (i: number) => monthStarts.includes(i), formatter: (v: string) => months[monthStarts.indexOf(Number(v))] ?? "" },
     },
     yAxis: { type: "category", data: Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}:00`), inverse: true, ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5 } },
-    visualMap: {
-      min: which === "limited" ? 1 : 0, max: which === "limited" ? Math.max(1, vmax) : 130, calculable: false, orient: "vertical", right: 0, top: "middle",
-      itemHeight: 140, itemWidth: 10,
-      textStyle: { color: tk.muted, fontFamily: tk.font },
-      inRange: { color: which === "limited" ? [tk.load[1], tk.load[3], tk.load[5], tk.load[6]] : [tk.load[0], tk.load[2], tk.load[4], tk.load[6], tk.danger] },
-      text: which === "limited" ? [String(vmax), "1"] : ["130 %", "0 %"],
-    },
+    visualMap: which === "limited"
+      ? {
+          min: 1, max: Math.max(1, vmax), calculable: false, orient: "vertical", right: 0, top: "middle",
+          itemHeight: 140, itemWidth: 10,
+          textStyle: { color: tk.muted, fontFamily: tk.font },
+          inRange: { color: [tk.load[1], tk.load[2]] },
+          text: [String(vmax), "1"],
+        }
+      : {
+          // the loading ramp's own stops, and one flat colour above the rating (design-system.md 1.4)
+          type: "piecewise", orient: "vertical", right: 0, top: "middle", itemWidth: 10, itemHeight: 10,
+          textStyle: { color: tk.muted, fontFamily: tk.font },
+          pieces: [
+            { gt: 100, color: tk.loadOver, label: "> 100 %" },
+            { gte: 85, lte: 100, color: tk.load[2], label: "85–100 %" },
+            { gte: 50, lt: 85, color: tk.load[1], label: "50–85 %" },
+            { gte: 0, lt: 50, color: tk.load[0], label: "0–50 %" },
+          ],
+        },
     tooltip: {
       formatter: (p: any) => {
         const [d, h, v] = p.value;
