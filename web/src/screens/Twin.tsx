@@ -462,9 +462,8 @@ function MapLegend({ colorBy }: { colorBy: ColorBy }) {
   const theme = useStore((s) => s.theme);
   void theme;
   const seqGrad = `linear-gradient(90deg, ${tk.load.join(",")})`;
-  const divGrad = colorBy === "voltage"
-    ? `linear-gradient(90deg, ${tk.voltLow}, ${tk.voltMid}, ${tk.voltHigh})`
-    : `linear-gradient(90deg, ${tk.voltLow}, ${tk.voltMid}, ${tk.cat[0]})`;
+  // power is drawn on the voltage poles (powerColor), so both scales share one bar
+  const divGrad = `linear-gradient(90deg, ${tk.voltLow}, ${tk.voltMid}, ${tk.voltHigh})`;
   return (
     <div className="map-legend">
       <div className="scale">
