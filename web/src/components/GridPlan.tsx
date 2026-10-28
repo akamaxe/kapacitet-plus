@@ -138,9 +138,9 @@ export function GridPlan() {
         <div className="plan-empty">{t(net.isError ? "overview.mapUnavailable" : "ui.loading")}</div>
       )}
       <div className="plan-foot">
-        <span className="legend-line"><i />{t("plan.cable")} <Mark kind="synthetic" /></span>
-        <span className="legend-line"><i className="house" />{t("plan.firm")}</span>
-        <span className="legend-line"><i className="house nonfirm" />{t("plan.nonfirm")}</span>
+        <span className="legend-line"><i className="cable-key" />{t("plan.cable")} <Mark kind="synthetic" /></span>
+        <span className="legend-line"><i className="house-key firm" />{t("plan.firm")}</span>
+        <span className="legend-line"><i className="house-key nonfirm" />{t("plan.nonfirm")}</span>
         {plan?.mva != null && <span className="legend-line"><i className="trafo" />{t("plan.trafo", { mva: f(plan.mva, 1) })}</span>}
         <span className="legend-line"><Mark kind="real" />{t("plan.buildings")}</span>
       </div>

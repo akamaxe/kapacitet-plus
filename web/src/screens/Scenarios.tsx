@@ -3,7 +3,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
-import { token, type Tokens } from "../lib/colors";
+import type { Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 
@@ -43,8 +43,8 @@ export default function Scenarios() {
   return (
     <div className="page">
       <div className="page-inner">
-        <section className="stack" style={{ gap: 14 }}>
-          <h1 className="headline" style={{ fontSize: "var(--text-h1)", maxWidth: "34ch" }}>{t("scn.title")}</h1>
+        <section className="region">
+          <h1 className="headline">{t("scn.title")}</h1>
           <p className="headline-sub">{t("scn.sub", { year: D.year })}</p>
           {firstStaticFail && lastDoe && (
             <p className="caption">{t("scn.breaking", { pv: Math.round(firstStaticFail.pv * 100), pv2: Math.round(lastDoe.pv * 100) })}</p>
@@ -59,9 +59,9 @@ export default function Scenarios() {
           </div>
         </section>
 
-        <div className="grid-2" style={{ gridTemplateColumns: "minmax(0,1.4fr) minmax(0,1fr)" }}>
+        <div className="grid-2 wide-first">
           <section className="block">
-            <div className="row" style={{ gap: 18, marginBottom: 6 }}>
+            <div className="row legend-row">
               <Status kind="good">{t("scn.both")}</Status>
               <Status kind="warning">{t("scn.doeOnly")}</Status>
               <Status kind="critical">{t("scn.none")}</Status>
@@ -105,7 +105,7 @@ export default function Scenarios() {
                   {cur.doe_ok ? <Status kind="good">{t("scn.ok")}</Status> : <Status kind="critical">{t("scn.nok")}</Status>}
                 </div>
               </div>
-              <div className="tiles">
+              <div className="tiles cols-1">
                 <Tile label={t("scn.peak")} value={f(cur.peak_load_kw)} unit="kW" />
                 <Tile label={t("scn.z")} value={f(cur.doe_z_pct, 2)} unit="%" note={`≤ ${D.z_star_pct} %`} />
                 <Tile label={t("scn.expH")} value={f(cur.uncontrolled_export_hours)} unit="h" />
@@ -123,17 +123,25 @@ export default function Scenarios() {
 }
 
 function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t: (k: string) => string, sel: { pv: number; ev: number } | null) {
-  const colors = [tk.accent, tk.warning, tk.danger];
+  // a wash for the cell and the full colour for its glyph: forty cells of solid green, amber
+  // and red would outshout the one the reader picked
+  const fills = [tk.accentQuiet, tk.warningQuiet, tk.dangerQuiet];
+  const inks = [tk.accent, tk.warning, tk.danger];
   const glyph = ["✓", "◐", "✕"];
-  const data = cells.map((c) => {
+  let selAt = -1;
+  const data = cells.map((c, i) => {
     const s = stateOf(c);
     const isSel = sel && sel.pv === c.pv && sel.ev === c.ev;
+    if (isSel) selAt = i;
     return {
       value: [pvs.indexOf(c.pv), evs.indexOf(c.ev), s],
-      itemStyle: { color: colors[s], borderColor: isSel ? tk.text : tk.surface, borderWidth: isSel ? 4 : 3 },
-      label: { formatter: glyph[s], color: token("--on-accent") },
+      itemStyle: { color: fills[s], borderColor: isSel ? tk.text : tk.surface, borderWidth: isSel ? 4 : 3 },
+      label: { formatter: glyph[s], color: inks[s] },
     };
   });
+  // cells are drawn in order and each one's gap covers its neighbours' edges, so the
+  // selected cell goes last or its outline loses two sides
+  if (selAt >= 0) data.push(...data.splice(selAt, 1));
   return {
     grid: { left: 70, right: 16, top: 10, bottom: 50 },
     xAxis: { type: "category", data: pvs.map((p) => `${Math.round(p * 100)} %`), name: t("scn.pv"), nameLocation: "middle", nameGap: 32, ...axisStyle(tk), splitLine: { show: false } },
@@ -147,7 +155,7 @@ function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t
     },
     series: [{
       type: "heatmap", data,
-      label: { show: true, fontSize: 16, fontWeight: 700 },
+      label: { show: true, fontSize: tk.size.body, fontWeight: 500 },
       emphasis: { itemStyle: { borderColor: tk.text, borderWidth: 3 } },
     }],
   };

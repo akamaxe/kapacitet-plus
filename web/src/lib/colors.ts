@@ -50,6 +50,7 @@ function readTokens() {
       h3: px("--text-h3"),
       space2: px("--space-2"),
       space3: px("--space-3"),
+      radius: parseFloat(tk("--radius-sm")) || 3,
     },
   };
 }
@@ -88,6 +89,14 @@ function mix(a: string, b: string, t: number): string {
   const [r2, g2, b2] = hexToRgb(b);
   const c = (x: number, y: number) => Math.round(x + (y - x) * t);
   return `rgb(${c(r1, r2)},${c(g1, g2)},${c(b1, b2)})`;
+}
+
+/**
+ * A legend bar drawn from the colour function the marks use, so the key always matches them.
+ * `color` takes the position along the bar, from 0 at the left to 1 at the right.
+ */
+export function rampCss(color: (t: number) => string): string {
+  return `linear-gradient(90deg, ${Array.from({ length: 9 }, (_, k) => color(k / 8)).join(", ")})`;
 }
 
 /** Loading ramp: stops at 0, 50 and 85 % of the rating (design-system.md 1.4). */

@@ -272,7 +272,7 @@ function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number,
     yAxis: {
       type: "category", data: cats, inverse: true, ...axisStyle(tk),
       splitLine: { show: false },
-      axisLabel: { color: tk.text2, fontFamily: tk.font, fontSize: compact ? 11 : 13,
+      axisLabel: { color: tk.text2, fontFamily: tk.font, fontSize: compact ? tk.size.caption : tk.size.small,
                    width: compact ? 100 : 180, overflow: "break" },
     },
     tooltip: {
@@ -286,11 +286,11 @@ function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number,
         barCategoryGap: "55%",
         data: vals.map((v, i) => ({
           value: v,
-          itemStyle: { color: i === 0 ? tk.neutralSeries : tk.accent, borderRadius: [0, 4, 4, 0] },
+          itemStyle: { color: i === 0 ? tk.neutralSeries : tk.accent, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
         })),
         label: {
           show: true, position: "right", distance: 10, fontFamily: tk.mono,
-          fontSize: compact ? 12 : 14, color: tk.text, fontWeight: 500,
+          fontSize: compact ? tk.size.small : tk.size.body, color: tk.text, fontWeight: 500,
           formatter: (p: any) => `${Math.round(p.value)} kW`,
         },
       },
@@ -307,14 +307,14 @@ function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: num
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 58 : 70, top: 10, bottom: 30 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW", nameLocation: "end" },
-    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? 10 : 13, width: compact ? 106 : 240, overflow: "break" } },
+    yAxis: { type: "category", data: cats, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? tk.size.caption : tk.size.small, width: compact ? 106 : 240, overflow: "break" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${cats[p.dataIndex]}<br/><b>${Math.round(vals[p.dataIndex])} kW</b> (P10 ${Math.round(lo[p.dataIndex])}–P90 ${Math.round(hi[p.dataIndex])})` },
     series: [
       {
         type: "bar",
         barWidth: 22,
-        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.accent : tk.neutralSeries, borderRadius: [0, 4, 4, 0] } })),
-        label: { show: true, position: "right", distance: compact ? 8 : 26, fontSize: compact ? 10 : 12, color: tk.text, fontWeight: 600, formatter: (p: any) => `${Math.round(p.value)} kW` },
+        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.accent : tk.neutralSeries, borderRadius: [0, tk.size.radius, tk.size.radius, 0] } })),
+        label: { show: true, position: "right", distance: compact ? 8 : 26, fontFamily: tk.mono, fontSize: compact ? tk.size.caption : tk.size.small, color: tk.text, fontWeight: 500, formatter: (p: any) => `${Math.round(p.value)} kW` },
         z: 2,
       },
       {
@@ -373,7 +373,7 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
         markLine: {
           symbol: "none", silent: true,
           lineStyle: { color: tk.borderStrong, type: "solid", width: 1 },
-          label: { color: tk.text2, fontFamily: tk.font, fontSize: 11 },
+          label: { color: tk.text2, fontFamily: tk.font, fontSize: tk.size.caption },
           data: [
             { yAxis: zStar, label: { formatter: t("cmp.curve.limit", { z: zStar }), position: "insideStartTop" } },
             ...marks.map((mk) => ({ xAxis: mk.x, label: { formatter: mk.name, position: "insideEndTop", rotate: 90 } })),
@@ -483,13 +483,13 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },
-    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? 9 : 12, width: compact ? 106 : 240, overflow: "truncate" } },
+    yAxis: { type: "category", data: labels, inverse: true, ...axisStyle(tk), axisLabel: { color: tk.text, fontFamily: tk.font, fontSize: compact ? tk.size.caption : tk.size.small, width: compact ? 106 : 240, overflow: "truncate" } },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps: any[]) => `<b>${ps[0].name}</b><br/>${levels(ps[0].name)}` },
     series: [
       { type: "bar", stack: "d", data: d.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
-      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.accent, borderRadius: 4 }, barWidth: 10 },
+      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.accent, borderRadius: tk.size.radius }, barWidth: 10 },
       { type: "bar", stack: "s", data: s.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
-      { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.neutralSeries, borderRadius: 4 }, barWidth: 10 },
+      { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.neutralSeries, borderRadius: tk.size.radius }, barWidth: 10 },
       { type: "scatter", data: labels.map((l) => [T.base.doe_kw, l]), symbolSize: 9, itemStyle: { color: tk.text, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
       { type: "scatter", data: labels.map((l) => [T.base.static_kw, l]), symbolSize: 9, itemStyle: { color: tk.text2, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
     ],

@@ -84,10 +84,14 @@ p {
 .map-col {
   position: relative;
   min-height: 0;
+  min-width: 0;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   /* the map keeps a floor: opening the house table under it must not squeeze the map
      to a strip where its own legend covers everything */
   grid-template-rows: minmax(240px, 1fr) auto auto;
+  /* scrolls only while the house table is open and does not fit under the map */
+  overflow-y: auto;
 }
 
 .map-wrap {
@@ -138,6 +142,17 @@ p {
   gap: var(--space-4);
 }
 
+/* the figure takes the larger share and the reading beside it the smaller */
+.grid-2.wide-first {
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+}
+
+/* a key of status labels above the chart it explains */
+.row.legend-row {
+  gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+
 .block {
   background: var(--bg-surface);
   border: 1px solid var(--border);
@@ -158,6 +173,13 @@ p {
 .block h2,
 .panel h2 {
   font-size: var(--text-h2);
+}
+
+/* the title of a map sheet sits in its side panel: an h1, set one step down to fit there */
+.panel-title {
+  font-size: var(--text-h2);
+  line-height: var(--lh-h2);
+  letter-spacing: var(--track-h2);
 }
 
 .block h3,
@@ -228,9 +250,25 @@ p {
 }
 
 .tile .t-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   color: var(--text-secondary);
   font-size: var(--text-small);
   min-width: 0;
+}
+
+/* a word, not a reading, in the value column */
+.tile .t-value .t-word {
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+
+/* the source of a block of readings, under it */
+.source-line {
+  color: var(--text-muted);
+  font-size: var(--text-caption);
+  line-height: var(--lh-caption);
 }
 
 .tile .t-value {
@@ -476,12 +514,25 @@ p {
 .meter-head {
   display: flex;
   justify-content: space-between;
+  align-items: baseline;
   font-size: var(--text-small);
   color: var(--text-secondary);
 }
 
+/* the reading is set like a data-sheet value (§3.3) */
 .meter-head strong {
+  font-family: var(--font-mono);
+  font-size: var(--text-body);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
   color: var(--text-primary);
+}
+
+.meter-head strong small {
+  font-size: var(--text-caption);
+  font-weight: 400;
+  color: var(--text-muted);
+  margin-left: var(--space-1);
 }
 
 /* a scale, not a progress bar: ticks at 50 and 85 % of the limit, the limit in ink */
@@ -604,8 +655,9 @@ table.data {
   font-size: var(--text-small);
 }
 
-/* readings in numeric columns are set in the mono face, aligned on the figures */
-table.data .r {
+/* readings in numeric columns are set in the mono face, aligned on the figures; their
+   headers are words and stay in the text face */
+table.data td.r {
   font-family: var(--font-mono);
   font-size: var(--text-caption);
   font-variant-numeric: tabular-nums;
@@ -689,51 +741,62 @@ table.data th.r {
   font-weight: 600;
 }
 
+/* night over the map: the colour is fixed and only the opacity moves, which the
+   compositor animates without repainting the map underneath */
 .daylight {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  transition: background-color var(--dur-panel) var(--ease);
+  background: rgb(var(--night));
+  transition: opacity var(--dur-panel) var(--ease);
   z-index: 1;
 }
 
 /* ---------------------------------------------------------------- year strip */
+/* the controls on one row above the strip, so the map keeps its height */
 .yearstrip {
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
-  padding: var(--space-4);
+  padding: var(--space-3) var(--space-5) var(--space-2);
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: var(--space-2) var(--space-4);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
 }
 
 .yearstrip-controls {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-items: flex-start;
-  width: 12em; /* fixed, so the strip does not shift while the hour label changes during playback */
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
 }
 
 .yearstrip-when {
+  min-width: 11em; /* fixed, so the buttons do not shift while the hour label changes during playback */
   font-family: var(--font-mono);
-  font-size: var(--text-caption);
+  font-size: var(--text-small);
   font-variant-numeric: tabular-nums;
-  font-weight: 600;
+  font-weight: 500;
+  color: var(--text-primary);
   white-space: nowrap;
 }
 
+.yearstrip-caption {
+  margin-left: auto;
+}
+
+/* contain: size keeps the bitmap's pixel width out of the layout: without it, the canvas's
+   own width attribute grows the column it sits in, the observer reads a wider canvas, and
+   the two chase each other */
 .yearstrip canvas {
   width: 100%;
-  height: 96px;
+  height: 80px;
+  contain: size;
   display: block;
   cursor: crosshair;
   border-radius: var(--radius-sm);
 }
 
 .yearstrip-axis {
-  grid-column: 2;
   display: flex;
   justify-content: space-between;
   font-size: var(--text-caption);
@@ -952,10 +1015,10 @@ table.data th.r {
     border-top: 1px solid var(--border);
   }
 
-  .grid-2 {
-    grid-template-columns: 1fr;
+  .grid-2,
+  .grid-2.wide-first {
+    grid-template-columns: minmax(0, 1fr);
   }
-
 
   .headline {
     font-size: var(--text-h1);
@@ -1011,6 +1074,12 @@ svg { flex-shrink: 0; }
 .sheets a:hover { color: var(--text-primary); }
 .sheets a[aria-current="page"] { color: var(--text-primary); }
 .sheets a[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--text-primary); }
+/* the index scrolls sideways on a narrow screen, so it clips whatever crosses its edges and
+   an ordinary outline loses three sides: the ring is drawn inside the bar's height instead,
+   and the index keeps a sliver of padding so the first and last ring are whole */
+.sheets { padding: 0 var(--space-1); }
+.sheets a:focus-visible { outline: none; }
+.sheets a:focus-visible::before { content: ""; position: absolute; inset: var(--space-3) calc(-1 * var(--space-1)); border: 2px solid var(--border-strong); border-radius: var(--radius-sm); }
 .index-tools { display: flex; align-items: center; gap: var(--space-1); padding-left: var(--space-4); border-left: 1px solid var(--border); margin: var(--space-2) 0; }
 .tool { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-2); min-height: 40px; min-width: 40px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); font-size: var(--text-small); cursor: pointer; }
 .tool:hover { color: var(--text-primary); background: var(--bg-inset); }
@@ -1062,10 +1131,19 @@ main:focus { outline: none; }
 .plan .p-trafo { fill: none; stroke: var(--text-primary); stroke-width: 1.4; vector-effect: non-scaling-stroke; }
 .plan-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-4); padding: var(--space-3) var(--space-4); border-top: 1px solid var(--border); font-size: var(--text-caption); color: var(--text-secondary); }
 .plan-foot .legend-line { display: inline-flex; align-items: center; gap: var(--space-2); }
-.plan-foot .legend-line i { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); }
-.plan-foot .legend-line i.house { width: 10px; height: 8px; border: 1px solid var(--accent); background: var(--accent-quiet); }
-.plan-foot .legend-line i.house.nonfirm { border-color: var(--warning); background: var(--warning-quiet); }
-.plan-foot .legend-line i.trafo { width: 12px; height: 8px; border: 0; background: radial-gradient(circle at 4px 4px, transparent 2.5px, var(--text-primary) 2.5px 3.5px, transparent 3.5px), radial-gradient(circle at 8px 4px, transparent 2.5px, var(--text-primary) 2.5px 3.5px, transparent 3.5px); }
+.plan-foot .cable-key { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--accent); }
+/* a house as the plan draws it: the same key in the plan legend, the house table and the
+   inspector, so "firm" and "envelope" look the same wherever they are named */
+.house-key { display: inline-block; flex: none; width: 10px; height: 8px; border: 1px solid var(--text-secondary); background: var(--bg-surface); }
+.house-key.firm { border-color: var(--accent); background: var(--accent-quiet); }
+.house-key.nonfirm { border-color: var(--warning); background: var(--warning-quiet); }
+.house-status { display: inline-flex; align-items: center; gap: var(--space-2); }
+.house-status.none { color: var(--text-muted); }
+/* a reading with the colour the map gives it: the colour sits beside the figure, the
+   figure stays in ink */
+.swatch-value { display: inline-flex; align-items: center; gap: var(--space-2); }
+.swatch-value i { flex: none; width: 8px; height: 8px; }
+.plan-foot .legend-line i.trafo { display: inline-block; width: 12px; height: 8px; border: 0; background: radial-gradient(circle at 4px 4px, transparent 2.5px, var(--text-primary) 2.5px 3.5px, transparent 3.5px), radial-gradient(circle at 8px 4px, transparent 2.5px, var(--text-primary) 2.5px 3.5px, transparent 3.5px); }
 .plan .p-scale path { fill: none; stroke: var(--text-primary); stroke-width: 1.2; vector-effect: non-scaling-stroke; }
 .plan .p-north path { fill: var(--text-primary); }
 /* drawing units: the plan is 1000 wide, so 22 reads at caption size at its usual width */
@@ -1081,8 +1159,19 @@ main:focus { outline: none; }
 
 .block > .caption { font-size: var(--text-caption); margin-bottom: var(--space-3); }
 .panel > .stack:first-child { padding-bottom: var(--space-5); border-bottom: 1px solid var(--border); }
+/* a side panel is narrow: its data sheets read down one column */
+.panel .tiles { grid-template-columns: minmax(0, 1fr); }
 .seg button:hover { color: var(--text-primary); }
 .table-scroll { max-width: 100%; overflow-x: auto; }
+/* a table standing in for a chart keeps the chart's height and scrolls inside it */
+.table-window { max-height: 220px; overflow-y: auto; }
+/* the answer to a request: its parts sit further apart than the rows inside them */
+.stack.result { gap: var(--space-5); }
+/* a key that is a short list sizes to its entries */
+.map-legend.fit { width: auto; }
+/* a swatch and its words: the words wrap beside the swatch, never under it */
+.legend-key { display: flex; align-items: baseline; gap: var(--space-2); }
+.legend-key i { flex: none; width: 12px; height: 4px; border-radius: var(--radius-sm); transform: translateY(-2px); }
 table.data tbody tr:hover { background: var(--bg-inset); }
 .map-loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--bg-base) 75%, transparent); z-index: 4; color: var(--text-primary); font-size: var(--text-small); }
 .map-toolbar { position: absolute; top: 112px; left: 10px; z-index: 3; }
@@ -1090,14 +1179,15 @@ table.data tbody tr:hover { background: var(--bg-inset); }
 .maplibregl-ctrl-group button { width: 40px !important; height: 40px !important; border-color: var(--border) !important; }
 .maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--bg-elevated) 90%, transparent) !important; color: var(--text-secondary) !important; font-size: var(--text-caption) !important; }
 .maplibregl-ctrl-attrib a { color: var(--text-secondary) !important; }
+/* §5.3: zone labels are flat text on the map; the halo in the page colour keeps them legible */
+.zone-label { font-family: var(--font-sans); font-size: var(--text-small); font-weight: 600; line-height: var(--lh-small); color: var(--text-primary); text-align: center; text-shadow: 0 0 2px var(--bg-base), 0 0 2px var(--bg-base), 0 0 4px var(--bg-base); }
+.zone-label small { display: block; font-family: var(--font-mono); font-size: var(--text-caption); font-weight: 400; color: var(--text-secondary); }
 :root[data-theme="dark"] .maplibregl-ctrl-icon { filter: invert(0.85); }
 @media (prefers-color-scheme: dark) { :root:not([data-theme]) .maplibregl-ctrl-icon { filter: invert(0.85); } }
 .timeline-buttons { display: flex; gap: var(--space-1); }
 .timeline-buttons .play-button { color: var(--accent); }
 .timeline-tools { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .timeline-tools button, .timeline-tools select { font-size: var(--text-caption); }
-.timeline-scrubber { width: 100%; min-height: 40px; accent-color: var(--accent); cursor: pointer; }
-.timeline-caption { display: flex; flex-direction: column; gap: var(--space-1); }
 
 /* the frame narrows: the site line, then tool labels and title-block cells give way */
 @media (max-width: 1440px) {
@@ -1118,7 +1208,7 @@ table.data tbody tr:hover { background: var(--bg-inset); }
 }
 @media (max-width: 900px) {
   .overview-hero { gap: var(--space-4); }
-  .grid-2 { grid-template-columns: minmax(0, 1fr); }
+  .grid-2, .grid-2.wide-first { grid-template-columns: minmax(0, 1fr); }
   .index { gap: var(--space-4); padding: 0 var(--space-4); }
   .tb-legend { display: none; }
   .tb-cell:first-child { padding-left: var(--space-4); }
@@ -1140,10 +1230,9 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   .block { padding: var(--space-4) var(--space-3); }
   .panel { padding: var(--space-4) var(--space-4); }
   .split, .split.wide-panel { grid-template-rows: minmax(480px, 70dvh) auto; }
-  .yearstrip { grid-template-columns: minmax(0, 1fr); padding: var(--space-3); }
-  .yearstrip-controls { width: auto; flex-direction: row; align-items: center; justify-content: space-between; flex-wrap: wrap; }
-  .yearstrip > div:empty { display: none; }
-  .yearstrip canvas { height: 72px; }
+  .yearstrip { padding: var(--space-3); }
+  .yearstrip-caption { display: none; }
+  .yearstrip canvas { height: 64px; }
   .map-legend { width: 215px; padding: var(--space-2); }
   .map-note { max-width: 70%; }
 }
@@ -1448,7 +1537,7 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   flex-direction: column;
 }
 
-.houses-region.open { max-height: min(38vh, 400px); }
+.houses-region.open { height: min(50vh, 440px); }
 
 .region-toggle {
   display: flex;
@@ -1525,10 +1614,22 @@ table.data tbody tr:hover { background: var(--bg-inset); }
   padding: 0;
 }
 
+/* one line per house, with the cells on the same 8 px insets as the sort buttons above
+   them and the outer columns on the bar's 16 px, so a column reads straight down */
+.dt-scroll table.data td {
+  padding: var(--space-2);
+  white-space: nowrap;
+}
+
+.dt-scroll table.data td:first-child,
+.dt-scroll table.data th:first-child .dt-sort { padding-left: var(--space-4); }
+.dt-scroll table.data td:last-child,
+.dt-scroll table.data th:last-child .dt-sort { padding-right: var(--space-4); }
+
 .dt-sort {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-1);
   width: 100%;
   min-height: 40px;
   padding: 0 var(--space-2);
@@ -1571,7 +1672,7 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 .inspector h3 { margin: 0; font-size: var(--text-h3); }
 
 @media (max-width: 1100px) {
-  .houses-region.open { max-height: none; }
+  .houses-region.open { height: auto; }
 }
 
 /* ---------------------------------------------------------------- screen regions
@@ -1636,6 +1737,7 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 
 /* A band of tiles says how many it is, instead of every caller passing a grid template
    as an inline style with a raw pixel gap in it. */
+.tiles.cols-1 { grid-template-columns: minmax(0, 1fr); }
 .tiles.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tiles.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .tiles.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }

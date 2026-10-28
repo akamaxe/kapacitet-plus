@@ -251,7 +251,7 @@ A mark is typography — 10 px, followed by its word — never a pill or a badge
 5. Bars: 2 px gap minimum, `--radius-sm` on the free end only, no gradients.
 6. Lines: 2 px stroke, no point markers unless there are fewer than 24 points. No area fills under lines except for a single highlighted series, at 12 % opacity.
 7. Every chart carries a source line underneath in `--text-caption` `--text-muted`, with its provenance mark.
-8. Tooltips: `--bg-elevated`, `--shadow-popover`, `--radius-sm`, `--space-3` padding. Values in monospace, aligned.
+8. Tooltips: `--bg-elevated`, `--shadow-popover`, `--radius-sm`, `--space-3` padding. A tooltip is mostly words ("Static study: needs reinforcement"), so it is set in the text face at `--text-small` with tabular figures; monospace for whole sentences reads as a terminal.
 9. The static-vs-dynamic comparison is **one** chart, not four cards: two bars on a shared axis, pencil and ink. A figure said in the heading is not said again on the chart.
 10. Text sizes come from section 2's chart scale; nothing in between.
 11. Motion: a chart draws once, in 200 ms with `--ease`; it never animates on a theme or language change.

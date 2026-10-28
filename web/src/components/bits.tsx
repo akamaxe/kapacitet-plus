@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../lib/api";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
+import { useFmt } from "../lib/format";
 
 type Provenance = "real" | "synthetic" | "reference";
 
@@ -63,10 +64,14 @@ export function Status({ kind, children }: { kind: "good" | "warning" | "serious
  * mono with its unit on the right, the note under it. A group of these sits in `.tiles`,
  * which draws rows parted by hairlines rather than a grid of boxes.
  */
-export function Tile({ label, value, unit, note }: { label: string; value: ReactNode; unit?: string; note?: ReactNode }) {
+export function Tile({ label, value, unit, note, mark }: {
+  label: string; value: ReactNode; unit?: string; note?: ReactNode;
+  /** where the reading comes from (§3.6), drawn before its label */
+  mark?: Provenance;
+}) {
   return (
     <div className="tile">
-      <div className="t-label">{label}</div>
+      <div className="t-label">{mark ? <Mark kind={mark} /> : null}{label}</div>
       <div className="t-value">
         {value}
         {unit ? <small>{unit}</small> : null}
@@ -128,17 +133,19 @@ export function Hero({ value, unit, label, note }: { value: ReactNode; unit?: st
 export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits = 0 }: {
   label: string; value: number; max?: number; limit?: number; unit?: string; digits?: number;
 }) {
-  const w = Math.max(0, Math.min(1, value / max)) * 100;
+  const f = useFmt();
+  const share = Math.max(0, Math.min(1, value / max));
   const over = value > limit;
   const at = (x: number) => `${(x / max) * 100}%`;
   return (
     <div className="meter">
       <div className="meter-head">
         <span>{label}</span>
-        <strong className="num">{value.toFixed(digits)} {unit}</strong>
+        <strong>{f(value, digits)}<small>{unit}</small></strong>
       </div>
       <div className="meter-track" role="meter" aria-valuenow={value} aria-valuemax={max} aria-label={label}>
-        <div className={`meter-fill ${over ? "critical" : ""}`} style={{ width: `${w}%` }} />
+        {/* scaled rather than resized, so an hour step animates on the compositor */}
+        <div className={`meter-fill ${over ? "critical" : ""}`} style={{ transform: `scaleX(${share})` }} />
         <span className="meter-tick" style={{ left: at(limit * 0.5) }} />
         <span className="meter-tick" style={{ left: at(limit * 0.85) }} />
         <span className="meter-limit" style={{ left: at(limit) }} />
