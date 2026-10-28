@@ -120,7 +120,8 @@ const initial = parseHash();
 
 export const useStore = create<State>((set) => ({
   screen: initial.screen,
-  lang: (readLS("kap.lang", "en") as "en" | "es"),
+  // an unknown stored language would leave every lookup empty, so it falls back to English
+  lang: (readLS("kap.lang", "en") === "es" ? "es" : "en"),
   // paper is the default (design-system.md §1.1); a value this version does not know falls back to it
   theme: ((t) => (THEMES.includes(t) ? t : "light") as Theme)(readLS("kap.theme", "light")),
   notes: false,
@@ -153,6 +154,9 @@ export const useStore = create<State>((set) => ({
     writeHash(false);
   },
   setPlaying: (playing) => {
+    // the scrubber stops playback on every input; only a real change may touch the URL,
+    // or it would call replaceState at pointer rate past the 250 ms debounce
+    if (playing === useStore.getState().playing) return;
     set({ playing });
     if (!playing) writeHash(false); // catch up with where playback left the hour
   },

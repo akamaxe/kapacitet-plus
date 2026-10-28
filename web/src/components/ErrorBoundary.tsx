@@ -5,7 +5,6 @@
  * The fallback follows §7 — it names what failed and offers something to do about it.
  */
 import { Component, type ErrorInfo, type ReactNode } from "react";
-import { Icon } from "./Icon";
 import { copyText } from "../lib/clipboard";
 import { translate } from "../lib/i18n";
 import { useStore } from "../lib/store";
@@ -36,9 +35,6 @@ export class ErrorBoundary extends Component<Props, { error: Error | null }> {
     const t = (k: string, v?: Record<string, string | number>) => translate(useStore.getState().lang, k, v);
     return (
       <div className="empty" role="alert">
-        <div className="loading-orbit">
-          <Icon name="alert" size={26} />
-        </div>
         <h2>{t("err.title", { where: this.props.where })}</h2>
         <p className="caption">{t("err.body")}</p>
         <p className="caption-muted">{error.message}</p>

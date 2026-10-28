@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
-import { ChartOrTable, Chip, Hero, Legend, Missing, Status, Tile } from "../components/bits";
+import { ChartOrTable, Chip, Hero, Legend, Missing, Protocol, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
-import { GridPreview } from "../components/GridPreview";
-import { Icon } from "../components/Icon";
+import { GridPlan } from "../components/GridPlan";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -21,6 +20,8 @@ export default function Compare() {
   const show = useApi<any>("/showcase");
   const risk = useApi<any>("/risk");
   const val = useApi<any>("/validation");
+  // the criteria the protocol holds the results against are model inputs, not constants here
+  const assumptions = useApi<any>("/assumptions");
   const [heat, setHeat] = useState<"limited" | "unc">("limited");
 
   const H = hosting.data?.data;
@@ -47,6 +48,10 @@ export default function Compare() {
   const pol = S.policies;
   const ver = S.verification;
   const fixedZ = (H.curve.points as any[]).map((p) => p.z_fixed_pct).filter((v: number) => v > 0);
+  const limit = (key: string): number | null =>
+    (assumptions.data?.assumptions as any[] | undefined)?.find((a) => a.key === key)?.value ?? null;
+  const vMax = limit("v_max_pu");
+  const thermal = limit("thermal_limit_pct");
 
   // only the sections that have data behind them, so the bar never points at nothing
   const sections: Section[] = [
@@ -69,28 +74,29 @@ export default function Compare() {
           <div className="overview-hero">
             <div className="overview-copy">
               <h1 className="headline">{t("overview.title")}</h1>
-              <p className="headline-sub">{t("cmp.headline", { static: f(staticKw), doe: f(doeKw) })}</p>
+              {/* the lead sentence ends where the hero reading begins: each figure is said once */}
+              <p className="headline-sub">{t("cmp.lead", { static: f(staticKw) })}</p>
               <Hero
                 value={f(doeKw)}
                 unit="kW"
                 label={t("cmp.hero.label")}
-                note={t("cmp.hero.ratio", { r: f(ratio, 1), static: f(staticKw) })}
+                note={t("cmp.hero.ratioShort", { r: f(ratio, 1) })}
               />
               <div className="hero-figure">
                 <Chart
                   ariaLabel={t("cmp.hero.aria")}
                   height={160}
                   deps={[H, lang]}
-                  build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, ratio, t, width)}
+                  build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, t, width)}
                 />
                 <p className="caption">{t("cmp.hero.cost", { pct: f(zDoeMedian, 1) })}</p>
               </div>
               <div className="hero-actions">
-                <a className="btn" href="#/twin"><Icon name="twin" size={17} />{t("overview.explore")}</a>
-                <a className="btn ghost" href="#/request"><Icon name="request" size={17} />{t("overview.request")}</a>
+                <a className="btn" href="#/twin">{t("overview.explore")}</a>
+                <a className="btn ghost" href="#/request">{t("overview.request")}</a>
               </div>
             </div>
-            <GridPreview />
+            <GridPlan />
           </div>
           <div className="data-provenance">
             <Chip kind="real" /><span className="caption-muted">{t("cmp.chips.real")}</span>
@@ -137,14 +143,16 @@ export default function Compare() {
           <div className="region-head">
             <div className="region-title"><h2>{t("cmp.verify")}</h2></div>
           </div>
-          <div className="tiles cols-6">
-            <Tile label={t("cmp.verify.doe")} value={<Status kind={ver.doe_full_year_violations === 0 ? "good" : "critical"}>{f(ver.doe_full_year_violations)}</Status>} note={`${S.year}, 8 760 h`} />
-            <Tile label={t("cmp.verify.unc")} value={<Status kind="critical">{f(ver.uncontrolled_violation_hours)}</Status>} note={`${S.year}`} />
-            <Tile label={t("cmp.verify.vmax")} value={f(ver.doe_max_voltage_pu, 3)} unit="pu" />
-            <Tile label={t("cmp.verify.trafo")} value={f(ver.doe_max_trafo_loading_pct, 1)} unit="%" />
-            <Tile label={t("cmp.verify.screen")} value={f(ver.screen_missed_hours)} note={t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) })} />
-            <Tile label={t("cmp.verify.zbus")} value={PF ? PF.max_abs_dv_pu.toExponential(0) : "–"} unit="pu" note={PF ? t("cmp.verify.zbusNote", { n: PF.cases }) : undefined} />
-          </div>
+          <Protocol
+            rows={[
+              { ok: ver.doe_full_year_violations === 0, label: t("cmp.verify.doe"), value: f(ver.doe_full_year_violations), unit: "h", criterion: t("cmp.verify.of", { h: f(8760), year: S.year }) },
+              ...(vMax != null ? [{ ok: ver.doe_max_voltage_pu <= vMax, label: t("cmp.verify.vmax"), value: f(ver.doe_max_voltage_pu, 3), unit: "pu", criterion: t("cmp.verify.limit", { v: `${f(vMax, 2)} pu` }) }] : []),
+              ...(thermal != null ? [{ ok: ver.doe_max_trafo_loading_pct <= thermal, label: t("cmp.verify.trafo"), value: f(ver.doe_max_trafo_loading_pct, 1), unit: "%", criterion: t("cmp.verify.limit", { v: `${f(thermal)} %` }) }] : []),
+              { ok: ver.screen_missed_hours === 0, label: t("cmp.verify.screen"), value: f(ver.screen_missed_hours), unit: "h", criterion: t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) }) },
+              ...(PF ? [{ ok: null, label: t("cmp.verify.zbus"), value: PF.max_abs_dv_pu.toExponential(0), unit: "pu", criterion: t("cmp.verify.zbusNote", { n: PF.cases }) }] : []),
+              { ok: false, label: t("cmp.verify.unc"), value: f(ver.uncontrolled_violation_hours), unit: "h", criterion: t("cmp.verify.uncNote", { year: S.year }) },
+            ]}
+          />
           <p className="caption">{t("cmp.binding", { v: f(ver.uncontrolled_max_voltage_pu, 3) })}</p>
         </section>
 
@@ -250,7 +258,7 @@ function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
 
 /** The static-versus-dynamic comparison: two bars on one axis, the multiplier between them
     (design-system.md 4.9). No legend, no gridlines: both series are labelled directly. */
-function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number, ratio: number,
+function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number,
                            t: (k: string, v?: any) => string, width: number) {
   const compact = width < 520;
   const cats = [t("cmp.fig.static"), t("cmp.fig.doe")];
@@ -287,13 +295,6 @@ function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number, ratio: n
         },
       },
     ],
-    graphic: [{
-      type: "text", right: compact ? 4 : 10, top: "middle",
-      style: {
-        text: `×${ratio.toFixed(1)}`, fill: tk.accent, fontFamily: tk.mono,
-        fontSize: compact ? 20 : 26, fontWeight: 500,
-      },
-    }],
   };
 }
 

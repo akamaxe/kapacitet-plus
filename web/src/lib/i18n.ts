@@ -49,6 +49,29 @@ const en: Dict = {
   "shell.fullscreen": "Fullscreen",
   "shell.close": "Close notes",
   "shell.skip": "Skip to content",
+  "shell.siteLine": "Smedslätten substation, Bromma",
+  "tb.sheet": "Sheet",
+  "tb.of": "{n} of {total}",
+  "tb.site": "Smedslätten · Bromma · SE3",
+  "tb.year": "Reference year",
+  "tb.real": "real: weather, buildings, prices",
+  "tb.synthetic": "synthetic: LV cables, households",
+  "tb.keys": "Keys",
+  "ui.pass": "Pass",
+  "ui.measured": "Measured",
+  "cmp.lead": "The worst-case study stops at {static} kW of solar. Checked hour by hour against the full power flow, the same grid carries",
+  "cmp.hero.ratioShort": "×{r} the static study",
+  "cmp.verify.of": "of {h} h in {year}, re-checked after publication",
+  "cmp.verify.limit": "limit {v}",
+  "cmp.verify.uncNote": "the same houses with no envelope, {year}",
+  "plan.title": "The network in plan",
+  "plan.where": "Smedslätten, north up",
+  "plan.cable": "LV cable",
+  "plan.firm": "House, firm solar",
+  "plan.nonfirm": "House, solar under an envelope",
+  "plan.trafo": "Transformer, {mva} MVA",
+  "plan.buildings": "Buildings: OpenStreetMap",
+  "ui.fail": "Fail",
   "shell.model": "Simulated grid, real-world context",
   "shell.place": "Bromma, Stockholm (SE3)",
   "shell.year": "Reference year / {year}",
@@ -475,6 +498,29 @@ const es: Dict = {
   "shell.fullscreen": "Pantalla completa",
   "shell.close": "Cerrar notas",
   "shell.skip": "Saltar al contenido",
+  "shell.siteLine": "Subestación de Smedslätten, Bromma",
+  "tb.sheet": "Hoja",
+  "tb.of": "{n} de {total}",
+  "tb.site": "Smedslätten · Bromma · SE3",
+  "tb.year": "Año de referencia",
+  "tb.real": "real: clima, edificios, precios",
+  "tb.synthetic": "sintético: cables de BT, hogares",
+  "tb.keys": "Atajos",
+  "ui.pass": "Cumple",
+  "ui.measured": "Medido",
+  "cmp.lead": "El estudio de peor caso se detiene en {static} kW de solar. Comprobada hora a hora con el flujo de potencia completo, la misma red admite",
+  "cmp.hero.ratioShort": "×{r} el estudio estático",
+  "cmp.verify.of": "de {h} h en {year}, recomprobadas tras publicar",
+  "cmp.verify.limit": "límite {v}",
+  "cmp.verify.uncNote": "las mismas viviendas sin envolvente, {year}",
+  "plan.title": "La red en planta",
+  "plan.where": "Smedslätten, norte arriba",
+  "plan.cable": "Cable de BT",
+  "plan.firm": "Vivienda, solar firme",
+  "plan.nonfirm": "Vivienda, solar con envolvente",
+  "plan.trafo": "Transformador, {mva} MVA",
+  "plan.buildings": "Edificios: OpenStreetMap",
+  "ui.fail": "No cumple",
   "shell.model": "Red simulada, contexto real",
   "shell.place": "Bromma, Estocolmo (SE3)",
   "shell.year": "Año de referencia / {year}",
@@ -856,9 +902,15 @@ export function translate(lang: string, key: string, vars?: Record<string, strin
   return raw.replace(/\{(\w+)\}/g, (_, k) => (vars[k] !== undefined ? String(vars[k]) : `{${k}}`));
 }
 
+/** One translate function per language, so a component's memos keep their identity. */
+const T: Record<string, (key: string, vars?: Record<string, string | number>) => string> = {
+  en: (key, vars) => translate("en", key, vars),
+  es: (key, vars) => translate("es", key, vars),
+};
+
 export function useT() {
   const lang = useStore((s) => s.lang);
-  return (key: string, vars?: Record<string, string | number>) => translate(lang, key, vars);
+  return T[lang] ?? T.en;
 }
 
 export function locale(lang: string): string {
