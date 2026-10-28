@@ -4,6 +4,7 @@ export type Screen = "national" | "twin" | "compare" | "request" | "scenarios" |
 export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "scenarios", "method"];
 export type Scenario = "static" | "uncontrolled" | "doe";
 export type Theme = "light" | "dark" | "system";
+const THEMES: readonly string[] = ["light", "dark", "system"];
 
 function readLS(key: string, fallback: string): string {
   try {
@@ -120,7 +121,8 @@ const initial = parseHash();
 export const useStore = create<State>((set) => ({
   screen: initial.screen,
   lang: (readLS("kap.lang", "en") as "en" | "es"),
-  theme: (readLS("kap.theme", "dark") as Theme),
+  // a value this version does not know (an old or experimental theme) falls back to the default
+  theme: ((t) => (THEMES.includes(t) ? t : "dark") as Theme)(readLS("kap.theme", "dark")),
   notes: false,
   hour: initial.hour ?? DEFAULT_HOUR,
   hourTouched: initial.hour !== undefined,
