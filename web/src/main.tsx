@@ -1,8 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import "@fontsource-variable/ibm-plex-sans";
-// 2: monospace is for data only, so the weights the figures use are enough
+// 2: Schibsted Grotesk for the interface and prose; IBM Plex Mono for readings only, so the
+// weights the figures use are enough
+import "@fontsource-variable/schibsted-grotesk";
 import "@fontsource/ibm-plex-mono/400.css";
 import "@fontsource/ibm-plex-mono/500.css";
 import "./styles/app.css";
