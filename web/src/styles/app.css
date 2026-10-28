@@ -1195,6 +1195,8 @@ table.data tbody tr:hover { background: var(--bg-inset); }
 }
 @media (min-width: 1101px) and (max-width: 1350px) {
   .split { grid-template-columns: minmax(0, 1fr) 390px; }
+  /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
+  .panel .seg button { padding-inline: var(--space-2); }
   .split.wide-panel { grid-template-columns: minmax(0, 1fr) 450px; }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 0.9fr); }
 }
