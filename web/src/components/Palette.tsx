@@ -76,7 +76,7 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
           id: `house:${p.cid}`,
           group: t("pal.houses"),
           label: p.address || `#${p.cid}`,
-          cols: [t("pal.feeder", { n: p.feeder }), `${f(p.kwp, 1)} kWp`, status],
+          cols: [t("pal.feeder", { n: p.feeder + 1 }), `${f(p.kwp, 1)} kWp`, status],
           icon: "twin" as const,
           run: () => {
             select(p.cid);

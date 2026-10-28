@@ -15,6 +15,7 @@ import {
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import { tokens, type Tokens } from "../lib/colors";
+import { fmt } from "../lib/format";
 import { useStore } from "../lib/store";
 
 echarts.use([
@@ -114,9 +115,37 @@ export function Chart({
   return <div ref={ref} className="chart" style={{ height }} role="img" aria-label={ariaLabel} />;
 }
 
+/** A value-axis tick in the interface's number format (§6): thin-space thousands and the
+ *  language's decimal mark, with as many decimals as the tick ECharts chose. */
+function tick(v: unknown): string {
+  if (typeof v !== "number") return String(v);
+  const decimals = Math.min(6, (String(v).split(".")[1] ?? "").length);
+  return fmt(useStore.getState().lang, v, decimals);
+}
+
+/**
+ * Value axes all read the same, whatever their option set: mono ticks at caption size, in
+ * the interface's number format. An option that replaced `axisLabel` to change its colour
+ * or interval used to drop the face and the format with it; a "{value} %" template keeps
+ * its unit. Category axes are words and are left alone.
+ */
+function finishValueAxes(axes: unknown, tk: Tokens) {
+  for (const ax of Array.isArray(axes) ? axes : axes ? [axes] : []) {
+    if (!ax || typeof ax !== "object" || (ax as { type?: string }).type !== "value") continue;
+    const a = ax as { axisLabel?: Record<string, unknown> };
+    const label: Record<string, unknown> = { fontFamily: tk.mono, fontSize: tk.size.caption, color: tk.muted, ...a.axisLabel };
+    const f = label.formatter;
+    if (f === undefined) label.formatter = tick;
+    else if (typeof f === "string" && f.includes("{value}")) label.formatter = (v: unknown) => f.replace("{value}", tick(v));
+    a.axisLabel = label;
+  }
+}
+
 /** Shared chart chrome: hairline grid, muted mono ticks, ink text, a tooltip that floats. */
 export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = false): echarts.EChartsCoreOption {
   const tooltip = typeof opt.tooltip === "object" && !Array.isArray(opt.tooltip) ? opt.tooltip : {};
+  finishValueAxes(opt.xAxis, tk);
+  finishValueAxes(opt.yAxis, tk);
   return {
     ...opt,
     animation: animate && !window.matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -127,9 +156,9 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = f
       backgroundColor: tk.elevated,
       borderWidth: 0,
       padding: [tk.size.space2, tk.size.space3],
-      // a tooltip is all values, so §4.8 puts it in the mono face
-      textStyle: { color: tk.text, fontFamily: tk.mono, fontSize: tk.size.caption },
-      extraCssText: "box-shadow: var(--shadow-popover); border-radius: var(--radius-sm);",
+      // §4.8: a tooltip is mostly words, so the text face, with figures that line up
+      textStyle: { color: tk.text, fontFamily: tk.font, fontSize: tk.size.small },
+      extraCssText: "box-shadow: var(--shadow-popover); border-radius: var(--radius-sm); font-variant-numeric: tabular-nums;",
       confine: true,
       ...tooltip,
     },

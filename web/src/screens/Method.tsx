@@ -227,7 +227,7 @@ export default function Method() {
             <div className="stack">
               <h3>{t("met.pf")}</h3>
               <div className="tiles cols-4">
-                <Tile label={t("met.pf.dv")} value={V.powerflow.max_abs_dv_pu.toExponential(1)} unit="pu" note={`${V.powerflow.cases} random operating points`} />
+                <Tile label={t("met.pf.dv")} value={V.powerflow.max_abs_dv_pu.toExponential(1)} unit="pu" note={t("met.pf.cases", { n: V.powerflow.cases })} />
                 <Tile label={t("met.pf.dl")} value={V.powerflow.max_abs_dloading_pct.toExponential(1)} unit="%" />
                 <Tile label={t("met.pf.speed")} value={f(V.powerflow.zbus_seconds_per_year, 1)} unit="s" note={t("met.pf.size", { b: V.powerflow.buses, l: V.powerflow.lines })} />
                 <Tile label={t("met.pf.nr")} value={f(V.powerflow.pandapower_ms_per_case, 0)} unit="ms" />
@@ -268,10 +268,10 @@ export default function Method() {
                 }
               />
               <div className="tiles cols-4">
-                <Tile label="Diffuse closure vs SMHI (param 122)" value={f(V.diffuse_closure?.mean_abs_w_m2, 2)} unit="W/m²" note="mean absolute difference, 2025" />
-                <Tile label="PV yield, median roof" value={f(V.pv_yield_kwh_per_kwp.median)} unit="kWh/kWp" note={`${V.pv_yield_kwh_per_kwp.year}`} />
-                <Tile label="Household energy, P10–P90" value={`${f(V.households.p10_kwh)}–${f(V.households.p90_kwh)}`} unit="kWh" note={`CREST raw mean ${f(V.households.crest_raw_mean_kwh)} kWh, scaled ×${f(V.households.scale_factor, 2)}`} />
-                <Tile label="Household peak, 10-min vs hourly" value={`${f(V.households.peak_10min_kw_median, 1)} / ${f(V.households.peak_hourly_kw_median, 1)}`} unit="kW" note="median household" />
+                <Tile label={t("met.diffuse")} value={f(V.diffuse_closure?.mean_abs_w_m2, 2)} unit="W/m²" note={t("met.diffuse.note", { year: V.diffuse_closure?.year ?? "" })} />
+                <Tile label={t("met.pvYield")} value={f(V.pv_yield_kwh_per_kwp.median)} unit="kWh/kWp" note={`${V.pv_yield_kwh_per_kwp.year}`} />
+                <Tile label={t("met.hhEnergy")} value={`${f(V.households.p10_kwh)}–${f(V.households.p90_kwh)}`} unit="kWh" note={t("met.hhEnergy.note", { raw: f(V.households.crest_raw_mean_kwh), k: f(V.households.scale_factor, 2) })} />
+                <Tile label={t("met.hhPeak")} value={`${f(V.households.peak_10min_kw_median, 1)} / ${f(V.households.peak_hourly_kw_median, 1)}`} unit="kW" note={t("met.hhPeak.note")} />
               </div>
             </div>
           </section>
@@ -377,6 +377,6 @@ function weatherOption(tk: Tokens, w: any[]) {
     xAxis: { type: "category", data: w.map((x) => String(x.year)), ...axisStyle(tk), splitLine: { show: false } },
     yAxis: { type: "value", ...axisStyle(tk), name: "kWh/m²", min: 0 },
     tooltip: { trigger: "axis" },
-    series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barWidth: 18 }],
+    series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.accent, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 18 }],
   };
 }

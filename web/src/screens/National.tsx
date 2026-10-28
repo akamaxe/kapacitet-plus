@@ -6,7 +6,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Chip, Legend, Missing } from "../components/bits";
 import { useApi } from "../lib/api";
-import { seqColor, tokens, type Tokens } from "../lib/colors";
+import { rampCss, seqColor, tokens, type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
@@ -69,17 +69,17 @@ export default function National() {
     for (const ft of zones.data.features) {
       const z = ft.properties.zone;
       const [lon, lat] = centroid(ft.geometry);
+      // §5.3: flat text on the map, no box and no pin
       const el = document.createElement("div");
-      el.style.cssText = "background:var(--bg-surface);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font:600 13px var(--font-sans);color:var(--text-primary);text-align:center;box-shadow:0 1px 0 rgba(0,0,0,.05)";
+      el.className = "zone-label";
       const b = document.createElement("div");
       b.textContent = z;
-      const s = document.createElement("div");
-      s.style.cssText = "font-weight:500;font-size:12px;color:var(--text-secondary)";
-      s.textContent = `${N.zones[z].price_mean_sek_kwh.toFixed(2)} kr/kWh`;
+      const s = document.createElement("small");
+      s.textContent = `${f(N.zones[z].price_mean_sek_kwh, 2)} kr/kWh`;
       el.append(b, s);
       new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
     }
-  }, [zones.data, N]);
+  }, [zones.data, N, f]);
 
   if (nat.isLoading || zones.isLoading) return <SplitSkeleton wide />;
   if (!N || !zones.data) return <Missing of={[nat, zones]} />;
@@ -93,7 +93,7 @@ export default function National() {
             <div className="map-legend">
               <div className="scale">
                 <span>{t("nat.mapLegend", { year: N.year })}</span>
-                <div className="scale-bar" style={{ background: `linear-gradient(90deg, ${tk.load.slice(1).join(",")})` }} />
+                <div className="scale-bar" style={{ background: rampCss((x) => seqColor(tk, x * 0.85 + 0.1)) }} />
                 <div className="scale-ticks"><span>{f(priceRange[0], 2)}</span><span>{f(priceRange[1], 2)}</span></div>
               </div>
             </div>
@@ -102,7 +102,7 @@ export default function National() {
       </div>
       <aside className="panel">
         <div className="stack">
-          <h2 style={{ fontSize: "var(--text-h2)" }}>{t("nat.title")}</h2>
+          <h1 className="panel-title">{t("nat.title")}</h1>
           <p className="caption">{t("nat.sub", { year: N.year })}</p>
           <div className="row"><Chip kind="real" /><span className="caption-muted">{t("nat.sources")}</span></div>
         </div>
@@ -174,8 +174,8 @@ function prodConsOption(tk: Tokens, N: any, t: (k: string) => string) {
     yAxis: { type: "value", ...axisStyle(tk), name: "TWh" },
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
     series: [
-      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.production, borderRadius: [4, 4, 0, 0] }, barWidth: 20, barGap: "10%" },
-      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.consumption, borderRadius: [4, 4, 0, 0] }, barWidth: 20 },
+      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.production, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20, barGap: "10%" },
+      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.consumption, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20 },
     ],
   };
 }
@@ -209,7 +209,7 @@ function negOption(tk: Tokens, N: any) {
     tooltip: { trigger: "item", formatter: (p: any) => `${p.name}: <b>${p.value}</b> h` },
     series: [{
       type: "bar", barWidth: 14, data: ZONES.map((z) => N.zones[z].negative_price_hours),
-      itemStyle: { color: tk.accent, borderRadius: [0, 4, 4, 0] },
+      itemStyle: { color: tk.accent, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
       label: { show: true, position: "right", color: tk.text, formatter: "{c} h" },
     }],
   };

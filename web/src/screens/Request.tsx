@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { Chart, axisStyle } from "../components/Chart";
@@ -98,7 +98,8 @@ export default function Request() {
     houses.forEach((h: any) => {
       const c = h.properties.cid;
       const s = status.get(c);
-      const color = c === cid ? tk.cat[0] : s === "firm" ? tk.text2 : s === "nonfirm" ? tk.accent : tk.borderStrong;
+      // firm and envelope houses in the colours the plan and the house table give them
+      const color = c === cid ? tk.cat[0] : s === "firm" ? tk.accent : s === "nonfirm" ? tk.warningFill : tk.borderStrong;
       map.setFeatureState({ source: "houses", id: c }, { color, sel: c === cid });
     });
   }, [houses, status, cid]);
@@ -192,10 +193,10 @@ export default function Request() {
       <div className="map-col">
         <div className="map-wrap">
           <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
-            <div className="map-legend" style={{ width: 220 }}>
+            <div className="map-legend fit">
               <Legend items={[
-                { color: tokens().text2, label: `${t("twin.status.firm")}` },
-                ...(baseline === "doe" ? [{ color: tokens().accent, label: t("twin.status.nonfirm") }] : []),
+                { color: tokens().accent, label: t("twin.status.firm") },
+                ...(baseline === "doe" ? [{ color: tokens().warningFill, label: t("twin.status.nonfirm") }] : []),
                 { color: tokens().borderStrong, label: t("twin.status.none") },
                 { color: tokens().cat[0], label: t("req.house") },
               ]} />
@@ -206,8 +207,8 @@ export default function Request() {
 
       <aside className="panel">
         <div className="stack">
-          <h2>{t("req.title")}</h2>
-          <div className="stack" style={{ gap: 6 }}>
+          <h1 className="panel-title">{t("req.title")}</h1>
+          <div className="stack">
             <span className="caption">{t("req.baseline")}</span>
             <div className="seg">
               <button aria-pressed={baseline === "static"} onClick={() => { setBaseline("static"); setJob(null); }}>{t("req.base.static")}</button>
@@ -242,7 +243,7 @@ export default function Request() {
         ) : (
           <>
             <div className="stack">
-              <h3>{house.address || house.osm_id}</h3>
+              <h3>{house.address || t("dt.unnamed", { id: house.cid })}</h3>
               <dl className="kv">
                 <dt>{t("req.roof")}</dt><dd>{f(house.kwp, 1)} kWp</dd>
                 <dt>{t("req.orientation")}</dt><dd>{house.east_west ? "E–W" : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
@@ -259,7 +260,7 @@ export default function Request() {
                 <output htmlFor="pv">{f(pv)} kWp</output>
                 <input id="pv" type="range" min={0} max={20} step={1} value={pv} onChange={(e) => setPv(Number(e.target.value))} />
               </div>
-              <div className="stack" style={{ gap: 6 }}>
+              <div className="stack">
                 <span className="caption">{t("req.ev")}</span>
                 <div className="seg">
                   {[0, 3.7, 11].map((v) => (
@@ -312,7 +313,8 @@ function reasonText(t: (k: string, v?: any) => string, f: (x: any, d?: number) =
   return t(`req.reason.${s.reason_code}`, { v: s.reason_value == null ? "" : f(s.reason_value, pu ? 3 : 0) });
 }
 
-function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
+// memo: the form above re-renders on every step of the PV slider, the answer does not change
+const Result = memo(function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
   const t = useT();
   const f = useFmt();
   const sum = res.summary;
@@ -323,9 +325,12 @@ function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
   // does the envelope ever go below the system's own export capacity in the reference year?
   const everLimited = !!prof?.envelope_min_month_hour &&
     (prof.envelope_min_month_hour as number[][]).some((row) => row.some((v) => v < prof.cap_kw - 0.05));
+  // the sample behind the risk figures, read from the answer rather than written here
+  const resampled: number = (res.risk?.histogram?.counts ?? []).reduce((s: number, c: number) => s + c, 0);
+  const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
 
   return (
-    <div className="stack" style={{ gap: 20 }}>
+    <div className="stack result">
       {pvReq && (
         <div className="verdicts">
           <div className="verdict">
@@ -379,20 +384,26 @@ function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
       {pvReq && res.risk?.histogram && (
         <section className="stack">
           <h3>{t("req.risk")}</h3>
-          <p className="caption-muted">{t("req.risk.caption")}</p>
-          <div className="tiles" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
+          <p className="caption-muted">{t("req.risk.caption", { n: f(resampled), from: weatherYears[0], to: weatherYears[weatherYears.length - 1] })}</p>
+          <div className="tiles cols-3">
             <Tile label={t("cmp.risk.mean")} value={f(res.risk.mean_pct, 2)} unit="%" />
             <Tile label={t("cmp.risk.p90")} value={f(res.risk.p90_pct, 2)} unit="%" />
             <Tile label={t("cmp.risk.cvar")} value={f(res.risk.cvar95_pct, 2)} unit="%" />
           </div>
-          <Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk) => histOption(tk, res.risk.histogram, t)} />
+          {/* with no curtailment at all, every year falls in one bin centred on zero and the
+              axis would show negative shares, so the answer is said instead of drawn */}
+          {res.risk.cvar95_pct > 0 ? (
+            <Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk) => histOption(tk, res.risk.histogram, t)} />
+          ) : (
+            <Status kind="good">{t("req.risk.none", { n: f(resampled) })}</Status>
+          )}
         </section>
       )}
 
       {pvReq && res.economics?.by_year && (
         <section className="stack">
           <h3>{t("req.money")}</h3>
-          <div className="tiles" style={{ gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
+          <div className="tiles">
             <Tile label={t("req.money.curtailed")} value={f(res.economics.curtailed_sek_mean)} unit="kr/yr" />
             <Tile label={t("req.money.export")} value={f(res.economics.export_sek_mean)} unit="kr/yr" />
             <Tile label={t("req.money.self")} value={f(res.economics.self_use_spot_sek_mean)} unit="kr/yr" />
@@ -402,10 +413,11 @@ function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
       )}
     </div>
   );
-}
+});
 
 function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string }) {
   const t = useT();
+  const f = useFmt();
   // the week (Mon–Sun blocks from 1 Jan) with the most curtailment; fall back to midsummer
   const curt: number[] = prof.curtailed_kw;
   let best = 25;
@@ -434,12 +446,12 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
       <ChartOrTable
         chart={<Chart ariaLabel={t("req.week")} height={220} deps={[prof, lang]} build={(tk) => weekOption(tk, prof, hours, year, lang, t)} />}
         table={
-          <div style={{ maxHeight: 220, overflowY: "auto" }}>
+          <div className="table-window">
             <table className="data">
               <thead><tr><th>{t("tbl.hour")}</th><th className="r">{t("req.week.pv")}, kW</th><th className="r">{t("req.week.limit")}, kW</th><th className="r">{t("req.week.curtailed")}, kW</th></tr></thead>
               <tbody>
                 {hours.filter((h) => prof.pv_kw[h] > 0).map((h) => (
-                  <tr key={h}><td>{hourLabel(lang, year, h)}</td><td className="r">{prof.pv_kw[h].toFixed(1)}</td><td className="r">{prof.envelope_kw[h].toFixed(1)}</td><td className="r">{prof.curtailed_kw[h].toFixed(1)}</td></tr>
+                  <tr key={h}><td>{hourLabel(lang, year, h)}</td><td className="r">{f(prof.pv_kw[h], 1)}</td><td className="r">{f(prof.envelope_kw[h], 1)}</td><td className="r">{f(prof.curtailed_kw[h], 1)}</td></tr>
                 ))}
               </tbody>
             </table>
@@ -468,7 +480,7 @@ function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string
       inRange: { color: [tk.load[2], tk.load[1], tk.load[0]] },
     },
     tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${p.value[2].toFixed(1)} kW</b>` },
-    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: 2 } }],
+    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: tk.size.radius } }],
   };
 }
 
@@ -482,7 +494,7 @@ function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: 
     series: [
       { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.accent }, areaStyle: { color: tk.accent, opacity: 0.1 } },
       { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.cat[0] } },
-      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.cat[2], borderRadius: [2, 2, 0, 0] }, barWidth: 3 },
+      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.cat[2], borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 3 },
     ],
   };
 }
@@ -494,6 +506,6 @@ function histOption(tk: Tokens, hist: { counts: number[]; edges: number[] }, t: 
     xAxis: { type: "category", data: mids.map((m) => m.toFixed(2)), ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5, formatter: (v: string) => `${Number(v).toFixed(1)} %` } },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { show: false } },
     tooltip: { trigger: "item", formatter: (p: any) => `${Number(p.name).toFixed(2)} %<br/><b>${p.value}</b> ${t("req.tt.years")}` },
-    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.accent, borderRadius: [4, 4, 0, 0] }, barCategoryGap: "12%" }],
+    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.accent, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barCategoryGap: "12%" }],
   };
 }
