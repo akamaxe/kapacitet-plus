@@ -121,8 +121,8 @@ const initial = parseHash();
 export const useStore = create<State>((set) => ({
   screen: initial.screen,
   lang: (readLS("kap.lang", "en") as "en" | "es"),
-  // a value this version does not know (an old or experimental theme) falls back to the default
-  theme: ((t) => (THEMES.includes(t) ? t : "dark") as Theme)(readLS("kap.theme", "dark")),
+  // paper is the default (design-system.md §1.1); a value this version does not know falls back to it
+  theme: ((t) => (THEMES.includes(t) ? t : "light") as Theme)(readLS("kap.theme", "light")),
   notes: false,
   hour: initial.hour ?? DEFAULT_HOUR,
   hourTouched: initial.hour !== undefined,
