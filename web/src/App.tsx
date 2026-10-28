@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { SideNav, StatusBar, TopBar } from "./components/Shell";
+import { SheetIndex, TitleBlock } from "./components/Shell";
 import { Icon } from "./components/Icon";
 import { useT } from "./lib/i18n";
 import { Loading } from "./components/bits";
@@ -135,8 +135,7 @@ export default function App() {
   return (
     <div className="app">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
-      <SideNav onSearch={() => setPalette(true)} />
-      <TopBar onSearch={() => setPalette(true)} />
+      <SheetIndex onSearch={() => setPalette(true)} />
       <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
         <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
           <Suspense fallback={<Loading />}>
@@ -149,7 +148,7 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <StatusBar onKeys={() => setKeys(true)} />
+      <TitleBlock onKeys={() => setKeys(true)} />
       <Notes />
       <Palette open={palette} onClose={() => setPalette(false)} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />

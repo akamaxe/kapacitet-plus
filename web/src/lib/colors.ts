@@ -4,42 +4,83 @@ export function token(name: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
-export function tokens() {
+/** All the tokens a chart or map needs, read from one computed style. */
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement);
+  const tk = (name: string) => cs.getPropertyValue(name).trim();
+  // the type and spacing tokens are in rem; charts draw on a canvas and need pixels
+  const rem = parseFloat(cs.fontSize) || 16;
+  const px = (name: string) => Math.round(parseFloat(tk(name)) * rem);
   return {
-    bg: token("--bg-base"),
-    surface: token("--bg-surface"),
-    inset: token("--bg-inset"),
-    elevated: token("--bg-elevated"),
-    text: token("--text-primary"),
-    text2: token("--text-secondary"),
-    muted: token("--text-muted"),
-    border: token("--border"),
-    borderStrong: token("--border-strong"),
-    accent: token("--accent"),
-    neutralSeries: token("--neutral-series"),
-    warning: token("--warning"),
-    danger: token("--danger"),
-    production: token("--data-production"),
-    consumption: token("--data-consumption"),
-    cat: ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5", "--cat-6"].map(token),
+    bg: tk("--bg-base"),
+    surface: tk("--bg-surface"),
+    inset: tk("--bg-inset"),
+    elevated: tk("--bg-elevated"),
+    text: tk("--text-primary"),
+    text2: tk("--text-secondary"),
+    muted: tk("--text-muted"),
+    border: tk("--border"),
+    borderStrong: tk("--border-strong"),
+    accent: tk("--accent"),
+    accentQuiet: tk("--accent-quiet"),
+    neutralSeries: tk("--neutral-series"),
+    warning: tk("--warning"),
+    warningQuiet: tk("--warning-quiet"),
+    warningFill: tk("--warning-fill"),
+    danger: tk("--danger"),
+    dangerQuiet: tk("--danger-quiet"),
+    dangerFill: tk("--danger-fill"),
+    production: tk("--data-production"),
+    consumption: tk("--data-consumption"),
+    cat: ["--cat-1", "--cat-2", "--cat-3", "--cat-4", "--cat-5", "--cat-6"].map(tk),
     // cable and transformer loading: stops at 0, 50 and 85 %, flat above the rating
-    load: ["--load-0", "--load-50", "--load-85"].map(token),
-    loadOver: token("--load-over"),
+    load: ["--load-0", "--load-50", "--load-85"].map(tk),
+    loadOver: tk("--load-over"),
     // voltage: diverging around 1.00 pu, blue and amber
-    voltLow: token("--volt-low"),
-    voltMid: token("--volt-mid"),
-    voltHigh: token("--volt-high"),
-    font: token("--font-sans"),
-    mono: token("--font-mono"),
+    voltLow: tk("--volt-low"),
+    voltMid: tk("--volt-mid"),
+    voltHigh: tk("--volt-high"),
+    font: tk("--font-sans"),
+    mono: tk("--font-mono"),
+    // §2's chart scale: ticks and sources, labels, values on a chart, the one annotated figure
+    size: {
+      caption: px("--text-caption"),
+      small: px("--text-small"),
+      body: px("--text-body"),
+      h3: px("--text-h3"),
+      space2: px("--space-2"),
+      space3: px("--space-3"),
+    },
   };
 }
 
-export type Tokens = ReturnType<typeof tokens>;
+export type Tokens = ReturnType<typeof readTokens>;
+
+let cached: { key: string; value: Tokens } | null = null;
+
+/**
+ * The tokens of the theme on screen. They only change with the theme attribute, or with the
+ * desktop's scheme when no theme is chosen, so they are read once per theme rather than once
+ * per row, cell and hour (js-cache-function-results).
+ */
+export function tokens(): Tokens {
+  const attr = document.documentElement.getAttribute("data-theme");
+  const key = attr ?? (window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "system-dark" : "system-light");
+  if (cached?.key !== key) cached = { key, value: readTokens() };
+  return cached.value;
+}
+
+const rgbCache = new Map<string, [number, number, number]>();
 
 function hexToRgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "");
-  const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
-  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  let rgb = rgbCache.get(hex);
+  if (!rgb) {
+    const h = hex.replace("#", "");
+    const n = parseInt(h.length === 3 ? h.split("").map((c) => c + c).join("") : h, 16);
+    rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    rgbCache.set(hex, rgb);
+  }
+  return rgb;
 }
 
 function mix(a: string, b: string, t: number): string {

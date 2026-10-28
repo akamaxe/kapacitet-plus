@@ -4,35 +4,46 @@ import { ApiError } from "../lib/api";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
 
-export function Chip({ kind }: { kind: "real" | "synthetic" | "reference" }) {
+type Provenance = "real" | "synthetic" | "reference";
+
+/**
+ * The provenance mark of design-system.md §3.6: surveyed data is drawn solid, assumed data
+ * dashed, a reference hollow — the drafting conventions, set as type rather than as a badge.
+ */
+export function Mark({ kind }: { kind: Provenance }) {
+  return <span className={`mark ${kind}`} aria-hidden="true" />;
+}
+
+/** A mark with its word. Kept under its old name so every screen that labels data still does. */
+export function Chip({ kind }: { kind: Provenance }) {
   const t = useT();
   const label = kind === "real" ? t("ui.real") : kind === "synthetic" ? t("ui.synthetic") : t("ui.reference");
-  return <span className={`chip ${kind}`}>{label}</span>;
+  return <span className={`chip ${kind}`}><Mark kind={kind} />{label}</span>;
 }
 
 const ICONS: Record<string, ReactNode> = {
   good: (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-      <circle cx="8" cy="8" r="7" fill="currentColor" />
-      <path d="M4.6 8.2l2.2 2.2 4.6-4.8" stroke="var(--on-accent)" strokeWidth="1.8" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+      <circle cx="7" cy="7" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.2 7.2l1.9 1.9 3.8-4" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   ),
   warning: (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-      <path d="M8 1.5l7 12.5H1z" fill="currentColor" />
-      <path d="M8 6v3.6M8 11.6v.1" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+      <path d="M7 1.4l6 11H1z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+      <path d="M7 5.4v3M7 10.3v.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   ),
   serious: (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-      <rect x="1.5" y="1.5" width="13" height="13" rx="3" fill="currentColor" />
-      <path d="M8 4.5v4.2M8 11.2v.1" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+      <rect x="1.25" y="1.25" width="11.5" height="11.5" rx="2" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 4v3.6M7 9.9v.1" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   ),
   critical: (
-    <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden>
-      <circle cx="8" cy="8" r="7" fill="currentColor" />
-      <path d="M5.4 5.4l5.2 5.2M10.6 5.4l-5.2 5.2" stroke="var(--on-accent)" strokeWidth="1.8" strokeLinecap="round" />
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
+      <circle cx="7" cy="7" r="6.25" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M4.8 4.8l4.4 4.4M9.2 4.8l-4.4 4.4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   ),
 };
@@ -47,6 +58,11 @@ export function Status({ kind, children }: { kind: "good" | "warning" | "serious
   );
 }
 
+/**
+ * One reading of a data sheet (design-system.md §3.3): the label on the left, the value in
+ * mono with its unit on the right, the note under it. A group of these sits in `.tiles`,
+ * which draws rows parted by hairlines rather than a grid of boxes.
+ */
 export function Tile({ label, value, unit, note }: { label: string; value: ReactNode; unit?: string; note?: ReactNode }) {
   return (
     <div className="tile">
@@ -57,6 +73,35 @@ export function Tile({ label, value, unit, note }: { label: string; value: React
       </div>
       {note ? <div className="t-note">{note}</div> : null}
     </div>
+  );
+}
+
+/**
+ * A verification protocol (design-system.md §3.3): one row per check, with its verdict,
+ * what was measured, the measured value and the criterion it was held against.
+ */
+export function Protocol({ rows }: {
+  /** `ok: null` is a measurement with no pass mark of its own, such as an agreement with a reference tool */
+  rows: { ok: boolean | null; label: string; value: ReactNode; unit?: string; criterion?: ReactNode }[];
+}) {
+  const t = useT();
+  return (
+    <table className="protocol">
+      <tbody>
+        {rows.map((r) => (
+          <tr key={r.label}>
+            <td className="p-mark">
+              {r.ok === null
+                ? <span className="status measured">{t("ui.measured")}</span>
+                : <Status kind={r.ok ? "good" : "critical"}>{r.ok ? t("ui.pass") : t("ui.fail")}</Status>}
+            </td>
+            <th scope="row">{r.label}</th>
+            <td className="p-value num">{r.value}{r.unit ? <small>{r.unit}</small> : null}</td>
+            <td className="p-criterion">{r.criterion}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
   );
 }
 
@@ -79,11 +124,13 @@ export function Hero({ value, unit, label, note }: { value: ReactNode; unit?: st
   );
 }
 
+/** A loading as a scale with ticks at 50 and 85 % of the limit, and the limit itself. */
 export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits = 0 }: {
   label: string; value: number; max?: number; limit?: number; unit?: string; digits?: number;
 }) {
   const w = Math.max(0, Math.min(1, value / max)) * 100;
   const over = value > limit;
+  const at = (x: number) => `${(x / max) * 100}%`;
   return (
     <div className="meter">
       <div className="meter-head">
@@ -92,7 +139,9 @@ export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits
       </div>
       <div className="meter-track" role="meter" aria-valuenow={value} aria-valuemax={max} aria-label={label}>
         <div className={`meter-fill ${over ? "critical" : ""}`} style={{ width: `${w}%` }} />
-        <div className="meter-limit" style={{ left: `calc(${(limit / max) * 100}% - 1px)` }} />
+        <span className="meter-tick" style={{ left: at(limit * 0.5) }} />
+        <span className="meter-tick" style={{ left: at(limit * 0.85) }} />
+        <span className="meter-limit" style={{ left: at(limit) }} />
       </div>
     </div>
   );
@@ -129,7 +178,7 @@ export function Legend({ items }: { items: { color: string; label: string; line?
 
 export function Loading() {
   const t = useT();
-  return <div className="empty" role="status"><span className="loading-orbit"><Icon name="grid" size={30} /></span><span>{t("ui.loading")}</span></div>;
+  return <div className="empty" role="status"><span className="caption-muted">{t("ui.loading")}</span></div>;
 }
 
 /**
@@ -144,7 +193,6 @@ export function Missing({ of }: { of?: { isError?: boolean; error?: unknown }[] 
   const gone = failed?.status === 0;
   return (
     <div className="empty" role="alert">
-      <span className="loading-orbit"><Icon name="alert" size={28} /></span>
       <h2>{t("ui.unavailable")}</h2>
       <p className="caption">{gone ? t("ui.offline") : t("ui.missing")}</p>
       {failed && <p className="caption-muted mono">{failed.endpoint}{failed.status ? ` → ${failed.status}` : ""}</p>}

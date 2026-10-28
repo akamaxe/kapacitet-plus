@@ -218,7 +218,6 @@ export default function Request() {
 
         {!house ? (
           <div className="blank">
-            <span className="loading-orbit"><Icon name="request" size={26} /></span>
             <h3>{t("req.blank.title")}</h3>
             <p className="caption">{t("req.pick")}</p>
             <div className="row">
