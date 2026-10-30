@@ -2046,3 +2046,47 @@ ol.list {
 .answer.stale .v-big { text-decoration: line-through; text-decoration-thickness: 2px; }
 .stale-note { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; padding: var(--space-3); border-radius: var(--radius-md); background: var(--warning-quiet); color: var(--text-primary); font-size: var(--text-small); }
 .stale-note .btn { margin-left: auto; }
+
+/* ---------------------------------------------------------------- scenarios */
+/* a screen's answer, said under its title at the size of an answer */
+.lead-answer { max-width: 46ch; font-size: var(--text-h2); line-height: var(--lh-h2); font-weight: 500; letter-spacing: var(--track-h2); color: var(--text-primary); text-wrap: balance; }
+/* the marks of a cell's outcome: a disc, a triangle, a cross, as the matrix draws them */
+.cell-key { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); white-space: nowrap; }
+.cell-key i { display: inline-block; flex: none; width: 11px; height: 11px; }
+.cell-key.good i { border-radius: 50%; background: var(--good); }
+.cell-key.warning i { background: var(--warning); clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.cell-key.critical i { background: var(--danger); clip-path: polygon(17% 0, 50% 33%, 83% 0, 100% 17%, 67% 50%, 100% 83%, 83% 100%, 50% 67%, 17% 100%, 0 83%, 33% 50%, 0 17%); }
+table.data tr.picked { background: var(--accent-quiet); }
+table.data tbody tr[tabindex] { cursor: pointer; }
+
+/* ---------------------------------------------------------------- terms of the trade
+   A dotted underline says there is a definition; it opens above the word, grown from it. */
+.term-wrap { position: relative; display: inline; }
+.term { display: inline; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: inherit; cursor: help; text-decoration: underline dotted; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+.term[aria-expanded="true"] { text-decoration-color: var(--accent); }
+.term-pop {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--space-2));
+  z-index: var(--z-overlay);
+  width: max-content;
+  max-width: 280px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  box-shadow: var(--shadow-popover);
+  color: var(--text-primary);
+  font-size: var(--text-small);
+  font-weight: 400;
+  line-height: var(--lh-small);
+  text-align: left;
+  white-space: normal;
+  transform: translateX(-50%);
+  transform-origin: 50% 100%;
+  transition: opacity var(--dur-popover) var(--ease), transform var(--dur-popover) var(--ease);
+}
+@starting-style {
+  .term-pop { opacity: 0; transform: translateX(-50%) scale(0.97); }
+}
+/* once one definition has been open, the next appears without its entrance */
+.term-pop[data-instant] { transition: none; }

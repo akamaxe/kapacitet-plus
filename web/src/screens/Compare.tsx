@@ -5,6 +5,7 @@ import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Legend, Mark, Missing, Protocol, Tile } from "../components/bits";
 import { Icon } from "../components/Icon";
 import { LineMap, useLines } from "../components/LineMap";
+import { Term } from "../components/Term";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
@@ -38,7 +39,9 @@ export default function Compare() {
     return zs[Math.floor(zs.length / 2)];
   }, [H]);
 
-  if (hosting.isLoading || show.isLoading) return <PageSkeleton bar hero blocks={2} />;
+  // the protocol's rows come from three answers: wait for all of them, so the table does not
+  // grow under the reader
+  if (hosting.isLoading || show.isLoading || assumptions.isLoading || val.isLoading) return <PageSkeleton bar hero blocks={2} />;
   if (!H || !S) return <Missing of={[hosting, show, risk, val]} />;
 
   const m = H.summary.measures;
@@ -85,13 +88,13 @@ export default function Compare() {
                 <span className="ap-to">{f(doeKw)}<small>kW</small></span>
               </p>
               <p className="answer-ratio">{t("cmp.ratioLine", { r: f(ratio, 1) })}</p>
-              <div className="ratio-bars" aria-hidden="true">
-                <span>{t("cmp.fig.static")}</span><i className="rb-static" style={{ width: `${(staticKw / doeKw) * 100}%` }} />
-                <span>{t("cmp.fig.doe")}</span><i className="rb-doe" />
+              <div className="ratio-bars">
+                <span><Term id="static">{t("cmp.fig.static")}</Term></span><i aria-hidden="true" className="rb-static" style={{ width: `${(staticKw / doeKw) * 100}%` }} />
+                <span><Term id="envelope">{t("cmp.fig.doe")}</Term></span><i aria-hidden="true" className="rb-doe" />
               </div>
               <div className="tiles cols-1 answer-sheet">
                 <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
-                <Tile label={t("cmp.sheet.cost")} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
+                <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
                 <Tile label={t("cmp.sheet.overHours", { year: S.year })} value={f(ver.uncontrolled_violation_hours)} unit="h" tone="danger" />
                 <Tile label={t("cmp.sheet.peak")} value={f(ver.uncontrolled_max_trafo_loading_pct)} unit={t("cmp.sheet.peakUnit")} tone="danger" />
               </div>
@@ -152,7 +155,7 @@ export default function Compare() {
           {/* the cost of the last kilowatt is a figure in its own right, so it gets a panel */}
           <section className="block">
             <div className="block-head"><h3>{t("cmp.curve")}</h3></div>
-            <p className="caption">{t("cmp.curve.caption")}</p>
+            <p className="caption">{t("cmp.curve.caption", { from: years[0], to: years[years.length - 1] })}</p>
             <Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk) => curveOption(tk, H, t, zStar)} />
             {fixedZ.length > 0 && (
               <p className="caption">
@@ -233,7 +236,7 @@ export default function Compare() {
                 <Tile label={t("cmp.risk.mean")} value={f(R.stats.mean_z_pct, 1)} unit="%" />
                 <Tile label={t("cmp.risk.p90")} value={f(R.stats.p90_z_pct, 1)} unit="%" />
                 <Tile label={t("cmp.risk.worst")} value={f(R.stats.worst_z_pct, 1)} unit="%" />
-                <Tile label={t("cmp.risk.cvar")} value={f(R.stats.cvar95_z_pct, 1)} unit="%" />
+                <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(R.stats.cvar95_z_pct, 1)} unit="%" />
               </div>
               <Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk) => riskOption(tk, R, zStar)} />
             </section>

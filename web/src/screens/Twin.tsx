@@ -7,6 +7,7 @@ import { SplitSkeleton } from "../components/Skeleton";
 import { Meter, Status, Tile, Missing } from "../components/bits";
 import { Icon } from "../components/Icon";
 import { LineMap, LineStrip, useLines, type Layout, type Station } from "../components/LineMap";
+import { Term } from "../components/Term";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
 import { hourLabel, useFmt } from "../lib/format";
@@ -443,7 +444,7 @@ function HourReadings({ agg, scenario }: {
           <Meter label={trafoRev ? t("twin.trafoRev") : t("twin.trafo")} value={agg.trafo_loading[hour]} max={140} limit={100} />
           <Meter label={t("twin.line")} value={agg.max_line_loading[hour]} max={140} limit={100} />
           <div className="tiles cols-2">
-            <Tile label={t("twin.vmax")} value={f(agg.vmax[hour], 3)} unit="pu" />
+            <Tile label={<Term id="pu">{t("twin.vmax")}</Term>} value={f(agg.vmax[hour], 3)} unit="pu" />
             <Tile label={t("twin.vmin")} value={f(agg.vmin[hour], 3)} unit="pu" />
             {scenario === "doe" && agg.curtailed_kw && <Tile label={t("twin.curtailed")} value={f(agg.curtailed_kw[hour], 1)} unit="kW" />}
           </div>
@@ -661,6 +662,12 @@ function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: 
 const MapLegend = memo(function MapLegend({ colorBy }: { colorBy: ColorBy; theme: string }) {
   const t = useT();
   const f = useFmt();
+  // the voltage limits are model inputs, not constants of this component
+  const ass = useApi<any>("/assumptions");
+  const limit = (key: string): number | null =>
+    (ass.data?.assumptions as any[] | undefined)?.find((a) => a.key === key)?.value ?? null;
+  const vLo = limit("v_min_pu");
+  const vHi = limit("v_max_pu");
   const tk = tokens();
   const seqGrad = rampCss((x) => loadingColor(tk, x * 100));
   // power is drawn on the voltage poles (powerColor), so both scales share one bar
@@ -689,7 +696,10 @@ const MapLegend = memo(function MapLegend({ colorBy }: { colorBy: ColorBy; theme
             <span>{f(1, 2)}</span>
             <span>≥{f(1 + V_SPAN, 2)}</span>
           </div>
-          <span className="caption-muted">{t("twin.legend.vnote", { p: f(V_SPAN * 100, 0) })}</span>
+          <span className="caption-muted">
+            {t("twin.legend.vnote", { p: f(V_SPAN * 100, 0) })}
+            {vLo != null && vHi != null ? ` ${t("twin.legend.limits", { lo: f(vLo, 2), hi: f(vHi, 2) })}` : ""}
+          </span>
         </div>
       ) : (
         <div className="scale">

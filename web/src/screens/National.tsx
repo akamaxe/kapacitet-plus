@@ -6,7 +6,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Chip, Legend, Missing } from "../components/bits";
 import { useApi } from "../lib/api";
-import { rampCss, seqColor, tokens, type Tokens } from "../lib/colors";
+import { balanceColor, rampCss, tokens, type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
@@ -38,10 +38,11 @@ export default function National() {
   const zones = useApi<any>("/zones");
   const N = nat.data?.data;
 
-  const priceRange = useMemo(() => {
-    if (!N) return [0, 1];
-    const ps = ZONES.map((z) => N.zones[z].price_mean_sek_kwh);
-    return [Math.min(...ps), Math.max(...ps)];
+  // the map shows what the title says: where a zone makes more than it uses, and where it
+  // uses more than it makes. The largest balance either way sets the end of the scale.
+  const span = useMemo(() => {
+    if (!N) return 1;
+    return Math.max(...ZONES.map((z) => Math.abs(N.zones[z].balance_twh)), 1e-6);
   }, [N]);
 
   const setup = useCallback((map: MLMap) => {
@@ -50,8 +51,7 @@ export default function National() {
     const gj = JSON.parse(JSON.stringify(zones.data));
     for (const ft of gj.features) {
       const z = ft.properties.zone;
-      const p = N.zones[z]?.price_mean_sek_kwh ?? 0;
-      ft.properties.color = seqColor(tk, (p - priceRange[0]) / Math.max(1e-6, priceRange[1] - priceRange[0]) * 0.85 + 0.1);
+      ft.properties.color = balanceColor(tk, (N.zones[z]?.balance_twh ?? 0) / span);
     }
     if (!map.getSource("zones")) map.addSource("zones", { type: "geojson", data: gj } as any);
     if (!map.getLayer("zones-fill")) {
@@ -73,7 +73,8 @@ export default function National() {
       const el = document.createElement("div");
       el.className = "zone-label";
       const b = document.createElement("div");
-      b.textContent = z;
+      const bal = N.zones[z].balance_twh;
+      b.textContent = `${z}  ${bal > 0 ? "+" : bal < 0 ? "−" : ""}${f(Math.abs(bal), 1)} TWh`;
       const s = document.createElement("small");
       s.textContent = `${f(N.zones[z].price_mean_sek_kwh, 2)} kr/kWh`;
       el.append(b, s);
@@ -92,9 +93,12 @@ export default function National() {
           <MapView center={[17.5, 63.0]} zoom={3.6} setup={setup} onReady={onReady} ariaLabel={t("nat.title")}>
             <div className="map-legend">
               <div className="scale">
-                <span>{t("nat.mapLegend", { year: N.year })}</span>
-                <div className="scale-bar" style={{ background: rampCss((x) => seqColor(tk, x * 0.85 + 0.1)) }} />
-                <div className="scale-ticks"><span>{f(priceRange[0], 2)}</span><span>{f(priceRange[1], 2)}</span></div>
+                <span>{t("nat.mapLegendBalance", { year: N.year })}</span>
+                <div className="scale-bar" style={{ background: rampCss((x) => balanceColor(tk, 2 * x - 1)) }} />
+                <div className="scale-ticks">
+                  <span>−{f(span, 0)}</span><span>0</span><span>+{f(span, 0)} TWh</span>
+                </div>
+                <div className="scale-ticks caption-muted"><span>{t("nat.usesMore")}</span><span>{t("nat.makesMore")}</span></div>
               </div>
             </div>
           </MapView>
@@ -137,8 +141,8 @@ export default function National() {
         <section className="stack">
           <h3>{t("nat.capTitle")}</h3>
           <p className="caption">{t("nat.capText")}</p>
-          <ul style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 6 }}>
-            <li><a href="https://www.iea.org/reports/electricity-2026/grids" target="_blank" rel="noreferrer">IEA, Electricity 2026: Grids</a></li>
+          <ul className="list">
+            <li><a href="https://www.iea.org/reports/electricity-2026/grids" target="_blank" rel="noreferrer">{t("nat.iea")}</a></li>
             {N.capacity_links.map((l: any) => (
               <li key={l.url}><a href={l.url} target="_blank" rel="noreferrer">{l.name}</a> <Chip kind="reference" /></li>
             ))}
