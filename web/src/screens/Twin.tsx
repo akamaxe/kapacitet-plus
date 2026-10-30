@@ -6,7 +6,6 @@ import { YearStrip } from "../components/YearStrip";
 import { SplitSkeleton } from "../components/Skeleton";
 import { Meter, Status, Tile, Missing } from "../components/bits";
 import { Icon } from "../components/Icon";
-import { LineMap, LineStrip, useLines, type Layout, type Station } from "../components/LineMap";
 import { Term } from "../components/Term";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
@@ -16,7 +15,6 @@ import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
 type ColorBy = "voltage" | "power";
-type View = "map" | "lines";
 /** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
 const V_SPAN = 0.06;
 const P_SPAN = 8;
@@ -60,7 +58,6 @@ export default function Twin() {
   const selectedCid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
   const playing = useStore((s) => s.playing);
-  const lines = useLines();
 
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
@@ -72,7 +69,6 @@ export default function Twin() {
   const tipRef = useRef<(tip: Tip | null) => void>(() => {});
   const lastColor = useRef(new Map<string, string>());
   const [colorBy, setColorBy] = useState<ColorBy>("voltage");
-  const [view, setView] = useState<View>("map");
   const [openTable, setOpenTable] = useState(false);
   const colRef = useRef<HTMLDivElement>(null);
 
@@ -294,22 +290,13 @@ export default function Twin() {
   return (
     <div className="split">
       <div className="map-col" ref={colRef}>
-        <div className="map-wrap" data-view={view}>
+        <div className="map-wrap">
           <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("twin.title", { n: houses.length })}>
             <Daylight center={center} year={year} />
             {st.isLoading && <div className="map-loading" role="status">{t("ui.loading")}</div>}
             {updating && <div className="updating" role="status">{t("twin.updating")}</div>}
             <div className="map-toolbar"><button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={() => { if (mapRef.current && net.data.bbox) { mapRef.current.jumpTo({ pitch: 50, bearing: -18 }); fitTo(mapRef.current, net.data.bbox, 60); } }}><Icon name="reset" size={17} /></button></div>
             <MapLegend colorBy={colorBy} theme={theme} />
-            <div className="map-note">
-              <div className="seg small" role="group" aria-label={t("twin.view")}>
-                <button aria-pressed={view === "map"} onClick={() => setView("map")}>{t("twin.view.map")}</button>
-                <button aria-pressed={view === "lines"} onClick={() => setView("lines")}>{t("twin.view.lines")}</button>
-              </div>
-            </div>
-            {view === "lines" && lines.layout && (
-              <TwinLines layout={lines.layout} cables={cables} rows={rows} st={st} colorBy={colorBy} selectedCid={selectedCid} select={select} />
-            )}
             <TipLayer register={tipRef} housesById={housesById} cablesById={cablesById} rows={rows} st={st} />
           </MapView>
         </div>
@@ -334,7 +321,7 @@ export default function Twin() {
 
       <aside className="panel" data-playing={playing}>
         <h1 className="panel-title">{t("twin.title", { n: houses.length })}</h1>
-        {picked && <Inspector house={picked} layout={lines.layout} rows={rows} st={st} onClear={() => select(null)} />}
+        {picked && <Inspector house={picked} rows={rows} st={st} onClear={() => select(null)} />}
 
         <HourReadings agg={agg} ser={ser} year={year} center={center} scenario={scenario} />
 
@@ -476,51 +463,6 @@ function Conditions({ agg, ser, year, center }: { agg: any; ser: any; year: numb
   );
 }
 
-/**
- * The network as lines at this hour: each feeder takes the loading colour of its busiest
- * cable, each station the colour its house has on the map. It subscribes to the hour on
- * its own, so playback repaints the lines and nothing around them.
- */
-function TwinLines({ layout, cables, rows, st, colorBy, selectedCid, select }: {
-  layout: Layout; cables: any[]; rows: Rows | null; st: GridState; colorBy: ColorBy;
-  selectedCid: number | null; select: (cid: number | null) => void;
-}) {
-  const t = useT();
-  const hour = useStore((s) => s.hour);
-  // the main cables of each feeder, found once (js-index-maps)
-  const byFeeder = useMemo(() => {
-    const m = new Map<number, number[]>();
-    for (const c of cables) {
-      if (c.properties.kind !== "main") continue;
-      const list = m.get(c.properties.feeder) ?? [];
-      list.push(c.properties.line);
-      m.set(c.properties.feeder, list);
-    }
-    return m;
-  }, [cables]);
-  const tk = tokens();
-  const lineColor = (feeder: number) => {
-    if (!st.data || !rows) return undefined;
-    let worst = 0;
-    for (const l of byFeeder.get(feeder) ?? []) {
-      const r = rows.lineRow.get(l);
-      if (r !== undefined) worst = Math.max(worst, st.data.loading(r, hour));
-    }
-    return loadingColor(tk, worst);
-  };
-  const stationColor = (s: Station) => {
-    if (!st.data || !rows) return undefined;
-    if (colorBy === "power") return powerColor(tk, st.data.power(s.cid, hour), P_SPAN);
-    const r = rows.busRow.get(s.bus);
-    return r === undefined ? undefined : voltageColor(tk, st.data.voltage(r, hour), V_SPAN);
-  };
-  return (
-    <div className="twin-lines">
-      <LineMap layout={layout} lineColor={lineColor} stationColor={stationColor} highlight={selectedCid} onPick={select} label={t("twin.lines.aria")} />
-    </div>
-  );
-}
-
 /** A house's connection, keyed as the plan draws it. */
 function HouseStatus({ status }: { status: string }) {
   const t = useT();
@@ -533,10 +475,10 @@ function HouseStatus({ status }: { status: string }) {
 }
 
 /**
- * The selected house: its line from the substation, its state at this hour, and the next
+ * The selected house: its state at this hour, where it sits on the network, and the next
  * step for it, a connection request.
  */
-function Inspector({ house, layout, rows, st, onClear }: { house: any; layout: Layout | null; rows: Rows | null; st: GridState; onClear: () => void }) {
+function Inspector({ house, rows, st, onClear }: { house: any; rows: Rows | null; st: GridState; onClear: () => void }) {
   const t = useT();
   const f = useFmt();
   const hour = useStore((s) => s.hour);
@@ -551,15 +493,16 @@ function Inspector({ house, layout, rows, st, onClear }: { house: any; layout: L
           <Icon name="close" size={15} />
         </button>
       </div>
-      {layout && <LineStrip layout={layout} cid={house.cid} />}
       <div className="tiles cols-2">
         <Tile label={t("dt.voltage")} value={v == null ? "–" : f(v, 3)} unit="pu" />
         <Tile label={t("dt.net")} value={p == null ? "–" : f(p, 1)} unit="kW" />
         <Tile label={t("dt.status")} value={<span className="t-word"><HouseStatus status={house.pv_status} /></span>} />
         <Tile label={t("dt.kwp")} value={f(house.kwp, 1)} unit="kWp" />
+        <Tile label={t("dt.feeder")} value={house.feeder + 1} />
+        <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
       </div>
       <div>
-        <button className="btn" onClick={() => useStore.getState().setScreen("request")}>{t("lines.test")}</button>
+        <button className="btn" onClick={() => useStore.getState().setScreen("request")}>{t("net.test")}</button>
       </div>
     </div>
   );

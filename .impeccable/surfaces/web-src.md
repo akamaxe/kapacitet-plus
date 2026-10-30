@@ -20,6 +20,17 @@ work is code-led.
   - move the hour in the neighbourhood;
   - pick a house and evaluate a request.
 
+## User decision (2026-10-30)
+
+After seeing the built line map, the user chose to see the network as before: on the real map, in
+3D, with interaction. This pinned decision overrides the direction's first signature. The line map,
+the Neighbourhood lines view and the line strip were removed. The opening screen now shows
+`NetworkMap.tsx`: the Smedslätten map tilted in 3D, the houses coloured by connection (firm green,
+envelope amber, no solar grey), the cables in ink and the substation ringed in SL blue. Drag moves
+and turns the map; the wheel zooms only with Ctrl, so the page still scrolls. A house opens its
+connection request. The rest of the world stands: the SL-blue top bar, the white ground, Familjen
+Grotesk, the line colours kept for data, and every usability change.
+
 ## Direction contract
 
 THESIS: The neighbourhood grid is a line network. Eleven feeders leave the substation like metro lines and
@@ -37,7 +48,7 @@ OWN-WORLD:
 STORY: At a glance the viewer sees that the same grid takes 413 → 787 kW and which houses ride on envelopes.
 They can then test one connection and read its verdict with the hours behind it.
 
-FIRST VIEWPORT (Static vs envelopes, 1536×730):
+FIRST VIEWPORT (Static vs envelopes, 1536×730; the left column is now the 3D network map, see the user decision above):
 - **Top bar:** wordmark, scope, the six screens, search, language and theme.
 - **Left, about 60 %:** the 11 feeders as a schematic line diagram from the transformer symbol, with the key
   under it.

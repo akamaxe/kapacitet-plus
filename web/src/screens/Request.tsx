@@ -6,7 +6,6 @@ import { Icon } from "../components/Icon";
 import { toast } from "../components/Toast";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
-import { LineStrip, useLines } from "../components/LineMap";
 import { Term } from "../components/Term";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
@@ -46,7 +45,6 @@ export default function Request() {
   const mapRef = useRef<MLMap | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
-  const lines = useLines();
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
   const S = show.data?.data?.showcase;
@@ -269,11 +267,12 @@ export default function Request() {
           <>
             <div className="stack">
               <h2 className="house-title">{house.address || t("dt.unnamed", { id: house.cid })}</h2>
-              {lines.layout && <LineStrip layout={lines.layout} cid={house.cid} />}
               <dl className="kv">
                 <dt><Term id="kwp">{t("req.roof")}</Term></dt><dd>{f(house.kwp, 1)} kWp</dd>
                 <dt>{t("req.orientation")}</dt><dd>{house.east_west ? t("req.eastWest") : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
+                <dt>{t("req.feeder")}</dt><dd>{house.feeder + 1}</dd>
+                <dt>{t("req.distance")}</dt><dd>{f(house.dist_m)} m</dd>
               </dl>
               {status.get(house.cid) !== "none" && <p className="caption-muted">{t("req.hadpv")}</p>}
             </div>

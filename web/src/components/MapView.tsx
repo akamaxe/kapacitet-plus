@@ -35,11 +35,17 @@ export interface MapViewProps {
   onReady?: (map: MLMap) => void;
   interactive?: boolean;
   basemap?: boolean;
+  /**
+   * A map inside a page that scrolls: the wheel scrolls the page and zooms the map only with
+   * Ctrl or Cmd held, and a finger pans the page, two fingers the map. These are the words
+   * MapLibre shows when it holds a gesture back.
+   */
+  gestureHelp?: { windows: string; mac: string; mobile: string };
   children?: React.ReactNode;
   ariaLabel: string;
 }
 
-export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, interactive = true, basemap = true, children, ariaLabel }: MapViewProps) {
+export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, interactive = true, basemap = true, gestureHelp, children, ariaLabel }: MapViewProps) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const setupRef = useRef(setup);
@@ -65,6 +71,16 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
       interactive,
       attributionControl: false,
       maxPitch: 70,
+      ...(gestureHelp
+        ? {
+            cooperativeGestures: true,
+            locale: {
+              "CooperativeGesturesHandler.WindowsHelpText": gestureHelp.windows,
+              "CooperativeGesturesHandler.MacHelpText": gestureHelp.mac,
+              "CooperativeGesturesHandler.MobileHelpText": gestureHelp.mobile,
+            },
+          }
+        : {}),
     });
     map.addControl(new maplibregl.AttributionControl({
       compact: true,
@@ -136,6 +152,7 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
   );
 }
 
+/** Frame a box without undoing the tilt and turn the view was given: a 3D view stays 3D. */
 export function fitTo(map: MLMap, bbox: [number, number, number, number], padding = 40) {
-  map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding, duration: 0 });
+  map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding, duration: 0, bearing: map.getBearing(), pitch: map.getPitch() });
 }
