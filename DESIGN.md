@@ -187,11 +187,6 @@ components:
     textColor: "{colors.ink-2}"
     typography: "{typography.label}"
     height: "44px"
-  feeder-badge:
-    backgroundColor: "{colors.sl}"
-    textColor: "{colors.on-sl}"
-    rounded: "{rounded.sm}"
-    size: "24px"
   data-sheet-row:
     textColor: "{colors.ink}"
     typography: "{typography.body}"
@@ -215,9 +210,9 @@ components:
 
 ## Overview
 
-**Creative North Star: "The Line Network"**
+**Creative North Star: "The Network on the Map, in Stockholm's Colours"**
 
-The neighbourhood grid is drawn the way Stockholm draws its public transport: the eleven feeders leave the substation like tunnelbana lines, every house is a station on its line, and the chosen house's feeder can be read as the strip above a train door. The interface around that drawing is a working tool for a DSO connection planner and for the applicant on the other side of the same connection: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration.
+The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner and for the applicant on the other side of the same connection. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)
 
 It is dense where the work is (the Neighbourhood instrument, the request form) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.
 
@@ -226,7 +221,7 @@ It is dense where the work is (the Neighbourhood instrument, the request form) a
 - Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.
 - One typeface, Familjen Grotesk, with its default tabular figures for every reading.
 - No boxed cards: regions part by hairlines and space; only floating layers cast a shadow.
-- The line map and line strip are the signature, and every number on them comes from the API.
+- The network on the real map in 3D, coloured by connection, is the signature on three screens; every number on it comes from the API.
 - Real data is drawn solid, synthetic data dashed, on every screen.
 
 ## Colors
@@ -236,16 +231,16 @@ A white sheet with ink and one public-transport blue, and three signal colours t
 `web/src/styles/tokens.css` holds primitives named after this world (`--ground`, `--ink`, `--sl`, `--green`…) and, once, the role tokens that components read (`--bg-base`, `--text-primary`, `--accent`…). A theme swaps primitives only. Components, `lib/colors.ts` and the maps read role tokens; nothing outside `tokens.css` holds a raw colour. The frontmatter keys without a suffix are day; `-night` keys are the night primitives of the same name.
 
 ### Primary
-- **SL Blue** (`sl`; role `--accent`, `--focus`): the one primary action per view ("Test a connection"), links, the selected house, focus rings, the feeder badges and the transformer symbol on the line map. 10.5:1 on white by day, 8.2:1 on the night ground. Its hover step is **SL Deep** (`sl-deep`, `--accent-hover`); selected rows and palette items sit on **SL Wash** (`sl-wash`, `--accent-quiet`, accent on it 8.8:1 day, 6.2:1 night). Text on the accent is **On SL** (`on-sl`, `--on-accent`): white by day, near-black at night, because the night accent is a lifted light blue.
+- **SL Blue** (`sl`; role `--accent`, `--focus`): the one primary action per view ("Test a connection"), links, the selected house, focus rings, and the substation ring on the opening map. 10.5:1 on white by day, 8.2:1 on the night ground. Its hover step is **SL Deep** (`sl-deep`, `--accent-hover`); selected rows and palette items sit on **SL Wash** (`sl-wash`, `--accent-quiet`, accent on it 8.8:1 day, 6.2:1 night). Text on the accent is **On SL** (`on-sl`, `--on-accent`): white by day, near-black at night, because the night accent is a lifted light blue.
 - **Chrome Blue** (`sl-chrome`; role `--chrome`): the top bar. It equals SL Blue by day and stays a deep blue (`sl-chrome-night`) at night instead of following the lifted accent. Chrome text is white (`--chrome-ink`, 10.5:1 day, 13.7:1 night) and **Chrome Mist** (`sl-ink-2`, `--chrome-ink-2`, 7.1:1 / 7.9:1) for the inactive links and tools.
 
 ### Secondary (the line colours, data only)
 | Role token | Primitive | Job | Text on ground (day / night) |
 |---|---|---|---|
-| `--good-fill`, `--series-dynamic` | `green` | firm stations, the envelope (dynamic) series, the "with envelopes" bar | 5.4 / 6.2 (graphic) |
+| `--good-fill`, `--series-dynamic` | `green` | firm houses on the maps, the envelope (dynamic) series, the "with envelopes" bar | 5.4 / 6.2 (graphic) |
 | `--good` | `green-ink` | the ratio line, pass icons, good outcomes as text | 6.1 / 9.2; 5.2 / 7.0 on its wash |
 | `--good-quiet` | `green-wash` | quiet good fields | |
-| `--warning-fill` | `amber` | stations under an envelope, a meter at or above 85 % of its limit | 3.2 / 9.5 (graphic) |
+| `--warning-fill` | `amber` | houses under an envelope on the maps, a meter at or above 85 % of its limit | 3.2 / 9.5 (graphic) |
 | `--warning` | `amber-ink` | limited / non-firm text and icons | 6.0 / 10.0; 5.3 / 7.6 on its wash |
 | `--warning-quiet` | `amber-wash` | the stale-answer note | |
 | `--danger-fill` | `red` | above rating: a cable, the transformer, a meter past its limit | 4.7 / 6.2 (graphic) |
@@ -272,7 +267,7 @@ The loading and voltage stops stay plain `#rrggbb` because `lib/colors.ts` inter
 | `--bg-elevated` | `raised` | dialogs, popovers, tooltips, the chosen segment | white / `raised-night` |
 | `--bg-inset` | `well` | segmented tracks, fields, the dense well band, skeletons, meter tracks | |
 | `--border` | `rule` | every hairline; any border drawn without a colour takes it | |
-| `--border-strong` | `rule-strong` | ghost-button edges, hollow "no solar" stations, meter ticks | 3.3 / 4.4 on ground |
+| `--border-strong` | `rule-strong` | ghost-button edges, houses with no solar on the maps, meter ticks | 3.3 / 4.4 on ground |
 | `--text-primary` | `ink` | headings, values | 16.5 / 16.1 |
 | `--text-secondary` | `ink-2` | body, labels | 9.5 / 10.1 |
 | `--text-muted` | `ink-3` | captions, sources, units | 6.4 / 6.9 (5.8 / 6.4 on a well) |
@@ -329,9 +324,9 @@ Base unit 4 px; every margin, padding and gap is a `--space-*` step (4, 8, 12, 1
 - **Section bar**: the two long document screens (Static vs envelopes, Method & data) carry a sticky bar at the top of their scroller, `--toolbar-h` 44 px: sections as text links on the left (the one being read underlined 2 px in ink), the basis of the screen's figures on the right in caption. It scrolls only `.page`, never the window. A region's controls stay in its own head row, never in the bar.
 
 **Screen shapes.**
-- *Map screens* (Neighbourhood, Connection request, Sweden): `.split`, the drawing or map on the left and a 460 px side panel on the right (560 px for the wider panel), the panel on the ground with a hairline on its left. The Neighbourhood map column carries the year strip and the folding house table beneath it.
+- *Map screens* (Neighbourhood, Connection request, Sweden): `.split`, the map on the left and a 460 px side panel on the right (560 px for the wider panel), the panel on the ground with a hairline on its left. The Neighbourhood map column carries the year strip and the folding house table beneath it.
 - *Document screens* (Static vs envelopes, 2030, Method & data): `.page-inner`, max 1550 px, 32 px gutters, 24 px between regions.
-- *The opening answer*: a 1.2 : 1 two-column hero with the line map first and the answer beside it, both ending together.
+- *The opening answer*: a 1.2 : 1 two-column hero with the network map first and the answer beside it, both ending together.
 
 **Three weights inside a document screen.**
 | Weight | How it looks | Carries |
@@ -340,36 +335,33 @@ Base unit 4 px; every margin, padding and gap is a `--space-*` step (4, 8, 12, 1
 | Block `.block` | a hairline above and 16 px of space; no fill, no box | a self-contained instrument inside a region, `h3` |
 | Well `.well` | the inset grey, hairlines above and below, bleeding to the gutter | one dense band per screen: a long table, a year of hours |
 
-**Responsive.** At 1440 px the scope gives way; at 1280 px the search label; between 1101 and 1350 px the side panel narrows to 390/450 px; at 1100 px the six screens fold into a menu sheet and split screens stack (map above, panel below); at 900 px two-column grids go to one and the foot line keeps one legend item; at 700 px (phone) the answer comes before the line map, the display figure drops to h1 size, the year strip shortens to 64 px and the map key keeps only its scales. On coarse pointers every control grows to 44 px.
+**Responsive.** At 1440 px the scope gives way; at 1280 px the search label; between 1101 and 1350 px the side panel narrows to 390/450 px; at 1100 px the six screens fold into a menu sheet and split screens stack (map above, panel below); at 900 px two-column grids go to one and the foot line keeps one legend item; at 700 px (phone) the answer comes before the network map, the display figure drops to h1 size, the year strip shortens to 64 px and the map key keeps only its scales. On coarse pointers every control grows to 44 px.
 
 ## Elevation & Depth
 
 Flat by default. Depth is a tonal step plus a hairline; a surface that sits in the page never has a shadow. Only what floats casts one, and it is always the same: a 1 px ring and one soft offset depth (`--shadow-popover`). Floating layers stack at `--z-sticky` 3, `--z-overlay` 40 (notes drawer, glossary popovers), `--z-dialog` 50 (dialogs, palette, key sheet, menu sheet), `--z-toast` 60. The dialog scrim is the night tint at 38 %.
 
 ### Shadow Vocabulary
-- **Float** (`box-shadow: 0 0 0 1px rgba(22,32,43,.08), 0 10px 28px -8px rgba(22,32,43,.22)`; night `0 0 0 1px rgba(255,255,255,.08), 0 14px 36px -10px rgba(0,0,0,.65)`): dialogs, the palette, toasts, the notes drawer, glossary popovers, chart and map tooltips, the line-map hover card, the "updating" note.
+- **Float** (`box-shadow: 0 0 0 1px rgba(22,32,43,.08), 0 10px 28px -8px rgba(22,32,43,.22)`; night `0 0 0 1px rgba(255,255,255,.08), 0 14px 36px -10px rgba(0,0,0,.65)`): dialogs, the palette, toasts, the notes drawer, glossary popovers, chart and map tooltips, the "updating" note.
 
 ### Named Rules
 **The Only-What-Floats Rule.** The map key, the segmented control's chosen option and MapLibre's controls are edged with a hairline, never shadowed. No glows, no accent-coloured shadows, no decorative gradients; the only gradients are colour-scale keys drawn from the same function as the marks they explain.
 
 ## Shapes
 
-Small, even corners: `--radius-sm` 4 px for controls, marks, badges, tooltips and bar ends; `--radius-md` 8 px for segmented tracks, fields, popovers, toasts and the line-map hover card; `--radius-lg` 12 px for dialogs and the notes drawer. Bars round only their free end. The well band has no radius.
+Small, even corners: `--radius-sm` 4 px for controls, marks, badges, tooltips and bar ends; `--radius-md` 8 px for segmented tracks, fields, popovers and toasts; `--radius-lg` 12 px for dialogs and the notes drawer. Bars round only their free end. The well band has no radius.
 
-The recurring forms come from the line network: lines of one fixed weight with round caps, bent only at 45°; round stations; square feeder badges with a 4-unit corner; the transformer as two overlapping rings. Provenance marks are 9 px squares (filled for real, dashed for synthetic, a hollow circle for a reference). Status marks are a circle (good), a triangle (warning) and a cross (critical), always with a word.
+The recurring forms are few: the substation as a ring in SL blue on the maps; houses as extruded footprints, and as small square keys in legends, tables and the inspector. Provenance marks are 9 px squares (filled for real, dashed for synthetic, a hollow circle for a reference). Status marks are a circle (good), a triangle (warning) and a cross (critical), always with their word.
 
 ## Components
 
-### The line map (signature)
-The neighbourhood's eleven feeders as metro lines, drawn in SVG by `LineMap.tsx` from `/network`, laid out once and shared by every caller.
-- **Layout**: each feeder takes the 45° direction nearest its real bearing from the substation (the longest feeders choose first); its houses sit in order of distance along the cable at an even spacing (15–34 units, about the same arm length per line); branches fold into one line; a line with more than nine stations bends once, always counter-clockwise; a second feeder in a direction runs 14 units beside the first and bends early. The first station sits clear of the transformer. The drawing is labelled schematic ("Cables: synthetic, drawn schematically").
-- **Lines**: ink, 7 units, round caps and joins. On Neighbourhood each line takes the loading colour of its worst cable at the hour on screen.
-- **Stations**: 6.5-unit discs with a ground-coloured ring. Default colour is connection status: firm green (`--good-fill`), envelope amber (`--warning-fill`), no solar hollow (ground fill, `--border-strong` ring). On Neighbourhood stations take the voltage colour, or net power. The selected station grows to 9 units with a 3-unit SL-blue ring, and every other line, station and badge dims to 25 %.
-- **Hub and badges**: the transformer as two overlapping ground discs ringed in SL blue at the centre; a 24-unit SL-blue square at the end of each line with the feeder number (data index + 1) in white bold.
-- **Key and hover**: the key sits under the drawing as type on the ground (status dots, then the real/synthetic sources). Hovering a station shows a floating card with the address, "feeder n, m metres", the status, and, where the map is pickable, the action in SL blue.
-
-### The line strip (signature)
-One feeder as the strip above a train door (`LineStrip`), in the request panel and the house inspector: the feeder badge, "Station k of n on its feeder", the distance from the substation; then a 4-unit ink line with the small transformer symbol at its left and every station of the line in order, at even spacing, coloured by status, the chosen one larger and ringed in SL blue.
+### The network map (signature)
+The neighbourhood on the real map, in 3D, by `NetworkMap.tsx` on the opening screen; the Neighbourhood and request screens draw the same network on their own maps.
+- **Map**: MapLibre over the OpenFreeMap basemap (positron by day, dark at night), tilted 50° and turned -18°, framed on the network and stepped in a little so the houses read. The basemap's own buildings are hidden: the modelled houses replace them on the same OpenStreetMap footprints.
+- **Layers**: context buildings as a faint fill; the synthetic cables in ink, main cables thicker than service cables; the houses as extrusions raised by their floors and coloured by connection status (firm `--good-fill`, envelope `--warning-fill`, no solar `--border-strong`); the substation as a ground disc with an SL-blue ring. On the Neighbourhood the cables take the loading colour and the houses the voltage or net power of the hour on screen.
+- **Interaction**: drag to move, right-drag or the compass to turn and tilt, the reset-view button to return. On the opening screen, which scrolls, MapLibre's cooperative gestures hold the wheel back unless Ctrl or Cmd is pressed and need two fingers on touch, with the words from `i18n.ts`; the page keeps its scroll.
+- **Hover and pick**: hovering a house outlines it and shows a floating card with the address, its connection and, on the opening screen, "Test a connection here" in SL blue; a click selects the house and opens the request.
+- **Key**: under the opening map as type on the ground (square house keys, then the real/synthetic sources); on the other map screens docked bottom-left as a flat field with a hairline.
 
 ### Data sheet (`Tile`)
 A group of readings is rows parted by hairlines, never a grid of boxes: the label left in ink-2 at label size (with its provenance mark if any), the value right in ink at body/500 with its unit in caption, an optional note under it in caption. One column in a side panel, two by default, 3/4/6 where a band says so. Only a reading that is itself the bad news takes `--danger`.
@@ -378,7 +370,7 @@ A group of readings is rows parted by hairlines, never a grid of boxes: the labe
 A set of checks is a table: one row per check, a status mark with its word (Pass / Fail, or "measured" for a comparison with no pass mark), what was checked, the measured value right-aligned with its unit, and the criterion in caption.
 
 ### Meter
-A loading as a scale, not a progress bar: a 6 px inset track, a fill scaled from the left, 1 px ticks at 50 and 85 % of the limit and a 2 px ink mark at the limit. The fill is green, amber at or above 85 % of the limit, red past it: the same thresholds the line map uses. The reading sits in the head row like a data-sheet value.
+A loading as a scale, not a progress bar: a 6 px inset track, a fill scaled from the left, 1 px ticks at 50 and 85 % of the limit and a 2 px ink mark at the limit. The fill is green, amber at or above 85 % of the limit, red past it: the same thresholds the map gives the cables. The reading sits in the head row like a data-sheet value.
 
 ### The answer and the verdict
 - *Answer pair*: the static figure at h1/600 in muted ink, an arrow, the envelope figure at display/700 in ink, units at h3 size in muted ink; under it the ratio line in `--good`, then two bars (pencil and green, labels as words) and a data sheet.
@@ -393,7 +385,7 @@ A loading as a scale, not a progress bar: a 6 px inset track, a fill scaled from
 - **Press:** compact controls scale to 0.97. Disabled: 50 % opacity, `not-allowed`.
 
 ### Segmented control
-An inset well track (8 px corners, 4 px padding) with options as text; the chosen option is raised one surface (`--bg-elevated`) and edged with a hairline, never shadowed. Used for scenarios, map/lines view and colour-by choices, in the head row of the region it controls.
+An inset well track (8 px corners, 4 px padding) with options as text; the chosen option is raised one surface (`--bg-elevated`) and edged with a hairline, never shadowed. Used for scenarios, colour-by and heat-pump choices, in the head row of the region it controls.
 
 ### Inputs / Fields
 - **Range fields:** an inset panel (8 px) with the label left, the live value right in SL blue at 600, the slider across the full width (40 px hit height, SL accent) and its end values in caption under it.
@@ -427,11 +419,11 @@ ECharts, modular, wrapped by `Chart.tsx`; every option is built from `tokens()`,
 - Every chart has a table twin behind a quiet "Table" link (`ChartOrTable`) and a source line with its provenance mark.
 
 ### Maps
-MapLibre on the Neighbourhood, request and Sweden screens; the opening screen uses the line map and loads no map.
+MapLibre on all four map views: the opening network map, the Neighbourhood, the request and Sweden.
 - The national view turns every basemap label off, so no foreign toponym appears; zone labels SE1–SE4 are flat text on a small plate of the page colour, over zone fills from the balance scale.
 - Houses on the request map: firm green, envelope amber, no solar grey, the selected house SL blue, with a docked key.
 - Cables take the loading colour; houses the voltage or net-power colour; the night overlay over the map is one fixed tint whose opacity follows the sun.
-- The map key is docked bottom-left, edged and not shadowed; in the lines view it becomes type on the ground. Controls are edged 40 px squares. Attribution (OpenStreetMap, OpenFreeMap) is always visible at caption size.
+- The map key is docked bottom-left, edged and not shadowed; under the opening map it is type on the ground. Controls are edged 40 px squares. Attribution (OpenStreetMap, OpenFreeMap) is always visible at caption size.
 
 ### Motion
 | Token | Value | Use |
@@ -442,7 +434,7 @@ MapLibre on the Neighbourhood, request and Sweden screens; the opening screen us
 | `--dur-micro` / `--dur-popover` / `--dur-panel` / `--dur-drawer` / `--dur-exit` | 120 / 160 / 200 / 240 / 140 ms | colour and press / popover / panels, toasts, the answer / drawer / exits |
 
 - Colours ease over 120 ms, listed property by property, never `all`. Compact controls scale to 0.97 on press.
-- Line-map lines and stations change colour in place over 120 ms. Meters ease their fill, but not during playback, where an hour is shorter than the transition.
+- Map colours change in place with the hour (feature state, no transition). Meters ease their fill, but not during playback, where an hour is shorter than the transition.
 - Dialogs opened from the keyboard, the palette and screen changes do not animate.
 - The notes drawer slides in from 24 px over 240 ms; toasts rise 12 px with a transition, so several in a row retarget.
 - A glossary popover grows from its word (scale 0.97, 160 ms) after a 350 ms delay; once one has been open, the next opens instantly and without its entrance.
@@ -455,13 +447,13 @@ MapLibre on the Neighbourhood, request and Sweden screens; the opening screen us
 ### Do:
 - **Do** read every colour, size, space, radius and duration from a role token; add a missing one to `tokens.css` first, as a primitive and a role, for both themes.
 - **Do** take every figure from the API; the interface holds only units and labels.
-- **Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the line map and beside each source.
+- **Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the opening map and beside each source.
 - **Do** keep one `--text-display` figure per screen and one SL-blue primary action per view.
 - **Do** draw static against dynamic as one comparison, pencil against green.
 - **Do** give every status a mark and a word (circle, triangle, cross); colour never carries meaning alone.
 - **Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.
 - **Do** write every string in `lib/i18n.ts`, in English and Spanish.
-- **Do** keep the line map schematic and say so: 45° bends, one ink weight, houses in order of distance.
+- **Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such.
 
 ### Don't:
 - **Don't** colour chrome, headings, buttons or fields with green, amber or red; those belong to the data.
@@ -481,7 +473,7 @@ Short, factual, sentence case. Plain words first: a viewer who has never heard o
 - Focus: a 2 px SL-blue outline at 2 px offset on every interactive element; a white ring inside the top bar.
 - Hit targets 40 px (44 px on coarse pointers); smaller visible controls extend their hit area with a pseudo-element.
 - A complete keyboard path: 1–6 for screens, Ctrl+K search, ? key sheet, N notes, F full screen; the year strip is a slider with arrow keys; tables sort from the keyboard; dialogs trap focus and return it.
-- Every chart has a table twin and an `aria-label`; the line map and strip carry descriptive labels; skip link to the content.
+- Every chart has a table twin and an `aria-label`; the maps carry descriptive labels; skip link to the content.
 - Readable projected in a lit room and at 200 % zoom.
 
 ### Review checklist
@@ -496,4 +488,4 @@ Short, factual, sentence case. Plain words first: a viewer who has never heard o
 - [ ] New strings in English and Spanish
 - [ ] Motion: presses 0.97, colour 120 ms, nothing on keyboard dialogs or screen changes, reduced motion keeps colour and opacity only
 - [ ] Keyboard path complete, focus visible, hit targets 40/44 px
-- [ ] **Signature test**: the line map or strip, the SL top bar, the data sheet and the real/synthetic foot line are each where they belong
+- [ ] **Signature test**: the network map, the SL top bar, the data sheet and the real/synthetic foot line are each where they belong

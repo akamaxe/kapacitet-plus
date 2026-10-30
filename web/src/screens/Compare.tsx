@@ -2,9 +2,9 @@ import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
-import { ChartOrTable, Legend, Mark, Missing, Protocol, Tile } from "../components/bits";
+import { ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
 import { Icon } from "../components/Icon";
-import { LineMap, useLines } from "../components/LineMap";
+import { NetworkMap } from "../components/NetworkMap";
 import { Term } from "../components/Term";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
@@ -26,8 +26,10 @@ export default function Compare() {
   const assumptions = useApi<any>("/assumptions");
   // the hour the transformer is most loaded without control, which the neighbourhood opens on
   const meta = useApi<any>("/meta");
+  const net = useApi<any>("/network");
+  const trafoMva: number | null =
+    net.data?.features?.find((x: any) => x.properties?.layer === "substation")?.properties?.trafo_sn_mva ?? null;
   const [heat, setHeat] = useState<"limited" | "unc">("limited");
-  const lines = useLines();
 
   const H = hosting.data?.data;
   const S = show.data?.data?.showcase;
@@ -81,7 +83,7 @@ export default function Compare() {
           <div className="overview-hero">
             <div className="overview-copy">
               <h1 className="headline">{t("overview.title")}</h1>
-              <p className="headline-sub">{t("cmp.leadShort", { mva: lines.layout?.mva != null ? f(lines.layout.mva, 1) : "–" })}</p>
+              <p className="headline-sub">{t("cmp.leadShort", { mva: trafoMva != null ? f(trafoMva, 1) : "–" })}</p>
               {/* the screen's one answer: each figure is said here and nowhere else in the view */}
               <p className="answer-pair">
                 <span className="ap-from">{f(staticKw)}<small>kW</small></span>
@@ -113,31 +115,7 @@ export default function Compare() {
                 <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
             </div>
-            <figure className="lm-figure">
-              <figcaption className="lm-head">
-                <strong>{t("lines.title")}</strong>
-                <span>{t("lines.sub", { n: lines.layout?.lines.length ?? "–" })}</span>
-              </figcaption>
-              {lines.layout ? (
-                <LineMap
-                  layout={lines.layout}
-                  label={t("lines.aria")}
-                  onPick={(cid) => {
-                    useStore.getState().select(cid);
-                    useStore.getState().setScreen("request");
-                  }}
-                />
-              ) : (
-                <div className="lm-empty">{t(lines.isError ? "overview.mapUnavailable" : "ui.loading")}</div>
-              )}
-              <div className="lm-key">
-                <span><i className="house-key firm" />{t("lines.firm")}</span>
-                <span><i className="house-key nonfirm" />{t("lines.nonfirm")}</span>
-                <span><i className="house-key" />{t("twin.status.none")}</span>
-                <span className="lm-src"><Mark kind="real" />{t("lines.srcReal")}</span>
-                <span className="lm-src"><Mark kind="synthetic" />{t("lines.srcSyn")}</span>
-              </div>
-            </figure>
+            <NetworkMap />
           </div>
         </section>
 

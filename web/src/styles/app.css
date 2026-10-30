@@ -723,18 +723,6 @@ table.data th.r {
   z-index: 2;
 }
 
-.map-note {
-  position: absolute;
-  right: 14px;
-  top: 14px;
-  z-index: 2;
-  display: flex;
-  gap: var(--space-1);
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  max-width: 60%;
-}
-
 .map-tooltip {
   position: absolute;
   pointer-events: none;
@@ -1202,9 +1190,9 @@ main:focus { outline: none; }
 .overview-copy .headline-sub { font-size: var(--text-body); line-height: var(--lh-body); max-width: 56ch; color: var(--text-secondary); }
 .hero-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-4); }
 
-/* a house as the line map draws it: the same key in the map legend, the house table and
-   the inspector, so "firm" and "envelope" look the same wherever they are named */
-.house-key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 50%; border: 2px solid var(--border-strong); background: var(--bg-surface); }
+/* a house as the maps draw it: the same key in the map legend, the house table and the
+   inspector, so "firm" and "envelope" look the same wherever they are named */
+.house-key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 2px; border: 2px solid var(--border-strong); background: var(--bg-surface); }
 .house-key.firm { border-color: var(--good-fill); background: var(--good-fill); }
 .house-key.nonfirm { border-color: var(--warning-fill); background: var(--warning-fill); }
 .house-status { display: inline-flex; align-items: center; gap: var(--space-2); }
@@ -1299,7 +1287,6 @@ main:focus { outline: none; }
   .map-legend { left: var(--space-2); bottom: var(--space-6); width: 180px; padding: var(--space-2); font-size: var(--text-caption); }
   .map-legend .scale { font-size: var(--text-caption); }
   .map-legend .caption-muted, .map-legend .legend-key { display: none; }
-  .map-note { max-width: 70%; }
   .fl-year { display: none; }
   .fl-keys { margin-left: auto; }
 }
@@ -1908,61 +1895,35 @@ ol.list {
 .answer-sheet { width: 100%; margin-top: var(--space-3); border-top: 1px solid var(--border); }
 .tile .t-value.danger { color: var(--danger); }
 
-/* ---------------------------------------------------------------- the line map
-   The feeders as metro lines: one ink weight, bends at 45°, stations coloured by how the
-   house's solar is connected, square badges carrying the feeder number. */
-.lm-figure { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 420px; }
-.lm-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-2); font-size: var(--text-small); color: var(--text-muted); }
-.lm-head strong { color: var(--text-primary); font-size: var(--text-h3); font-weight: 600; }
-.linemap { position: relative; min-height: 0; }
-/* the drawing is as tall as the answer beside it, so the two columns end together: the
-   svg is laid over its box rather than sizing it, or its own aspect would set the row */
-.linemap { position: relative; height: 100%; min-height: 360px; }
-.linemap svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
-.lm-lines path { fill: none; stroke: var(--text-primary); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--dur-micro) var(--ease), opacity var(--dur-micro) var(--ease); }
-.lm-lines path.dim, .lm-badges .dim, .lm-stations .dim { opacity: 0.25; }
-.st { stroke: var(--bg-base); stroke-width: 2; transition: fill var(--dur-micro) var(--ease), opacity var(--dur-micro) var(--ease); }
-.st.firm { fill: var(--good-fill); }
-.st.nonfirm { fill: var(--warning-fill); }
-.st.none { fill: var(--bg-base); stroke: var(--border-strong); stroke-width: 2; }
-.st.sel { stroke: var(--accent); stroke-width: 3; }
-.lm-stations circle { cursor: default; }
-.linemap[data-pick="true"] .lm-stations circle { cursor: pointer; }
-.lm-hub circle { fill: var(--bg-base); stroke: var(--accent); stroke-width: 3.5; }
-.lm-hub.small circle { stroke-width: 2; }
-.lm-badges rect { fill: var(--accent); }
-.lm-badges text { fill: var(--on-accent); font-family: var(--font-sans); font-size: 14px; font-weight: 700; text-anchor: middle; dominant-baseline: middle; }
-.lm-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding-top: var(--space-3); font-size: var(--text-small); color: var(--text-secondary); }
-.lm-key > span { display: inline-flex; align-items: center; gap: var(--space-2); }
-.lm-key .lm-src { color: var(--text-muted); font-size: var(--text-caption); }
-.lm-key .lm-src:first-of-type { margin-left: auto; }
-.lm-empty { display: grid; place-items: center; min-height: 320px; color: var(--text-muted); font-size: var(--text-small); }
-.lm-tip { position: absolute; left: var(--space-3); top: var(--space-3); display: grid; gap: 2px; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--bg-elevated); box-shadow: var(--shadow-popover); font-size: var(--text-small); color: var(--text-secondary); pointer-events: none; }
-.lm-tip strong { color: var(--text-primary); font-weight: 600; }
-.lm-tip .lm-act { color: var(--accent); font-weight: 500; }
-
-/* one line as the strip above a train door */
-.linestrip { margin: 0; display: grid; gap: var(--space-1); }
-.linestrip figcaption { display: flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
-.ls-badge { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 var(--space-1); border-radius: var(--radius-sm); background: var(--accent); color: var(--on-accent); font-size: var(--text-caption); font-weight: 700; }
-.ls-dist { margin-left: auto; color: var(--text-muted); }
-.linestrip svg { display: block; width: 100%; height: auto; overflow: visible; }
-.ls-line { stroke: var(--text-primary); stroke-width: 4; stroke-linecap: round; fill: none; }
+/* ---------------------------------------------------------------- the network map
+   The real map in 3D, laid over its box so it takes the height of the answer beside it. */
+.net-figure { margin: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-width: 0; min-height: 420px; }
+.net-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-2); font-size: var(--text-small); color: var(--text-muted); }
+.net-head strong { color: var(--text-primary); font-size: var(--text-h3); font-weight: 600; }
+.net-map { position: relative; height: 100%; min-height: 380px; border: 1px solid var(--border); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg-inset); }
+.net-key { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); padding-top: var(--space-3); font-size: var(--text-small); color: var(--text-secondary); }
+.net-key > span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.net-key .net-src { color: var(--text-muted); font-size: var(--text-caption); }
+.net-key .net-src:first-of-type { margin-left: auto; }
+.net-empty { display: grid; place-items: center; height: 100%; color: var(--text-muted); font-size: var(--text-small); }
+.net-act { margin-top: var(--space-1); color: var(--accent); font-weight: 500; }
+/* the words MapLibre shows when it holds a wheel or one-finger gesture back for the page */
+.maplibregl-cooperative-gesture-screen { background: rgb(var(--night) / 0.55) !important; color: var(--on-chrome) !important; font-family: var(--font-sans) !important; font-size: var(--text-h3) !important; }
 
 .error-detail { font-size: var(--text-caption); color: var(--text-muted); }
 .error-detail summary { cursor: pointer; }
 
-/* the drawing reads first on a wide screen; on a phone the answer comes first */
+/* the map reads first on a wide screen; on a phone the answer comes first */
 @media (min-width: 701px) {
-  .overview-hero > .lm-figure { order: -1; }
+  .overview-hero > .net-figure { order: -1; }
 }
 @media (max-width: 1100px) {
-  .lm-figure { min-height: 360px; }
+  .net-figure { min-height: 380px; }
 }
 @media (max-width: 700px) {
   .ap-to { font-size: var(--text-h1); }
-  .lm-figure { min-height: 440px; }
-  .lm-key .lm-src:first-of-type { margin-left: 0; }
+  .net-figure { min-height: 440px; }
+  .net-key .net-src:first-of-type { margin-left: 0; }
 }
 
 /* the hour under the pointer, above the strip */
@@ -1972,14 +1933,7 @@ ol.list {
 .hour-verdict { font-size: var(--text-h3); line-height: var(--lh-h3); }
 .hour-verdict .status svg { width: 18px; height: 18px; }
 .inspector-title { font-size: var(--text-h3); line-height: var(--lh-h3); }
-/* the network as lines, laid over the map in the same frame */
-.twin-lines { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; padding: var(--space-6) var(--space-5) var(--space-5); background: var(--bg-base); }
-.twin-lines .linemap { width: 100%; height: 100%; }
 
-.map-note { z-index: 4; }
-/* in the lines view the map's own controls have nothing to act on */
-.map-wrap[data-view="lines"] .maplibregl-control-container,
-.map-wrap[data-view="lines"] .map-toolbar { display: none; }
 
 /* ---------------------------------------------------------------- the request form */
 .form-group { margin: 0; padding: 0; border: 0; min-width: 0; }
@@ -2065,12 +2019,8 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   background: var(--bg-surface);
 }
 
-/* over the white of the lines view the key is type on the ground, like the key under the
-   line map on the opening screen; only over the basemap does it need a field */
-.map-wrap[data-view="lines"] .map-legend { background: none; border: 0; padding: 0; }
-
 /* the opening on a narrow screen: nothing in it may set a width wider than the column */
-.overview-copy, .answer-sheet, .lm-figure { min-width: 0; }
+.overview-copy, .answer-sheet, .net-figure { min-width: 0; }
 @media (max-width: 700px) {
   .tile .t-value { white-space: normal; }
   .tile .t-value small { white-space: nowrap; }

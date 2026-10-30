@@ -56,7 +56,7 @@
         "role": "secondary",
         "displayName": "Firm Green",
         "canonical": "#1f7a44",
-        "purpose": "Firm stations and the envelope (dynamic) series. Data only.",
+        "purpose": "Firm houses on the maps and the envelope (dynamic) series. Data only.",
         "tonalRamp": [
           "#183424",
           "#255f3d",
@@ -72,7 +72,7 @@
         "role": "secondary",
         "displayName": "Envelope Amber",
         "canonical": "#c48405",
-        "purpose": "Stations under an envelope; meters at 85 % of a limit. Data only.",
+        "purpose": "Houses under an envelope on the maps; meters at 85 % of a limit. Data only.",
         "tonalRamp": [
           "#3d2e10",
           "#715214",
@@ -415,14 +415,6 @@
       "css": ".ds-sheet{border-top:1px solid var(--border,#e1e5e9);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-variant-numeric:tabular-nums}.ds-row{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:8px 0;border-bottom:1px solid var(--border,#e1e5e9)}.ds-row span{color:var(--text-secondary,#3d4752);font-size:.8125rem}.ds-row b{font-weight:500;color:var(--text-primary,#16202b);font-size:.9375rem}.ds-row small{margin-left:4px;font-size:.75rem;font-weight:400;color:var(--text-muted,#56606b)}.ds-row .ds-bad{color:var(--danger,#b3261e)}"
     },
     {
-      "name": "Line Strip",
-      "kind": "custom",
-      "refersTo": "feeder-badge",
-      "description": "Signature: one feeder as the strip above a train door, stations by status, the chosen one ringed in SL blue.",
-      "html": "<figure class=\"ds-strip\"><figcaption><span class=\"ds-badge\">11</span>Station 4 of 9 on its feeder<span class=\"ds-dist\">336 m from the substation</span></figcaption><svg viewBox=\"0 0 400 28\" role=\"img\" aria-label=\"Feeder 11, station 4 of 9\"><path d=\"M12 14H394\" stroke=\"#16202b\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"6\" cy=\"14\" r=\"6\" fill=\"#fff\" stroke=\"#123e7c\" stroke-width=\"2\"/><circle cx=\"13\" cy=\"14\" r=\"6\" fill=\"#fff\" stroke=\"#123e7c\" stroke-width=\"2\"/><circle cx=\"26\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"71\" cy=\"14\" r=\"4\" fill=\"#c48405\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"116\" cy=\"14\" r=\"4\" fill=\"#fff\" stroke=\"#858e97\" stroke-width=\"2\"/><circle cx=\"161\" cy=\"14\" r=\"7\" fill=\"#c48405\" stroke=\"#123e7c\" stroke-width=\"3\"/><circle cx=\"206\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"251\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"296\" cy=\"14\" r=\"4\" fill=\"#fff\" stroke=\"#858e97\" stroke-width=\"2\"/><circle cx=\"341\" cy=\"14\" r=\"4\" fill=\"#c48405\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"386\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/></svg></figure>",
-      "css": ".ds-strip{margin:0;display:grid;gap:4px;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-strip figcaption{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--text-secondary,#3d4752)}.ds-badge{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 4px;border-radius:var(--radius-sm,4px);background:var(--accent,#123e7c);color:var(--on-accent,#fff);font-size:.75rem;font-weight:700}.ds-dist{margin-left:auto;color:var(--text-muted,#56606b);font-variant-numeric:tabular-nums}.ds-strip svg{display:block;width:100%;height:auto;overflow:visible}"
-    },
-    {
       "name": "Glossary Popover",
       "kind": "custom",
       "refersTo": "popover",
@@ -432,14 +424,14 @@
     }
   ],
   "narrative": {
-    "northStar": "The Line Network",
-    "overview": "The neighbourhood grid is drawn the way Stockholm draws its public transport: the eleven feeders leave the substation like tunnelbana lines, every house is a station on its line, and the chosen house's feeder can be read as the strip above a train door. The interface around that drawing is a working tool for a DSO connection planner and for the applicant on the other side of the same connection: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration.\n\nIt is dense where the work is (the Neighbourhood instrument, the request form) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
+    "northStar": "The Network on the Map, in Stockholm's Colours",
+    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner and for the applicant on the other side of the same connection. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)",
     "keyCharacteristics": [
       "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
       "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",
       "One typeface, Familjen Grotesk, with its default tabular figures for every reading.",
       "No boxed cards: regions part by hairlines and space; only floating layers cast a shadow.",
-      "The line map and line strip are the signature, and every number on them comes from the API.",
+      "The network on the real map in 3D, coloured by connection, is the signature on three screens; every number on it comes from the API.",
       "Real data is drawn solid, synthetic data dashed, on every screen."
     ],
     "rules": [
@@ -482,13 +474,13 @@
     "dos": [
       "**Do** read every colour, size, space, radius and duration from a role token; add a missing one to `tokens.css` first, as a primitive and a role, for both themes.",
       "**Do** take every figure from the API; the interface holds only units and labels.",
-      "**Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the line map and beside each source.",
+      "**Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the opening map and beside each source.",
       "**Do** keep one `--text-display` figure per screen and one SL-blue primary action per view.",
       "**Do** draw static against dynamic as one comparison, pencil against green.",
       "**Do** give every status a mark and a word (circle, triangle, cross); colour never carries meaning alone.",
       "**Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.",
       "**Do** write every string in `lib/i18n.ts`, in English and Spanish.",
-      "**Do** keep the line map schematic and say so: 45° bends, one ink weight, houses in order of distance."
+      "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such."
     ],
     "donts": [
       "**Don't** colour chrome, headings, buttons or fields with green, amber or red; those belong to the data.",
