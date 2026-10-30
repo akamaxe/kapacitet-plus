@@ -1,0 +1,35 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html"
+        ],
+        "createdAt": "2026-10-30T15:06:49.052Z",
+        "reason": "Agent: the canon card on the direction decision page deliberately shows the category default face (Inter); it is a decision mock, not product UI"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/challenger-terminal.html"
+        ],
+        "createdAt": "2026-10-30T15:12:57.081Z",
+        "reason": "Agent: decision mock; the remaining hits are a full-bleed map area and a joined segmented button group whose buttons fill their bordered track by design"
+      },
+      {
+        "rule": "cramped-padding",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-10-30T15:13:54.594Z",
+        "reason": "Agent: decision mock; the remaining hits are joined segmented and stepper button groups whose buttons fill their bordered track by design"
+      }
+    ]
+  }
+}

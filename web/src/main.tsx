@@ -1,11 +1,9 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-// 2: Schibsted Grotesk for the interface and prose; IBM Plex Mono for readings only, so the
-// weights the figures use are enough
-import "@fontsource-variable/schibsted-grotesk";
-import "@fontsource/ibm-plex-mono/400.css";
-import "@fontsource/ibm-plex-mono/500.css";
+// Familjen Grotesk for everything: its default figures are tabular, so readings line up
+// without a second face
+import "@fontsource-variable/familjen-grotesk";
 import "./styles/app.css";
 import App from "./App";
 import { applyTheme, useStore } from "./lib/store";

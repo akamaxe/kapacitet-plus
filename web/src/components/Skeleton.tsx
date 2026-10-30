@@ -15,26 +15,38 @@ export function ChartSkeleton({ height = 260 }: { height?: number }) {
   return <span className="sk sk-chart" style={{ height }} />;
 }
 
-export function TableSkeleton({ rows = 6 }: { rows?: number }) {
-  return (
-    <div className="sk-rows">
-      {Array.from({ length: rows }, (_, i) => (
-        <Bar key={i} w={`${92 - (i % 3) * 11}%`} />
-      ))}
-    </div>
-  );
-}
-
-/** The scrolling screens: a title, a line of lede, then blocks. */
-export function PageSkeleton({ blocks = 3 }: { blocks?: number }) {
+/**
+ * The scrolling screens: the section bar when the screen has one, the opening answer in its
+ * two columns when it has one, then blocks at the heights their charts take.
+ */
+export function PageSkeleton({ blocks = 3, bar = false, hero = false }: { blocks?: number; bar?: boolean; hero?: boolean }) {
   const t = useT();
   return (
     <div className="page" role="status" aria-label={t("ui.loading")}>
-      <div className="page-inner">
-        <div className="stack">
-          <Bar w="22ch" h={28} />
-          <Bar w="52ch" />
+      {bar && (
+        <div className="screen-bar">
+          <div className="screen-sections">
+            {[9, 11, 12, 9, 10].map((w, i) => <Bar key={i} w={`${w}ch`} h={12} />)}
+          </div>
         </div>
+      )}
+      <div className="page-inner">
+        {hero ? (
+          <section className="overview-hero">
+            <div className="overview-copy">
+              <Bar w="20ch" h={30} />
+              <Bar w="46ch" />
+              <Bar w="16ch" h={40} />
+              <Bar w="100%" h={60} />
+            </div>
+            <span className="sk sk-plan" />
+          </section>
+        ) : (
+          <div className="stack">
+            <Bar w="22ch" h={28} />
+            <Bar w="52ch" />
+          </div>
+        )}
         {Array.from({ length: blocks }, (_, i) => (
           <section className="block" key={i}>
             <Bar w="18ch" h={18} />

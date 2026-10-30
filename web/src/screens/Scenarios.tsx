@@ -125,8 +125,8 @@ export default function Scenarios() {
 function matrixOption(tk: Tokens, cells: Cell[], pvs: number[], evs: number[], t: (k: string) => string, sel: { pv: number; ev: number } | null) {
   // a wash for the cell and the full colour for its glyph: forty cells of solid green, amber
   // and red would outshout the one the reader picked
-  const fills = [tk.accentQuiet, tk.warningQuiet, tk.dangerQuiet];
-  const inks = [tk.accent, tk.warning, tk.danger];
+  const fills = [tk.goodQuiet, tk.warningQuiet, tk.dangerQuiet];
+  const inks = [tk.good, tk.warning, tk.danger];
   const glyph = ["✓", "◐", "✕"];
   let selAt = -1;
   const data = cells.map((c, i) => {

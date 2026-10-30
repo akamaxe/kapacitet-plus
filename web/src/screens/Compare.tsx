@@ -2,13 +2,14 @@ import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
-import { ChartOrTable, Chip, Hero, Legend, Missing, Protocol, Tile } from "../components/bits";
+import { ChartOrTable, Legend, Mark, Missing, Protocol, Tile } from "../components/bits";
+import { Icon } from "../components/Icon";
+import { LineMap, useLines } from "../components/LineMap";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
-import { GridPlan } from "../components/GridPlan";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -23,6 +24,7 @@ export default function Compare() {
   // the criteria the protocol holds the results against are model inputs, not constants here
   const assumptions = useApi<any>("/assumptions");
   const [heat, setHeat] = useState<"limited" | "unc">("limited");
+  const lines = useLines();
 
   const H = hosting.data?.data;
   const S = show.data?.data?.showcase;
@@ -36,7 +38,7 @@ export default function Compare() {
     return zs[Math.floor(zs.length / 2)];
   }, [H]);
 
-  if (hosting.isLoading || show.isLoading) return <PageSkeleton blocks={4} />;
+  if (hosting.isLoading || show.isLoading) return <PageSkeleton bar hero blocks={2} />;
   if (!H || !S) return <Missing of={[hosting, show, risk, val]} />;
 
   const m = H.summary.measures;
@@ -69,38 +71,60 @@ export default function Compare() {
         basis={<span>{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>}
       />
       <div className="page-inner">
-        {/* ---------------------------------------------------------------- the claim */}
+        {/* ---------------------------------------------------------------- the answer */}
         <section className="region">
           <div className="overview-hero">
             <div className="overview-copy">
               <h1 className="headline">{t("overview.title")}</h1>
-              {/* the lead sentence ends where the hero reading begins: each figure is said once */}
-              <p className="headline-sub">{t("cmp.lead", { static: f(staticKw) })}</p>
-              <Hero
-                value={f(doeKw)}
-                unit="kW"
-                label={t("cmp.hero.label")}
-                note={t("cmp.hero.ratioShort", { r: f(ratio, 1) })}
-              />
-              <div className="hero-figure">
-                <Chart
-                  ariaLabel={t("cmp.hero.aria")}
-                  height={160}
-                  deps={[H, lang]}
-                  build={(tk, width) => heroCompareOption(tk, staticKw, doeKw, t, width)}
-                />
-                <p className="caption">{t("cmp.hero.cost", { pct: f(zDoeMedian, 1) })}</p>
+              <p className="headline-sub">{t("cmp.leadShort", { mva: lines.layout?.mva != null ? f(lines.layout.mva, 1) : "–" })}</p>
+              {/* the screen's one answer: each figure is said here and nowhere else in the view */}
+              <p className="answer-pair">
+                <span className="ap-from">{f(staticKw)}<small>kW</small></span>
+                <span className="ap-arrow" aria-hidden="true"><Icon name="arrow" size={26} /></span>
+                <span className="sr-only">{t("ui.to")}</span>
+                <span className="ap-to">{f(doeKw)}<small>kW</small></span>
+              </p>
+              <p className="answer-ratio">{t("cmp.ratioLine", { r: f(ratio, 1) })}</p>
+              <div className="ratio-bars" aria-hidden="true">
+                <span>{t("cmp.fig.static")}</span><i className="rb-static" style={{ width: `${(staticKw / doeKw) * 100}%` }} />
+                <span>{t("cmp.fig.doe")}</span><i className="rb-doe" />
+              </div>
+              <div className="tiles cols-1 answer-sheet">
+                <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
+                <Tile label={t("cmp.sheet.cost")} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
+                <Tile label={t("cmp.sheet.overHours", { year: S.year })} value={f(ver.uncontrolled_violation_hours)} unit="h" tone="danger" />
+                <Tile label={t("cmp.sheet.peak")} value={f(ver.uncontrolled_max_trafo_loading_pct)} unit={t("cmp.sheet.peakUnit")} tone="danger" />
               </div>
               <div className="hero-actions">
-                <a className="btn" href="#/twin">{t("overview.explore")}</a>
-                <a className="btn ghost" href="#/request">{t("overview.request")}</a>
+                <a className="btn" href="#/request">{t("overview.request")}</a>
+                <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
             </div>
-            <GridPlan />
-          </div>
-          <div className="data-provenance">
-            <Chip kind="real" /><span className="caption-muted">{t("cmp.chips.real")}</span>
-            <Chip kind="synthetic" /><span className="caption-muted">{t("cmp.chips.synthetic")}</span>
+            <figure className="lm-figure">
+              <figcaption className="lm-head">
+                <strong>{t("lines.title")}</strong>
+                <span>{t("lines.sub", { n: lines.layout?.lines.length ?? "–" })}</span>
+              </figcaption>
+              {lines.layout ? (
+                <LineMap
+                  layout={lines.layout}
+                  label={t("lines.aria")}
+                  onPick={(cid) => {
+                    useStore.getState().select(cid);
+                    useStore.getState().setScreen("request");
+                  }}
+                />
+              ) : (
+                <div className="lm-empty">{t(lines.isError ? "overview.mapUnavailable" : "ui.loading")}</div>
+              )}
+              <div className="lm-key">
+                <span><i className="house-key firm" />{t("lines.firm")}</span>
+                <span><i className="house-key nonfirm" />{t("lines.nonfirm")}</span>
+                <span><i className="house-key" />{t("twin.status.none")}</span>
+                <span className="lm-src"><Mark kind="real" />{t("lines.srcReal")}</span>
+                <span className="lm-src"><Mark kind="synthetic" />{t("lines.srcSyn")}</span>
+              </div>
+            </figure>
           </div>
         </section>
 
@@ -184,7 +208,7 @@ export default function Compare() {
               <p className="caption">{t("cmp.fair.caption")}</p>
             </div>
             <Legend items={[
-              { color: "var(--accent)", label: t("pol.maxmin") },
+              { color: "var(--series-dynamic)", label: t("pol.maxmin") },
               { color: "var(--cat-1)", label: t("pol.prorata") },
             ]} />
           </div>
@@ -225,7 +249,7 @@ export default function Compare() {
                 <p className="caption">{t("cmp.tornado.caption")}</p>
               </div>
               <Legend items={[
-                { color: "var(--accent)", label: t("cmp.fig.doe") },
+                { color: "var(--series-dynamic)", label: t("cmp.fig.doe") },
                 { color: "var(--neutral-series)", label: t("cmp.fig.static") },
               ]} />
             </div>
@@ -256,48 +280,6 @@ function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
 
 // ------------------------------------------------------------------------------ chart options
 
-/** The static-versus-dynamic comparison: two bars on one axis, the multiplier between them
-    (design-system.md 4.9). No legend, no gridlines: both series are labelled directly. */
-function heroCompareOption(tk: Tokens, staticKw: number, doeKw: number,
-                           t: (k: string, v?: any) => string, width: number) {
-  const compact = width < 520;
-  const cats = [t("cmp.fig.static"), t("cmp.fig.doe")];
-  const vals = [staticKw, doeKw];
-  return {
-    grid: { left: compact ? 108 : 190, right: 96, top: 10, bottom: 34 },
-    xAxis: {
-      type: "value", ...axisStyle(tk), name: "kW", nameLocation: "end",
-      splitLine: { show: false }, max: Math.ceil(doeKw / 100) * 100,
-    },
-    yAxis: {
-      type: "category", data: cats, inverse: true, ...axisStyle(tk),
-      splitLine: { show: false },
-      axisLabel: { color: tk.text2, fontFamily: tk.font, fontSize: compact ? tk.size.caption : tk.size.small,
-                   width: compact ? 100 : 180, overflow: "break" },
-    },
-    tooltip: {
-      trigger: "item",
-      formatter: (p: any) => `${cats[p.dataIndex]}<br/><b>${Math.round(p.value)} kW</b>`,
-    },
-    series: [
-      {
-        type: "bar",
-        barWidth: 26,
-        barCategoryGap: "55%",
-        data: vals.map((v, i) => ({
-          value: v,
-          itemStyle: { color: i === 0 ? tk.neutralSeries : tk.accent, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
-        })),
-        label: {
-          show: true, position: "right", distance: 10, fontFamily: tk.mono,
-          fontSize: compact ? tk.size.small : tk.size.body, color: tk.text, fontWeight: 500,
-          formatter: (p: any) => `${Math.round(p.value)} kW`,
-        },
-      },
-    ],
-  };
-}
-
 function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: number) {
   const compact = width < 520;
   const cats = MEASURES.map(label);
@@ -313,8 +295,8 @@ function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: num
       {
         type: "bar",
         barWidth: 22,
-        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.accent : tk.neutralSeries, borderRadius: [0, tk.size.radius, tk.size.radius, 0] } })),
-        label: { show: true, position: "right", distance: compact ? 8 : 26, fontFamily: tk.mono, fontSize: compact ? tk.size.caption : tk.size.small, color: tk.text, fontWeight: 500, formatter: (p: any) => `${Math.round(p.value)} kW` },
+        data: vals.map((v, i) => ({ value: v, itemStyle: { color: MEASURES[i] === "doe" ? tk.dynamic : tk.neutralSeries, borderRadius: [0, tk.size.radius, tk.size.radius, 0] } })),
+        label: { show: true, position: "right", distance: compact ? 8 : 26, fontFamily: tk.font, fontSize: compact ? tk.size.caption : tk.size.small, color: tk.text, fontWeight: 500, formatter: (p: any) => `${Math.round(p.value)} kW` },
         z: 2,
       },
       {
@@ -366,10 +348,10 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
     },
     series: [
       { type: "line", data: xs.map((x, i) => [x, minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, silent: true, tooltip: { show: false } },
-      { type: "line", data: xs.map((x, i) => [x, maxY[i] - minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: tk.accent, opacity: 0.12 }, silent: true, tooltip: { show: false } },
+      { type: "line", data: xs.map((x, i) => [x, maxY[i] - minY[i]]), stack: "band", symbol: "none", lineStyle: { opacity: 0 }, areaStyle: { color: tk.dynamic, opacity: 0.12 }, silent: true, tooltip: { show: false } },
       {
         type: "line", name: t("cmp.curve.doe"), data: xs.map((x, i) => [x, pts[i].z_doe_pct]), symbol: "circle", symbolSize: 7,
-        lineStyle: { width: 2, color: tk.accent }, itemStyle: { color: tk.accent, borderColor: tk.surface, borderWidth: 2 },
+        lineStyle: { width: 2, color: tk.dynamic }, itemStyle: { color: tk.dynamic, borderColor: tk.surface, borderWidth: 2 },
         markLine: {
           symbol: "none", silent: true,
           lineStyle: { color: tk.borderStrong, type: "solid", width: 1 },
@@ -448,7 +430,7 @@ function fairOption(tk: Tokens, pol: any, t: (k: string, v?: any) => string) {
     xAxis: { type: "value", ...axisStyle(tk), name: "m", nameLocation: "middle", nameGap: 28, scale: true },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${p.seriesName}<br/>${t("cmp.tt.house", { id: p.value[2], m: Math.round(p.value[0]) })}<br/>${t("cmp.tt.curtailed")}: <b>${p.value[1].toFixed(2)} %</b>` },
-    series: [mk("maxmin", tk.accent), mk("prorata", tk.cat[0])],
+    series: [mk("maxmin", tk.dynamic), mk("prorata", tk.cat[0])],
   };
 }
 
@@ -461,7 +443,7 @@ function riskOption(tk: Tokens, R: any, zStar: number) {
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
     tooltip: { trigger: "item", formatter: (p: any) => `${p.value[0]}<br/><b>${p.value[1].toFixed(2)} %</b>` },
     series: [{
-      type: "scatter", symbolSize: 8, itemStyle: { color: tk.accent, borderColor: tk.surface, borderWidth: 2 },
+      type: "scatter", symbolSize: 8, itemStyle: { color: tk.dynamic, borderColor: tk.surface, borderWidth: 2 },
       data: cases.map((c) => [String(c.year), c.z_pct]),
       markLine: { symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid" }, label: { color: tk.text2, fontFamily: tk.font, formatter: `${zStar} %`, position: "insideEndTop" }, data: [{ yAxis: zStar }] },
     }],
@@ -487,7 +469,7 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
     tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, formatter: (ps: any[]) => `<b>${ps[0].name}</b><br/>${levels(ps[0].name)}` },
     series: [
       { type: "bar", stack: "d", data: d.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
-      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.accent, borderRadius: tk.size.radius }, barWidth: 10 },
+      { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.dynamic, borderRadius: tk.size.radius }, barWidth: 10 },
       { type: "bar", stack: "s", data: s.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
       { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.neutralSeries, borderRadius: tk.size.radius }, barWidth: 10 },
       { type: "scatter", data: labels.map((l) => [T.base.doe_kw, l]), symbolSize: 9, itemStyle: { color: tk.text, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },

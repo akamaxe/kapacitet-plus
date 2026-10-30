@@ -19,7 +19,9 @@ export interface Section {
 export function SectionBar({ sections, basis }: { sections: Section[]; basis?: ReactNode }) {
   const t = useT();
   const bar = useRef<HTMLDivElement>(null);
-  const [here, setHere] = useState<string | undefined>(sections[0]?.id);
+  // nothing is current until a section reaches the line under the bar: at the top of the
+  // screen the reader is looking at its answer, which is not one of the sections
+  const [here, setHere] = useState<string | undefined>(undefined);
 
   // The array is rebuilt on every render, so the effect keys off the ids themselves —
   // otherwise it would tear the scroll listener down and set it up again each time.
@@ -33,7 +35,7 @@ export function SectionBar({ sections, basis }: { sections: Section[]; basis?: R
       raf = 0;
       // the line just under the sticky bar: the section crossing it is the one being read
       const line = page.getBoundingClientRect().top + (bar.current?.offsetHeight ?? 0) + 12;
-      let cur = names[0];
+      let cur: string | undefined;
       for (const id of names) {
         const el = document.getElementById(id);
         if (el && el.getBoundingClientRect().top <= line) cur = id;

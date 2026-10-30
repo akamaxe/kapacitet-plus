@@ -1,15 +1,15 @@
 import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { SheetIndex, TitleBlock } from "./components/Shell";
+import { FootLine, MenuSheet, TopBar } from "./components/Shell";
 import { Icon } from "./components/Icon";
 import { useT } from "./lib/i18n";
-import { Loading } from "./components/bits";
-import { useDismissable } from "./components/Dialog";
+import { PageSkeleton, SplitSkeleton } from "./components/Skeleton";
+import { modalOpen, useDismissable } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts } from "./components/Toast";
 import { NOTES } from "./lib/notes";
-import { SCREENS, scrollPositions, useStore } from "./lib/store";
+import { SCREENS, scrollPositions, useStore, type Screen } from "./lib/store";
 
 const National = lazy(() => import("./screens/National"));
 const Twin = lazy(() => import("./screens/Twin"));
@@ -17,6 +17,18 @@ const Compare = lazy(() => import("./screens/Compare"));
 const Request = lazy(() => import("./screens/Request"));
 const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
+
+/**
+ * What a screen looks like while its code arrives: the same skeleton the screen shows while
+ * its data arrives, so the first visit changes once, not twice.
+ */
+function ScreenSkeleton({ screen }: { screen: Screen }) {
+  if (screen === "national") return <SplitSkeleton wide />;
+  if (screen === "twin" || screen === "request") return <SplitSkeleton />;
+  if (screen === "compare") return <PageSkeleton bar hero blocks={2} />;
+  if (screen === "method") return <PageSkeleton bar blocks={2} />;
+  return <PageSkeleton blocks={1} />;
+}
 
 function Notes() {
   const t = useT();
@@ -49,6 +61,7 @@ export default function App() {
   const screen = useStore((s) => s.screen);
   const [palette, setPalette] = useState(false);
   const [keys, setKeys] = useState(false);
+  const [menu, setMenu] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
   // Keys: 1–6 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
@@ -60,6 +73,9 @@ export default function App() {
       // itself would otherwise throw and take the whole handler with it.
       const typing = !!target?.closest?.("input, select, textarea, canvas, [contenteditable='true']");
       if (e.altKey) return;
+      // under a dialog the keys belong to the dialog: a digit typed under the key sheet
+      // must not change the screen behind it
+      if (modalOpen()) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         setPalette(true);
         e.preventDefault();
@@ -135,10 +151,10 @@ export default function App() {
   return (
     <div className="app">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
-      <SheetIndex onSearch={() => setPalette(true)} />
+      <TopBar onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} />
       <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
         <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
-          <Suspense fallback={<Loading />}>
+          <Suspense fallback={<ScreenSkeleton screen={screen} />}>
             {screen === "national" && <National />}
             {screen === "twin" && <Twin />}
             {screen === "compare" && <Compare />}
@@ -148,10 +164,11 @@ export default function App() {
           </Suspense>
         </ErrorBoundary>
       </main>
-      <TitleBlock onKeys={() => setKeys(true)} />
+      <FootLine onKeys={() => setKeys(true)} />
       <Notes />
       <Palette open={palette} onClose={() => setPalette(false)} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
+      <MenuSheet open={menu} onClose={() => setMenu(false)} />
       <Toasts />
     </div>
   );
