@@ -65,7 +65,7 @@ export function Status({ kind, children }: { kind: "good" | "warning" | "serious
  * which draws rows parted by hairlines rather than a grid of boxes.
  */
 export function Tile({ label, value, unit, note, mark, tone }: {
-  label: string; value: ReactNode; unit?: string; note?: ReactNode;
+  label: ReactNode; value: ReactNode; unit?: string; note?: ReactNode;
   /** where the reading comes from, drawn before its label */
   mark?: Provenance;
   /** a reading that is itself the bad news takes the danger ink; nothing else is coloured */

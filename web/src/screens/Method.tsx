@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
-import { PageSkeleton } from "../components/Skeleton";
+import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { DataTable, type Col } from "../components/DataTable";
 import { ChartOrTable, Chip, Hero, Legend, Missing, Status, Tile } from "../components/bits";
@@ -24,30 +24,9 @@ interface Input {
 
 const TAGS = ["sourced", "regulation", "library", "derived", "team-assumption"];
 
-const LIMITS: Record<"en" | "es", string[]> = {
-  en: [
-    "The published envelopes use perfect foresight of each household's load and solar production. What that is worth is measured above rather than left as a caveat: the same search against a day-ahead state that uses no forecast at all carries less capacity, and the two bracket a real operator.",
-    "Hourly resolution: the Swedish limit (Ei EIFS 2023:3) applies to 10-minute means. A 1 % voltage margin covers the difference; the 1-minute household data shows how much higher 10-minute peaks are.",
-    "Balanced three-phase model. Single-phase inverters and chargers create unbalance that is not modelled here.",
-    "The LV network is synthetic: real building and street geometry, but cable routes, cabinets, cable types and the transformer size follow design rules, not a DSO's records.",
-    "Household demand comes from the CREST model (UK behaviour data) scaled to Swedish annual consumption; heat-pump demand uses national statistics for pre-1940 houses.",
-    "The medium-voltage supply is held at 1.00 pu; its variation is explored in the sensitivity chart.",
-    "Economics use the SE3 spot price only: grid fees, energy tax and any compensation for curtailment are not included.",
-    "The simulated households have less night-time base load and a sharper evening peak than eSett's measured Stockholm profile (see the validation chart); around midday, when curtailment happens, the two agree closely.",
-    "Protection is not checked yet: minimum fault currents at the feeder ends against fuse ratings are a next step.",
-  ],
-  es: [
-    "Las envolventes publicadas usan previsión perfecta del consumo y la producción solar de cada vivienda. Lo que eso vale se mide arriba en vez de quedar como advertencia: la misma búsqueda contra un estado del día anterior que no usa ningún pronóstico sostiene menos capacidad, y las dos acotan a un operador real.",
-    "Resolución horaria: el límite sueco (Ei EIFS 2023:3) se aplica a medias de 10 minutos. Un margen de tensión del 1 % cubre la diferencia; los datos de 1 minuto de los hogares muestran cuánto más altos son los picos de 10 minutos.",
-    "Modelo trifásico equilibrado. Los inversores y cargadores monofásicos crean desequilibrio que aquí no se modela.",
-    "La red de BT es sintética: geometría real de edificios y calles, pero el trazado de cables, los armarios, los tipos de cable y la potencia del transformador siguen reglas de diseño, no los registros de una distribuidora.",
-    "El consumo de los hogares viene del modelo CREST (datos de comportamiento del Reino Unido) escalado al consumo anual sueco; las bombas de calor usan estadísticas nacionales de viviendas anteriores a 1940.",
-    "La tensión de media tensión se mantiene en 1,00 pu; su variación se explora en el gráfico de sensibilidad.",
-    "La economía usa solo el precio spot SE3: no incluye tarifas de red, impuesto sobre la energía ni compensación por recorte.",
-    "Los hogares simulados tienen menos consumo base nocturno y un pico vespertino más marcado que el perfil medido de Estocolmo de eSett (ver el gráfico de validación); hacia el mediodía, cuando ocurre el recorte, ambos coinciden bien.",
-    "Aún no se verifican las protecciones: las corrientes mínimas de cortocircuito al final de los alimentadores frente a los fusibles son un paso siguiente.",
-  ],
-};
+/** How many limitation notes the dictionaries carry, met.limit.1 onwards. */
+const N_LIMITS = 9;
+
 
 const REFS = [
   ["Bollen, M. & Hassan, F. (2011). Integration of Distributed Generation in the Power System. Wiley–IEEE Press.", ""],
@@ -110,7 +89,7 @@ export default function Method() {
     },
   ], [lang]);
 
-  if (src.isLoading || ass.isLoading) return <PageSkeleton blocks={3} />;
+  if (src.isLoading || ass.isLoading) return <PageSkeleton bar blocks={2} />;
   if (src.isError || ass.isError) return <Missing of={[src, ass, val, meta]} />;
 
   const inputs: Input[] = ass.data?.assumptions ?? [];
@@ -123,8 +102,8 @@ export default function Method() {
     { id: "how", label: t("met.how") },
     { id: "sources", label: t("met.sources") },
     { id: "inputs", label: t("met.assumptions") },
-    ...(V ? [{ id: "validation", label: t("met.validation") }] : []),
-    ...(F ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
+    ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
     { id: "limits", label: t("met.limits") },
   ];
 
@@ -154,7 +133,6 @@ export default function Method() {
             <div className="region-title"><h2>{t("met.how")}</h2></div>
           </div>
           <HowItWorks
-            lang={lang}
             houses={meta.data?.grid?.customers ?? "–"}
             pool={V?.households?.n_pool ?? "–"}
             years={meta.data?.weather_years?.length ?? "–"}
@@ -218,6 +196,12 @@ export default function Method() {
         </section>
 
         {/* ---------------------------------------------------------------- validation */}
+        {!V && val.isLoading && (
+          <section className="region" id="validation" aria-busy="true">
+            <div className="region-head"><div className="region-title"><h2>{t("met.validation")}</h2></div></div>
+            <ChartSkeleton height={220} />
+          </section>
+        )}
         {V && (
           <section className="region" id="validation">
             <div className="region-head">
@@ -278,6 +262,12 @@ export default function Method() {
         )}
 
         {/* ---------------------------------------------------------------- the cost of foresight */}
+        {!F && host.isLoading && (
+          <section className="region" id="forecast" aria-busy="true">
+            <div className="region-head"><div className="region-title"><h2>{t("met.fc")}</h2></div></div>
+            <ChartSkeleton height={120} />
+          </section>
+        )}
         {F && (
           <section className="region" id="forecast">
             <div className="region-head">
@@ -310,7 +300,7 @@ export default function Method() {
           </div>
           <div className="grid-2">
             <ul className="list caption">
-              {LIMITS[lang].map((l) => <li key={l}>{l}</li>)}
+              {Array.from({ length: N_LIMITS }, (_, i) => <li key={i}>{t(`met.limit.${i + 1}`)}</li>)}
             </ul>
             <section className="block">
               <div className="block-head"><h3>{t("met.refs")}</h3></div>
@@ -325,18 +315,9 @@ export default function Method() {
   );
 }
 
-function HowItWorks({ lang, houses, pool, years }: { lang: string; houses: number | string; pool: number | string; years: number | string }) {
-  const steps = lang === "es"
-    ? ["Ingesta: SMHI, eSett, precios SE3, SCB y OpenStreetMap, con registro de procedencia y hash de cada archivo.",
-       `Red: ${houses} viviendas reales conectadas a la subestación mapeada; alimentadores radiales por las calles, armarios de cables y cables dimensionados con la fórmula de Velander.`,
-       `Perfiles: ${pool} hogares simulados (CREST) con la distribución de tamaños de SCB, FV con pvlib y la irradiancia real, bombas de calor con la temperatura real y cargas de VE.`,
-       `Motor: flujo de potencia Z-bus sobre el modelo exacto de pandapower para 8 760 horas × ${years} años; capacidad estática, por series de tiempo y envolventes verificadas.`,
-       "API y web: FastAPI sirve resultados precalculados y evalúa solicitudes en vivo; esta interfaz los muestra."]
-    : ["Ingest: SMHI, eSett, SE3 prices, SCB and OpenStreetMap, with a provenance record and hash for every file.",
-       `Grid: ${houses} real houses connected to the mapped substation; radial feeders along the streets, cable cabinets and cables sized with Velander's formula.`,
-       `Profiles: ${pool} simulated households (CREST) with SCB's household-size mix, PV with pvlib and real irradiance, heat pumps with real temperature, and EV charging.`,
-       `Engine: Z-bus power flow on pandapower's exact model for 8 760 hours × ${years} years; static, time-series and verified envelope hosting capacity.`,
-       "API and web: FastAPI serves precomputed results and evaluates requests live; this interface shows them."];
+function HowItWorks({ houses, pool, years }: { houses: number | string; pool: number | string; years: number | string }) {
+  const t = useT();
+  const steps = [1, 2, 3, 4, 5].map((i) => t(`met.step.${i}`, { houses, pool, years }));
   return (
     <ol className="list">
       {steps.map((s) => <li key={s}>{s}</li>)}

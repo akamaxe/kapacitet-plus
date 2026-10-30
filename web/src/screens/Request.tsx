@@ -7,6 +7,7 @@ import { toast } from "../components/Toast";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
 import { LineStrip, useLines } from "../components/LineMap";
+import { Term } from "../components/Term";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { hourLabel, monthNames, useFmt } from "../lib/format";
@@ -270,7 +271,7 @@ export default function Request() {
               <h2 className="house-title">{house.address || t("dt.unnamed", { id: house.cid })}</h2>
               {lines.layout && <LineStrip layout={lines.layout} cid={house.cid} />}
               <dl className="kv">
-                <dt>{t("req.roof")}</dt><dd>{f(house.kwp, 1)} kWp</dd>
+                <dt><Term id="kwp">{t("req.roof")}</Term></dt><dd>{f(house.kwp, 1)} kWp</dd>
                 <dt>{t("req.orientation")}</dt><dd>{house.east_west ? t("req.eastWest") : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
               </dl>
@@ -322,7 +323,7 @@ export default function Request() {
               return (
                 <div key={s} className={`step ${done ? "done" : active ? "active" : ""}`}>
                   <span className="dot" />
-                  <span>{t(`req.stage.${s}`)}</span>
+                  <span>{t(`req.stage.${s}`, { n: meta.data.weather_years?.length ?? "–" })}</span>
                   <span className="ms">{done ? `${f(job.stages[s]!, 0)} ms` : ""}</span>
                 </div>
               );
@@ -399,18 +400,20 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
   // the sample behind the risk figures, read from the answer rather than written here
   const resampled: number = (res.risk?.histogram?.counts ?? []).reduce((s: number, c: number) => s + c, 0);
   const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
+  // the years whose prices the money figures average, read from the answer
+  const priceYears: number[] = (res.economics?.by_year ?? []).map((e: any) => e.year).sort((a: number, b: number) => a - b);
 
   return (
     <div className="stack result">
       {pvReq && (
         <div className="verdicts">
           <div className="verdict">
-            <span className="v-method">{t("req.static")}</span>
+            <span className="v-method"><Term id="static">{t("req.static")}</Term></span>
             {sum.pv_static_approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>}
             <span className="v-detail">{reasonText(t, f, res.static.pv)}</span>
           </div>
           <div className="verdict">
-            <span className="v-method">{t("req.doe")}</span>
+            <span className="v-method"><Term id="envelope">{t("req.doe")}</Term></span>
             {sum.pv_curtailment_ref_pct > 0.005 ? <Status kind="warning">{t("req.approvedLimits")}</Status> : <Status kind="good">{t("req.approved")}</Status>}
             <span className="v-big">{f(sum.pv_curtailment_ref_pct, 1)} %</span>
             <span className="v-basis">{t("req.basis.ref", { year })}</span>
@@ -460,7 +463,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <div className="tiles cols-3">
             <Tile label={t("cmp.risk.mean")} value={f(res.risk.mean_pct, 2)} unit="%" />
             <Tile label={t("cmp.risk.p90")} value={f(res.risk.p90_pct, 2)} unit="%" />
-            <Tile label={t("cmp.risk.cvar")} value={f(res.risk.cvar95_pct, 2)} unit="%" />
+            <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(res.risk.cvar95_pct, 2)} unit="%" />
           </div>
           {/* with no curtailment at all, every year falls in one bin centred on zero and the
               axis would show negative shares, so the answer is said instead of drawn */}
@@ -480,7 +483,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <Tile label={t("req.money.export")} value={f(res.economics.export_sek_mean)} unit="kr/yr" />
             <Tile label={t("req.money.self")} value={f(res.economics.self_use_spot_sek_mean)} unit="kr/yr" />
           </div>
-          <p className="caption-muted">{t("req.money.note")}</p>
+          <p className="caption-muted">{t("req.money.note", { from: priceYears[0] ?? "–", to: priceYears[priceYears.length - 1] ?? "–" })}</p>
         </section>
       )}
     </div>

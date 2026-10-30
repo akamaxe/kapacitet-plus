@@ -132,3 +132,13 @@ export function loadingColor(tk: Tokens, pct: number): string {
   // the ramp's last stop is 85 %, and it holds from there to the rating
   return seqColor(tk, Math.min(pct, 85) / 85);
 }
+
+/**
+ * A zone's balance, from using more than it makes (-1, the consumption amber) to making
+ * more than it uses (+1, the production blue), with the page colour at zero.
+ */
+export function balanceColor(tk: Tokens, t: number): string {
+  const d = Math.max(-1, Math.min(1, t));
+  const base = tk.surface.startsWith("#") ? tk.surface : "#ffffff";
+  return d < 0 ? mix(base, tk.consumption, 0.2 + 0.8 * -d) : mix(base, tk.production, 0.2 + 0.8 * d);
+}
