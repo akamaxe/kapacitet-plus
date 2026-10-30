@@ -10,3 +10,8 @@ data/processed/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
+# Design tooling: screenshots and working files of the taste and impeccable skills.
+.taste-skill/
+.impeccable/mocks/
+.impeccable/live/
+.impeccable/config.local.json
