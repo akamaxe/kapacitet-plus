@@ -1,5 +1,5 @@
 /**
- * A screen's own sections, stuck to the top of its scroller (design-system.md §3).
+ * A screen's own sections, stuck to the top of its scroller (DESIGN.md).
  *
  * Two long screens were a stack of identical cards with no way to tell where you were in
  * them or to get back to a part you had seen. This is the console's answer: the sections

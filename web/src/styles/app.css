@@ -681,8 +681,7 @@ table.data {
   font-size: var(--text-small);
 }
 
-/* readings in numeric columns are set in the mono face, aligned on the figures; their
-   headers are words and stay in the text face */
+/* readings in numeric columns line up on their tabular figures; their headers are words */
 table.data td.r {
   font-variant-numeric: tabular-nums;
 }
@@ -1702,7 +1701,7 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 }
 
 /* ---------------------------------------------------------------- screen regions
-   Three weights (design-system.md 3). A `.region` is a division of the screen and
+   Three weights (DESIGN.md). A `.region` is a division of the screen and
    carries no surface of its own; a `.block` inside it is a panel; a `.well` is the one
    dense band. A screen built out of a single weight reads as a tray of cards, which is
    what this layer exists to prevent. */
@@ -2064,4 +2063,15 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   padding: var(--space-3) var(--space-5);
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
+}
+
+/* over the white of the lines view the key is type on the ground, like the key under the
+   line map on the opening screen; only over the basemap does it need a field */
+.map-wrap[data-view="lines"] .map-legend { background: none; border: 0; padding: 0; }
+
+/* the opening on a narrow screen: nothing in it may set a width wider than the column */
+.overview-copy, .answer-sheet, .lm-figure { min-width: 0; }
+@media (max-width: 700px) {
+  .tile .t-value { white-space: normal; }
+  .tile .t-value small { white-space: nowrap; }
 }

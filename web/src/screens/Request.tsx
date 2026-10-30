@@ -514,8 +514,8 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
       <p className="caption-muted">{hourLabel(lang, year, a)}</p>
       <Legend items={[
         { color: "var(--series-main)", label: t("req.week.pv") },
-        { color: "var(--cat-1)", label: t("req.week.limit"), line: true },
-        { color: "var(--cat-3)", label: t("req.week.curtailed") },
+        { color: "var(--series-dynamic)", label: t("req.week.limit"), line: true },
+        { color: "var(--warning-fill)", label: t("req.week.curtailed") },
       ]} />
       <ChartOrTable
         chart={<Chart ariaLabel={t("req.week")} height={220} deps={[prof, lang]} build={(tk) => weekOption(tk, prof, hours, year, lang, t)} />}
@@ -567,8 +567,8 @@ function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: 
     tooltip: { trigger: "axis" },
     series: [
       { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.main }, areaStyle: { color: tk.main, opacity: 0.1 } },
-      { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.cat[0] } },
-      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.cat[2], borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 3 },
+      { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.dynamic } },
+      { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.warningFill, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 3 },
     ],
   };
 }

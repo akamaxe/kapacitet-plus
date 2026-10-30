@@ -106,7 +106,7 @@ export function rampCss(color: (t: number) => string): string {
   return `linear-gradient(90deg, ${Array.from({ length: 9 }, (_, k) => color(k / 8)).join(", ")})`; // taste-skill-ignore
 }
 
-/** Loading ramp: stops at 0, 50 and 85 % of the rating (design-system.md 1.4). */
+/** Loading ramp: stops at 0, 50 and 85 % of the rating (DESIGN.md). */
 export function seqColor(tk: Tokens, t: number): string {
   const stops = tk.load;
   const x = Math.max(0, Math.min(1, t)) * (stops.length - 1);

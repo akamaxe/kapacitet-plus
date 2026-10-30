@@ -29,6 +29,16 @@
         ],
         "createdAt": "2026-10-30T15:13:54.594Z",
         "reason": "Agent: decision mock; the remaining hits are joined segmented and stepper button groups whose buttons fill their bordered track by design"
+      },
+      {
+        "rule": "design-system-font",
+        "value": "*",
+        "files": [
+          ".impeccable/mocks/decision/canon.html",
+          ".impeccable/mocks/decision/model-pick.html"
+        ],
+        "createdAt": "2026-10-30T16:47:45.090Z",
+        "reason": "Agent: decision-round sketches of the directions the user did not choose; their own faces are what they show, and they are not product UI"
       }
     ]
   }

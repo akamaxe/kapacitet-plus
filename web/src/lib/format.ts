@@ -1,7 +1,7 @@
 import { useStore } from "./store";
 import { locale } from "./i18n";
 
-/** Narrow no-break space: thousands separator, Swedish convention (design-system.md 6). */
+/** Narrow no-break space: thousands separator, Swedish convention (DESIGN.md). */
 const THIN = " ";
 
 const formatters = new Map<string, Intl.NumberFormat>();

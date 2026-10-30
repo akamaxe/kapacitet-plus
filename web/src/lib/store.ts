@@ -122,7 +122,7 @@ export const useStore = create<State>((set) => ({
   screen: initial.screen,
   // an unknown stored language would leave every lookup empty, so it falls back to English
   lang: (readLS("kap.lang", "en") === "es" ? "es" : "en"),
-  // paper is the default (design-system.md §1.1); a value this version does not know falls back to it
+  // day is the default (DESIGN.md); a value this version does not know falls back to it
   theme: ((t) => (THEMES.includes(t) ? t : "light") as Theme)(readLS("kap.theme", "light")),
   notes: false,
   hour: initial.hour ?? DEFAULT_HOUR,
