@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { toast } from "../components/Toast";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
+import { LineStrip, useLines } from "../components/LineMap";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { hourLabel, monthNames, useFmt } from "../lib/format";
@@ -21,7 +22,10 @@ interface Job {
   id: string;
   stages: Partial<Record<Stage, number>>;
   result: any | null;
+  /** what went wrong, in words for the viewer */
   error: string | null;
+  /** the technical detail behind it, kept for whoever reports it */
+  detail?: string;
 }
 
 export default function Request() {
@@ -40,6 +44,8 @@ export default function Request() {
   const [job, setJob] = useState<Job | null>(null);
   const mapRef = useRef<MLMap | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  const resultRef = useRef<HTMLDivElement>(null);
+  const lines = useLines();
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
   const S = show.data?.data?.showcase;
@@ -56,10 +62,27 @@ export default function Request() {
   }, [S, houses, baseline]);
 
   const house = houses.find((h: any) => h.properties.cid === cid)?.properties;
+  // the slider ends where the roof does, so the value shown is always the value sent
+  const pvMax = house ? Math.max(3, Math.ceil(house.kwp)) : 20;
 
   useEffect(() => {
-    if (house) setPv(Math.max(3, Math.round(house.kwp)));
+    if (house) setPv(Math.min(pvMax, Math.max(3, Math.round(house.kwp))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house?.cid]);
+
+  // the answer arrives below the fold of a laptop screen: bring it into view inside the
+  // panel and hand it the focus. The panel, never scrollIntoView, which would move every
+  // scroller up to the window.
+  const answered = job?.result ?? null;
+  useEffect(() => {
+    const el = resultRef.current;
+    const panel = el?.closest<HTMLElement>(".panel");
+    if (!answered || !el || !panel) return;
+    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const top = panel.scrollTop + el.getBoundingClientRect().top - panel.getBoundingClientRect().top - 16;
+    panel.scrollTo({ top: Math.max(0, top), behavior: still ? "auto" : "smooth" });
+    el.focus({ preventScroll: true });
+  }, [answered]);
 
   // ------------------------------------------------------------------ map
   // setup/onReady run from map events, so they call the latest painter through this ref
@@ -99,7 +122,7 @@ export default function Request() {
       const c = h.properties.cid;
       const s = status.get(c);
       // firm and envelope houses in the colours the plan and the house table give them
-      const color = c === cid ? tk.cat[0] : s === "firm" ? tk.accent : s === "nonfirm" ? tk.warningFill : tk.borderStrong;
+      const color = c === cid ? tk.accent : s === "firm" ? tk.dynamic : s === "nonfirm" ? tk.warningFill : tk.borderStrong;
       map.setFeatureState({ source: "houses", id: c }, { color, sel: c === cid });
     });
   }, [houses, status, cid]);
@@ -124,20 +147,26 @@ export default function Request() {
   }, [net.data]);
 
   // ------------------------------------------------------------------ evaluation
-  const fail = (why: string) => {
-    setJob((j) => ({ id: j?.id ?? "", stages: j?.stages ?? {}, result: null, error: why }));
-    toast.error(t("req.failed", { why }));
+  const fail = (detail: string) => {
+    setJob((j) => ({ id: j?.id ?? "", stages: j?.stages ?? {}, result: null, error: t("req.failedPlain"), detail }));
+    toast.error(t("req.failedPlain"));
   };
 
   const evaluate = async () => {
     if (cid === null) return;
     esRef.current?.close();
     setJob({ id: "", stages: {}, result: null, error: null });
-    const r = await fetch(`${API}/requests`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, baseline }),
-    });
+    let r: Response;
+    try {
+      r = await fetch(`${API}/requests`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, baseline }),
+      });
+    } catch {
+      fail(t("req.dropped"));
+      return;
+    }
     if (!r.ok) {
       const why = `${r.status} ${(await r.text()).slice(0, 120)}`.trim();
       fail(why);
@@ -167,7 +196,7 @@ export default function Request() {
     // wrong between the stages, so this is the signal that stops the spinner.
     es.addEventListener("end", () => {
       es.close();
-      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.ended") } : j));
+      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.failedPlain"), detail: t("req.ended") } : j));
     });
     es.addEventListener("timeout", () => {
       es.close();
@@ -176,7 +205,7 @@ export default function Request() {
     // the native EventSource error: the stream dropped rather than the job failing
     es.addEventListener("error", () => {
       es.close();
-      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.dropped") } : j));
+      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.failedPlain"), detail: t("req.dropped") } : j));
     });
   };
 
@@ -187,6 +216,10 @@ export default function Request() {
   const year = meta.data.reference_year;
   const res = job?.result;
   const running = !!job && !job.result && !job.error;
+  // an answer to a request that has since changed is cancelled, not removed
+  const stale = !!res && (res.request.pv_kwp !== pv || res.request.ev_kw !== ev);
+  const evLabel = (v: number) => (v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`);
+  const nothing = pv === 0 && ev === 0;
 
   return (
     <div className="split wide-panel">
@@ -195,10 +228,10 @@ export default function Request() {
           <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
             <div className="map-legend fit">
               <Legend items={[
-                { color: tokens().accent, label: t("twin.status.firm") },
+                { color: tokens().dynamic, label: t("twin.status.firm") },
                 ...(baseline === "doe" ? [{ color: tokens().warningFill, label: t("twin.status.nonfirm") }] : []),
                 { color: tokens().borderStrong, label: t("twin.status.none") },
-                { color: tokens().cat[0], label: t("req.house") },
+                { color: tokens().accent, label: t("req.house") },
               ]} />
             </div>
           </MapView>
@@ -206,20 +239,11 @@ export default function Request() {
       </div>
 
       <aside className="panel">
-        <div className="stack">
-          <h1 className="panel-title">{t("req.title")}</h1>
-          <div className="stack">
-            <span className="caption">{t("req.baseline")}</span>
-            <div className="seg">
-              <button aria-pressed={baseline === "static"} onClick={() => { setBaseline("static"); setJob(null); }}>{t("req.base.static")}</button>
-              <button aria-pressed={baseline === "doe"} onClick={() => { setBaseline("doe"); setJob(null); }}>{t("req.base.doe")}</button>
-            </div>
-          </div>
-        </div>
+        <h1 className="panel-title">{t("req.title")}</h1>
 
         {!house ? (
           <div className="blank">
-            <h3>{t("req.blank.title")}</h3>
+            <h2 className="blank-title">{t("req.blank.title")}</h2>
             <p className="caption">{t("req.pick")}</p>
             <div className="row">
               <button
@@ -229,7 +253,7 @@ export default function Request() {
                   // whose answer is worth seeing, rather than an arbitrary roof
                   const h = houses.find((x: any) => x.properties.cid === EXAMPLE_CID) ?? houses[0];
                   if (h) {
-                    // the PV size follows the roof: an effect below sizes it from the
+                    // the PV size follows the roof: an effect above sizes it from the
                     // house's own potential, which beats any number written here
                     select(h.properties.cid);
                     setEv(11);
@@ -243,36 +267,49 @@ export default function Request() {
         ) : (
           <>
             <div className="stack">
-              <h3>{house.address || t("dt.unnamed", { id: house.cid })}</h3>
+              <h2 className="house-title">{house.address || t("dt.unnamed", { id: house.cid })}</h2>
+              {lines.layout && <LineStrip layout={lines.layout} cid={house.cid} />}
               <dl className="kv">
                 <dt>{t("req.roof")}</dt><dd>{f(house.kwp, 1)} kWp</dd>
-                <dt>{t("req.orientation")}</dt><dd>{house.east_west ? "E–W" : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
+                <dt>{t("req.orientation")}</dt><dd>{house.east_west ? t("req.eastWest") : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
-                <dt>{t("req.feeder")}</dt><dd>{house.feeder + 1}</dd>
-                <dt>{t("req.distance")}</dt><dd>{f(house.dist_m)} m</dd>
               </dl>
               {status.get(house.cid) !== "none" && <p className="caption-muted">{t("req.hadpv")}</p>}
             </div>
 
-            <div className="stack">
+            <fieldset className="stack form-group">
+              <legend>{t("req.size")}</legend>
               <div className="field">
                 <label htmlFor="pv">{t("req.pv")}</label>
                 <output htmlFor="pv">{f(pv)} kWp</output>
-                <input id="pv" type="range" min={0} max={20} step={1} value={pv} onChange={(e) => setPv(Number(e.target.value))} />
+                <input id="pv" type="range" min={0} max={pvMax} step={1} value={Math.min(pv, pvMax)} onChange={(e) => setPv(Number(e.target.value))} />
+                <span className="field-ends"><span>0</span><span>{t("req.roofEnd", { k: f(pvMax) })}</span></span>
               </div>
               <div className="stack">
-                <span className="caption">{t("req.ev")}</span>
-                <div className="seg">
+                <span className="field-label" id="ev-label">{t("req.ev")}</span>
+                <div className="seg" role="group" aria-labelledby="ev-label">
                   {[0, 3.7, 11].map((v) => (
-                    <button key={v} aria-pressed={ev === v} onClick={() => setEv(v)}>{v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`}</button>
+                    <button key={v} aria-pressed={ev === v} onClick={() => setEv(v)}>{evLabel(v)}</button>
                   ))}
                 </div>
               </div>
+            </fieldset>
+
+            <fieldset className="stack form-group">
+              <legend>{t("req.baseline")}</legend>
+              <div className="seg" role="group" aria-label={t("req.baseline")}>
+                <button aria-pressed={baseline === "static"} onClick={() => { setBaseline("static"); setJob(null); }}>{t("req.base.static")}</button>
+                <button aria-pressed={baseline === "doe"} onClick={() => { setBaseline("doe"); setJob(null); }}>{t("req.base.doe")}</button>
+              </div>
+            </fieldset>
+
+            <div className="stack">
               <div>
-                <button className="btn" disabled={running || (pv === 0 && ev === 0)} onClick={evaluate}>
+                <button className="btn" disabled={running || nothing} onClick={evaluate} aria-describedby={nothing ? "why-disabled" : undefined}>
                   {running ? t("req.running") : t("req.evaluate")}
                 </button>
               </div>
+              {nothing && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
             </div>
           </>
         )}
@@ -292,15 +329,49 @@ export default function Request() {
             })}
             {res && <p className="caption-muted">{t("req.seconds", { s: f(res.seconds, 2) })}</p>}
             {job.error && (
-              <p className="step-error" role="alert">
+              <div className="step-error" role="alert">
                 <Icon name="alert" size={15} />
-                {t("req.failed", { why: job.error })}
-              </p>
+                <span>{job.error}</span>
+                <button className="btn ghost small" onClick={evaluate}>{t("ui.retry")}</button>
+                {job.detail && (
+                  <details className="error-detail">
+                    <summary>{t("ui.details")}</summary>
+                    <p>{job.detail}</p>
+                  </details>
+                )}
+              </div>
             )}
           </div>
         )}
 
-        {res && <Result res={res} year={year} lang={lang} />}
+        {res && (
+          <div ref={resultRef} tabIndex={-1} className={`answer${stale ? " stale" : ""}`} aria-label={t("req.answer")}>
+            {stale && (
+              <div className="stale-note" role="status">
+                <span>{t("req.stale", { pv: f(res.request.pv_kwp), ev: evLabel(res.request.ev_kw) })}</span>
+                <button className="btn small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
+              </div>
+            )}
+            <Result res={res} year={year} lang={lang} />
+            {res.profiles?.curtailed_kw && (
+              <div className="hero-actions">
+                <button
+                  className="btn ghost"
+                  onClick={() => {
+                    const curt: number[] = res.profiles.curtailed_kw;
+                    let worst = -1;
+                    let at = -1;
+                    curt.forEach((v, i) => { if (v > worst) { worst = v; at = i; } });
+                    if (worst > 0) useStore.getState().setHour(at);
+                    useStore.getState().setScreen("twin");
+                  }}
+                >
+                  {t("req.seeInTwin")}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </aside>
     </div>
   );
@@ -342,6 +413,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <span className="v-method">{t("req.doe")}</span>
             {sum.pv_curtailment_ref_pct > 0.005 ? <Status kind="warning">{t("req.approvedLimits")}</Status> : <Status kind="good">{t("req.approved")}</Status>}
             <span className="v-big">{f(sum.pv_curtailment_ref_pct, 1)} %</span>
+            <span className="v-basis">{t("req.basis.ref", { year })}</span>
             <span className="v-detail">
               {refYear?.hours_limited ? `${t("req.curtailed", { z: f(sum.pv_curtailment_ref_pct, 1), year })}, ${t("req.hours", { h: refYear.hours_limited })}` : t("req.noLimit", { year })}
             </span>
@@ -439,7 +511,7 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
       <h3>{anyCurtailed ? t("req.week") : t("req.weekNone")}</h3>
       <p className="caption-muted">{hourLabel(lang, year, a)}</p>
       <Legend items={[
-        { color: "var(--accent)", label: t("req.week.pv") },
+        { color: "var(--series-main)", label: t("req.week.pv") },
         { color: "var(--cat-1)", label: t("req.week.limit"), line: true },
         { color: "var(--cat-3)", label: t("req.week.curtailed") },
       ]} />
@@ -492,7 +564,7 @@ function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: 
     yAxis: { type: "value", ...axisStyle(tk), name: "kW" },
     tooltip: { trigger: "axis" },
     series: [
-      { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.accent }, areaStyle: { color: tk.accent, opacity: 0.1 } },
+      { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.main }, areaStyle: { color: tk.main, opacity: 0.1 } },
       { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.cat[0] } },
       { type: "bar", name: t("req.week.curtailed"), data: hours.map((h) => prof.curtailed_kw[h]), itemStyle: { color: tk.cat[2], borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 3 },
     ],
@@ -506,6 +578,6 @@ function histOption(tk: Tokens, hist: { counts: number[]; edges: number[] }, t: 
     xAxis: { type: "category", data: mids.map((m) => m.toFixed(2)), ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5, formatter: (v: string) => `${Number(v).toFixed(1)} %` } },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { show: false } },
     tooltip: { trigger: "item", formatter: (p: any) => `${Number(p.name).toFixed(2)} %<br/><b>${p.value}</b> ${t("req.tt.years")}` },
-    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.accent, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barCategoryGap: "12%" }],
+    series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.main, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barCategoryGap: "12%" }],
   };
 }

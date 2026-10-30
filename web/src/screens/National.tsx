@@ -209,7 +209,7 @@ function negOption(tk: Tokens, N: any) {
     tooltip: { trigger: "item", formatter: (p: any) => `${p.name}: <b>${p.value}</b> h` },
     series: [{
       type: "bar", barWidth: 14, data: ZONES.map((z) => N.zones[z].negative_price_hours),
-      itemStyle: { color: tk.accent, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
+      itemStyle: { color: tk.main, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
       label: { show: true, position: "right", color: tk.text, formatter: "{c} h" },
     }],
   };

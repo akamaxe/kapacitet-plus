@@ -80,7 +80,8 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
           icon: "twin" as const,
           run: () => {
             select(p.cid);
-            setScreen("twin");
+            // on the request screen a house is the thing being asked about, so it stays
+            if (useStore.getState().screen !== "request") setScreen("twin");
             onClose();
           },
         };

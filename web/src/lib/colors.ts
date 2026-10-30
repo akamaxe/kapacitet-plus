@@ -21,8 +21,15 @@ function readTokens() {
     muted: tk("--text-muted"),
     border: tk("--border"),
     borderStrong: tk("--border-strong"),
+    // the one action and selection (SL blue); data never takes it
     accent: tk("--accent"),
     accentQuiet: tk("--accent-quiet"),
+    // the envelope side, firm status and the main single series of a chart
+    dynamic: tk("--series-dynamic"),
+    main: tk("--series-main"),
+    good: tk("--good"),
+    goodFill: tk("--good-fill"),
+    goodQuiet: tk("--good-quiet"),
     neutralSeries: tk("--neutral-series"),
     warning: tk("--warning"),
     warningQuiet: tk("--warning-quiet"),

@@ -124,7 +124,7 @@ function tick(v: unknown): string {
 }
 
 /**
- * Value axes all read the same, whatever their option set: mono ticks at caption size, in
+ * Value axes all read the same, whatever their option set: ticks at caption size, in
  * the interface's number format. An option that replaced `axisLabel` to change its colour
  * or interval used to drop the face and the format with it; a "{value} %" template keeps
  * its unit. Category axes are words and are left alone.
@@ -133,7 +133,7 @@ function finishValueAxes(axes: unknown, tk: Tokens) {
   for (const ax of Array.isArray(axes) ? axes : axes ? [axes] : []) {
     if (!ax || typeof ax !== "object" || (ax as { type?: string }).type !== "value") continue;
     const a = ax as { axisLabel?: Record<string, unknown> };
-    const label: Record<string, unknown> = { fontFamily: tk.mono, fontSize: tk.size.caption, color: tk.muted, ...a.axisLabel };
+    const label: Record<string, unknown> = { fontFamily: tk.font, fontSize: tk.size.caption, color: tk.muted, ...a.axisLabel };
     const f = label.formatter;
     if (f === undefined) label.formatter = tick;
     else if (typeof f === "string" && f.includes("{value}")) label.formatter = (v: unknown) => f.replace("{value}", tick(v));
@@ -141,7 +141,7 @@ function finishValueAxes(axes: unknown, tk: Tokens) {
   }
 }
 
-/** Shared chart chrome: hairline grid, muted mono ticks, ink text, a tooltip that floats. */
+/** Shared chart chrome: hairline grid, muted ticks, ink text, a tooltip that floats. */
 export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = false): echarts.EChartsCoreOption {
   const tooltip = typeof opt.tooltip === "object" && !Array.isArray(opt.tooltip) ? opt.tooltip : {};
   finishValueAxes(opt.xAxis, tk);
@@ -160,6 +160,8 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = f
       textStyle: { color: tk.text, fontFamily: tk.font, fontSize: tk.size.small },
       extraCssText: "box-shadow: var(--shadow-popover); border-radius: var(--radius-sm); font-variant-numeric: tabular-nums;",
       confine: true,
+      // a tooltip that follows the cursor must not trail behind it
+      transitionDuration: 0,
       ...tooltip,
     },
   };
@@ -170,13 +172,13 @@ export function gridLines(tk: Tokens) {
   return { splitLine: { show: true, lineStyle: { color: tk.border, width: 1, type: "solid" as const } } };
 }
 
-/** §4.3: hairline axis, no ticks, mono tick labels at caption size. */
+/** Hairline axis, no ticks, tick labels at caption size in the text face. */
 export function axisStyle(tk: Tokens) {
   return {
     axisLine: { lineStyle: { color: tk.border } },
     axisTick: { show: false },
-    axisLabel: { color: tk.muted, fontFamily: tk.mono, fontSize: tk.size.caption },
+    axisLabel: { color: tk.muted, fontFamily: tk.font, fontSize: tk.size.caption },
     splitLine: { show: false, lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
-    nameTextStyle: { color: tk.muted, fontFamily: tk.mono, fontSize: tk.size.caption },
+    nameTextStyle: { color: tk.muted, fontFamily: tk.font, fontSize: tk.size.caption },
   };
 }

@@ -64,15 +64,17 @@ export function Status({ kind, children }: { kind: "good" | "warning" | "serious
  * mono with its unit on the right, the note under it. A group of these sits in `.tiles`,
  * which draws rows parted by hairlines rather than a grid of boxes.
  */
-export function Tile({ label, value, unit, note, mark }: {
+export function Tile({ label, value, unit, note, mark, tone }: {
   label: string; value: ReactNode; unit?: string; note?: ReactNode;
-  /** where the reading comes from (§3.6), drawn before its label */
+  /** where the reading comes from, drawn before its label */
   mark?: Provenance;
+  /** a reading that is itself the bad news takes the danger ink; nothing else is coloured */
+  tone?: "danger";
 }) {
   return (
     <div className="tile">
       <div className="t-label">{mark ? <Mark kind={mark} /> : null}{label}</div>
-      <div className="t-value">
+      <div className={`t-value${tone ? ` ${tone}` : ""}`}>
         {value}
         {unit ? <small>{unit}</small> : null}
       </div>
@@ -136,6 +138,8 @@ export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits
   const f = useFmt();
   const share = Math.max(0, Math.min(1, value / max));
   const over = value > limit;
+  // the same thresholds the line map colours a cable by: 85 % of the limit, then the limit
+  const near = !over && value >= limit * 0.85;
   const at = (x: number) => `${(x / max) * 100}%`;
   return (
     <div className="meter">
@@ -145,7 +149,7 @@ export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits
       </div>
       <div className="meter-track" role="meter" aria-valuenow={value} aria-valuemax={max} aria-label={label}>
         {/* scaled rather than resized, so an hour step animates on the compositor */}
-        <div className={`meter-fill ${over ? "critical" : ""}`} style={{ transform: `scaleX(${share})` }} />
+        <div className={`meter-fill${over ? " critical" : near ? " near" : ""}`} style={{ transform: `scaleX(${share})` }} />
         <span className="meter-tick" style={{ left: at(limit * 0.5) }} />
         <span className="meter-tick" style={{ left: at(limit * 0.85) }} />
         <span className="meter-limit" style={{ left: at(limit) }} />
@@ -202,10 +206,16 @@ export function Missing({ of }: { of?: { isError?: boolean; error?: unknown }[] 
     <div className="empty" role="alert">
       <h2>{t("ui.unavailable")}</h2>
       <p className="caption">{gone ? t("ui.offline") : t("ui.missing")}</p>
-      {failed && <p className="caption-muted mono">{failed.endpoint}{failed.status ? ` → ${failed.status}` : ""}</p>}
       <button className="btn ghost" onClick={() => void client.refetchQueries({ type: "active" })}>
         <Icon name="reset" size={16} />{t("ui.retry")}
       </button>
+      {/* the technical detail is there for whoever reports it, not as the message */}
+      {failed && (
+        <details className="error-detail">
+          <summary>{t("ui.details")}</summary>
+          <p className="caption-muted mono">{failed.endpoint}{failed.status ? ` · ${failed.status}` : ""}</p>
+        </details>
+      )}
     </div>
   );
 }

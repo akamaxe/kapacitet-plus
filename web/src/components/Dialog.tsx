@@ -12,6 +12,18 @@ const FOCUSABLE =
   'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Open layers, newest last. Escape closes only the newest, so a palette opened over the
+ * notes drawer closes alone; and while any modal layer is open the global shortcuts stay
+ * quiet, so a digit typed under the key sheet does not change the screen behind it.
+ */
+const layers: { id: number; modal: boolean }[] = [];
+let nextLayer = 0;
+
+export function modalOpen(): boolean {
+  return layers.some((l) => l.modal);
+}
+
+/**
  * Escape closes, and focus goes back where it came from. `modal` additionally keeps Tab
  * inside the panel. Used on its own by anything that opens without a scrim.
  */
@@ -26,13 +38,16 @@ export function useDismissable(open: boolean, onClose: () => void, modal: boolea
 
   useEffect(() => {
     if (!open) return;
+    const layer = { id: ++nextLayer, modal };
+    layers.push(layer);
     returnTo.current = document.activeElement as HTMLElement | null;
     const first = panel.current?.querySelector<HTMLElement>(FOCUSABLE) ?? panel.current;
     first?.focus();
 
     const onKey = (e: KeyboardEvent) => {
+      if (layers[layers.length - 1] !== layer) return;
       if (e.key === "Escape") {
-        e.stopPropagation();
+        e.stopImmediatePropagation();
         close.current();
         return;
       }
@@ -50,6 +65,7 @@ export function useDismissable(open: boolean, onClose: () => void, modal: boolea
     document.addEventListener("keydown", onKey, true);
     return () => {
       document.removeEventListener("keydown", onKey, true);
+      layers.splice(layers.indexOf(layer), 1);
       // By teardown the panel is usually already detached and focus has fallen to the
       // body, so asking whether focus is still inside it never says yes. Give it back
       // unless something else has deliberately taken it.

@@ -4,8 +4,9 @@ import { MapView, fitTo } from "../components/MapView";
 import { DataTable, type Col } from "../components/DataTable";
 import { YearStrip } from "../components/YearStrip";
 import { SplitSkeleton } from "../components/Skeleton";
-import { Chip, Meter, Status, Tile, Missing } from "../components/bits";
+import { Meter, Status, Tile, Missing } from "../components/bits";
 import { Icon } from "../components/Icon";
+import { LineMap, LineStrip, useLines, type Layout, type Station } from "../components/LineMap";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
 import { hourLabel, useFmt } from "../lib/format";
@@ -14,6 +15,7 @@ import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
 type ColorBy = "voltage" | "power";
+type View = "map" | "lines";
 /** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
 const V_SPAN = 0.06;
 const P_SPAN = 8;
@@ -56,6 +58,8 @@ export default function Twin() {
   const theme = useStore((s) => s.theme);
   const selectedCid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
+  const playing = useStore((s) => s.playing);
+  const lines = useLines();
 
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
@@ -67,6 +71,7 @@ export default function Twin() {
   const tipRef = useRef<(tip: Tip | null) => void>(() => {});
   const lastColor = useRef(new Map<string, string>());
   const [colorBy, setColorBy] = useState<ColorBy>("voltage");
+  const [view, setView] = useState<View>("map");
   const [openTable, setOpenTable] = useState(false);
   const colRef = useRef<HTMLDivElement>(null);
 
@@ -270,7 +275,10 @@ export default function Twin() {
   if (!net.data || !meta.data) return <SplitSkeleton />;
 
   const sc = show.data?.data?.showcase;
-  const agg = st.isPlaceholderData ? undefined : st.data?.header.aggregates;
+  // while another scenario loads, the last one stays on screen and a quiet line says so:
+  // blanking the readings made the panel collapse and grow back on every switch
+  const agg = st.data?.header.aggregates;
+  const updating = st.isPlaceholderData;
   const center: [number, number] = meta.data.center;
   const ser = series.data?.data;
   const nNonfirm = sc ? sc.nonfirm_cids.length : 0;
@@ -285,16 +293,22 @@ export default function Twin() {
   return (
     <div className="split">
       <div className="map-col" ref={colRef}>
-        <div className="map-wrap">
+        <div className="map-wrap" data-view={view}>
           <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("twin.title", { n: houses.length })}>
             <Daylight center={center} year={year} />
-            {(st.isLoading || st.isPlaceholderData) && <div className="map-loading" role="status">{t("ui.loading")}</div>}
+            {st.isLoading && <div className="map-loading" role="status">{t("ui.loading")}</div>}
+            {updating && <div className="updating" role="status">{t("twin.updating")}</div>}
             <div className="map-toolbar"><button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={() => { if (mapRef.current && net.data.bbox) { mapRef.current.jumpTo({ pitch: 50, bearing: -18 }); fitTo(mapRef.current, net.data.bbox, 60); } }}><Icon name="reset" size={17} /></button></div>
             <MapLegend colorBy={colorBy} theme={theme} />
             <div className="map-note">
-              <Chip kind="real" />
-              <Chip kind="synthetic" />
+              <div className="seg small" role="group" aria-label={t("twin.view")}>
+                <button aria-pressed={view === "map"} onClick={() => setView("map")}>{t("twin.view.map")}</button>
+                <button aria-pressed={view === "lines"} onClick={() => setView("lines")}>{t("twin.view.lines")}</button>
+              </div>
             </div>
+            {view === "lines" && lines.layout && (
+              <TwinLines layout={lines.layout} cables={cables} rows={rows} st={st} colorBy={colorBy} selectedCid={selectedCid} select={select} />
+            )}
             <TipLayer register={tipRef} housesById={housesById} cablesById={cablesById} rows={rows} st={st} />
           </MapView>
         </div>
@@ -317,12 +331,11 @@ export default function Twin() {
         </div>
       </div>
 
-      <aside className="panel">
-        {picked && <Inspector house={picked} rows={rows} st={st} onClear={() => select(null)} />}
-        <div className="stack">
-          <h1 className="panel-title">{t("twin.title", { n: houses.length })}</h1>
-          <p className="caption">{t("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
-        </div>
+      <aside className="panel" data-playing={playing}>
+        <h1 className="panel-title">{t("twin.title", { n: houses.length })}</h1>
+        {picked && <Inspector house={picked} layout={lines.layout} rows={rows} st={st} onClear={() => select(null)} />}
+
+        <HourReadings agg={agg} ser={ser} year={year} center={center} scenario={scenario} />
 
         <div className="stack">
           <div className="seg" role="group" aria-label={t("twin.scenario")}>
@@ -345,9 +358,8 @@ export default function Twin() {
           </div>
         </div>
 
-        <hr className="divider" />
-
-        <HourReadings agg={agg} ser={ser} year={year} center={center} scenario={scenario} />
+        <Conditions agg={agg} ser={ser} year={year} center={center} />
+        <p className="source-line">{t("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
       </aside>
     </div>
   );
@@ -408,47 +420,103 @@ function Timeline({ agg, hours, year, showcaseHour, pending }: {
 
 const SPEEDS = [1, 4, 8].map((s) => <option key={s} value={s}>{s}×</option>);
 
-/** The hour's conditions and the grid's state at it, as a data sheet. */
-function HourReadings({ agg, ser, year, center, scenario }: {
+/**
+ * The grid at this hour first: whether it is within its limits, the transformer and the
+ * busiest cable against their ratings, the voltage band. The weather and price that
+ * explain it come after, in two columns. The hour itself is read off the strip.
+ */
+function HourReadings({ agg, scenario }: {
   agg: any; ser: any; year: number; center: [number, number]; scenario: string;
 }) {
   const t = useT();
   const f = useFmt();
-  const lang = useStore((s) => s.lang);
   const hour = useStore((s) => s.hour);
-  const elev = solarElevation(yearStart(year) + (hour + 0.5) * 3600_000, center[1], center[0]);
   const violation = agg ? agg.violation[hour] === 1 : false;
   const trafoRev = agg ? agg.trafo_p_kw[hour] < 0 : false;
   return (
-    <>
-      <div className="stack">
-        <div className="row" style={{ justifyContent: "space-between" }}>
-          <h3>{hourLabel(lang, year, hour)}</h3>
-          {agg && (violation ? <Status kind="critical">{t("ui.exceeded")}</Status> : <Status kind="good">{t("ui.within")}</Status>)}
-        </div>
-        <div className="tiles">
-          <Tile label={t("twin.sun")} value={f(elev, 0)} unit="°" />
-          <Tile mark="real" label={t("twin.ghi")} value={ser ? f(ser.ghi[hour], 0) : "–"} unit="W/m²" />
-          <Tile mark="real" label={t("twin.temp")} value={ser ? f(ser.t_air[hour], 1) : "–"} unit="°C" />
-          <Tile mark="real" label={t("twin.price")} value={ser?.price_sek_kwh ? f(ser.price_sek_kwh[hour], 2) : "–"} unit="kr/kWh" />
-          <Tile mark="synthetic" label={t("twin.pv")} value={agg ? f(agg.pv_kw[hour], 0) : "–"} unit="kW" />
-          <Tile mark="synthetic" label={t("twin.load")} value={agg ? f(agg.load_kw[hour], 0) : "–"} unit="kW" />
-        </div>
-        <p className="source-line">{t("twin.sources")}</p>
-      </div>
-
+    <div className="stack">
+      <h2 className="hour-verdict">
+        {agg ? (violation ? <Status kind="critical">{t("twin.atHour.over")}</Status> : <Status kind="good">{t("twin.atHour.within")}</Status>) : t("ui.loading")}
+      </h2>
       {agg && (
-        <div className="stack">
-          <Meter label={`${t("twin.trafo")}${trafoRev ? " ⇡" : ""}`} value={agg.trafo_loading[hour]} max={140} limit={100} />
+        <>
+          <Meter label={trafoRev ? t("twin.trafoRev") : t("twin.trafo")} value={agg.trafo_loading[hour]} max={140} limit={100} />
           <Meter label={t("twin.line")} value={agg.max_line_loading[hour]} max={140} limit={100} />
-          <div className="tiles">
+          <div className="tiles cols-2">
             <Tile label={t("twin.vmax")} value={f(agg.vmax[hour], 3)} unit="pu" />
             <Tile label={t("twin.vmin")} value={f(agg.vmin[hour], 3)} unit="pu" />
             {scenario === "doe" && agg.curtailed_kw && <Tile label={t("twin.curtailed")} value={f(agg.curtailed_kw[hour], 1)} unit="kW" />}
           </div>
-        </div>
+        </>
       )}
-    </>
+    </div>
+  );
+}
+
+/** The weather and price of the hour, and the solar and demand they make: what explains the verdict. */
+function Conditions({ agg, ser, year, center }: { agg: any; ser: any; year: number; center: [number, number] }) {
+  const t = useT();
+  const f = useFmt();
+  const hour = useStore((s) => s.hour);
+  const elev = solarElevation(yearStart(year) + (hour + 0.5) * 3600_000, center[1], center[0]);
+  return (
+    <div className="stack">
+      <h3>{t("twin.conditions")}</h3>
+      <div className="tiles cols-2">
+        <Tile label={t("twin.sun")} value={f(elev, 0)} unit="°" />
+        <Tile mark="real" label={t("twin.ghi")} value={ser ? f(ser.ghi[hour], 0) : "–"} unit="W/m²" />
+        <Tile mark="real" label={t("twin.temp")} value={ser ? f(ser.t_air[hour], 1) : "–"} unit="°C" />
+        <Tile mark="real" label={t("twin.price")} value={ser?.price_sek_kwh ? f(ser.price_sek_kwh[hour], 2) : "–"} unit="kr/kWh" />
+        <Tile mark="synthetic" label={t("twin.pv")} value={agg ? f(agg.pv_kw[hour], 0) : "–"} unit="kW" />
+        <Tile mark="synthetic" label={t("twin.load")} value={agg ? f(agg.load_kw[hour], 0) : "–"} unit="kW" />
+      </div>
+      <p className="source-line">{t("twin.sources")}</p>
+    </div>
+  );
+}
+
+/**
+ * The network as lines at this hour: each feeder takes the loading colour of its busiest
+ * cable, each station the colour its house has on the map. It subscribes to the hour on
+ * its own, so playback repaints the lines and nothing around them.
+ */
+function TwinLines({ layout, cables, rows, st, colorBy, selectedCid, select }: {
+  layout: Layout; cables: any[]; rows: Rows | null; st: GridState; colorBy: ColorBy;
+  selectedCid: number | null; select: (cid: number | null) => void;
+}) {
+  const t = useT();
+  const hour = useStore((s) => s.hour);
+  // the main cables of each feeder, found once (js-index-maps)
+  const byFeeder = useMemo(() => {
+    const m = new Map<number, number[]>();
+    for (const c of cables) {
+      if (c.properties.kind !== "main") continue;
+      const list = m.get(c.properties.feeder) ?? [];
+      list.push(c.properties.line);
+      m.set(c.properties.feeder, list);
+    }
+    return m;
+  }, [cables]);
+  const tk = tokens();
+  const lineColor = (feeder: number) => {
+    if (!st.data || !rows) return undefined;
+    let worst = 0;
+    for (const l of byFeeder.get(feeder) ?? []) {
+      const r = rows.lineRow.get(l);
+      if (r !== undefined) worst = Math.max(worst, st.data.loading(r, hour));
+    }
+    return loadingColor(tk, worst);
+  };
+  const stationColor = (s: Station) => {
+    if (!st.data || !rows) return undefined;
+    if (colorBy === "power") return powerColor(tk, st.data.power(s.cid, hour), P_SPAN);
+    const r = rows.busRow.get(s.bus);
+    return r === undefined ? undefined : voltageColor(tk, st.data.voltage(r, hour), V_SPAN);
+  };
+  return (
+    <div className="twin-lines">
+      <LineMap layout={layout} lineColor={lineColor} stationColor={stationColor} highlight={selectedCid} onPick={select} label={t("twin.lines.aria")} />
+    </div>
   );
 }
 
@@ -463,8 +531,11 @@ function HouseStatus({ status }: { status: string }) {
   );
 }
 
-/** The selected house: what the network says about it, and its state at this hour. */
-function Inspector({ house, rows, st, onClear }: { house: any; rows: Rows | null; st: GridState; onClear: () => void }) {
+/**
+ * The selected house: its line from the substation, its state at this hour, and the next
+ * step for it, a connection request.
+ */
+function Inspector({ house, layout, rows, st, onClear }: { house: any; layout: Layout | null; rows: Rows | null; st: GridState; onClear: () => void }) {
   const t = useT();
   const f = useFmt();
   const hour = useStore((s) => s.hour);
@@ -474,19 +545,20 @@ function Inspector({ house, rows, st, onClear }: { house: any; rows: Rows | null
   return (
     <div className="stack inspector">
       <div className="row" style={{ justifyContent: "space-between" }}>
-        <h3>{house.address || t("dt.unnamed", { id: house.cid })}</h3>
+        <h2 className="inspector-title">{house.address || t("dt.unnamed", { id: house.cid })}</h2>
         <button className="icon-btn" aria-label={t("twin.clear")} title={t("twin.clear")} onClick={onClear}>
           <Icon name="close" size={15} />
         </button>
       </div>
-      <div className="tiles">
+      {layout && <LineStrip layout={layout} cid={house.cid} />}
+      <div className="tiles cols-2">
         <Tile label={t("dt.voltage")} value={v == null ? "–" : f(v, 3)} unit="pu" />
         <Tile label={t("dt.net")} value={p == null ? "–" : f(p, 1)} unit="kW" />
         <Tile label={t("dt.status")} value={<span className="t-word"><HouseStatus status={house.pv_status} /></span>} />
-        <Tile label={t("dt.feeder")} value={house.feeder + 1} />
         <Tile label={t("dt.kwp")} value={f(house.kwp, 1)} unit="kWp" />
-        <Tile label={t("dt.fuse")} value={house.fuse_a} unit="A" />
-        <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
+      </div>
+      <div>
+        <button className="btn" onClick={() => useStore.getState().setScreen("request")}>{t("lines.test")}</button>
       </div>
     </div>
   );

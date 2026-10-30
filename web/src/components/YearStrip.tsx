@@ -23,6 +23,8 @@ export function YearStrip({ values, hours, year, label, describedBy }: {
   const lang = useStore((s) => s.lang);
   const days = Math.floor(hours / 24);
   const [size, setSize] = useState({ w: 0, h: 0 });
+  // the hour under the pointer, read out above the strip so the grid explains itself
+  const [peek, setPeek] = useState<{ hour: number; x: number } | null>(null);
 
   // one observer for the life of the strip
   useEffect(() => {
@@ -100,12 +102,15 @@ export function YearStrip({ values, hours, year, label, describedBy }: {
     ctx.strokeRect(d * cw - 2, hh * ch - 2, Math.max(cw, 2) + 4, ch + 4);
   }, [hour, values, theme, days, size]);
 
-  const pick = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const cv = ref.current!;
-    const r = cv.getBoundingClientRect();
+  const at = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const r = ref.current!.getBoundingClientRect();
     const d = Math.max(0, Math.min(days - 1, Math.floor(((e.clientX - r.left) / r.width) * days)));
     const hh = Math.max(0, Math.min(23, Math.floor(((e.clientY - r.top) / r.height) * 24)));
-    const next = d * 24 + hh;
+    return { hour: d * 24 + hh, x: e.clientX - r.left };
+  };
+
+  const pick = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const next = at(e).hour;
     // a drag inside one cell is not a change
     if (next !== useStore.getState().hour) setHour(next);
   };
@@ -129,6 +134,7 @@ export function YearStrip({ values, hours, year, label, describedBy }: {
   const months = monthNames(lang);
   return (
     <>
+      <div className="ys-wrap">
       <canvas
         ref={ref}
         tabIndex={0}
@@ -146,9 +152,19 @@ export function YearStrip({ values, hours, year, label, describedBy }: {
         }}
         onPointerMove={(e) => {
           if (e.buttons === 1) pick(e);
+          if (e.pointerType !== "mouse") return;
+          const next = at(e);
+          setPeek((p) => (p && p.hour === next.hour ? p : next));
         }}
+        onPointerLeave={() => setPeek(null)}
         onKeyDown={onKey}
       />
+      {peek && (
+        <span className="ys-peek" style={{ transform: `translateX(${Math.round(peek.x)}px)` }} aria-hidden="true">
+          {hourLabel(lang, year, peek.hour)}
+        </span>
+      )}
+      </div>
       <div className="yearstrip-axis" aria-hidden>
         {months.map((m) => (
           <span key={m}>{m}</span>
