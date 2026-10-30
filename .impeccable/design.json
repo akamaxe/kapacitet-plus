@@ -1,0 +1,504 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-30T16:48:30+00:00",
+  "title": "Design System: Kapacitet+",
+  "extensions": {
+    "colorMeta": {
+      "sl": {
+        "role": "primary",
+        "displayName": "SL Blue",
+        "canonical": "#123e7c",
+        "purpose": "The one action, selection, links, focus, feeder badges, the transformer symbol.",
+        "tonalRamp": [
+          "#152338",
+          "#1e3c67",
+          "#22549b",
+          "#216bd4",
+          "#558ddd",
+          "#8fb1e0",
+          "#c3d3e9",
+          "#edf1f7"
+        ]
+      },
+      "sl-chrome": {
+        "role": "primary",
+        "displayName": "Chrome Blue",
+        "canonical": "#123e7c",
+        "purpose": "The top bar; stays a deep blue at night.",
+        "tonalRamp": [
+          "#152338",
+          "#1e3c67",
+          "#22549b",
+          "#216bd4",
+          "#558ddd",
+          "#8fb1e0",
+          "#c3d3e9",
+          "#edf1f7"
+        ]
+      },
+      "sl-wash": {
+        "role": "primary",
+        "displayName": "SL Wash",
+        "canonical": "#e4ecf7",
+        "purpose": "Selected rows, palette items and menu entries.",
+        "tonalRamp": [
+          "#192433",
+          "#283e5d",
+          "#32578a",
+          "#3970bb",
+          "#6891ca",
+          "#9ab3d5",
+          "#c8d4e4",
+          "#eff2f6"
+        ]
+      },
+      "green": {
+        "role": "secondary",
+        "displayName": "Firm Green",
+        "canonical": "#1f7a44",
+        "purpose": "Firm stations and the envelope (dynamic) series. Data only.",
+        "tonalRamp": [
+          "#183424",
+          "#255f3d",
+          "#2e8e55",
+          "#33c26d",
+          "#63cf8f",
+          "#97d8b2",
+          "#c7e5d3",
+          "#eef6f2"
+        ]
+      },
+      "amber": {
+        "role": "secondary",
+        "displayName": "Envelope Amber",
+        "canonical": "#c48405",
+        "purpose": "Stations under an envelope; meters at 85 % of a limit. Data only.",
+        "tonalRamp": [
+          "#3d2e10",
+          "#715214",
+          "#ab7812",
+          "#eca009",
+          "#efb543",
+          "#ebc984",
+          "#eedebe",
+          "#f8f4ec"
+        ]
+      },
+      "red": {
+        "role": "secondary",
+        "displayName": "Above-Rating Red",
+        "canonical": "#d8352a",
+        "purpose": "Only above a rating, or a rejection. Data only.",
+        "tonalRamp": [
+          "#361816",
+          "#642521",
+          "#962e27",
+          "#cd3228",
+          "#d8625a",
+          "#dd9792",
+          "#e8c7c5",
+          "#f7eeee"
+        ]
+      },
+      "blue-line": {
+        "role": "secondary",
+        "displayName": "Line Blue",
+        "canonical": "#2b67b0",
+        "purpose": "The one series of a single-series chart.",
+        "tonalRamp": [
+          "#182535",
+          "#253f60",
+          "#2d5a8f",
+          "#3273c3",
+          "#6294d0",
+          "#97b4d8",
+          "#c7d5e6",
+          "#eef2f6"
+        ]
+      },
+      "pencil": {
+        "role": "neutral",
+        "displayName": "Pencil",
+        "canonical": "#8a939b",
+        "purpose": "The static (worst-case) series. Never red.",
+        "tonalRamp": [
+          "#242628",
+          "#3e4346",
+          "#585f65",
+          "#717b84",
+          "#9299a0",
+          "#b3b8bc",
+          "#d4d6d8",
+          "#f2f2f3"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "canonical": "#16202b",
+        "purpose": "Headings, values, the line-map lines.",
+        "tonalRamp": [
+          "#1f262e",
+          "#334252",
+          "#445d78",
+          "#5479a1",
+          "#7c98b6",
+          "#a6b7c9",
+          "#ced6de",
+          "#f0f2f4"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "canonical": "#3d4752",
+        "purpose": "Body and labels.",
+        "tonalRamp": [
+          "#23262a",
+          "#3b4249",
+          "#525e6a",
+          "#697a8c",
+          "#8c98a6",
+          "#b0b7c0",
+          "#d2d6da",
+          "#f1f2f3"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "canonical": "#56606b",
+        "purpose": "Captions, sources, units.",
+        "tonalRamp": [
+          "#242629",
+          "#3d4248",
+          "#565e67",
+          "#6d7a87",
+          "#8f99a3",
+          "#b2b7bd",
+          "#d3d6d9",
+          "#f2f2f3"
+        ]
+      },
+      "ground": {
+        "role": "neutral",
+        "displayName": "White Ground",
+        "canonical": "#ffffff",
+        "purpose": "The page and side panels.",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
+      },
+      "well": {
+        "role": "neutral",
+        "displayName": "Well Grey",
+        "canonical": "#f2f4f6",
+        "purpose": "Insets: segmented tracks, fields, the dense band, skeletons.",
+        "tonalRamp": [
+          "#22262b",
+          "#39424b",
+          "#505e6d",
+          "#657a90",
+          "#8899aa",
+          "#aeb8c1",
+          "#d2d6db",
+          "#f1f2f3"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Rule",
+        "canonical": "#e1e5e9",
+        "purpose": "Every hairline.",
+        "tonalRamp": [
+          "#23262a",
+          "#3b424a",
+          "#525e6b",
+          "#687a8d",
+          "#8b99a7",
+          "#afb8c0",
+          "#d2d6da",
+          "#f1f2f3"
+        ]
+      },
+      "ground-night": {
+        "role": "neutral",
+        "displayName": "Night Ground",
+        "canonical": "#101317",
+        "purpose": "The night page.",
+        "tonalRamp": [
+          "#22262a",
+          "#3a414b",
+          "#505c6d",
+          "#657790",
+          "#8997a9",
+          "#aeb6c1",
+          "#d2d6db",
+          "#f1f2f3"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "The one answer figure per screen."
+      },
+      "headline": {
+        "displayName": "Headline (h1)",
+        "purpose": "Screen title; the static figure of the answer pair; verdict figures."
+      },
+      "title": {
+        "displayName": "Title (h2)",
+        "purpose": "Region headings; a map screen's title in its panel; the lead answer line."
+      },
+      "title-small": {
+        "displayName": "Title small (h3)",
+        "purpose": "Sub-headings, the hour verdict, the inspector title."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Prose and data-sheet values."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Labels, buttons, navigation, legends, table cells."
+      },
+      "caption": {
+        "displayName": "Caption",
+        "purpose": "Sources, units, axis ticks, notes, the foot line."
+      }
+    },
+    "shadows": [
+      {
+        "name": "float",
+        "value": "0 0 0 1px rgba(22, 32, 43, 0.08), 0 10px 28px -8px rgba(22, 32, 43, 0.22)",
+        "purpose": "Day. Only floating layers: dialogs, palette, toasts, notes drawer, glossary popovers, tooltips."
+      },
+      {
+        "name": "float-night",
+        "value": "0 0 0 1px rgba(255, 255, 255, 0.08), 0 14px 36px -10px rgba(0, 0, 0, 0.65)",
+        "purpose": "Night equivalent of float."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease",
+        "value": "cubic-bezier(0.23, 1, 0.32, 1)",
+        "purpose": "Everything that responds."
+      },
+      {
+        "name": "ease-drawer",
+        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
+        "purpose": "The notes drawer."
+      },
+      {
+        "name": "ease-in-out",
+        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
+        "purpose": "Things that travel on screen."
+      },
+      {
+        "name": "dur-micro",
+        "value": "120ms",
+        "purpose": "Colour changes, presses, line-map recolouring."
+      },
+      {
+        "name": "dur-popover",
+        "value": "160ms",
+        "purpose": "Glossary popover growing from its word."
+      },
+      {
+        "name": "dur-panel",
+        "value": "200ms",
+        "purpose": "Toasts, meters, the request answer rising in, a chart's first draw."
+      },
+      {
+        "name": "dur-drawer",
+        "value": "240ms",
+        "purpose": "Notes drawer slide-in."
+      },
+      {
+        "name": "dur-exit",
+        "value": "140ms",
+        "purpose": "Exits, faster than entrances."
+      },
+      {
+        "name": "press",
+        "value": "scale(0.97)",
+        "purpose": "Compact controls on :active."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "scope-hides",
+        "value": "1440px"
+      },
+      {
+        "name": "panel-narrows",
+        "value": "1350px"
+      },
+      {
+        "name": "search-label-hides",
+        "value": "1280px"
+      },
+      {
+        "name": "gutter-tightens",
+        "value": "1200px"
+      },
+      {
+        "name": "menu-sheet",
+        "value": "1100px"
+      },
+      {
+        "name": "single-column",
+        "value": "900px"
+      },
+      {
+        "name": "phone",
+        "value": "700px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The one SL-blue action per view.",
+      "html": "<button class=\"ds-btn\">Test a connection</button>",
+      "css": ".ds-btn{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border:1px solid transparent;border-radius:var(--radius-sm,4px);background:var(--accent,#123e7c);color:var(--on-accent,#fff);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;font-weight:500;cursor:pointer;transition:background-color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-btn:hover{background:var(--accent-hover,#0c2d5c)}.ds-btn:active{transform:scale(.97)}.ds-btn:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary actions: an ink label on a strong hairline.",
+      "html": "<button class=\"ds-btn-ghost\">Open the neighbourhood</button>",
+      "css": ".ds-btn-ghost{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border:1px solid var(--border-strong,#858e97);border-radius:var(--radius-sm,4px);background:transparent;color:var(--text-primary,#16202b);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;font-weight:500;cursor:pointer;transition:background-color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-btn-ghost:hover{background:var(--bg-inset,#f2f4f6)}.ds-btn-ghost:active{transform:scale(.97)}.ds-btn-ghost:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Segmented Control",
+      "kind": "chip",
+      "refersTo": "segmented",
+      "description": "An inset track; the chosen option raised one surface and edged, never shadowed.",
+      "html": "<div class=\"ds-seg\"><button>Static limit</button><button>No control</button><button aria-pressed=\"true\">With envelopes</button></div>",
+      "css": ".ds-seg{display:inline-flex;gap:4px;padding:4px;border-radius:var(--radius-md,8px);background:var(--bg-inset,#f2f4f6);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-seg button{min-height:32px;padding:4px 12px;border:1px solid transparent;border-radius:var(--radius-sm,4px);background:transparent;color:var(--text-secondary,#3d4752);font:inherit;font-size:.8125rem;font-weight:500;cursor:pointer;transition:color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-seg button:hover{color:var(--text-primary,#16202b)}.ds-seg button:active{transform:scale(.97)}.ds-seg button[aria-pressed=true]{background:var(--bg-elevated,#fff);color:var(--text-primary,#16202b);border-color:var(--border,#e1e5e9)}.ds-seg button:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Range Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "An inset panel: label, live value in SL blue, full-width slider.",
+      "html": "<div class=\"ds-field\"><label for=\"ds-pv\">Solar</label><output>8.0 kWp</output><input id=\"ds-pv\" type=\"range\" min=\"1\" max=\"20\" value=\"8\"></div>",
+      "css": ".ds-field{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:12px 16px;border-radius:var(--radius-md,8px);background:var(--bg-inset,#f2f4f6);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-field label{color:var(--text-secondary,#3d4752);font-size:.8125rem}.ds-field output{font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent,#123e7c)}.ds-field input{grid-column:1/-1;width:100%;min-height:40px;accent-color:var(--accent,#123e7c);cursor:pointer}.ds-field input:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Top Bar",
+      "kind": "nav",
+      "refersTo": "top-bar",
+      "description": "SL-blue chrome: roundel and name, the screens as text, the current one white and underlined.",
+      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a></nav></header>",
+      "css": ".ds-top{display:flex;align-items:stretch;gap:24px;height:56px;padding:0 24px;background:var(--chrome,#123e7c);color:#fff;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-brand{display:inline-flex;align-items:center;gap:8px;font-size:1.0625rem;font-weight:700}.ds-top nav{display:flex;gap:24px;margin-left:auto}.ds-top a{position:relative;display:inline-flex;align-items:center;color:var(--chrome-ink-2,#c9d6ea);font-size:.8125rem;font-weight:500;text-decoration:none;transition:color 120ms cubic-bezier(.23,1,.32,1)}.ds-top a:hover{color:#fff}.ds-top a[aria-current=page]{color:#fff;font-weight:600}.ds-top a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff}.ds-top a:focus-visible{outline:2px solid #fff;outline-offset:-2px}"
+    },
+    {
+      "name": "Data Sheet",
+      "kind": "card",
+      "refersTo": "data-sheet-row",
+      "description": "Readings as rows parted by hairlines, never a grid of boxes; danger ink only for bad news.",
+      "html": "<div class=\"ds-sheet\"><div class=\"ds-row\"><span>Houses with solar</span><b>50 → 96</b></div><div class=\"ds-row\"><span>Cost for the houses beyond the static limit</span><b>2.8<small>% of their solar energy</small></b></div><div class=\"ds-row\"><span>Without control, hours over the rating</span><b class=\"ds-bad\">148<small>h</small></b></div></div>",
+      "css": ".ds-sheet{border-top:1px solid var(--border,#e1e5e9);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-variant-numeric:tabular-nums}.ds-row{display:grid;grid-template-columns:1fr auto;align-items:baseline;gap:12px;padding:8px 0;border-bottom:1px solid var(--border,#e1e5e9)}.ds-row span{color:var(--text-secondary,#3d4752);font-size:.8125rem}.ds-row b{font-weight:500;color:var(--text-primary,#16202b);font-size:.9375rem}.ds-row small{margin-left:4px;font-size:.75rem;font-weight:400;color:var(--text-muted,#56606b)}.ds-row .ds-bad{color:var(--danger,#b3261e)}"
+    },
+    {
+      "name": "Line Strip",
+      "kind": "custom",
+      "refersTo": "feeder-badge",
+      "description": "Signature: one feeder as the strip above a train door, stations by status, the chosen one ringed in SL blue.",
+      "html": "<figure class=\"ds-strip\"><figcaption><span class=\"ds-badge\">11</span>Station 4 of 9 on its feeder<span class=\"ds-dist\">336 m from the substation</span></figcaption><svg viewBox=\"0 0 400 28\" role=\"img\" aria-label=\"Feeder 11, station 4 of 9\"><path d=\"M12 14H394\" stroke=\"#16202b\" stroke-width=\"4\" stroke-linecap=\"round\"/><circle cx=\"6\" cy=\"14\" r=\"6\" fill=\"#fff\" stroke=\"#123e7c\" stroke-width=\"2\"/><circle cx=\"13\" cy=\"14\" r=\"6\" fill=\"#fff\" stroke=\"#123e7c\" stroke-width=\"2\"/><circle cx=\"26\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"71\" cy=\"14\" r=\"4\" fill=\"#c48405\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"116\" cy=\"14\" r=\"4\" fill=\"#fff\" stroke=\"#858e97\" stroke-width=\"2\"/><circle cx=\"161\" cy=\"14\" r=\"7\" fill=\"#c48405\" stroke=\"#123e7c\" stroke-width=\"3\"/><circle cx=\"206\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"251\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"296\" cy=\"14\" r=\"4\" fill=\"#fff\" stroke=\"#858e97\" stroke-width=\"2\"/><circle cx=\"341\" cy=\"14\" r=\"4\" fill=\"#c48405\" stroke=\"#fff\" stroke-width=\"2\"/><circle cx=\"386\" cy=\"14\" r=\"4\" fill=\"#1f7a44\" stroke=\"#fff\" stroke-width=\"2\"/></svg></figure>",
+      "css": ".ds-strip{margin:0;display:grid;gap:4px;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-strip figcaption{display:flex;align-items:center;gap:8px;font-size:.8125rem;color:var(--text-secondary,#3d4752)}.ds-badge{display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 4px;border-radius:var(--radius-sm,4px);background:var(--accent,#123e7c);color:var(--on-accent,#fff);font-size:.75rem;font-weight:700}.ds-dist{margin-left:auto;color:var(--text-muted,#56606b);font-variant-numeric:tabular-nums}.ds-strip svg{display:block;width:100%;height:auto;overflow:visible}"
+    },
+    {
+      "name": "Glossary Popover",
+      "kind": "custom",
+      "refersTo": "popover",
+      "description": "A dotted-underlined term whose definition floats above it, grown from the word.",
+      "html": "<span class=\"ds-term-wrap\"><button class=\"ds-term\">curtailment</button><span class=\"ds-pop\" role=\"tooltip\">Solar energy the system could have produced but was not allowed to export.</span></span>",
+      "css": ".ds-term-wrap{position:relative;display:inline-block;margin-top:64px;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-term{padding:0;border:0;background:none;font:inherit;color:inherit;cursor:help;text-decoration:underline dotted;text-decoration-color:var(--border-strong,#858e97);text-underline-offset:3px}.ds-term:hover,.ds-term:focus-visible{text-decoration-color:var(--accent,#123e7c)}.ds-term:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}.ds-pop{position:absolute;left:50%;bottom:calc(100% + 8px);width:max-content;max-width:280px;padding:8px 12px;border-radius:var(--radius-md,8px);background:var(--bg-elevated,#fff);box-shadow:var(--shadow-popover,0 0 0 1px rgba(22,32,43,.08),0 10px 28px -8px rgba(22,32,43,.22));color:var(--text-primary,#16202b);font-size:.8125rem;line-height:1.45;transform:translateX(-50%)}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Line Network",
+    "overview": "The neighbourhood grid is drawn the way Stockholm draws its public transport: the eleven feeders leave the substation like tunnelbana lines, every house is a station on its line, and the chosen house's feeder can be read as the strip above a train door. The interface around that drawing is a working tool for a DSO connection planner and for the applicant on the other side of the same connection: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration.\n\nIt is dense where the work is (the Neighbourhood instrument, the request form) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
+    "keyCharacteristics": [
+      "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
+      "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",
+      "One typeface, Familjen Grotesk, with its default tabular figures for every reading.",
+      "No boxed cards: regions part by hairlines and space; only floating layers cast a shadow.",
+      "The line map and line strip are the signature, and every number on them comes from the API.",
+      "Real data is drawn solid, synthetic data dashed, on every screen."
+    ],
+    "rules": [
+      {
+        "name": "The Quarantine Rule",
+        "body": "Green, amber and red appear only in the network, charts, maps, meters and status marks. The chrome is ink and SL blue. A button, a heading or a field is never green, amber or red.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Blue Rule",
+        "body": "SL blue is the action and the selection, never a data value. A chart series never takes `--accent`; the selected house does.",
+        "section": "colors"
+      },
+      {
+        "name": "The Pencil Rule",
+        "body": "The static study is never red. It is conservative, not wrong: it is pencil grey beside the envelope green, in one comparison.",
+        "section": "colors"
+      },
+      {
+        "name": "The Token Rule",
+        "body": "No colour, size, spacing value, radius or duration is written outside `tokens.css`. A missing value is added there first, as a primitive and a role.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Face Rule",
+        "body": "Familjen Grotesk sets everything, identifiers and figures included. No monospace, no second display face.",
+        "section": "typography"
+      },
+      {
+        "name": "The Three Levers Rule",
+        "body": "A step in the hierarchy changes size, weight and ink together; a label is small/500/ink-2, its value body/500/ink, its note caption/400/ink-3. Letter-spaced uppercase is not used anywhere, and every heading, button and label is sentence case.",
+        "section": "typography"
+      },
+      {
+        "name": "The Only-What-Floats Rule",
+        "body": "The map key, the segmented control's chosen option and MapLibre's controls are edged with a hairline, never shadowed. No glows, no accent-coloured shadows, no decorative gradients; the only gradients are colour-scale keys drawn from the same function as the marks they explain.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** read every colour, size, space, radius and duration from a role token; add a missing one to `tokens.css` first, as a primitive and a role, for both themes.",
+      "**Do** take every figure from the API; the interface holds only units and labels.",
+      "**Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the line map and beside each source.",
+      "**Do** keep one `--text-display` figure per screen and one SL-blue primary action per view.",
+      "**Do** draw static against dynamic as one comparison, pencil against green.",
+      "**Do** give every status a mark and a word (circle, triangle, cross); colour never carries meaning alone.",
+      "**Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.",
+      "**Do** write every string in `lib/i18n.ts`, in English and Spanish.",
+      "**Do** keep the line map schematic and say so: 45° bends, one ink weight, houses in order of distance."
+    ],
+    "donts": [
+      "**Don't** colour chrome, headings, buttons or fields with green, amber or red; those belong to the data.",
+      "**Don't** use SL blue for a data series.",
+      "**Don't** colour the static series red, or draw voltage in red and green.",
+      "**Don't** build a screen from boxed cards or a grid of identical tiles; use regions, blocks, one well, data sheets and protocols.",
+      "**Don't** shadow anything that sits in the page; only floating layers take the float shadow.",
+      "**Don't** use letter-spaced uppercase, kickers above headings, Title Case, two-tone headlines, a monospace or a second display face.",
+      "**Don't** animate keyboard-opened dialogs, the palette or screen changes, and don't let anything pulse or loop.",
+      "**Don't** show customers, pilots, testimonials, or the \"patented fair capacity-sharing algorithm\"; none exist."
+    ]
+  }
+}

@@ -89,6 +89,7 @@
   --sl-hover: rgba(255, 255, 255, 0.12);
   --sl-rule: rgba(255, 255, 255, 0.2);
   --sl-chrome: #123e7c;
+  --on-chrome: #ffffff;
   /* the line colours, kept for the data */
   --green: #1f7a44;
   --green-ink: #22703a;
@@ -249,7 +250,7 @@
   --focus: var(--sl);
   /* the chrome: the top bar is SL blue in both themes' own steps */
   --chrome: var(--sl-chrome);
-  --chrome-ink: #ffffff;
+  --chrome-ink: var(--on-chrome);
   --chrome-ink-2: var(--sl-ink-2);
   --chrome-hover: var(--sl-hover);
   --chrome-rule: var(--sl-rule);

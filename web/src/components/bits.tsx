@@ -8,7 +8,7 @@ import { useFmt } from "../lib/format";
 type Provenance = "real" | "synthetic" | "reference";
 
 /**
- * The provenance mark of design-system.md §3.6: surveyed data is drawn solid, assumed data
+ * The provenance mark of DESIGN.md: surveyed data is drawn solid, assumed data
  * dashed, a reference hollow — the drafting conventions, set as type rather than as a badge.
  */
 export function Mark({ kind }: { kind: Provenance }) {
@@ -60,8 +60,8 @@ export function Status({ kind, children }: { kind: "good" | "warning" | "serious
 }
 
 /**
- * One reading of a data sheet (design-system.md §3.3): the label on the left, the value in
- * mono with its unit on the right, the note under it. A group of these sits in `.tiles`,
+ * One reading of a data sheet (DESIGN.md): the label on the left, the value in
+ * tabular figures with its unit on the right, the note under it. A group of these sits in `.tiles`,
  * which draws rows parted by hairlines rather than a grid of boxes.
  */
 export function Tile({ label, value, unit, note, mark, tone }: {
@@ -84,7 +84,7 @@ export function Tile({ label, value, unit, note, mark, tone }: {
 }
 
 /**
- * A verification protocol (design-system.md §3.3): one row per check, with its verdict,
+ * A verification protocol (DESIGN.md): one row per check, with its verdict,
  * what was measured, the measured value and the criterion it was held against.
  */
 export function Protocol({ rows }: {

@@ -407,7 +407,7 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
           text: [String(vmax), "1"],
         }
       : {
-          // the loading ramp's own stops, and one flat colour above the rating (design-system.md 1.4)
+          // the loading ramp's own stops, and one flat colour above the rating (DESIGN.md)
           type: "piecewise", orient: "vertical", right: 0, top: "middle", itemWidth: 10, itemHeight: 10,
           textStyle: { color: tk.muted, fontFamily: tk.font },
           pieces: [

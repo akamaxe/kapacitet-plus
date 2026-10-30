@@ -25,7 +25,7 @@ function hideBasemapLabels(map: MLMap) {
 }
 
 function slotColors(tk: Tokens): string[] {
-  // The production mix of design-system.md 1.4: six categorical colours, in order, each
+  // The production mix of DESIGN.md: six categorical colours, in order, each
   // already given a light and a dark step by the theme.
   return tk.cat;
 }

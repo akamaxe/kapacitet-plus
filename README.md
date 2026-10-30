@@ -109,23 +109,31 @@ PageUp/PageDown step through them, **ES** switches language, and **?** lists eve
 all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
 handful of actions the chrome offers. Picking a house selects it everywhere.
 
-The control centre opens in dark mode for new visitors; the header offers light, dark and system
-themes and remembers the selection. Use the sidebar to navigate, or scroll the navigation strip
-on a phone. The capacity overview links directly to the geographic twin and connection study.
-In the twin, step an hour at a time, scrub the year, play at 1×/4×/8× speed, or return to the showcase
-hour. The reset-view button restores the map camera. Under the year strip, **120 houses** opens the
-neighbourhood as a table you can search and sort: address, feeder, connection, solar, fuse, distance
-from the substation, and the voltage and net power of the hour on screen, read from the same decoded
-state the map is painted from. Picking a row selects the house, and so does clicking it on the map;
-either way the panel leads with it.
+The interface opens on a white ground for new visitors; a designed night theme and the system
+setting are in the top bar, and the choice is remembered. The six screens sit in that bar, and
+below 1100 px they fold into a menu. **Static vs envelopes** opens with the network drawn as
+lines: each feeder leaves the substation like a metro line and every house is a station,
+coloured by how its solar is connected. Click a station to test a connection there.
 
-The two long screens — **Static vs DOE** and **Method & data** — carry a bar of their own at
+In the twin, step an hour at a time, scrub the year (the strip reads out the hour under the
+pointer), play at 1×/4×/8× speed, or return to the hour the transformer is most loaded without
+control. **Lines**, at the top right of the map, redraws the feeders in the loading colour of the
+hour on screen. The reset-view button restores the map camera. Under the year strip, **120 houses**
+opens the neighbourhood as a table you can search and sort: address, feeder, connection, solar,
+fuse, distance from the substation, and the voltage and net power of the hour on screen, read from
+the same decoded state the map is painted from. Picking a row selects the house, and so does
+clicking it on the map; either way the panel leads with it, shows where it sits on its feeder and
+offers a connection request for it.
+
+The connection request asks for the house first, the size second and the grid situation last.
+The answer comes into view by itself, and changing the request afterwards marks the answer as
+out of date instead of removing it. Words of the trade, such as static study, envelope,
+curtailment, CVaR, kWp and pu, carry a short definition on hover, focus or tap.
+
+The two long screens, **Static vs envelopes** and **Method & data**, carry a bar of their own at
 the top of the scroller: their sections on the left, which follow the scroll and jump when
-clicked, and the basis of every figure on that screen on the right. Each of them leads with one
-number at display size and nothing else competes with it. Within a screen, most regions sit on
-the page itself, a few are panels, and the densest one — a year of hours, or the table of model
-inputs — runs edge to edge on its own ground. The 63 model inputs are searchable and sortable:
-filter by where a value comes from, or search a word in any column.
+clicked, and the basis of every figure on that screen on the right. The 63 model inputs are
+searchable and sortable: filter by where a value comes from, or search a word in any column.
 
 The address bar carries what you are looking at — `#/twin?hour=4000&scenario=uncontrolled&cid=14`
 — so a view can be sent to someone and reproduce exactly. Scrubbing the year does not fill your
@@ -138,12 +146,13 @@ to navigate screens without affecting form fields.
 2. **Neighbourhood** — the twin opens on the most loaded hour of 2025. Switch *No control*: the
    substation turns red, the transformer runs above its rating. Switch *With envelopes*: the same
    houses, always within limits. Drag the year strip to move through the year.
-3. **Static vs DOE** — the headline: 413 kW against 787 kW, what it costs in curtailment, and the
-   hour-by-hour verification.
+3. **Static vs envelopes** — the headline: 413 kW against 787 kW beside the network drawn as
+   lines, what it costs in curtailment, and the hour-by-hour verification.
 4. **Connection request** — click a house, ask for 15 kWp and an 11 kW charger, press *Evaluate*:
    the static study says no, the envelope says yes with this limit, this risk and this value.
    Switch the grid situation to *2030* and ask again to show the queue effect.
-5. **2030** — how far the neighbourhood can electrify before either method needs reinforcement.
+5. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
+   reinforcement.
 6. **Method & data** — live status of every API, every assumption with its source, the validation
    charts and the limitations.
 
