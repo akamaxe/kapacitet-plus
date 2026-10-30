@@ -304,12 +304,11 @@ export default function Request() {
               </div>
             </fieldset>
 
-            <div className="stack">
-              <div>
-                <button className="btn" disabled={running || nothing} onClick={evaluate} aria-describedby={nothing ? "why-disabled" : undefined}>
-                  {running ? t("req.running") : t("req.evaluate")}
-                </button>
-              </div>
+            {/* the screen's one action: kept at the foot of the panel so a short screen never hides it */}
+            <div className="action-bar">
+              <button className="btn" disabled={running || nothing} onClick={evaluate} aria-describedby={nothing ? "why-disabled" : undefined}>
+                {running ? t("req.running") : t("req.evaluate")}
+              </button>
               {nothing && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
             </div>
           </>

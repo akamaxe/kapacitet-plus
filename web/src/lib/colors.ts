@@ -48,7 +48,6 @@ function readTokens() {
     voltMid: tk("--volt-mid"),
     voltHigh: tk("--volt-high"),
     font: tk("--font-sans"),
-    mono: tk("--font-mono"),
     // §2's chart scale: ticks and sources, labels, values on a chart, the one annotated figure
     size: {
       caption: px("--text-caption"),

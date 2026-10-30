@@ -76,8 +76,10 @@ p {
   text-wrap: pretty;
 }
 
-.mono {
-  font-family: var(--font-mono);
+/* an identifier (an endpoint, a code): the text face, figures that line up */
+.ident {
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
 }
 
 .num {
@@ -713,7 +715,7 @@ table.data th.r {
   bottom: 34px;
   background: var(--bg-elevated);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-sm);
   padding: var(--space-2) var(--space-3);
   display: grid;
   gap: var(--space-2);
@@ -1213,11 +1215,6 @@ main:focus { outline: none; }
 .swatch-value { display: inline-flex; align-items: center; gap: var(--space-2); }
 .swatch-value i { flex: none; width: 8px; height: 8px; border-radius: 50%; }
 
-/* the hero number's own figure: it belongs to the number, so it has no card of its own */
-.hero-figure { align-self: stretch; margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
-.hero-figure > .caption { margin: var(--space-2) 0 0; color: var(--text-muted); font-size: var(--text-caption); }
-.data-provenance { display: flex; align-items: center; gap: var(--space-2) var(--space-4); flex-wrap: wrap; }
-.data-provenance .caption-muted { margin-right: var(--space-2); }
 
 .block > .caption { font-size: var(--text-caption); margin-bottom: var(--space-3); }
 .panel > .stack:first-child { padding-bottom: var(--space-4); border-bottom: 1px solid var(--border); }
@@ -1485,12 +1482,6 @@ main:focus { outline: none; }
 @media (max-width: 700px) {
   .scrim { padding: var(--space-4); align-items: end; }
   .toasts { right: var(--space-2); left: var(--space-2); justify-items: stretch; }
-}
-
-/* an endpoint named in an error is an identifier, so §2 puts it in the mono face */
-.empty .mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
 }
 
 .step-error {
@@ -1787,46 +1778,6 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
   .tiles.cols-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
-/* ---------------------------------------------------------------- the hero number
-   One per screen, and nothing else at this size (11). Mono, because it is a reading. */
-.hero-stat {
-  display: grid;
-  gap: var(--space-1);
-  min-width: 0;
-  margin-top: var(--space-5);
-}
-
-.hero-value {
-  font-family: var(--font-sans);
-  font-size: var(--text-display);
-  line-height: var(--lh-display);
-  font-weight: 500;
-  letter-spacing: var(--track-display);
-  font-variant-numeric: tabular-nums;
-}
-
-.hero-value small {
-  font-family: var(--font-sans);
-  font-size: var(--text-h3);
-  font-weight: 500;
-  color: var(--text-secondary);
-  margin-left: var(--space-2);
-  letter-spacing: 0;
-}
-
-.hero-label {
-  font-size: var(--text-body);
-  line-height: var(--lh-body);
-  color: var(--text-secondary);
-  max-width: 52ch;
-}
-
-.hero-note {
-  font-size: var(--text-caption);
-  color: var(--text-muted);
-  max-width: 62ch;
-}
-
 /* ---------------------------------------------------------------- the screen bar
    A screen's own sections, stuck to the top of its scroller, with the basis of its
    figures on the right. Navigation and provenance only: a region's controls stay in
@@ -1913,7 +1864,6 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 @media (max-width: 700px) {
   .screen-bar { padding: 0 var(--space-4); }
   .region + .region { padding-top: var(--space-5); }
-  .hero-value { font-size: var(--text-h1); }
 }
 
 /* A sub-heading inside a region is the third step of the ladder (§2), whether or not it
@@ -1966,8 +1916,10 @@ ol.list {
 .lm-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; padding-bottom: var(--space-2); font-size: var(--text-small); color: var(--text-muted); }
 .lm-head strong { color: var(--text-primary); font-size: var(--text-h3); font-weight: 600; }
 .linemap { position: relative; min-height: 0; }
-/* the whole network in the first screen: the drawing is as tall as the room the frame leaves */
-.linemap svg { display: block; width: 100%; height: clamp(300px, calc(100dvh - var(--topbar-h) - var(--toolbar-h) - var(--statusbar-h) - 170px), 620px); overflow: visible; }
+/* the drawing is as tall as the answer beside it, so the two columns end together: the
+   svg is laid over its box rather than sizing it, or its own aspect would set the row */
+.linemap { position: relative; height: 100%; min-height: 360px; }
+.linemap svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
 .lm-lines path { fill: none; stroke: var(--text-primary); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; transition: stroke var(--dur-micro) var(--ease), opacity var(--dur-micro) var(--ease); }
 .lm-lines path.dim, .lm-badges .dim, .lm-stations .dim { opacity: 0.25; }
 .st { stroke: var(--bg-base); stroke-width: 2; transition: fill var(--dur-micro) var(--ease), opacity var(--dur-micro) var(--ease); }
@@ -2010,7 +1962,7 @@ ol.list {
 }
 @media (max-width: 700px) {
   .ap-to { font-size: var(--text-h1); }
-  .lm-figure { min-height: 320px; }
+  .lm-figure { min-height: 440px; }
   .lm-key .lm-src:first-of-type { margin-left: 0; }
 }
 
@@ -2024,7 +1976,7 @@ ol.list {
 /* the network as lines, laid over the map in the same frame */
 .twin-lines { position: absolute; inset: 0; z-index: 1; display: grid; place-items: center; padding: var(--space-6) var(--space-5) var(--space-5); background: var(--bg-base); }
 .twin-lines .linemap { width: 100%; height: 100%; }
-.twin-lines .linemap svg { height: 100%; max-height: none; }
+
 .map-note { z-index: 4; }
 /* in the lines view the map's own controls have nothing to act on */
 .map-wrap[data-view="lines"] .maplibregl-control-container,
@@ -2098,3 +2050,18 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 }
 /* once one definition has been open, the next appears without its entrance */
 .term-pop[data-instant] { transition: none; }
+
+/* the request's action at the foot of its panel: it rides the bottom edge while the form
+   above it scrolls, on the panel's own ground */
+.panel .action-bar {
+  position: sticky;
+  bottom: calc(-1 * var(--space-5));
+  z-index: 2;
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin: 0 calc(-1 * var(--space-5)) calc(-1 * var(--space-5));
+  padding: var(--space-3) var(--space-5);
+  border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+}

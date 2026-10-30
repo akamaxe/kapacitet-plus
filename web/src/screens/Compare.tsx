@@ -8,7 +8,7 @@ import { LineMap, useLines } from "../components/LineMap";
 import { Term } from "../components/Term";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { monthNames, useFmt } from "../lib/format";
+import { hourLabel, monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -24,6 +24,8 @@ export default function Compare() {
   const val = useApi<any>("/validation");
   // the criteria the protocol holds the results against are model inputs, not constants here
   const assumptions = useApi<any>("/assumptions");
+  // the hour the transformer is most loaded without control, which the neighbourhood opens on
+  const meta = useApi<any>("/meta");
   const [heat, setHeat] = useState<"limited" | "unc">("limited");
   const lines = useLines();
 
@@ -96,7 +98,15 @@ export default function Compare() {
                 <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
                 <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
                 <Tile label={t("cmp.sheet.overHours", { year: S.year })} value={f(ver.uncontrolled_violation_hours)} unit="h" tone="danger" />
-                <Tile label={t("cmp.sheet.peak")} value={f(ver.uncontrolled_max_trafo_loading_pct)} unit={t("cmp.sheet.peakUnit")} tone="danger" />
+                <Tile
+                  label={t("cmp.sheet.peak")}
+                  value={f(ver.uncontrolled_max_trafo_loading_pct)}
+                  unit={t("cmp.sheet.peakUnit")}
+                  tone="danger"
+                  note={typeof meta.data?.showcase_hour === "number"
+                    ? <a href={`#/twin?hour=${meta.data.showcase_hour}&scenario=uncontrolled`}>{hourLabel(lang, S.year, meta.data.showcase_hour)}</a>
+                    : undefined}
+                />
               </div>
               <div className="hero-actions">
                 <a className="btn" href="#/request">{t("overview.request")}</a>
