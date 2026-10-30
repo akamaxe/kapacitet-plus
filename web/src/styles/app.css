@@ -4,6 +4,8 @@
 *::before,
 *::after {
   box-sizing: border-box;
+  /* a side drawn with no colour of its own takes the rule, never the text colour */
+  border-color: var(--border);
 }
 
 html,
@@ -19,6 +21,7 @@ body {
   font-family: var(--font-sans);
   font-size: var(--text-body);
   line-height: var(--lh-body);
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -433,7 +436,7 @@ p {
 }
 
 .seg button {
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   padding: var(--space-1) var(--space-3);
   border-radius: var(--radius-sm);
@@ -452,10 +455,11 @@ p {
   inset: -4px 0;
 }
 
+/* the chosen segment is raised one step and edged, never shadowed */
 .seg button[aria-pressed="true"] {
   background: var(--bg-elevated);
   color: var(--text-primary);
-  box-shadow: 0 0 0 1px var(--border);
+  border-color: var(--border);
 }
 
 .btn {
@@ -628,7 +632,7 @@ p {
 .scale {
   display: grid;
   gap: var(--space-1);
-  font-size: var(--text-caption);
+  font-size: var(--text-small);
   color: var(--text-secondary);
 }
 
@@ -702,18 +706,19 @@ table.data th.r {
 }
 
 /* ---------------------------------------------------------------- map overlays */
+/* a key docked in the corner of the map: part of the map, so edged rather than floating */
 .map-legend {
   position: absolute;
   left: 58px;
   bottom: 34px;
   background: var(--bg-elevated);
+  border: 1px solid var(--border);
   border-radius: var(--radius-md);
   padding: var(--space-2) var(--space-3);
   display: grid;
   gap: var(--space-2);
-  width: 250px;
-  font-size: var(--text-caption);
-  box-shadow: var(--shadow-popover);
+  width: 260px;
+  font-size: var(--text-small);
   z-index: 2;
 }
 
@@ -1236,7 +1241,7 @@ main:focus { outline: none; }
 .updating { position: absolute; left: 50%; top: var(--space-3); transform: translateX(-50%); z-index: 4; display: inline-flex; align-items: center; gap: var(--space-2); padding: var(--space-1) var(--space-3); border-radius: var(--radius-sm); background: var(--bg-elevated); box-shadow: var(--shadow-popover); color: var(--text-secondary); font-size: var(--text-caption); pointer-events: none; }
 .map-loading { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--bg-base) 75%, transparent); z-index: 4; color: var(--text-primary); font-size: var(--text-small); }
 .map-toolbar { position: absolute; top: 112px; left: 10px; z-index: 3; }
-.maplibregl-ctrl-group { background: var(--bg-elevated) !important; border: 0; border-radius: var(--radius-md) !important; box-shadow: var(--shadow-popover) !important; }
+.maplibregl-ctrl-group { background: var(--bg-elevated) !important; border: 1px solid var(--border) !important; border-radius: var(--radius-md) !important; box-shadow: none !important; }
 .maplibregl-ctrl-group button { width: 40px !important; height: 40px !important; border-color: var(--border) !important; }
 .maplibregl-ctrl-attrib { background: color-mix(in srgb, var(--bg-elevated) 90%, transparent) !important; color: var(--text-secondary) !important; font-size: var(--text-caption) !important; }
 .maplibregl-ctrl-attrib a { color: var(--text-secondary) !important; }
@@ -1291,10 +1296,13 @@ main:focus { outline: none; }
   .hero-actions { margin-top: var(--space-3); }
   .panel { padding: var(--space-4) var(--space-4); }
   .split, .split.wide-panel { grid-template-rows: minmax(480px, 70dvh) auto; }
-  .yearstrip { padding: var(--space-3); }
+  .yearstrip { padding: var(--space-3) var(--space-4); }
   .yearstrip-caption { display: none; }
   .yearstrip canvas { height: 64px; }
-  .map-legend { width: 215px; padding: var(--space-2); }
+  /* on a phone the key keeps its scales and drops its notes, so the map stays visible */
+  .map-legend { left: var(--space-2); bottom: var(--space-6); width: 180px; padding: var(--space-2); font-size: var(--text-caption); }
+  .map-legend .scale { font-size: var(--text-caption); }
+  .map-legend .caption-muted, .map-legend .legend-key { display: none; }
   .map-note { max-width: 70%; }
   .fl-year { display: none; }
   .fl-keys { margin-left: auto; }
