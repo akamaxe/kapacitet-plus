@@ -103,7 +103,8 @@ function mix(a: string, b: string, t: number): string {
  * `color` takes the position along the bar, from 0 at the left to 1 at the right.
  */
 export function rampCss(color: (t: number) => string): string {
-  return `linear-gradient(90deg, ${Array.from({ length: 9 }, (_, k) => color(k / 8)).join(", ")})`;
+  // a colour-scale key, drawn from the same function as the marks it explains
+  return `linear-gradient(90deg, ${Array.from({ length: 9 }, (_, k) => color(k / 8)).join(", ")})`; // taste-skill-ignore
 }
 
 /** Loading ramp: stops at 0, 50 and 85 % of the rating (design-system.md 1.4). */

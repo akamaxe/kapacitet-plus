@@ -37,8 +37,8 @@ const REFS = [
   ["Ruhnau, O., Hirth, L. & Praktiknjo, A. (2019). Time series of heat demand and heat pump efficiency for energy system modeling. Scientific Data 6:189.", "https://github.com/oruhnau/when2heat"],
   ["Dobos, A. P. (2014). PVWatts Version 5 Manual. NREL/TP-6A20-62641.", "https://www.nrel.gov/docs/fy14osti/62641.pdf"],
   ["Persson, E. & Jonsson, P. (2018). Utvärdering av Velanders formel för toppeffektberäkning i eldistributionsnät. MDU / Mälarenergi Elnät.", "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"],
-  ["Energimarknadsinspektionen, EIFS 2023:3 — voltage quality requirements (guidance).", "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"],
-  ["Energiwirtschaftsgesetz (EnWG) §11 Abs. 2 — Spitzenkappung.", "https://www.gesetze-im-internet.de/enwg_2005/__11.html"],
+  ["Energimarknadsinspektionen, EIFS 2023:3: voltage quality requirements (guidance).", "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"],
+  ["Energiwirtschaftsgesetz (EnWG) §11 Abs. 2, Spitzenkappung.", "https://www.gesetze-im-internet.de/enwg_2005/__11.html"],
   ["IEA (2026). Electricity 2026: Grids.", "https://www.iea.org/reports/electricity-2026/grids"],
 ];
 

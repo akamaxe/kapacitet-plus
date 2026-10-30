@@ -76,7 +76,7 @@
   --sheet: #ffffff;
   --raised: #ffffff;
   --well: #f2f4f6;
-  --rule: rgba(22, 32, 43, 0.12);
+  --rule: #e1e5e9;
   --rule-strong: #858e97;
   --ink: #16202b;
   --ink-2: #3d4752;
@@ -91,10 +91,10 @@
   --sl-rule: rgba(255, 255, 255, 0.2);
   --sl-chrome: #123e7c;
   /* the line colours, kept for the data */
-  --green: #2e8b4a;
+  --green: #1f7a44;
   --green-ink: #22703a;
   --green-wash: #e1f0e5;
-  --amber: #e5a019;
+  --amber: #c48405;
   --amber-ink: #8a5800;
   --amber-wash: #fbeed2;
   --red: #d8352a;
@@ -116,7 +116,7 @@
   /* loading, sequential; above the rating it is flat. Plain hex: colors.ts interpolates. */
   --load-0: #b5c3bb;
   --load-50: #3d8f58;
-  --load-85: #e5a019;
+  --load-85: #c48405;
   --load-over: #d8352a;
 
   /* voltage, diverging around 1.00 pu: blue and amber, never red and green */
@@ -136,7 +136,7 @@
   --sheet: #101317;
   --raised: #1c2127;
   --well: #171b20;
-  --rule: rgba(255, 255, 255, 0.1);
+  --rule: #2a2f35;
   --rule-strong: #727c86;
   --ink: #eceff2;
   --ink-2: #b7c0c9;
@@ -148,7 +148,7 @@
   --sl-ink-2: #b4c6e0;
   --sl-hover: rgba(255, 255, 255, 0.1);
   --sl-rule: rgba(255, 255, 255, 0.16);
-  --green: #5dbb7e;
+  --green: #3fa868;
   --green-ink: #74c891;
   --green-wash: #173021;
   --amber: #e7b04b;
@@ -187,7 +187,7 @@
     --sheet: #101317;
     --raised: #1c2127;
     --well: #171b20;
-    --rule: rgba(255, 255, 255, 0.1);
+    --rule: #2a2f35;
     --rule-strong: #727c86;
     --ink: #eceff2;
     --ink-2: #b7c0c9;
@@ -199,7 +199,7 @@
     --sl-ink-2: #b4c6e0;
     --sl-hover: rgba(255, 255, 255, 0.1);
     --sl-rule: rgba(255, 255, 255, 0.16);
-    --green: #5dbb7e;
+    --green: #3fa868;
     --green-ink: #74c891;
     --green-wash: #173021;
     --amber: #e7b04b;
