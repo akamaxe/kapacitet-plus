@@ -122,8 +122,9 @@ function layout(net: any): Layout | null {
     const start: [number, number] = [side[0] * o, side[1] * o];
     const n = pl.houses.length;
     const SP = Math.max(SP_MIN, Math.min(SP_MAX, ARM / n));
-    const bendAfter = pl.track > 0 ? 2 : n > BEND_AT ? Math.round(n * 0.4) : n;
-    const first = Math.max(SP, 40);
+    const bendAfter = pl.track > 0 ? 3 : n > BEND_AT ? Math.round(n * 0.4) : n;
+    // the first station sits well clear of the transformer, so the lines leave it legibly
+    const first = Math.max(SP, 58);
     const pts: [number, number][] = [[0, 0], start];
     const stations: Station[] = [];
     let cur: [number, number] = start;

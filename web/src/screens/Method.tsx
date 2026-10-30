@@ -3,7 +3,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { DataTable, type Col } from "../components/DataTable";
-import { ChartOrTable, Chip, Hero, Legend, Missing, Status, Tile } from "../components/bits";
+import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -120,11 +120,7 @@ export default function Method() {
         <section className="region">
           <h1 className="headline">{t("met.title")}</h1>
           <p className="headline-sub">{t("met.sub")}</p>
-          <Hero
-            value={f(inputs.length)}
-            label={t("met.hero.label")}
-            note={t("met.hero.note", { rest: inputs.length - ours, team: ours })}
-          />
+          <p className="caption">{t("met.inputsLine", { n: f(inputs.length), rest: inputs.length - ours, team: ours })}</p>
         </section>
 
         {/* ---------------------------------------------------------------- how it works */}

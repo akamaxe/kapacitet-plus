@@ -22,10 +22,9 @@
   --radius-md: 8px;
   --radius-lg: 12px;
 
-  /* type: Familjen Grotesk for everything, its default figures are tabular; a system mono
-     only for identifiers and code. Product scale, about 1.2, on a 15px body. */
+  /* type: Familjen Grotesk for everything, identifiers included; its default figures are
+     tabular. Product scale, about 1.2, on a 15px body. */
   --font-sans: "Familjen Grotesk Variable", "Familjen Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "Cascadia Code", Consolas, "SF Mono", monospace;
   --text-display: 2.5rem;
   --text-h1: 1.625rem;
   --text-h2: 1.25rem;

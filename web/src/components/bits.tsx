@@ -112,25 +112,6 @@ export function Protocol({ rows }: {
   );
 }
 
-/**
- * The one number a screen is about (§11), and the only thing on it at this size.
- *
- * `label` says what the number is, `note` what it is relative to. It is set in the mono
- * face because it is a reading off an instrument, not a headline.
- */
-export function Hero({ value, unit, label, note }: { value: ReactNode; unit?: string; label: string; note?: ReactNode }) {
-  return (
-    <div className="hero-stat">
-      <div className="hero-value">
-        {value}
-        {unit ? <small>{unit}</small> : null}
-      </div>
-      <div className="hero-label">{label}</div>
-      {note ? <div className="hero-note">{note}</div> : null}
-    </div>
-  );
-}
-
 /** A loading as a scale with ticks at 50 and 85 % of the limit, and the limit itself. */
 export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits = 0 }: {
   label: string; value: number; max?: number; limit?: number; unit?: string; digits?: number;
@@ -213,7 +194,7 @@ export function Missing({ of }: { of?: { isError?: boolean; error?: unknown }[] 
       {failed && (
         <details className="error-detail">
           <summary>{t("ui.details")}</summary>
-          <p className="caption-muted mono">{failed.endpoint}{failed.status ? ` · ${failed.status}` : ""}</p>
+          <p className="caption-muted ident">{failed.endpoint}{failed.status ? ` · ${failed.status}` : ""}</p>
         </details>
       )}
     </div>

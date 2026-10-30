@@ -393,8 +393,6 @@ const en: Dict = {
   "cmp.sec.fair": "Fairness",
   "cmp.sec.sensitivity": "Sensitivity",
   "met.nav.fc": "Forecast",
-  "met.hero.label": "model inputs, every one with a value, a unit and a source",
-  "met.hero.note": "{rest} come from published data, a regulation or a library, or are derived from those. The other {team} are the team’s own, each with the reason it was chosen.",
   "met.inputs.search": "Search an input, a source or a value",
   "met.inputs.caption": "Every input the model takes, with its value, unit, kind and source.",
   "met.sources.caption": "Every external source the pipeline reads, with its licence, what it is used for, and whether it answered just now.",
@@ -466,6 +464,7 @@ const en: Dict = {
   "term.cvar": "CVaR 95 %: the average of the worst 5 % of years. It shows how bad a bad year gets, not only the typical one.",
   "term.kwp": "Kilowatt-peak: the rated power of solar panels under standard test light. Real output is usually lower.",
   "term.pu": "Per unit: voltage as a share of its nominal value, so 1.00 pu is exactly nominal.",
+  "met.inputsLine": "The model has {n} inputs, each with a value, a unit and a source: {rest} come from published data, a regulation or a library, and {team} are the team's own, each with the reason it was chosen.",
 };
 
 const es: Dict = {
@@ -853,8 +852,6 @@ const es: Dict = {
   "cmp.sec.fair": "Equidad",
   "cmp.sec.sensitivity": "Sensibilidad",
   "met.nav.fc": "Pronóstico",
-  "met.hero.label": "datos de entrada del modelo, cada uno con valor, unidad y fuente",
-  "met.hero.note": "{rest} vienen de datos publicados, de normativa o de una biblioteca, o se derivan de ellos. Los otros {team} son del equipo, cada uno con la razón por la que se eligió.",
   "met.inputs.search": "Buscar un dato, una fuente o un valor",
   "met.inputs.caption": "Todos los datos de entrada del modelo, con su valor, unidad, tipo y fuente.",
   "met.sources.caption": "Todas las fuentes externas que lee la tubería, con su licencia, para qué se usa y si ha respondido ahora mismo.",
@@ -926,6 +923,7 @@ const es: Dict = {
   "term.cvar": "CVaR 95 %: la media del 5 % de años peores. Muestra cuánto empeora un mal año, no solo el año típico.",
   "term.kwp": "Kilovatio pico: la potencia nominal de los paneles solares con la luz de ensayo estándar. La producción real suele ser menor.",
   "term.pu": "Por unidad: la tensión como fracción de su valor nominal, así que 1,00 pu es exactamente el nominal.",
+  "met.inputsLine": "El modelo tiene {n} entradas, cada una con un valor, una unidad y una fuente: {rest} salen de datos publicados, una norma o una biblioteca, y {team} son del equipo, cada una con la razón por la que se eligió.",
 };
 
 export const DICTS: Record<string, Dict> = { en, es };
