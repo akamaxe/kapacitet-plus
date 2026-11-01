@@ -9,14 +9,13 @@ import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits"
 import { Term } from "../components/Term";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
-import { hourLabel, monthNames, useFmt } from "../lib/format";
+import { hourLabel, monthNames, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
 const STAGES: Stage[] = ["static", "envelope", "verify", "risk", "economics"];
-/** The most curtailed non-firm customer of the published year (compliance.json). */
-const EXAMPLE_CID = 84;
 
 interface Job {
   id: string;
@@ -38,6 +37,15 @@ export default function Request() {
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
   const show = useApi<any>("/showcase");
+  // the request form's limits and choices are model inputs, read like every other figure
+  const asm = useApi<any>("/assumptions");
+  const A = useMemo(() => {
+    const m = new Map<string, number>();
+    (asm.data?.assumptions ?? []).forEach((a: any) => typeof a.value === "number" && m.set(a.key, a.value));
+    return m;
+  }, [asm.data]);
+  const pvMin = A.get("pv_min_kwp") ?? 0;
+  const evOptions = [0, A.get("ev_charger_single_phase_kw"), A.get("ev_charger_kw")].filter((v): v is number => v !== undefined);
   const [baseline, setBaseline] = useState<"static" | "doe">("static");
   const [pv, setPv] = useState(10);
   const [ev, setEv] = useState(0);
@@ -62,24 +70,33 @@ export default function Request() {
 
   const house = houses.find((h: any) => h.properties.cid === cid)?.properties;
   // the slider ends where the roof does, so the value shown is always the value sent
-  const pvMax = house ? Math.max(3, Math.ceil(house.kwp)) : 20;
+  const pvMax = house ? Math.max(pvMin, Math.ceil(house.kwp)) : 0;
 
+  // A different house is a different question: its answer, finished or running, goes
+  // (the palette and the map both change the house without leaving this screen).
   useEffect(() => {
-    if (house) setPv(Math.min(pvMax, Math.max(3, Math.round(house.kwp))));
+    esRef.current?.close();
+    setJob(null);
+    if (house) setPv(Math.min(pvMax, Math.max(pvMin, Math.round(house.kwp))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house?.cid]);
 
-  // the answer arrives below the fold of a laptop screen: bring it into view inside the
-  // panel and hand it the focus. The panel, never scrollIntoView, which would move every
-  // scroller up to the window.
+  // the house the published year curtails most: the one whose answer is worth seeing first
+  const exampleCid = useMemo(() => {
+    const pc = S?.policies?.[meta.data?.run?.policy ?? ""]?.per_customer;
+    if (!pc?.cid?.length) return null;
+    let best = 0;
+    pc.curtailed_kwh.forEach((v: number, i: number) => { if (v > pc.curtailed_kwh[best]) best = i; });
+    return pc.cid[best] as number;
+  }, [S, meta.data]);
+
+  // the answer arrives below the fold: bring it into view inside whichever box scrolls (the
+  // panel on a laptop, the main column on a phone) and hand it the focus
   const answered = job?.result ?? null;
   useEffect(() => {
     const el = resultRef.current;
-    const panel = el?.closest<HTMLElement>(".panel");
-    if (!answered || !el || !panel) return;
-    const still = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    const top = panel.scrollTop + el.getBoundingClientRect().top - panel.getBoundingClientRect().top - 16;
-    panel.scrollTo({ top: Math.max(0, top), behavior: still ? "auto" : "smooth" });
+    if (!answered || !el) return;
+    scrollToInScroller(el);
     el.focus({ preventScroll: true });
   }, [answered]);
 
@@ -134,10 +151,7 @@ export default function Request() {
     if (net.data?.bbox) fitTo(map, net.data.bbox, 50);
     map.on("click", "houses", (e: MapMouseEvent & { features?: any[] }) => {
       const c = e.features?.[0]?.properties?.cid;
-      if (c !== undefined) {
-        select(Number(c));
-        setJob(null);
-      }
+      if (c !== undefined) select(Number(c));
     });
     map.on("mouseenter", "houses", () => (map.getCanvas().style.cursor = "pointer"));
     map.on("mouseleave", "houses", () => (map.getCanvas().style.cursor = ""));
@@ -222,12 +236,12 @@ export default function Request() {
   useEffect(() => () => esRef.current?.close(), []);
 
   if (net.isError || meta.isError) return <Missing of={[net, meta]} />;
-  if (!net.data || !meta.data) return <SplitSkeleton wide />;
+  if (!net.data || !meta.data || asm.isLoading) return <SplitSkeleton wide />;
   const year = meta.data.reference_year;
   const res = job?.result;
   const running = !!job && !job.result && !job.error;
   // an answer to a request that has since changed is cancelled, not removed
-  const stale = !!res && (res.request.pv_kwp !== pv || res.request.ev_kw !== ev);
+  const stale = !!res && (res.request.cid !== cid || res.request.baseline !== baseline || res.request.pv_kwp !== pv || res.request.ev_kw !== ev);
   const evLabel = (v: number) => (v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`);
   const nothing = pv === 0 && ev === 0;
 
@@ -261,12 +275,12 @@ export default function Request() {
                 onClick={() => {
                   // the most curtailed non-firm house in the published year: the one
                   // whose answer is worth seeing, rather than an arbitrary roof
-                  const h = houses.find((x: any) => x.properties.cid === EXAMPLE_CID) ?? houses[0];
+                  const h = houses.find((x: any) => x.properties.cid === exampleCid) ?? houses[0];
                   if (h) {
                     // the PV size follows the roof: an effect above sizes it from the
                     // house's own potential, which beats any number written here
                     select(h.properties.cid);
-                    setEv(11);
+                    setEv(evOptions[evOptions.length - 1] ?? 0);
                   }
                 }}
               >
@@ -299,7 +313,7 @@ export default function Request() {
               <div className="stack">
                 <span className="field-label" id="ev-label">{t("req.ev")}</span>
                 <div className="seg" role="group" aria-labelledby="ev-label">
-                  {[0, 3.7, 11].map((v) => (
+                  {evOptions.map((v) => (
                     <button key={v} aria-pressed={ev === v} onClick={() => setEv(v)}>{evLabel(v)}</button>
                   ))}
                 </div>
@@ -309,9 +323,16 @@ export default function Request() {
             <fieldset className="stack form-group">
               <legend>{t("req.baseline")}</legend>
               <div className="seg" role="group" aria-label={t("req.baseline")}>
-                <button aria-pressed={baseline === "static"} onClick={() => { setBaseline("static"); setJob(null); }}>{t("req.base.static")}</button>
-                <button aria-pressed={baseline === "doe"} onClick={() => { setBaseline("doe"); setJob(null); }}>{t("req.base.doe")}</button>
+                <button aria-pressed={baseline === "static"} onClick={() => setBaseline("static")}>{t("req.base.static")}</button>
+                <button aria-pressed={baseline === "doe"} onClick={() => setBaseline("doe")}>{t("req.base.doe")}</button>
               </div>
+              {S && (
+                <p className="caption-muted">
+                  {baseline === "static"
+                    ? t("req.base.staticNote", { n: f(S.firm_cids.length) })
+                    : t("req.base.doeNote", { n: f(S.firm_cids.length), m: f(S.nonfirm_cids.length) })}
+                </p>
+              )}
             </fieldset>
 
             {/* the screen's one action: kept at the foot of the panel so a short screen never hides it */}
@@ -378,6 +399,7 @@ export default function Request() {
                 >
                   {t("req.seeInTwin")}
                 </button>
+                <p className="caption-muted">{t("req.seeInTwinNote")}</p>
               </div>
             )}
           </div>
@@ -455,7 +477,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {everLimited ? (
             <>
               <p className="caption-muted">{t("req.envMap.caption", { year })}</p>
-              <Chart ariaLabel={t("req.envMap")} height={230} deps={[res, lang]} build={(tk) => envOption(tk, prof, lang, t)} />
+              <Chart ariaLabel={t("req.envMap")} height={230} deps={[res, lang]} build={(tk, _w, fm) => envOption(tk, prof, lang, t, fm)} />
             </>
           ) : (
             <Status kind="good">{t("req.fullCap", { year })}</Status>
@@ -477,7 +499,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {/* with no curtailment at all, every year falls in one bin centred on zero and the
               axis would show negative shares, so the answer is said instead of drawn */}
           {res.risk.cvar95_pct > 0 ? (
-            <Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk) => histOption(tk, res.risk.histogram, t)} />
+            <Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk, _w, fm) => histOption(tk, res.risk.histogram, t, fm)} />
           ) : (
             <Status kind="good">{t("req.risk.none", { n: f(resampled) })}</Status>
           )}
@@ -502,20 +524,24 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
 function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string }) {
   const t = useT();
   const f = useFmt();
-  // the week (Mon–Sun blocks from 1 Jan) with the most curtailment; fall back to midsummer
-  const curt: number[] = prof.curtailed_kw;
-  let best = 25;
-  let bestSum = -1;
-  for (let w = 0; w < 52; w++) {
-    let s = 0;
-    for (let h = w * 168; h < (w + 1) * 168; h++) s += curt[h] ?? 0;
-    if (s > bestSum) {
-      bestSum = s;
-      best = w;
+  // the week (7-day blocks from 1 January) with the most curtailment; with none at all, the
+  // week with the most sun, where an envelope would have acted first
+  const weekOf = (xs: number[]) => {
+    let best = 0;
+    let bestSum = -1;
+    for (let w = 0; w < 52; w++) {
+      let s = 0;
+      for (let h = w * 168; h < (w + 1) * 168; h++) s += xs[h] ?? 0;
+      if (s > bestSum) {
+        bestSum = s;
+        best = w;
+      }
     }
-  }
-  const anyCurtailed = bestSum > 0;
-  if (!anyCurtailed) best = 25;
+    return { best, bestSum };
+  };
+  const byCurtailment = weekOf(prof.curtailed_kw);
+  const anyCurtailed = byCurtailment.bestSum > 0;
+  const best = anyCurtailed ? byCurtailment.best : weekOf(prof.pv_kw).best;
   const a = best * 168;
   const hours = Array.from({ length: 168 }, (_, i) => a + i);
   return (
@@ -528,7 +554,7 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
         { color: "var(--warning-fill)", label: t("req.week.curtailed") },
       ]} />
       <ChartOrTable
-        chart={<Chart ariaLabel={t("req.week")} height={220} deps={[prof, lang]} build={(tk) => weekOption(tk, prof, hours, year, lang, t)} />}
+        chart={<Chart ariaLabel={t("req.week")} height={220} deps={[prof, lang]} build={(tk, _w, fm) => weekOption(tk, prof, hours, year, lang, t, fm)} />}
         table={
           <div className="table-window">
             <table className="data">
@@ -546,13 +572,13 @@ function WeekChart({ prof, year, lang }: { prof: any; year: number; lang: string
   );
 }
 
-function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string) {
+function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const grid: number[][] = prof.envelope_min_month_hour;
   const cap = prof.cap_kw;
   const data: [number, number, number][] = [];
   for (let h = 0; h < 24; h++) for (let m = 0; m < 12; m++) {
     const v = grid[h][m];
-    if (v < cap - 0.05) data.push([m, h, Number(v.toFixed(2))]);
+    if (v < cap - 0.05) data.push([m, h, round(v, 2)]);
   }
   return {
     grid: { left: 44, right: 70, top: 6, bottom: 26 },
@@ -560,21 +586,21 @@ function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string
     yAxis: { type: "category", data: Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}`), inverse: true, ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 3 } },
     visualMap: {
       min: 0, max: cap, orient: "vertical", right: 0, top: "middle", itemHeight: 120, itemWidth: 10,
-      textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${cap.toFixed(1)} kW`, "0"],
+      textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${f(cap, 1)} kW`, f(0)],
       inRange: { color: [tk.load[2], tk.load[1], tk.load[0]] },
     },
-    tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${p.value[2].toFixed(1)} kW</b>` },
+    tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${f(p.value[2], 1)} kW</b>` },
     series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: tk.size.radius } }],
   };
 }
 
-function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: string, t: (k: string) => string) {
+function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: string, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const x = hours.map((h) => hourLabel(lang, year, h));
   return {
     grid: { left: 40, right: 12, top: 12, bottom: 30 },
     xAxis: { type: "category", data: x, ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 23, formatter: (v: string) => v.split(",")[0].replace(/\s\d{4}$/, "") } },
     yAxis: { type: "value", ...axisStyle(tk), name: "kW" },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => `${f(v, 1)} kW` },
     series: [
       { type: "line", name: t("req.week.pv"), data: hours.map((h) => prof.pv_kw[h]), symbol: "none", lineStyle: { width: 2, color: tk.main }, areaStyle: { color: tk.main, opacity: 0.1 } },
       { type: "line", name: t("req.week.limit"), data: hours.map((h) => prof.envelope_kw[h]), symbol: "none", step: "middle", lineStyle: { width: 2, color: tk.dynamic } },
@@ -583,13 +609,13 @@ function weekOption(tk: Tokens, prof: any, hours: number[], year: number, lang: 
   };
 }
 
-function histOption(tk: Tokens, hist: { counts: number[]; edges: number[] }, t: (k: string) => string) {
+function histOption(tk: Tokens, hist: { counts: number[]; edges: number[] }, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const mids = hist.counts.map((_, i) => (hist.edges[i] + hist.edges[i + 1]) / 2);
   return {
     grid: { left: 40, right: 12, top: 10, bottom: 28 },
-    xAxis: { type: "category", data: mids.map((m) => m.toFixed(2)), ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5, formatter: (v: string) => `${Number(v).toFixed(1)} %` } },
+    xAxis: { type: "category", data: mids.map((m) => String(round(m, 2))), ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5, formatter: (v: string) => `${f(Number(v), 1)} %` } },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { show: false } },
-    tooltip: { trigger: "item", formatter: (p: any) => `${Number(p.name).toFixed(2)} %<br/><b>${p.value}</b> ${t("req.tt.years")}` },
+    tooltip: { trigger: "item", formatter: (p: any) => `${f(Number(p.name), 2)} %<br/><b>${f(p.value)}</b> ${t("req.tt.years")}` },
     series: [{ type: "bar", data: hist.counts, itemStyle: { color: tk.main, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barCategoryGap: "12%" }],
   };
 }

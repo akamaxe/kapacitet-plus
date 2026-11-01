@@ -8,7 +8,8 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts } from "./components/Toast";
-import { NOTES } from "./lib/notes";
+import { NOTE_COUNT } from "./lib/notes";
+import { useApi } from "./lib/api";
 import { SCREENS, scrollPositions, useStore, type Screen } from "./lib/store";
 
 const National = lazy(() => import("./screens/National"));
@@ -33,8 +34,11 @@ function ScreenSkeleton({ screen }: { screen: Screen }) {
 function Notes() {
   const t = useT();
   const screen = useStore((s) => s.screen);
-  const lang = useStore((s) => s.lang);
   const open = useStore((s) => s.notes);
+  // the talking points quote a few figures; they come from the same answers as the screens
+  const meta = useApi<any>(open ? "/meta" : null);
+  const val = useApi<any>(open && screen === "method" ? "/validation" : null);
+  const nat = useApi<any>(open && screen === "national" ? "/national" : null);
   const close = useCallback(() => useStore.getState().toggleNotes(), []);
   // not modal: the drawer sits beside the screen it annotates, so Tab leaves it
   const panel = useDismissable(open, close, false);
@@ -48,8 +52,16 @@ function Notes() {
         </button>
       </div>
       <ul>
-        {NOTES[lang][screen].map((n) => (
-          <li key={n}>{n}</li>
+        {Array.from({ length: NOTE_COUNT[screen] }, (_, i) => (
+          <li key={i}>
+            {t(`note.${screen}.${i + 1}`, {
+              year: meta.data?.reference_year ?? "–",
+              years: meta.data?.weather_years?.length ?? "–",
+              zone: meta.data?.bidding_zone ?? "–",
+              nyear: nat.data?.data?.year ?? "–",
+              acc: val.data?.data?.powerflow ? val.data.data.powerflow.max_abs_dv_pu.toExponential(0) : "–",
+            })}
+          </li>
         ))}
       </ul>
     </aside>

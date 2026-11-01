@@ -6,7 +6,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { useFmt } from "../lib/format";
+import { round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -221,14 +221,14 @@ export default function Method() {
                   <h3>{t("met.strang")}</h3>
                   <p className="caption">{t("met.strang.caption")}</p>
                   <Legend items={[{ color: "var(--series-main)", label: t("met.strang.morning"), line: true }, { color: "var(--cat-1)", label: t("met.strang.afternoon"), line: true }]} />
-                  <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk) => strangOption(tk, V.strang_timestamp.shifts)} />
+                  <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk, _w, fm) => strangOption(tk, V.strang_timestamp.shifts, fm)} />
                 </div>
                 {V.household_shape && (
                   <div className="stack">
                     <h3>{t("met.shape")}</h3>
                     <p className="caption">{t("met.shape.caption", { year: V.household_shape.year, r: f(V.household_shape.corr_hour_of_day, 2) })}</p>
                     <Legend items={[{ color: "var(--series-main)", label: t("met.shape.sim"), line: true }, { color: "var(--cat-1)", label: t("met.shape.real"), line: true }]} />
-                    <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk) => shapeOption(tk, V.household_shape)} />
+                    <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk, _w, fm) => shapeOption(tk, V.household_shape, t, fm)} />
                   </div>
                 )}
               </div>
@@ -237,10 +237,10 @@ export default function Method() {
             <div className="stack">
               <h3>{t("met.weather")}</h3>
               <ChartOrTable
-                chart={<Chart ariaLabel={t("met.weather")} height={200} deps={[V]} build={(tk) => weatherOption(tk, V.weather)} />}
+                chart={<Chart ariaLabel={t("met.weather")} height={200} deps={[V]} build={(tk, _w, fm) => weatherOption(tk, V.weather, fm)} />}
                 table={
                   <table className="data">
-                    <thead><tr><th>{t("tbl.year")}</th><th className="r">GHI kWh/m²</th><th className="r">{t("tbl.tmean")}</th><th className="r">{t("tbl.tmin")}</th><th className="r">{t("tbl.tmax")}</th><th className="r">{t("tbl.filled")}</th></tr></thead>
+                    <thead><tr><th>{t("tbl.year")}</th><th className="r">{t("tbl.ghi")}, kWh/m²</th><th className="r">{t("tbl.tmean")}</th><th className="r">{t("tbl.tmin")}</th><th className="r">{t("tbl.tmax")}</th><th className="r">{t("tbl.filled")}</th></tr></thead>
                     <tbody>{V.weather.map((w: any) => (
                       <tr key={w.year}><td>{w.year}</td><td className="r">{f(w.ghi_kwh_m2)}</td><td className="r">{f(w.t_mean_c, 1)}</td><td className="r">{f(w.t_min_c, 1)}</td><td className="r">{f(w.t_max_c, 1)}</td><td className="r">{w.t_filled_hours}</td></tr>
                     ))}</tbody>
@@ -321,26 +321,26 @@ function HowItWorks({ houses, pool, years }: { houses: number | string; pool: nu
   );
 }
 
-function strangOption(tk: Tokens, shifts: any[]) {
+function strangOption(tk: Tokens, shifts: any[], f: (v: number | null | undefined, d?: number) => string) {
   return {
     grid: { left: 44, right: 12, top: 12, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "min", nameLocation: "middle", nameGap: 24 },
     yAxis: { type: "value", ...axisStyle(tk), scale: true },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => f(v, 4) },
     series: [
-      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.morning_k.toFixed(4))]), lineStyle: { width: 2, color: tk.main }, itemStyle: { color: tk.main, borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
-      { type: "line", data: shifts.map((s) => [s.shift_min, Number(s.afternoon_k.toFixed(4))]), lineStyle: { width: 2, color: tk.cat[0] }, itemStyle: { color: tk.cat[0], borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
+      { type: "line", data: shifts.map((s) => [s.shift_min, round(s.morning_k, 4)]), lineStyle: { width: 2, color: tk.main }, itemStyle: { color: tk.main, borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
+      { type: "line", data: shifts.map((s) => [s.shift_min, round(s.afternoon_k, 4)]), lineStyle: { width: 2, color: tk.cat[0] }, itemStyle: { color: tk.cat[0], borderColor: tk.surface, borderWidth: 2 }, symbolSize: 8 },
     ],
   };
 }
 
-function shapeOption(tk: Tokens, sh: any) {
+function shapeOption(tk: Tokens, sh: any, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const hours = Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}`);
   return {
     grid: { left: 40, right: 12, top: 12, bottom: 28 },
     xAxis: { type: "category", data: hours, ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 3 } },
-    yAxis: { type: "value", ...axisStyle(tk), scale: true, name: "× mean" },
-    tooltip: { trigger: "axis" },
+    yAxis: { type: "value", ...axisStyle(tk), scale: true, name: t("met.shape.axis") },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => f(v, 2) },
     series: [
       { type: "line", data: sh.hour_of_day_sim, lineStyle: { width: 2, color: tk.main }, symbol: "none" },
       { type: "line", data: sh.hour_of_day_real, lineStyle: { width: 2, color: tk.cat[0] }, symbol: "none" },
@@ -348,12 +348,12 @@ function shapeOption(tk: Tokens, sh: any) {
   };
 }
 
-function weatherOption(tk: Tokens, w: any[]) {
+function weatherOption(tk: Tokens, w: any[], f: (v: number | null | undefined, d?: number) => string) {
   return {
     grid: { left: 48, right: 12, top: 12, bottom: 26 },
     xAxis: { type: "category", data: w.map((x) => String(x.year)), ...axisStyle(tk), splitLine: { show: false } },
     yAxis: { type: "value", ...axisStyle(tk), name: "kWh/m²", min: 0 },
-    tooltip: { trigger: "axis" },
+    tooltip: { trigger: "axis", valueFormatter: (v: number) => `${f(v)} kWh/m²` },
     series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.main, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 18 }],
   };
 }

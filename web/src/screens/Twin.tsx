@@ -9,7 +9,7 @@ import { Icon } from "../components/Icon";
 import { Term } from "../components/Term";
 import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
-import { hourLabel, useFmt } from "../lib/format";
+import { hoursInYear, hourLabel, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
@@ -61,7 +61,8 @@ export default function Twin() {
 
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
-  const year = meta.data?.reference_year ?? 2025;
+  // the screen renders nothing that needs the year before /meta has answered (see below)
+  const year: number = meta.data?.reference_year;
   const series = useApi<any>(meta.data ? `/series/${year}` : null);
   const show = useApi<any>("/showcase");
   const st = useGridState(scenario);
@@ -302,7 +303,7 @@ export default function Twin() {
         </div>
         <Timeline
           agg={agg}
-          hours={st.data?.header.hours ?? 8760}
+          hours={st.data?.header.hours ?? hoursInYear(year)}
           year={year}
           showcaseHour={meta.data.showcase_hour}
           pending={t(st.isError ? "ui.unavailable" : "ui.loading")}

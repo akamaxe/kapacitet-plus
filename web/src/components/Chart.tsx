@@ -53,7 +53,8 @@ export function Chart({
   onClick,
   ariaLabel,
 }: {
-  build: (tk: Tokens, width: number) => echarts.EChartsCoreOption;
+  /** `f` formats a number in the active language (thin-space thousands, its decimal mark), for tooltips and labels */
+  build: (tk: Tokens, width: number, f: (value: number | null | undefined, digits?: number) => string) => echarts.EChartsCoreOption;
   height?: number;
   deps?: unknown[];
   onClick?: (params: any) => void;
@@ -70,7 +71,8 @@ export function Chart({
     if (!chart) return;
     const tk = tokens();
     // §4.11: a chart draws itself once; a theme, language or layout change just redraws it
-    chart.setOption(withBase(build(tk, ref.current?.clientWidth ?? 800), tk, !drawn.current), true);
+    const f = (value: number | null | undefined, digits = 0) => fmt(lang, value, digits);
+    chart.setOption(withBase(build(tk, ref.current?.clientWidth ?? 800, f), tk, !drawn.current), true);
     drawn.current = true;
   };
 

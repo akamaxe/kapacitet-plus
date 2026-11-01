@@ -68,3 +68,27 @@ export function hourLabel(lang: string, year: number, hour: number): string {
     ? `${d.day} ${monthNames(lang)[d.month]} ${year}, ${hh}:00`
     : `${d.day} ${monthNames(lang)[d.month]} ${year}, ${hh}:00`;
 }
+
+/** Hours in a calendar year of the study (8 760, or 8 784 in a leap year). */
+export function hoursInYear(year: number): number {
+  return (Date.UTC(year + 1, 0, 1) - Date.UTC(year, 0, 1)) / 3600_000;
+}
+
+/** Day of year (0-based) on which each month starts, for that year's calendar. */
+export function monthStarts(year: number): number[] {
+  return Array.from({ length: 12 }, (_, m) => (Date.UTC(year, m, 1) - Date.UTC(year, 0, 1)) / 86_400_000);
+}
+
+/** The median of a list: the mean of the two middle values when the count is even. */
+export function median(xs: number[]): number {
+  if (!xs.length) return NaN;
+  const s = [...xs].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** A value rounded for a chart's data (not for display: that goes through `fmt`). */
+export function round(value: number, digits = 0): number {
+  const k = 10 ** digits;
+  return Math.round(value * k) / k;
+}

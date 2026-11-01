@@ -31,8 +31,8 @@ export default function Scenarios() {
   const [hp, setHp] = useState<number | null>(null);
   const [sel, setSel] = useState<{ pv: number; ev: number } | null>(null);
 
-  const hpNow = hp ?? D?.hp_shares?.[0] ?? 0.3;
-  const cells: Cell[] = useMemo(() => (D ? D.cases.filter((c: Cell) => Math.abs(c.hp - hpNow) < 1e-9) : []), [D, hpNow]);
+  const hpNow = hp ?? D?.hp_shares?.[0] ?? null;
+  const cells: Cell[] = useMemo(() => (D && hpNow !== null ? D.cases.filter((c: Cell) => Math.abs(c.hp - hpNow) < 1e-9) : []), [D, hpNow]);
 
   if (sc.isLoading) return <PageSkeleton blocks={2} />;
   if (!D) return <Missing of={[sc]} />;

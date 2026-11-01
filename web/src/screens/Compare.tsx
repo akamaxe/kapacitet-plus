@@ -8,7 +8,7 @@ import { NetworkMap } from "../components/NetworkMap";
 import { Term } from "../components/Term";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { hourLabel, monthNames, useFmt } from "../lib/format";
+import { hourLabel, hoursInYear, median, monthNames, monthStarts, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -39,8 +39,7 @@ export default function Compare() {
 
   const zDoeMedian = useMemo(() => {
     if (!H) return null;
-    const zs = H.summary.per_order.map((o: any) => o.z_doe_pct).sort((a: number, b: number) => a - b);
-    return zs[Math.floor(zs.length / 2)];
+    return median(H.summary.per_order.map((o: any) => o.z_doe_pct));
   }, [H]);
 
   // the protocol's rows come from three answers: wait for all of them, so the table does not
@@ -144,7 +143,7 @@ export default function Compare() {
           <section className="block">
             <div className="block-head"><h3>{t("cmp.curve")}</h3></div>
             <p className="caption">{t("cmp.curve.caption", { from: years[0], to: years[years.length - 1] })}</p>
-            <Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk) => curveOption(tk, H, t, zStar)} />
+            <Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk, _w, fm) => curveOption(tk, H, t, zStar, fm)} />
             {fixedZ.length > 0 && (
               <p className="caption">
                 {t("cmp.curve.fixedNote", { a: f(Math.min(...fixedZ)), b: f(Math.max(...fixedZ)) })}
@@ -160,7 +159,7 @@ export default function Compare() {
           </div>
           <Protocol
             rows={[
-              { ok: ver.doe_full_year_violations === 0, label: t("cmp.verify.doe"), value: f(ver.doe_full_year_violations), unit: "h", criterion: t("cmp.verify.of", { h: f(8760), year: S.year }) },
+              { ok: ver.doe_full_year_violations === 0, label: t("cmp.verify.doe"), value: f(ver.doe_full_year_violations), unit: "h", criterion: t("cmp.verify.of", { h: f(hoursInYear(S.year)), year: S.year }) },
               ...(vMax != null ? [{ ok: ver.doe_max_voltage_pu <= vMax, label: t("cmp.verify.vmax"), value: f(ver.doe_max_voltage_pu, 3), unit: "pu", criterion: t("cmp.verify.limit", { v: `${f(vMax, 2)} pu` }) }] : []),
               ...(thermal != null ? [{ ok: ver.doe_max_trafo_loading_pct <= thermal, label: t("cmp.verify.trafo"), value: f(ver.doe_max_trafo_loading_pct, 1), unit: "%", criterion: t("cmp.verify.limit", { v: `${f(thermal)} %` }) }] : []),
               { ok: ver.screen_missed_hours === 0, label: t("cmp.verify.screen"), value: f(ver.screen_missed_hours), unit: "h", criterion: t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) }) },
@@ -186,7 +185,7 @@ export default function Compare() {
             </div>
             {/* the dense band of this screen: a year of hours, on its own ground */}
             <div className="well">
-              <Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk) => heatOption(tk, HM, heat, lang, t)} />
+              <Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk, _w, fm) => heatOption(tk, HM, heat, lang, t, fm)} />
             </div>
           </section>
         )}
@@ -204,7 +203,7 @@ export default function Compare() {
             ]} />
           </div>
           <ChartOrTable
-            chart={<Chart ariaLabel={t("cmp.fair")} height={270} deps={[S]} build={(tk) => fairOption(tk, pol, t)} />}
+            chart={<Chart ariaLabel={t("cmp.fair")} height={270} deps={[S]} build={(tk, _w, fm) => fairOption(tk, pol, t, fm)} />}
             table={
               <table className="data">
                 <thead><tr><th>{t("tbl.policy")}</th><th className="r">{t("tbl.curtailment")}</th><th className="r">{t("tbl.worst")}</th><th className="r">{t("tbl.jain")}</th><th className="r">{t("tbl.custHours")}</th></tr></thead>
@@ -226,7 +225,7 @@ export default function Compare() {
                 <Tile label={t("cmp.risk.worst")} value={f(R.stats.worst_z_pct, 1)} unit="%" />
                 <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(R.stats.cvar95_z_pct, 1)} unit="%" />
               </div>
-              <Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk) => riskOption(tk, R, zStar)} />
+              <Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk, _w, fm) => riskOption(tk, R, zStar, fm)} />
             </section>
           )}
         </section>
@@ -245,7 +244,7 @@ export default function Compare() {
               ]} />
             </div>
             <ChartOrTable
-              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width) => tornadoOption(tk, H.tornado, t, width)} />}
+              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width, fm) => tornadoOption(tk, H.tornado, t, width, fm)} />}
               table={
                 <table className="data">
                   <thead><tr><th>{t("tbl.input")}</th><th>{t("tbl.value")}</th><th className="r">{t("tbl.staticKw")}</th><th className="r">{t("tbl.tsKw")}</th><th className="r">{t("tbl.doeKw")}</th></tr></thead>
@@ -314,7 +313,7 @@ function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: num
   };
 }
 
-function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zStar: number) {
+function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zStar: number, f: (v: number | null | undefined, d?: number) => string) {
   const pts = H.curve.points as any[];
   const xs = pts.map((p) => p.kw_ac);
   const minY = pts.map((p) => Math.min(...p.z_doe_by_year));
@@ -334,7 +333,7 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
       formatter: (ps: any[]) => {
         const i = ps[0].dataIndex;
         const p = pts[i];
-        return `<b>${Math.round(p.kw_ac)} kW</b>, ${p.adopters} houses<br/>${t("cmp.curve.doe")}: <b>${p.z_doe_pct.toFixed(2)} %</b> (${minY[i].toFixed(1)}–${maxY[i].toFixed(1)} %)<br/>${t("cmp.curve.fixed")}: <b>${p.z_fixed_pct.toFixed(1)} %</b>`;
+        return `<b>${f(p.kw_ac)} kW</b>, ${t("cmp.tt.houses", { n: f(p.adopters) })}<br/>${t("cmp.curve.doe")}: <b>${f(p.z_doe_pct, 2)} %</b> (${f(minY[i], 1)}–${f(maxY[i], 1)} %)<br/>${t("cmp.curve.fixed")}: <b>${f(p.z_fixed_pct, 1)} %</b>`;
       },
     },
     series: [
@@ -357,7 +356,7 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
   };
 }
 
-function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string, t: (k: string) => string) {
+function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const src: number[][] = which === "limited" ? HM.limited_customers : HM.uncontrolled_trafo_loading;
   const data: [number, number, number][] = [];
   let vmax = 0;
@@ -368,12 +367,12 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
     vmax = Math.max(vmax, v);
   }
   const months = monthNames(lang);
-  const monthStarts = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334];
+  const starts = monthStarts(HM.year);
   return {
     grid: { left: 44, right: 80, top: 8, bottom: 30 },
     xAxis: {
       type: "category", data: Array.from({ length: HM.days }, (_, i) => i), ...axisStyle(tk), splitLine: { show: false },
-      axisLabel: { color: tk.muted, interval: (i: number) => monthStarts.includes(i), formatter: (v: string) => months[monthStarts.indexOf(Number(v))] ?? "" },
+      axisLabel: { color: tk.muted, interval: (i: number) => starts.includes(i), formatter: (v: string) => months[starts.indexOf(Number(v))] ?? "" },
     },
     yAxis: { type: "category", data: Array.from({ length: 24 }, (_, i) => `${String(i).padStart(2, "0")}:00`), inverse: true, ...axisStyle(tk), splitLine: { show: false }, axisLabel: { color: tk.muted, interval: 5 } },
     visualMap: which === "limited"
@@ -382,7 +381,7 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
           itemHeight: 140, itemWidth: 10,
           textStyle: { color: tk.muted, fontFamily: tk.font },
           inRange: { color: [tk.load[1], tk.load[2]] },
-          text: [String(vmax), "1"],
+          text: [f(vmax), f(1)],
         }
       : {
           // the loading ramp's own stops, and one flat colour above the rating (DESIGN.md)
@@ -400,14 +399,14 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
         const [d, h, v] = p.value;
         const date = new Date(Date.UTC(HM.year, 0, 1) + d * 86400000);
         const label = `${date.getUTCDate()} ${months[date.getUTCMonth()]} ${String(h).padStart(2, "0")}:00`;
-        return which === "limited" ? `${label}<br/>${t("cmp.heat.limited")}: <b>${v}</b>` : `${label}<br/>${t("twin.trafo")}: <b>${v.toFixed(0)} %</b>`;
+        return which === "limited" ? `${label}<br/>${t("cmp.heat.limited")}: <b>${f(v)}</b>` : `${label}<br/>${t("twin.trafo")}: <b>${f(v)} %</b>`;
       },
     },
     series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 0 }, progressive: 0 }],
   };
 }
 
-function fairOption(tk: Tokens, pol: any, t: (k: string, v?: any) => string) {
+function fairOption(tk: Tokens, pol: any, t: (k: string, v?: any) => string, f: (v: number | null | undefined, d?: number) => string) {
   const mk = (k: string, color: string) => {
     const pc = pol[k].per_customer;
     return {
@@ -420,28 +419,28 @@ function fairOption(tk: Tokens, pol: any, t: (k: string, v?: any) => string) {
     grid: { left: 52, right: 20, top: 16, bottom: 44 },
     xAxis: { type: "value", ...axisStyle(tk), name: "m", nameLocation: "middle", nameGap: 28, scale: true },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
-    tooltip: { trigger: "item", formatter: (p: any) => `${p.seriesName}<br/>${t("cmp.tt.house", { id: p.value[2], m: Math.round(p.value[0]) })}<br/>${t("cmp.tt.curtailed")}: <b>${p.value[1].toFixed(2)} %</b>` },
+    tooltip: { trigger: "item", formatter: (p: any) => `${p.seriesName}<br/>${t("cmp.tt.house", { id: p.value[2], m: f(p.value[0]) })}<br/>${t("cmp.tt.curtailed")}: <b>${f(p.value[1], 2)} %</b>` },
     series: [mk("maxmin", tk.dynamic), mk("prorata", tk.cat[0])],
   };
 }
 
-function riskOption(tk: Tokens, R: any, zStar: number) {
+function riskOption(tk: Tokens, R: any, zStar: number, f: (v: number | null | undefined, d?: number) => string) {
   const cases = R.cases as any[];
   const years = Array.from(new Set(cases.map((c) => c.year))).sort();
   return {
     grid: { left: 44, right: 16, top: 12, bottom: 28 },
     xAxis: { type: "category", data: years.map(String), ...axisStyle(tk), splitLine: { show: false } },
     yAxis: { type: "value", ...axisStyle(tk), axisLabel: { color: tk.muted, formatter: "{value} %" } },
-    tooltip: { trigger: "item", formatter: (p: any) => `${p.value[0]}<br/><b>${p.value[1].toFixed(2)} %</b>` },
+    tooltip: { trigger: "item", formatter: (p: any) => `${p.value[0]}<br/><b>${f(p.value[1], 2)} %</b>` },
     series: [{
       type: "scatter", symbolSize: 8, itemStyle: { color: tk.dynamic, borderColor: tk.surface, borderWidth: 2 },
       data: cases.map((c) => [String(c.year), c.z_pct]),
-      markLine: { symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid" }, label: { color: tk.text2, fontFamily: tk.font, formatter: `${zStar} %`, position: "insideEndTop" }, data: [{ yAxis: zStar }] },
+      markLine: { symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid" }, label: { color: tk.text2, fontFamily: tk.font, formatter: `${f(zStar)} %`, position: "insideEndTop" }, data: [{ yAxis: zStar }] },
     }],
   };
 }
 
-function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number) {
+function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number, f: (v: number | null | undefined, d?: number) => string) {
   const compact = width < 520;
   const groups: Record<string, any[]> = {};
   for (const c of T.cases) (groups[c.label] ||= []).push(c);
@@ -452,7 +451,7 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
   });
   const d = rng("doe_kw");
   const s = rng("static_kw");
-  const levels = (l: string) => groups[l].map((c) => `${c.level}: ${t("m.static")} ${Math.round(c.static_kw)} kW, ${t("cmp.fig.doe")} ${Math.round(c.doe_kw)} kW`).join("<br/>");
+  const levels = (l: string) => groups[l].map((c) => `${c.level}: ${t("m.static")} ${f(c.static_kw)} kW, ${t("cmp.fig.doe")} ${f(c.doe_kw)} kW`).join("<br/>");
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },

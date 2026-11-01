@@ -472,6 +472,15 @@ source = "3 × 230 V × 16 A ≈ 11 kW"
 url = ""
 note = ""
 
+[ev_charger_single_phase_kw]
+value = 3.7
+unit = "kW"
+tag = "team-assumption"
+label = "Single-phase home charger power (16 A)"
+source = "1 × 230 V × 16 A ≈ 3.7 kW"
+url = ""
+note = "The smaller of the two charger sizes a connection request can ask for."
+
 [ev_daily_km_sigma]
 value = 0.7
 unit = "log-sd"

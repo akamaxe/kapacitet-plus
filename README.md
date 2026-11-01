@@ -56,7 +56,7 @@ cd web && npm install && npm run build && cd ..                # the interface (
 
 .venv/Scripts/python -m kapacitet all      # fetch + build + profiles + compute (~15 min)
 .venv/Scripts/python -m kapacitet serve    # http://127.0.0.1:8000  (API + UI on one port)
-.venv/Scripts/python -m pytest             # 91 tests
+.venv/Scripts/python -m pytest             # the test suite; tests that need data skip without it
 ```
 
 `python -m kapacitet all --quick` runs a reduced version (fewer years and adoption orders) in a
@@ -129,7 +129,7 @@ curtailment, CVaR, kWp and pu, carry a short definition on hover, focus or tap.
 
 The two long screens, **Static vs envelopes** and **Method & data**, carry a bar of their own at
 the top of the scroller: their sections on the left, which follow the scroll and jump when
-clicked, and the basis of every figure on that screen on the right. The 63 model inputs are
+clicked, and the basis of every figure on that screen on the right. The model inputs are
 searchable and sortable: filter by where a value comes from, or search a word in any column.
 
 The address bar carries what you are looking at — `#/twin?hour=4000&scenario=uncontrolled&cid=14`
@@ -147,7 +147,8 @@ to navigate screens without affecting form fields.
    map, what it costs in curtailment, and the hour-by-hour verification.
 4. **Connection request** — click a house, ask for 15 kWp and an 11 kW charger, press *Evaluate*:
    the static study says no, the envelope says yes with this limit, this risk and this value.
-   Switch the grid situation to *2030* and ask again to show the queue effect.
+   Switch the grid situation to *With envelopes* and ask again: the same request gets less
+   headroom, because the customers already on envelopes used it first.
 5. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
    reinforcement.
 6. **Method & data** — live status of every API, every assumption with its source, the validation
@@ -205,14 +206,14 @@ typically in about a second.
 | Capacity maps (Svk, Vattenfall, Ellevio) | linked and cited only, never scraped | — |
 | LV cables, cabinets, transformer, fuses, household/EV/heat-pump behaviour | modelled here | synthetic, labelled in the UI |
 
-Model inputs (57 of them) live in `config/assumptions.toml`, each with a value, unit, label,
+Model inputs live in `config/assumptions.toml`, each with a value, unit, label,
 tag and source; the Method screen shows them all with links, and the tests fail if any of them
 loses its source.
 
 ## Tests
 
 ```bash
-python -m pytest            # 157 tests
+python -m pytest
 ```
 
 They check the things the demo claims: the Z-bus solver against pandapower, the water-filling

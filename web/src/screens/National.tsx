@@ -7,7 +7,7 @@ import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Chip, Legend, Missing } from "../components/bits";
 import { useApi } from "../lib/api";
 import { balanceColor, rampCss, tokens, type Tokens } from "../lib/colors";
-import { useFmt } from "../lib/format";
+import { round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -115,7 +115,7 @@ export default function National() {
           <h3>{t("nat.prodcons")}</h3>
           <Legend items={[{ color: "var(--data-production)", label: t("nat.production") }, { color: "var(--data-consumption)", label: t("nat.consumption") }]} />
           <ChartOrTable
-            chart={<Chart ariaLabel={t("nat.prodcons")} height={220} deps={[N]} build={(tk) => prodConsOption(tk, N, t)} />}
+            chart={<Chart ariaLabel={t("nat.prodcons")} height={220} deps={[N]} build={(tk, _w, fm) => prodConsOption(tk, N, t, fm)} />}
             table={
               <table className="data">
                 <thead><tr><th>{t("nat.zone")}</th><th className="r">{t("nat.production")}</th><th className="r">{t("nat.consumption")}</th><th className="r">{t("nat.balance")}</th><th className="r">{t("nat.price")}</th></tr></thead>
@@ -130,12 +130,12 @@ export default function National() {
         <section className="stack">
           <h3>{t("nat.mix")}</h3>
           <Legend items={TYPES.map((ty, i) => ({ color: slotColors(tk)[i], label: t(`type.${ty}`) }))} />
-          <Chart ariaLabel={t("nat.mix")} height={200} deps={[N]} build={(tk) => mixOption(tk, N, t)} />
+          <Chart ariaLabel={t("nat.mix")} height={200} deps={[N]} build={(tk, _w, fm) => mixOption(tk, N, t, fm)} />
         </section>
 
         <section className="stack">
           <h3>{t("nat.neg")}</h3>
-          <Chart ariaLabel={t("nat.neg")} height={150} deps={[N]} build={(tk) => negOption(tk, N)} />
+          <Chart ariaLabel={t("nat.neg")} height={150} deps={[N]} build={(tk, _w, fm) => negOption(tk, N, fm)} />
         </section>
 
         <section className="stack">
@@ -171,20 +171,20 @@ function centroid(geom: any): [number, number] {
   return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
 }
 
-function prodConsOption(tk: Tokens, N: any, t: (k: string) => string) {
+function prodConsOption(tk: Tokens, N: any, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   return {
     grid: { left: 40, right: 12, top: 12, bottom: 26 },
     xAxis: { type: "category", data: ZONES, ...axisStyle(tk), splitLine: { show: false } },
     yAxis: { type: "value", ...axisStyle(tk), name: "TWh" },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" } },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v: number) => `${f(v, 1)} TWh` },
     series: [
-      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => Number(N.zones[z].production_twh.toFixed(1))), itemStyle: { color: tk.production, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20, barGap: "10%" },
-      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => Number(N.zones[z].consumption_twh.toFixed(1))), itemStyle: { color: tk.consumption, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20 },
+      { type: "bar", name: t("nat.production"), data: ZONES.map((z) => round(N.zones[z].production_twh, 1)), itemStyle: { color: tk.production, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20, barGap: "10%" },
+      { type: "bar", name: t("nat.consumption"), data: ZONES.map((z) => round(N.zones[z].consumption_twh, 1)), itemStyle: { color: tk.consumption, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 20 },
     ],
   };
 }
 
-function mixOption(tk: Tokens, N: any, t: (k: string) => string) {
+function mixOption(tk: Tokens, N: any, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const colors = slotColors(tk);
   const val = (z: string, ty: string) => {
     const m = N.zones[z].mix_twh;
@@ -196,25 +196,25 @@ function mixOption(tk: Tokens, N: any, t: (k: string) => string) {
     grid: { left: 40, right: 16, top: 6, bottom: 24 },
     xAxis: { type: "value", ...axisStyle(tk), name: "TWh" },
     yAxis: { type: "category", data: ZONES, inverse: true, ...axisStyle(tk), splitLine: { show: false } },
-    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v: number) => `${v.toFixed(1)} TWh` },
+    tooltip: { trigger: "axis", axisPointer: { type: "shadow" }, valueFormatter: (v: number) => `${f(v, 1)} TWh` },
     series: TYPES.map((ty, i) => ({
       type: "bar", stack: "mix", name: t(`type.${ty}`), barWidth: 18,
-      data: ZONES.map((z) => Number(val(z, ty).toFixed(2))),
+      data: ZONES.map((z) => round(val(z, ty), 2)),
       itemStyle: { color: colors[i], borderColor: tk.surface, borderWidth: 1 },
     })),
   };
 }
 
-function negOption(tk: Tokens, N: any) {
+function negOption(tk: Tokens, N: any, f: (v: number | null | undefined, d?: number) => string) {
   return {
     grid: { left: 40, right: 40, top: 6, bottom: 22 },
     xAxis: { type: "value", ...axisStyle(tk) },
     yAxis: { type: "category", data: ZONES, inverse: true, ...axisStyle(tk), splitLine: { show: false } },
-    tooltip: { trigger: "item", formatter: (p: any) => `${p.name}: <b>${p.value}</b> h` },
+    tooltip: { trigger: "item", formatter: (p: any) => `${p.name}: <b>${f(p.value)}</b> h` },
     series: [{
       type: "bar", barWidth: 14, data: ZONES.map((z) => N.zones[z].negative_price_hours),
       itemStyle: { color: tk.main, borderRadius: [0, tk.size.radius, tk.size.radius, 0] },
-      label: { show: true, position: "right", color: tk.text, formatter: "{c} h" },
+      label: { show: true, position: "right", color: tk.text, formatter: (p: any) => `${f(p.value)} h` },
     }],
   };
 }
