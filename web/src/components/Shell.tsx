@@ -6,7 +6,8 @@ import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 
 /** The product's mark: a roundel with the plus of the name, drawn rather than typed. */
-function Roundel() {
+/** The brand mark: the top bar's, and the printed record's. */
+export function Roundel() {
   return (
     <svg className="roundel" width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
       <circle cx="13" cy="13" r="13" />

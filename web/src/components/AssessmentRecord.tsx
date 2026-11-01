@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
-import { useFmt, monthNames } from "../lib/format";
+import { Roundel } from "./Shell";
+import { dateTime, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { reasonText } from "../lib/reasons";
 import { useStore } from "../lib/store";
@@ -21,10 +22,9 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
   const prof = res.profiles ?? {};
   const year = prof.year ?? res.verification?.year;
   const created = res.created ? new Date(res.created) : null;
-  const dateFmt = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "long", timeStyle: "short" });
-  const when = created ? dateFmt.format(created) : "–";
+  const when = created ? dateTime(lang, created) : "–";
   const runAt = res.provenance?.run_id ? new Date(res.provenance.run_id) : null;
-  const run = runAt && !Number.isNaN(runAt.getTime()) ? dateFmt.format(runAt) : res.provenance?.run_id ?? "–";
+  const run = runAt && !Number.isNaN(runAt.getTime()) ? dateTime(lang, runAt) : res.provenance?.run_id ?? "–";
   const yesNo = (ok: boolean) => (ok ? t("req.approved") : t("req.rejected"));
   const priceYears: number[] = (res.economics?.by_year ?? []).map((e: any) => e.year).sort((a: number, b: number) => a - b);
   const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
@@ -34,7 +34,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
   return createPortal(
     <article className="print-record" lang={lang} aria-hidden="true">
       <header className="pr-head">
-        <p className="pr-brand">Kapacitet+</p>
+        <p className="pr-brand"><Roundel />Kapacitet+</p>
         <h1>{t("rec.title")}</h1>
         <dl className="pr-meta">
           <dt>{t("rec.id")}</dt><dd>{res.id ?? "–"}</dd>
@@ -145,9 +145,9 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         <section>
           <h2>{t("req.money")}</h2>
           <dl className="pr-kv">
-            <dt>{t("req.money.curtailed")}</dt><dd>{f(res.economics.curtailed_sek_mean)} kr/{t("rec.yr")}</dd>
-            <dt>{t("req.money.export")}</dt><dd>{f(res.economics.export_sek_mean)} kr/{t("rec.yr")}</dd>
-            <dt>{t("req.money.self")}</dt><dd>{f(res.economics.self_use_spot_sek_mean)} kr/{t("rec.yr")}</dd>
+            <dt>{t("req.money.curtailed")}</dt><dd>{f(res.economics.curtailed_sek_mean)} {t("unit.sekYr")}</dd>
+            <dt>{t("req.money.export")}</dt><dd>{f(res.economics.export_sek_mean)} {t("unit.sekYr")}</dd>
+            <dt>{t("req.money.self")}</dt><dd>{f(res.economics.self_use_spot_sek_mean)} {t("unit.sekYr")}</dd>
           </dl>
           <p className="pr-note">{t("req.money.note", { from: priceYears[0] ?? "–", to: priceYears[priceYears.length - 1] ?? "–" })}</p>
         </section>

@@ -69,16 +69,21 @@ export default function Compare() {
   const thermal = limit("thermal_limit_pct");
 
   // only the sections that have data behind them, so the bar never points at nothing
+  // three regions rest on one adoption order, not on the median the rest of the screen shows:
+  // each says so in its head, and the bar's basis follows while it is being read
+  const priceSpan = (ys: number[] | undefined) => (ys?.length ? `${ys[0]}–${ys[ys.length - 1]}` : "–");
+  const valueBasis = OV ? t("cmp.basis.value", { order: OV.order, span: priceSpan(OV.price_years) }) : undefined;
+  const reinfBasis = RF ? t("cmp.basis.reinf", { order: RF.order }) : undefined;
+  const sensBasis = H.tornado ? t("cmp.basis.sens", { order: H.tornado.order, n: H.tornado.years?.length ?? years.length }) : undefined;
   const sections: Section[] = [
     { id: "capacity", label: t("cmp.sec.capacity") },
     { id: "verify", label: t("cmp.sec.verify") },
     ...(HM ? [{ id: "when", label: t("cmp.sec.when") }] : []),
     { id: "fair", label: t("cmp.sec.fair") },
-    ...(OV ? [{ id: "value", label: t("cmp.sec.value") }] : []),
-    ...(RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce") }] : []),
-    ...(H.tornado ? [{ id: "sensitivity", label: t("cmp.sec.sensitivity") }] : []),
+    ...(OV ? [{ id: "value", label: t("cmp.sec.value"), basis: valueBasis }] : []),
+    ...(RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce"), basis: reinfBasis }] : []),
+    ...(H.tornado ? [{ id: "sensitivity", label: t("cmp.sec.sensitivity"), basis: sensBasis }] : []),
   ];
-  const priceSpan = (ys: number[] | undefined) => (ys?.length ? `${ys[0]}–${ys[ys.length - 1]}` : "–");
 
   return (
     <div className="page">
@@ -274,10 +279,11 @@ export default function Compare() {
             <div className="region-head">
               <div className="region-title">
                 <h2>{t("cmp.value")}</h2>
-                <p className="caption">{t("cmp.value.caption", { span: priceSpan(OV.price_years), order: OV.order })}</p>
+                <p className="caption">{t("cmp.value.caption")}</p>
+                <p className="region-basis">{valueBasis}</p>
               </div>
               <Legend items={[
-                { color: "var(--series-main)", label: t("cmp.value.delivered") },
+                { color: "var(--series-dynamic)", label: t("cmp.value.delivered") },
                 { color: "var(--warning-fill)", label: t("cmp.value.curtailed") },
               ]} />
             </div>
@@ -295,8 +301,8 @@ export default function Compare() {
               }
             />
             <div className="tiles cols-3">
-              <Tile label={t("cmp.value.atBudget", { kw: f(OV.budget.kw_ac) })} value={f(OV.budget.delivered_sek / 1000)} unit={t("cmp.value.unit")} note={t("cmp.value.atBudgetNote", { kw: f(OV.budget.kw_ac_nonfirm) })} />
-              <Tile label={t("cmp.value.curtAtBudget")} value={f(OV.budget.curtailed_sek / 1000, 1)} unit={t("cmp.value.unit")} />
+              <Tile label={t("cmp.value.atBudget", { kw: f(OV.budget.kw_ac) })} value={f(OV.budget.delivered_sek / 1000)} unit={t("unit.ksekYr")} note={t("cmp.value.atBudgetNote", { kw: f(OV.budget.kw_ac_nonfirm) })} />
+              <Tile label={t("cmp.value.curtAtBudget")} value={f(OV.budget.curtailed_sek / 1000, 1)} unit={t("unit.ksekYr")} />
               {OV.budget_marginal && (
                 <Tile label={t("cmp.value.lastKw")} value={f(OV.budget_marginal.energy_share_pct, 0)} unit="%" note={t("cmp.value.lastKwNote", { v: f(OV.budget_marginal.value_share_pct, 0) })} />
               )}
@@ -311,6 +317,7 @@ export default function Compare() {
               <div className="region-title">
                 <h2>{t("cmp.reinf")}</h2>
                 <p className="caption">{t("cmp.reinf.caption")}</p>
+                <p className="region-basis">{reinfBasis}</p>
               </div>
             </div>
             <div className="reinf">
@@ -319,8 +326,8 @@ export default function Compare() {
                 <dl className="kv">
                   <dt>{t("cmp.reinf.connected")}</dt><dd>{f(RF.envelopes.kw_ac)} kW</dd>
                   <dt>{t("cmp.reinf.beyond")}</dt><dd>{f(RF.envelopes.nonfirm_kw)} kW</dd>
-                  <dt>{t("cmp.reinf.curtCost")}</dt><dd>{f(RF.envelopes.curtailed_sek_per_year)} {t("cmp.reinf.perYear")}</dd>
-                  <dt>{t("cmp.reinf.delivered")}</dt><dd>{f(RF.envelopes.delivered_sek_per_year)} {t("cmp.reinf.perYear")}</dd>
+                  <dt>{t("cmp.reinf.curtCost")}</dt><dd>{f(RF.envelopes.curtailed_sek_per_year)} {t("unit.sekYr")}</dd>
+                  <dt>{t("cmp.reinf.delivered")}</dt><dd>{f(RF.envelopes.delivered_sek_per_year)} {t("unit.sekYr")}</dd>
                 </dl>
               </div>
               <div className="reinf-side">
@@ -350,6 +357,7 @@ export default function Compare() {
               <div className="region-title">
                 <h2>{t("cmp.tornado")}</h2>
                 <p className="caption">{t("cmp.tornado.caption")}</p>
+                <p className="region-basis">{sensBasis}</p>
               </div>
               <Legend items={[
                 { color: "var(--series-dynamic)", label: t("cmp.fig.doe") },
@@ -413,7 +421,7 @@ function valueOption(tk: Tokens, OV: any, t: (k: string, v?: any) => string, f: 
     series: [
       {
         type: "line", name: t("cmp.value.delivered"), data: pts.map((p) => [p.kw_ac, p.delivered_sek / 1000]), symbol: "circle", symbolSize: 6,
-        lineStyle: { width: 2, color: tk.main }, itemStyle: { color: tk.main, borderColor: tk.surface, borderWidth: 2 }, areaStyle: { color: tk.main, opacity: 0.08 },
+        lineStyle: { width: 2, color: tk.dynamic }, itemStyle: { color: tk.dynamic, borderColor: tk.surface, borderWidth: 2 }, areaStyle: { color: tk.dynamic, opacity: 0.08 },
         markLine: {
           symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid", width: 1 },
           label: { color: tk.text2, fontFamily: tk.font, fontSize: tk.size.caption, position: "insideEndTop", rotate: 90 },

@@ -59,6 +59,9 @@
   --topbar-h: 56px;
   --toolbar-h: 44px;
   --statusbar-h: 30px;
+  /* the side panel beside a map (app.css narrows both between 1101 and 1350 px) */
+  --panel-w: 460px;
+  --panel-w-wide: 560px;
 
   /* stacking */
   --z-sticky: 3;

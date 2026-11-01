@@ -11,14 +11,16 @@ interface Step {
   hour?: "showcase";
   /** "example": the house the published year curtails most (/compliance) */
   cid?: "example";
+  /** on a map screen the card sits on the map, away from the panel the step talks about */
+  place?: "map" | "map-wide";
 }
 
 /** The two-minute tour: each step puts a real screen in front of the viewer and says what it answers. */
 const STEPS: Step[] = [
   { screen: "compare" },
-  { screen: "twin", scenario: "uncontrolled", hour: "showcase" },
-  { screen: "twin", scenario: "doe", hour: "showcase" },
-  { screen: "request", cid: "example" },
+  { screen: "twin", scenario: "uncontrolled", hour: "showcase", place: "map" },
+  { screen: "twin", scenario: "doe", hour: "showcase", place: "map" },
+  { screen: "request", cid: "example", place: "map-wide" },
   { screen: "report", cid: "example" },
   { screen: "method" },
 ];
@@ -89,8 +91,10 @@ export function Tour() {
 
   if (step === null) return null;
   const last = step === STEPS.length - 1;
+  const place = STEPS[step].place;
   return (
-    <aside className={`tour${instant ? " instant" : ""}`} role="dialog" aria-modal="false" aria-labelledby="tour-title" aria-describedby="tour-text">
+    // keyed by where it sits: moving to the other side of the screen enters again rather than jumping
+    <aside key={place ?? "page"} data-place={place} className={`tour${instant ? " instant" : ""}`} role="dialog" aria-modal="false" aria-labelledby="tour-title" aria-describedby="tour-text">
       <div className="tour-head">
         <span className="tour-count">{t("tour.of", { n: step + 1, total: STEPS.length })}</span>
         <button className="icon-btn" aria-label={t("tour.close")} title={t("tour.close")} onClick={close}>

@@ -14,6 +14,8 @@ import { useT } from "../lib/i18n";
 export interface Section {
   id: string;
   label: string;
+  /** what this section's figures rest on, when that is not the screen's own basis */
+  basis?: ReactNode;
 }
 
 export function SectionBar({ sections, basis }: { sections: Section[]; basis?: ReactNode }) {
@@ -33,8 +35,9 @@ export function SectionBar({ sections, basis }: { sections: Section[]; basis?: R
     let raf = 0;
     const read = () => {
       raf = 0;
-      // the line just under the sticky bar: the section crossing it is the one being read
-      const line = page.getBoundingClientRect().top + (bar.current?.offsetHeight ?? 0) + 12;
+      // a third of the way down the scroller, and never above the sticky bar: the section
+      // crossing it is the one being read (a line right under the bar lagged a screen behind)
+      const line = page.getBoundingClientRect().top + Math.max((bar.current?.offsetHeight ?? 0) + 12, page.clientHeight / 3);
       let cur: string | undefined;
       for (const id of names) {
         const el = document.getElementById(id);
@@ -67,6 +70,7 @@ export function SectionBar({ sections, basis }: { sections: Section[]; basis?: R
     page.scrollTo({ top: Math.max(0, top), behavior: still ? "auto" : "smooth" });
   };
 
+  const shown = sections.find((s) => s.id === here)?.basis ?? basis;
   return (
     <div className="screen-bar" ref={bar}>
       <nav className="screen-sections" aria-label={t("shell.sections")}>
@@ -76,7 +80,7 @@ export function SectionBar({ sections, basis }: { sections: Section[]; basis?: R
           </button>
         ))}
       </nav>
-      {basis ? <div className="screen-basis">{basis}</div> : null}
+      {shown ? <div className="screen-basis">{shown}</div> : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
 import { API } from "../lib/api";
-import { useFmt } from "../lib/format";
+import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -44,8 +44,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
 
   const decided = queue.items.find((it) => it.assessment === res.id);
   if (decided) {
-    const when = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "medium", timeStyle: "short" })
-      .format(new Date(decided.decided));
+    const when = dateTime(lang, decided.decided);
     return (
       <section className="decision" aria-labelledby="decision-title">
         <h3 id="decision-title">{t("req.decide.title")}</h3>
@@ -150,7 +149,6 @@ export function QueueList({ queue }: { queue: QueueState }) {
   const [confirm, setConfirm] = useState(false);
   if (!queue.items.length) return null;
   const declined = queue.items.length - queue.approved;
-  const when = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "short", timeStyle: "short" });
   const empty = async () => {
     setConfirm(false);
     const r = await fetch(`${API}/queue`, { method: "DELETE" }).catch(() => null);
@@ -169,7 +167,7 @@ export function QueueList({ queue }: { queue: QueueState }) {
           <li key={it.assessment}>
             <span className="queue-house">{it.address || t("dt.unnamed", { id: it.cid })}</span>
             <span className={`queue-decision ${it.decision}`}>{t(`queue.item.${it.decision}`)}</span>
-            <span className="queue-when">{when.format(new Date(it.decided))}</span>
+            <span className="queue-when">{dateTime(lang, it.decided)}</span>
             {it.note && <span className="queue-note">{it.note}</span>}
           </li>
         ))}
@@ -181,8 +179,8 @@ export function QueueList({ queue }: { queue: QueueState }) {
           <h2 id="queue-confirm-title">{t("queue.confirm.title")}</h2>
           <p>{t("queue.confirm.body")}</p>
           <div className="decision-actions">
-            <button className="btn" onClick={empty}>{t("queue.empty")}</button>
             <button className="btn ghost" onClick={() => setConfirm(false)}>{t("ui.cancel")}</button>
+            <button className="btn ghost danger" onClick={empty}>{t("queue.empty")}</button>
           </div>
         </div>
       </Dialog>

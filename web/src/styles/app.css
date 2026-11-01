@@ -89,13 +89,13 @@ p {
 /* ---------------------------------------------------------------- layouts */
 .split {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 460px;
+  grid-template-columns: minmax(0, 1fr) var(--panel-w);
   height: 100%;
   min-height: 0;
 }
 
 .split.wide-panel {
-  grid-template-columns: minmax(0, 1fr) 560px;
+  grid-template-columns: minmax(0, 1fr) var(--panel-w-wide);
 }
 
 .map-col {
@@ -392,6 +392,15 @@ p {
   padding-right: 0;
 }
 
+/* on a phone each check is two lines: verdict, what and value, then the criterion under it */
+@media (max-width: 700px) {
+  /* each row is its own grid, so the verdict column has a set width ("No cumple" is the widest) */
+  .protocol tr { display: grid; grid-template-columns: 6rem minmax(0, 1fr) auto; column-gap: var(--space-3); padding: var(--space-3) 0; }
+  .protocol th, .protocol td { padding: 0; }
+  .protocol .p-mark { width: auto; }
+  .protocol .p-criterion:not(:empty) { grid-column: 2 / -1; padding-top: var(--space-1); }
+}
+
 .status {
   display: inline-flex;
   align-items: center;
@@ -485,6 +494,9 @@ p {
   color: var(--text-primary);
   border-color: var(--border-strong);
 }
+
+/* a destructive answer: never the filled button, so it never reads as the recommended one */
+.btn.ghost.danger { color: var(--danger); }
 
 .field {
   display: grid;
@@ -1173,6 +1185,7 @@ main:focus { outline: none; }
   .icon-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
   .btn:hover:not(:disabled) { background: var(--accent-hover); }
   .btn.ghost:hover:not(:disabled) { background: var(--bg-inset); color: var(--text-primary); border-color: var(--border-strong); }
+  .btn.ghost.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
   .seg button:hover { color: var(--text-primary); }
   .menu-sheet a:hover { background: var(--bg-inset); }
 }
@@ -1240,10 +1253,9 @@ main:focus { outline: none; }
   .brand-scope { display: none; }
 }
 @media (min-width: 1101px) and (max-width: 1350px) {
-  .split { grid-template-columns: minmax(0, 1fr) 390px; }
+  :root { --panel-w: 390px; --panel-w-wide: 450px; }
   /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
   .panel .seg button { padding-inline: var(--space-2); }
-  .split.wide-panel { grid-template-columns: minmax(0, 1fr) 450px; }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
   .topnav { gap: var(--space-4); }
 }
@@ -1299,7 +1311,7 @@ main:focus { outline: none; }
   justify-items: center;
   align-items: start;
   padding: 12vh var(--space-5) var(--space-5);
-  background: rgb(var(--night) / 0.38);
+  background: rgba(var(--night), 0.38); /* the token is comma-separated: rgb(… / a) would be invalid and paint nothing */
 }
 
 .dialog:focus { outline: none; }
@@ -1714,6 +1726,15 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
   font-size: var(--text-h2);
 }
 
+/* what a region's figures rest on when it is not the screen's basis (one adoption order) */
+.region-basis {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--text-caption);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
 .region-head .seg {
   flex: 0 0 auto;
 }
@@ -1892,7 +1913,7 @@ ol.list {
 .net-empty { display: grid; place-items: center; height: 100%; color: var(--text-muted); font-size: var(--text-small); }
 .net-act { margin-top: var(--space-1); color: var(--accent); font-weight: 500; }
 /* the words MapLibre shows when it holds a wheel or one-finger gesture back for the page */
-.maplibregl-cooperative-gesture-screen { background: rgb(var(--night) / 0.55) !important; color: var(--on-chrome) !important; font-family: var(--font-sans) !important; font-size: var(--text-h3) !important; }
+.maplibregl-cooperative-gesture-screen { background: rgba(var(--night), 0.55) !important; color: var(--on-chrome) !important; font-family: var(--font-sans) !important; font-size: var(--text-h3) !important; }
 
 .error-detail { font-size: var(--text-caption); color: var(--text-muted); }
 .error-detail summary { cursor: pointer; }
@@ -2044,7 +2065,10 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   .print-record h2 { margin: 6mm 0 2mm; font-size: 11pt; break-after: avoid; }
   .print-record section { break-inside: avoid; }
   .print-record .pr-break { break-before: auto; }
-  .pr-brand { margin: 0 0 1mm; font-weight: 700; letter-spacing: 0.01em; }
+  .pr-brand { display: flex; align-items: center; gap: 2mm; margin: 0 0 1mm; font-weight: 700; letter-spacing: 0.01em; }
+  .pr-brand .roundel { width: 5mm; height: 5mm; }
+  .pr-brand .roundel circle { fill: var(--print-ink); }
+  .pr-brand .roundel path { stroke: var(--print-paper); }
   .pr-head { padding-bottom: 3mm; border-bottom: 1.5pt solid var(--print-ink); }
   .pr-meta, .pr-kv { display: grid; grid-template-columns: max-content 1fr; gap: 1mm 6mm; margin: 0; }
   .pr-meta dt, .pr-kv dt { color: var(--print-muted); }
@@ -2144,6 +2168,7 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 }
 .command-line { display: flex; align-items: center; gap: var(--space-2); margin: 0; }
 .command-line code {
+  font-family: inherit;
   padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-inset);
   color: var(--text-primary); font-size: var(--text-small); overflow-wrap: anywhere;
 }
@@ -2174,6 +2199,12 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tour-actions .btn { gap: var(--space-1); }
 @media (prefers-reduced-motion: reduce) { .tour { transition: opacity var(--dur-panel) linear; } @starting-style { .tour { transform: none; } } }
 @media (max-width: 700px) { .tour { right: var(--space-4); left: var(--space-4); width: auto; } }
+/* beside a map the card takes the map's far corner, off the panel the step explains */
+@media (min-width: 1101px) {
+  .tour[data-place] { top: calc(var(--topbar-h) + var(--space-4)); bottom: auto; }
+  .tour[data-place="map"] { right: calc(var(--panel-w) + var(--space-4)); }
+  .tour[data-place="map-wide"] { right: calc(var(--panel-w-wide) + var(--space-4)); }
+}
 
 /* ---------------------------------------------------------------- accessibility additions */
 .keys-toggle { display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); font-size: var(--text-small); cursor: pointer; }
@@ -2186,5 +2217,5 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
   background: var(--bg-elevated); color: var(--text-primary); font: inherit; font-size: var(--text-small);
 }
 .house-search input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-main h1:focus { outline: none; }
-main h1:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; border-radius: var(--radius-sm); }
+/* the heading takes focus so a screen reader starts at the new screen; it is not a control, so no ring */
+main h1:focus, main h1:focus-visible { outline: none; }

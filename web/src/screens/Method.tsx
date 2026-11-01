@@ -7,7 +7,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { SectionMissing, Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { round, useFmt } from "../lib/format";
+import { dateTime, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -135,7 +135,7 @@ export default function Method() {
           {meta.data?.run?.computed_at && (
             <p className="caption-muted">
               {t(meta.data.run.quick ? "met.runQuick" : "met.run", {
-                when: new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "long" }).format(new Date(meta.data.run.computed_at)),
+                when: dateTime(lang, meta.data.run.computed_at, false),
                 v: meta.data.run.versions?.kapacitet ?? "–",
               })}
             </p>

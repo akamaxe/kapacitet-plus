@@ -92,3 +92,20 @@ export function round(value: number, digits = 0): number {
   const k = 10 ** digits;
   return Math.round(value * k) / k;
 }
+
+const dateFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * A date as every screen writes it (DESIGN.md: one date format): "1 Nov 2026", and with
+ * its time "1 Nov 2026, 14:03". Anything that is not a date reads "–".
+ */
+export function dateTime(lang: string, value: string | number | Date, withTime = true): string {
+  const key = `${lang}:${withTime}`;
+  let df = dateFormatters.get(key);
+  if (!df) {
+    df = new Intl.DateTimeFormat(locale(lang), withTime ? { dateStyle: "medium", timeStyle: "short" } : { dateStyle: "medium" });
+    dateFormatters.set(key, df);
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? "–" : df.format(d);
+}

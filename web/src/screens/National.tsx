@@ -69,7 +69,7 @@ export default function National() {
   const labels = useRef<{ zone: string; b: HTMLDivElement; s: HTMLElement }[]>([]);
   const labelText = useCallback((z: string) => {
     const bal = N.zones[z].balance_twh;
-    return [`${z}  ${bal > 0 ? "+" : bal < 0 ? "−" : ""}${f(Math.abs(bal), 1)} TWh`, `${f(N.zones[z].price_mean_sek_kwh, 2)} kr/kWh`];
+    return [`${z}  ${bal > 0 ? "+" : bal < 0 ? "−" : ""}${f(Math.abs(bal), 1)} TWh`, `${f(N.zones[z].price_mean_sek_kwh, 2)} SEK/kWh`];
   }, [N, f]);
   useEffect(() => {
     labels.current.forEach(({ zone, b, s }) => {

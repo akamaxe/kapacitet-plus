@@ -254,9 +254,10 @@ function envGridOption(tk: Tokens, grid: number[][], lang: string, t: (k: string
     visualMap: {
       min: 0, max, orient: "vertical", right: 0, top: "middle", itemHeight: 120, itemWidth: 10,
       textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${f(max, 1)} kW`, f(0)],
-      inRange: { color: [tk.load[2], tk.load[1], tk.load[0]] },
+      // one amber ramp: the lower the limit, the stronger the amber (DESIGN.md heatmap palette)
+      inRange: { color: [tk.warningFill, tk.warningQuiet] },
     },
     tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${f(p.value[2], 1)} kW</b>` },
-    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: tk.size.radius } }],
+    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: 0 } }],
   };
 }

@@ -461,7 +461,7 @@ function Conditions({ agg, ser, year, center }: { agg: any; ser: any; year: numb
         <Tile label={t("twin.sun")} value={f(elev, 0)} unit="°" />
         <Tile mark="real" label={t("twin.ghi")} value={ser ? f(ser.ghi[hour], 0) : "–"} unit="W/m²" />
         <Tile mark="real" label={t("twin.temp")} value={ser ? f(ser.t_air[hour], 1) : "–"} unit="°C" />
-        <Tile mark="real" label={t("twin.price")} value={ser?.price_sek_kwh ? f(ser.price_sek_kwh[hour], 2) : "–"} unit="kr/kWh" />
+        <Tile mark="real" label={t("twin.price")} value={ser?.price_sek_kwh ? f(ser.price_sek_kwh[hour], 2) : "–"} unit="SEK/kWh" />
         <Tile mark="synthetic" label={t("twin.pv")} value={agg ? f(agg.pv_kw[hour], 0) : "–"} unit="kW" />
         <Tile mark="synthetic" label={t("twin.load")} value={agg ? f(agg.load_kw[hour], 0) : "–"} unit="kW" />
       </div>

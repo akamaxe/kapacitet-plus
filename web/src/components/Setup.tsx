@@ -3,6 +3,11 @@ import { CommandLine } from "./bits";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
 
+/** The browser is usually on the machine that runs the server, so its system picks the command. */
+const ACTIVATE = typeof navigator !== "undefined" && /Win/.test(navigator.userAgent)
+  ? ".venv\\Scripts\\activate"
+  : "source .venv/bin/activate";
+
 /**
  * What a fresh clone shows instead of six empty screens: the interface reads what the pipeline
  * computed, and on this machine it has not run yet. The exact commands, in order, and what is
@@ -19,6 +24,10 @@ export function Setup({ health }: { health: any }) {
         <h1 className="headline">{t("setup.title")}</h1>
         <p className="headline-sub">{t("setup.lead")}</p>
         <ol className="setup-steps">
+          <li>
+            <p>{t("setup.env")}</p>
+            <CommandLine command={ACTIVATE} />
+          </li>
           <li>
             <p>{t("setup.all")}</p>
             <CommandLine command="python -m kapacitet all" />

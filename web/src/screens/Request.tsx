@@ -14,7 +14,7 @@ import { copyText } from "../lib/clipboard";
 import { reasonText } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
-import { hourLabel, monthNames, round, useFmt } from "../lib/format";
+import { dateTime, hourLabel, monthNames, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
@@ -95,6 +95,8 @@ export default function Request() {
     });
     return m;
   }, [S, houses, baseline, queue]);
+  // the key names what the map paints, whichever grid the request meets
+  const shown = useMemo(() => new Set(status.values()), [status]);
 
   // a queue with approvals is the grid as it now stands, so that is what a request meets; an
   // emptied queue sends the form back to the published situation it started from
@@ -336,9 +338,9 @@ export default function Request() {
           <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
             <div className="map-legend fit">
               <Legend items={[
-                { color: tokens().dynamic, label: t("twin.status.firm") },
-                ...(baseline === "doe" ? [{ color: tokens().warningFill, label: t("twin.status.nonfirm") }] : []),
-                { color: tokens().borderStrong, label: t("twin.status.none") },
+                ...(shown.has("firm") ? [{ color: tokens().dynamic, label: t("twin.status.firm") }] : []),
+                ...(shown.has("nonfirm") ? [{ color: tokens().warningFill, label: t("twin.status.nonfirm") }] : []),
+                ...(shown.has("none") ? [{ color: tokens().borderStrong, label: t("twin.status.none") }] : []),
                 { color: tokens().accent, label: t("req.house") },
               ]} />
             </div>
@@ -506,10 +508,10 @@ export default function Request() {
               </div>
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} />
+            <Result res={res} year={year} lang={lang} />
             {!stale && res.id && queue && (
               <DecisionBlock res={res} queue={queue} />
             )}
-            <Result res={res} year={year} lang={lang} />
             <AssessmentRecord res={res} baselineLabel={
               res.request?.baseline === "queue"
                 ? t("req.base.queueRecord", { n: f(res.queue?.approved ?? 0), base: res.queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })
@@ -574,6 +576,11 @@ function HouseSearch({ houses, onPick }: { houses: any[]; onPick: (cid: number) 
   );
 }
 
+/** A share to one decimal, as every percentage on the screen; a share too small for that says so instead of "0.0". */
+function pct1(f: (v: number | null | undefined, d?: number) => string, v: number | null | undefined): string {
+  return v != null && v > 0 && v < 0.05 ? `< ${f(0.1, 1)}` : f(v, 1);
+}
+
 /** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
 function describeRequest(t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string, q: any): string {
   return [
@@ -614,7 +621,6 @@ function History({ current, onOpen }: { current: string | null; onOpen: (item: a
   const list = useApi<any>("/requests?limit=12");
   const items: any[] = list.data?.items ?? [];
   if (!items.length) return null;
-  const when = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "short", timeStyle: "short" });
   const asked = (q: any) => describeRequest(t, f, q);
   return (
     <details className="history">
@@ -625,7 +631,7 @@ function History({ current, onOpen }: { current: string | null; onOpen: (item: a
             <button className="history-item" aria-current={it.id === current ? "true" : undefined} onClick={() => onOpen(it)}>
               <span className="history-house">{it.address || t("dt.unnamed", { id: it.request.cid })}</span>
               <span className="history-asked">{asked(it.request)}</span>
-              <span className="history-when">{when.format(new Date(it.created))}</span>
+              <span className="history-when">{dateTime(lang, it.created)}</span>
             </button>
           </li>
         ))}
@@ -674,7 +680,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <span className="v-big">{f(sum.pv_curtailment_ref_pct, 1)} %</span>
             <span className="v-basis">{t("req.basis.ref", { year })}</span>
             <span className="v-detail">
-              {refYear?.hours_limited ? `${t("req.curtailed", { z: f(sum.pv_curtailment_ref_pct, 1), year })}, ${t("req.hours", { h: refYear.hours_limited })}` : t("req.noLimit", { year })}
+              {refYear?.hours_limited ? t("req.hoursLimited", { h: f(refYear.hours_limited) }) : t("req.noLimit", { year })}
             </span>
             {res.verification?.hours_checked !== undefined && (
               <span className="caption-muted">
@@ -691,7 +697,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
       {evReq && (
         <div className="tiles">
           <Tile label={t("req.ev.static")} value={res.static.ev.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.ev)} />
-          <Tile label={t("req.ev.unmet")} value={f(sum.ev_unmet_pct, 2)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
+          <Tile label={t("req.ev.unmet")} value={pct1(f, sum.ev_unmet_pct)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
           <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
           <Tile label={t("req.ev.energy")} value={f(res.per_year.reduce((s: number, e: any) => s + (e.ev_requested_kwh ?? 0), 0) / Math.max(1, res.per_year.length))} unit="kWh" note={t("req.ev.energyNote")} />
           {importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
@@ -703,7 +709,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <h3>{t("req.hp.title")}</h3>
           <div className="tiles">
             <Tile label={t("req.hp.static")} value={res.static.hp.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.hp)} />
-            <Tile label={t("req.hp.unmet")} value={f(sum.hp_unmet_pct, 2)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
+            <Tile label={t("req.hp.unmet")} value={pct1(f, sum.hp_unmet_pct)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
             <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
             <Tile label={t("req.hp.energy")} value={f(sum.hp_kwh_mean)} unit="kWh" note={t("req.hp.energyNote", { kw: f(res.static.hp.design_kw, 1) })} />
           </div>
@@ -721,7 +727,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
               <Tile label={t("req.bat.captured")} value={f(sum.bat_captured_ref_pct, 0)} unit="%" note={t("req.bat.capturedNote", { year })} />
               <Tile label={t("req.bat.returned")} value={f(sum.bat_discharged_ref_kwh)} unit="kWh" note={`${year}`} />
               <Tile label={t("req.bat.after")} value={f(sum.curtailment_after_battery_ref_pct, 1)} unit="%" note={t("req.bat.afterNote", { z: f(sum.pv_curtailment_ref_pct, 1) })} />
-              <Tile label={t("req.bat.value")} value={f(res.economics?.battery_sek_mean)} unit="kr/yr" note={t("req.bat.valueNote")} />
+              <Tile label={t("req.bat.value")} value={f(res.economics?.battery_sek_mean)} unit={t("unit.sekYr")} note={t("req.bat.valueNote")} />
             </div>
           )}
           <p className="caption-muted">{t("req.bat.caption", { kwh: f(prof.battery.kwh), kw: f(prof.battery.kw, 1), rte: f(100 * prof.battery.round_trip) })}</p>
@@ -790,9 +796,9 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
         <section className="stack">
           <h3>{t("req.money")}</h3>
           <div className="tiles">
-            <Tile label={t("req.money.curtailed")} value={f(res.economics.curtailed_sek_mean)} unit="kr/yr" />
-            <Tile label={t("req.money.export")} value={f(res.economics.export_sek_mean)} unit="kr/yr" />
-            <Tile label={t("req.money.self")} value={f(res.economics.self_use_spot_sek_mean)} unit="kr/yr" />
+            <Tile label={t("req.money.curtailed")} value={f(res.economics.curtailed_sek_mean)} unit={t("unit.sekYr")} />
+            <Tile label={t("req.money.export")} value={f(res.economics.export_sek_mean)} unit={t("unit.sekYr")} />
+            <Tile label={t("req.money.self")} value={f(res.economics.self_use_spot_sek_mean)} unit={t("unit.sekYr")} />
           </div>
           <p className="caption-muted">{t("req.money.note", { from: priceYears[0] ?? "–", to: priceYears[priceYears.length - 1] ?? "–" })}</p>
           {negKwh > 0.5 && <p className="caption-muted">{t("req.money.negative", { kwh: f(negKwh) })}</p>}
@@ -868,10 +874,11 @@ function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string
     visualMap: {
       min: 0, max: cap, orient: "vertical", right: 0, top: "middle", itemHeight: 120, itemWidth: 10,
       textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${f(cap, 1)} kW`, f(0)],
-      inRange: { color: [tk.load[2], tk.load[1], tk.load[0]] },
+      // one amber ramp: the lower the limit, the stronger the amber (DESIGN.md heatmap palette)
+      inRange: { color: [tk.warningFill, tk.warningQuiet] },
     },
     tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${f(p.value[2], 1)} kW</b>` },
-    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: tk.size.radius } }],
+    series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: 0 } }],
   };
 }
 
