@@ -90,7 +90,7 @@ export function Tour() {
   if (step === null) return null;
   const last = step === STEPS.length - 1;
   return (
-    <aside className={`tour${instant ? " instant" : ""}`} aria-labelledby="tour-title" aria-describedby="tour-text">
+    <aside className={`tour${instant ? " instant" : ""}`} role="dialog" aria-modal="false" aria-labelledby="tour-title" aria-describedby="tour-text">
       <div className="tour-head">
         <span className="tour-count">{t("tour.of", { n: step + 1, total: STEPS.length })}</span>
         <button className="icon-btn" aria-label={t("tour.close")} title={t("tour.close")} onClick={close}>
@@ -124,7 +124,7 @@ export function TourOffer() {
     if (take) useStore.getState().setTour(0);
   };
   return (
-    <aside className="tour tour-offer" aria-label={t("tour.offerLabel")}>
+    <aside className="tour tour-offer" role="dialog" aria-modal="false" aria-label={t("tour.offerLabel")}>
       <p>{t("tour.offer")}</p>
       <div className="tour-actions">
         <button className="btn small" onClick={() => answer(true)}>{t("tour.offerTake")}</button>

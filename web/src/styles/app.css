@@ -2100,7 +2100,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 
 /* ---------------------------------------------------------------- reinforce or connect: two sides */
 .reinf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
-.reinf-side { display: grid; gap: var(--space-2); align-content: start; padding-top: var(--space-3); border-top: 2px solid var(--text-primary); }
+.reinf-side { display: grid; gap: var(--space-2); align-content: start; padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .reinf-side h3 { margin: 0; font-size: var(--text-h3); }
 @media (max-width: 700px) { .reinf { grid-template-columns: minmax(0, 1fr); } }
 
@@ -2158,8 +2158,9 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tour {
   position: fixed; right: var(--space-5); bottom: calc(var(--statusbar-h) + var(--space-4)); z-index: var(--z-overlay);
   display: grid; gap: var(--space-2); width: min(380px, calc(100vw - 2 * var(--space-4)));
-  padding: var(--space-4) var(--space-5); border: 1px solid var(--border-strong); border-radius: var(--radius-md);
-  background: var(--bg-elevated); box-shadow: var(--shadow-popover);
+  padding: var(--space-4) var(--space-5); border: 1px solid var(--border); border-radius: var(--radius-md);
+  /* on the SL wash, edged: it sits beside the screen rather than floating over it */
+  background: var(--accent-quiet);
   transition: opacity var(--dur-panel) var(--ease), transform var(--dur-panel) var(--ease);
 }
 @starting-style { .tour { opacity: 0; transform: translateY(8px); } }
