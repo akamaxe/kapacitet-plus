@@ -95,6 +95,18 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
             {rq.ev_kw > 0 && (
               <tr><th>{t("rec.evDoe")}</th><td>{f(sum.ev_unmet_pct, 2)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
             )}
+            {res.static?.hp && (
+              <tr><th>{t("rec.hpStatic")}</th><td>{yesNo(res.static.hp.approved)}</td><td>{reasonText(t, f, res.static.hp)}</td></tr>
+            )}
+            {res.static?.hp && (
+              <tr><th>{t("rec.hpDoe")}</th><td>{f(sum.hp_unmet_pct, 2)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
+            )}
+            {sum.bat_charged_ref_kwh !== undefined && (
+              <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${f(sum.bat_captured_ref_pct, 0)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
+            )}
+            {res.verification?.import && (
+              <tr><th>{t("rec.importVerified")}</th><td>{f(res.verification.import.violations_after)} {t("rec.violations")}</td><td>{t("rec.importVerifiedDetail", { n: f(res.verification.import.hours_checked) })}</td></tr>
+            )}
           </tbody>
         </table>
       </section>

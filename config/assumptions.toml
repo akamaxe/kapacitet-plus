@@ -590,3 +590,49 @@ label = "Scaling of all household base loads"
 source = "Base case 1.0 = 5 000 kWh/yr mean; varied ±20 % in the tornado chart"
 url = ""
 note = ""
+
+# ---------------------------------------------------------------- home batteries (connection requests)
+[battery_ac2bat_eff]
+value = 0.943
+unit = ""
+tag = "sourced"
+label = "Battery charging efficiency, AC to battery (AC-coupled home system)"
+source = "Orth et al. (2023), Efficiency characterization of 26 residential photovoltaic battery storage systems, J. Energy Storage 65, 107299: median average AC2BAT path efficiency of the nine AC-coupled systems measured"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = "A retrofitted battery sits next to the existing inverter, so it is AC-coupled."
+
+[battery_bat2ac_eff]
+value = 0.945
+unit = ""
+tag = "sourced"
+label = "Battery discharging efficiency, battery to AC (AC-coupled home system)"
+source = "Orth et al. (2023), J. Energy Storage 65, 107299: median average BAT2AC path efficiency of the nine AC-coupled systems measured"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = ""
+
+[battery_dc_eff]
+value = 0.96
+unit = ""
+tag = "sourced"
+label = "Round-trip efficiency of the battery cells (DC side)"
+source = "Orth et al. (2023), J. Energy Storage 65, 107299: mean battery efficiency of the lithium-ion batteries measured, 96.0 %"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = "Split evenly between charging and discharging; standby consumption is not modelled."
+
+[battery_kw_per_kwh]
+value = 0.5
+unit = "kW/kWh"
+tag = "team-assumption"
+label = "Battery power per kWh of usable capacity"
+source = "Chosen inside the 0.3–1.0 kW/kWh range of the 26 systems measured by Orth et al. (2023)"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = ""
+
+[battery_max_kwh]
+value = 15
+unit = "kWh"
+tag = "team-assumption"
+label = "Largest battery a connection request can ask for"
+source = "Close to the largest usable capacity measured by Orth et al. (2023), 16.7 kWh"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = ""

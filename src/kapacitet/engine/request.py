@@ -4,15 +4,21 @@ Baselines (precomputed grid states for every weather year):
   static — the neighbourhood as approved today: the adopters up to the static hosting
            capacity, all firm (the grid is "full" for the conservative method);
   doe    — the DOE scenario of the showcase (firm + non-firm adopters with envelopes).
+A queue of approved requests (engine/queue.py) can sit on top of either; it is passed in as a
+`Context` whose grid states include the approved houses.
 
-For an applicant (house, PV kWp, optional EV charger) the envelope is the *residual* headroom
-left by the existing customers (first come, first served, so neighbours are not affected):
+For an applicant (house; PV kWp, an EV charger, a heat pump, a battery) the envelope is the
+*residual* headroom left by the existing customers (first come, first served, so neighbours are
+not affected):
 
     E_j(t) = min( min_n [V_max − V_n(t)] / S_nj ,  min_{l ∋ j} [P̄_l − P_l(t)] ,  P̄_T − P_T(t) ),  0 ≤ E_j ≤ cap_j
 
 computed in closed form for every hour of every weather year, then verified with the
-nonlinear power flow on the hours where it binds (reference year). Import envelopes for a new
-EV charger follow the same rule with voltage drop and forward flows.
+nonlinear power flow on the hours where it binds (the reference year; every year when a request
+is approved into a queue). Import envelopes for a new EV charger or heat pump follow the same rule
+with voltage drop and forward flows, and are verified the same way. A battery stores only the
+energy the export envelope would curtail and gives it back to the house's own load, so the house
+never exports more than its verified envelope; its discharge hours are checked too.
 """
 
 from __future__ import annotations
@@ -20,7 +26,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 
 import numpy as np
@@ -37,7 +43,7 @@ log = logging.getLogger(__name__)
 BASELINES = ("static", "doe")
 
 
-# ------------------------------------------------------------------------------ precomputation
+# ------------------------------------------------------------------------------ grid states
 
 def baseline_definition(name: str) -> dict:
     sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
@@ -47,41 +53,38 @@ def baseline_definition(name: str) -> dict:
     return {"name": name, "pv_cids": sc["pv_cids"], "firm_cids": sc["firm_cids"], "nonfirm_cids": sc["nonfirm_cids"]}
 
 
-def precompute(model: NetModel, name: str, years, hp: np.ndarray, ev: np.ndarray) -> None:
-    """Grid state after all existing customers, for every weather year (compact float16)."""
+def base_injection(model: NetModel, base: dict, year: int, hp: np.ndarray, ev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Net injection (C, H) of a baseline's customers, the non-firm ones held to their envelopes."""
     from . import doe
 
-    base = baseline_definition(name)
-    C = model.C
-    pvm = np.zeros(C, dtype=bool)
+    pvm = np.zeros(model.C, dtype=bool)
     pvm[base["pv_cids"]] = True
+    arr = Scenario(year=year, pv=pvm, hp=hp, ev=ev).arrays()
+    p = arr["p_net"].astype(float).copy()
     nonfirm = np.array(base["nonfirm_cids"], dtype=int)
+    if len(nonfirm):
+        r = doe.compute(model, arr, nonfirm, policy="maxmin")
+        p[nonfirm] = np.minimum(p[nonfirm], 0.0) + np.minimum(np.clip(arr["p_net"][nonfirm], 0, None),
+                                                              r.envelope(p.shape[1]))
+    return p, arr["q"].astype(float)
+
+
+def build_state(model: NetModel, p: np.ndarray, q: np.ndarray) -> dict[str, np.ndarray]:
+    """What a request needs to know about the grid in every hour (compact float16)."""
+    res = model.solve(p, q)
+    return {"vdev": (np.abs(res.v[model.check_rows]) - 1.0).astype(np.float16),
+            "pl": (model.phi @ p).astype(np.float16), "ql": (model.phi @ q).astype(np.float16),
+            "pt": p.sum(axis=0).astype(np.float32), "qt": q.sum(axis=0).astype(np.float32),
+            "trafo_loading": res.trafo_loading.astype(np.float16)}
+
+
+def precompute(model: NetModel, name: str, years, hp: np.ndarray, ev: np.ndarray) -> None:
+    """Grid state after all existing customers, for every weather year."""
+    base = baseline_definition(name)
     for y in years:
-        arr = Scenario(year=y, pv=pvm, hp=hp, ev=ev).arrays()
-        p = arr["p_net"].astype(float).copy()
-        if len(nonfirm):
-            r = doe.compute(model, arr, nonfirm, policy="maxmin")
-            H = p.shape[1]
-            p[nonfirm] = np.minimum(p[nonfirm], 0.0) + np.minimum(np.clip(arr["p_net"][nonfirm], 0, None),
-                                                                  r.envelope(H))
-        q = arr["q"].astype(float)
-        res = model.solve(p, q)
-        vdev = (np.abs(res.v[model.check_rows]) - 1.0).astype(np.float16)
-        np.savez(processed("request", f"{name}_{y}.npz"), vdev=vdev,
-                 pl=(model.phi @ p).astype(np.float16), ql=(model.phi @ q).astype(np.float16),
-                 pt=p.sum(axis=0).astype(np.float32), qt=q.sum(axis=0).astype(np.float32),
-                 trafo_loading=res.trafo_loading.astype(np.float16))
+        p, q = base_injection(model, base, y, hp, ev)
+        np.savez(processed("request", f"{name}_{y}.npz"), **build_state(model, p, q))
     processed("request", f"{name}.json").write_text(json.dumps(base), encoding="utf-8")
-
-
-# ------------------------------------------------------------------------------ live evaluation
-
-@dataclass
-class Request:
-    cid: int
-    pv_kwp: float = 0.0
-    ev_kw: float = 0.0
-    baseline: str = "static"
 
 
 @lru_cache(maxsize=32)
@@ -95,13 +98,72 @@ def _baseline(name: str) -> dict:
     return json.loads(processed("request", f"{name}.json").read_text(encoding="utf-8"))
 
 
+_PQ_CACHE: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
+
+
+def baseline_pq(model: NetModel, name: str, year: int, hp: np.ndarray, ev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The published baseline's injection for one year, kept for the last few years asked for."""
+    key = (name, year)
+    if key not in _PQ_CACHE:
+        if len(_PQ_CACHE) >= 4:
+            _PQ_CACHE.pop(next(iter(_PQ_CACHE)))
+        _PQ_CACHE[key] = base_injection(model, _baseline(name), year, hp, ev)
+    return _PQ_CACHE[key]
+
+
+@dataclass
+class Context:
+    """The grid a request is evaluated against: a published baseline, and anything approved after it.
+
+    `overrides` holds the houses approved into a queue: per house, its net injection for every
+    weather year ("p": {year: (H,)}), its reactive power ("q"), and what the static study must
+    count for it ("pv_kw", "ev_kw", "hp"). `states` replaces the published grid states with ones
+    that include those houses.
+    """
+
+    name: str
+    overrides: dict[int, dict] = field(default_factory=dict)
+    states: dict[int, dict] | None = None
+    label: dict | None = None
+
+    def state(self, year: int) -> dict[str, np.ndarray]:
+        return self.states[year] if self.states is not None else _state(self.name, year)
+
+    def years(self, weather_years) -> list[int]:
+        if self.states is not None:
+            return [y for y in weather_years if y in self.states]
+        return [y for y in weather_years if processed("request", f"{self.name}_{y}.npz").exists()]
+
+    def pq(self, model: NetModel, year: int, hp: np.ndarray, ev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        p, q = baseline_pq(model, self.name, year, hp, ev)
+        if not self.overrides:
+            return p, q
+        p, q = p.copy(), q.copy()
+        for c, ov in self.overrides.items():
+            p[c] = ov["p"][year]
+            q[c] = ov["q"][year]
+        return p, q
+
+
+# ------------------------------------------------------------------------------ live evaluation
+
+@dataclass
+class Request:
+    cid: int
+    pv_kwp: float = 0.0
+    ev_kw: float = 0.0
+    hp: bool = False
+    bat_kwh: float = 0.0
+    baseline: str = "static"
+
+
 @lru_cache(maxsize=16)
 def _sessions(year: int) -> EvSessions:
     d = np.load(processed("ev", f"ev_sessions_{year}.npz"))
     return EvSessions(d["customer"], d["start"], d["end"], d["energy_kwh"])
 
 
-def _applicant_profiles(req: Request, year: int, hp: np.ndarray, ev: np.ndarray) -> dict:
+def _applicant_profiles(req: Request, year: int, hp: np.ndarray, ev: np.ndarray, hp_new: bool) -> dict:
     cust = customers()
     prof = year_profiles(year)
     j = req.cid
@@ -110,11 +172,12 @@ def _applicant_profiles(req: Request, year: int, hp: np.ndarray, ev: np.ndarray)
     pv = np.minimum(np.minimum(prof["pv_per_kwp"][j], 1.0 / ilr) * req.pv_kwp, cap)
     load = (prof["base"][j] * A("household_load_factor") + (prof["hp"][j] if hp[j] else 0.0)
             + (prof["ev"][j] if ev[j] else 0.0))
-    return {"pv": pv.astype(float), "load": np.asarray(load, dtype=float), "cap": cap}
+    hp_kw = np.asarray(prof["hp"][j], dtype=float) if hp_new else np.zeros(len(pv))
+    return {"pv": pv.astype(float), "load": np.asarray(load, dtype=float), "cap": cap, "hp": hp_kw}
 
 
-def _export_envelope(model: NetModel, st: dict, j: int, cap: float, released_kw: np.ndarray) -> np.ndarray:
-    """Residual export headroom for customer j (kW per hour), before verification."""
+def _export_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
+    """Residual export headroom for customer j (kW per hour), unclipped and before verification."""
     s = model.dv_dp[:, j]                                        # pu per kW
     vhead = model.v_max - (1.0 + st["vdev"].astype(float))      # (Kv, H)
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -125,12 +188,11 @@ def _export_envelope(model: NetModel, st: dict, j: int, cap: float, released_kw:
     ev_l = (pbar - pl).min(axis=0) if len(lines) else np.full(vhead.shape[1], np.inf)
     pbar_t = np.sqrt(np.maximum(model.trafo_s_max_kw ** 2 - st["qt"].astype(float) ** 2, 0.0))
     ev_t = pbar_t - st["pt"].astype(float)
-    # export space the house already uses in the baseline is released for the new system
-    env = np.minimum(np.minimum(ev_v, ev_l), ev_t) + released_kw
-    return np.clip(env, 0.0, cap)
+    return np.minimum(np.minimum(ev_v, ev_l), ev_t)
 
 
-def _import_envelope(model: NetModel, st: dict, j: int, charger: float) -> np.ndarray:
+def _import_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
+    """Residual import headroom for customer j (kW per hour, ≥ 0), with a 2 % margin."""
     s = model.dv_dp[:, j]
     vhead = (1.0 + st["vdev"].astype(float)) - model.v_min
     with np.errstate(divide="ignore", invalid="ignore"):
@@ -141,68 +203,204 @@ def _import_envelope(model: NetModel, st: dict, j: int, charger: float) -> np.nd
     ev_l = (pbar + pl).min(axis=0) if len(lines) else np.full(vhead.shape[1], np.inf)
     pbar_t = np.sqrt(np.maximum(model.trafo_s_max_kw ** 2 - st["qt"].astype(float) ** 2, 0.0))
     ev_t = pbar_t + st["pt"].astype(float)
-    return np.clip(np.minimum(np.minimum(ev_v, ev_l), ev_t) * 0.98, 0.0, charger)
+    return np.clip(np.minimum(np.minimum(ev_v, ev_l), ev_t) * 0.98, 0.0, None)
 
 
-_DOE_CACHE: dict = {}
+def _serve_ev(room: np.ndarray, sessions: EvSessions, j: int, kw: float, H: int) -> dict:
+    """Charge each of the house's EV sessions as fast as the charger and the envelope allow."""
+    served = np.zeros(H)
+    need = unmet = 0.0
+    binding = 0
+    sel = sessions.customer == j
+    for a, b, e in zip(sessions.start[sel], sessions.end[sel], sessions.energy_kwh[sel]):
+        rem = float(e)
+        need += rem
+        for h in range(int(a), min(int(b), H)):
+            if rem <= 1e-9:
+                break
+            if room[h] < min(kw, rem) - 1e-6:
+                binding += 1
+            x = max(0.0, min(kw, room[h], rem))
+            served[h] += x
+            rem -= x
+        unmet += rem
+    return {"served": served, "need": need, "unmet": unmet, "binding": binding}
 
 
-def _cached_doe(baseline: str, year: int, model: NetModel, hp, ev) -> np.ndarray:
-    """Envelopes of the baseline's non-firm customers (reference year), cached per process."""
-    key = (baseline, year)
-    if key not in _DOE_CACHE:
-        from . import doe
-        base = _baseline(baseline)
-        pvm = np.zeros(model.C, dtype=bool)
-        pvm[base["pv_cids"]] = True
-        arr = Scenario(year=year, pv=pvm, hp=hp, ev=ev).arrays()
-        nf = np.array(base["nonfirm_cids"], dtype=int)
-        r = doe.compute(model, arr, nf, policy="maxmin")
-        _DOE_CACHE[key] = r.envelope(arr["p_net"].shape[1])
-    return _DOE_CACHE[key]
+def _net(d: dict) -> np.ndarray:
+    """The applicant's net injection before the export envelope: production minus every load served."""
+    return d["pv"] - d["load"] - d["hp_s"] - d["ev_s"]
 
 
-def _static(model: NetModel, req: Request, base: dict, hp, ev) -> dict:
-    cust = customers()
-    j = req.cid
-    static = {}
-    firm_mask = np.zeros(model.C, dtype=bool)
-    firm_mask[base["pv_cids"]] = True     # the static study treats every connected system as firm
-    if req.pv_kwp > 0:
-        cap = min(req.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[j, "fuse_kva"]))
-        pv_kw = hosting.cap_kw().copy()
-        pv_kw[j] = cap
-        m = firm_mask.copy()
-        m[j] = True
-        p_s, q_s = hosting.summer_snapshot(m, pv_kw)
-        res = model.solve(p_s[:, None], q_s[:, None])
-        v = model.violations(res, p_s[:, None])
-        static["pv"] = {"approved": bool(~v.export_side[0]), "trafo_loading_pct": float(res.trafo_loading[0]),
-                        "max_voltage_pu": float(v.vmax[0]), "max_line_loading_pct": float(v.max_line_loading[0]),
-                        **_reason(v, res, 0, "export")}
-    if req.ev_kw > 0:
-        extra = np.zeros(model.C)
-        extra[j] = req.ev_kw
-        p_w, q_w = hosting.winter_snapshot(hp, ev, extra)
-        res = model.solve(p_w[:, None], q_w[:, None])
-        v = model.violations(res, p_w[:, None])
-        static["ev"] = {"approved": bool(~v.import_side[0]), "trafo_loading_pct": float(res.trafo_loading[0]),
-                        "min_voltage_pu": float(v.vmin[0]), "max_line_loading_pct": float(v.max_line_loading[0]),
-                        **_reason(v, res, 0, "import")}
-    return static
+def _injection(d: dict) -> np.ndarray:
+    """The applicant's net injection in the grid: exports held to the envelope, imports as served."""
+    net = _net(d)
+    if "env" not in d:
+        return net
+    out = np.where(net > 0, np.minimum(net, d["env"]), net)
+    if "bat_dis" in d:
+        out = out + d["bat_dis"]
+    return out
 
 
-def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None) -> dict:
+def _reactive(d: dict) -> np.ndarray:
+    return -(d["load"] + d["hp_s"] + d["ev_s"]) * np.tan(np.arccos(A("load_power_factor")))
+
+
+def _verify_import(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
+    """Re-check the hours where the import envelope binds; scale the served import down where it fails."""
+    demand = d["hp"] + d["ev_want"]
+    served = d["hp_s"] + d["ev_s"]
+    hrs = np.flatnonzero((demand > 1e-6) & (d["head"] < demand - 1e-6))
+    if not len(hrs):
+        return {"hours_checked": 0, "hours_tightened": 0, "violations_after": 0}
+    p, q = p0[:, hrs].copy(), q0[:, hrs].copy()
+    p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
+    bad = model.violations(model.solve(p, q), p).import_side
+    n_tight = int(bad.sum())
+    if bad.any():
+        cols = np.flatnonzero(bad)
+        hb = hrs[cols]
+        base_inj = _injection(d)[hb] + served[hb]          # injection with none of the new import
+        lo, hi = np.zeros(len(hb)), np.ones(len(hb))
+        for _ in range(16):
+            mid = (lo + hi) / 2
+            pc, qc = p[:, cols].copy(), q[:, cols].copy()
+            pc[j] = base_inj - served[hb] * mid
+            qc[j] = -(d["load"][hb] + served[hb] * mid) * np.tan(np.arccos(A("load_power_factor")))
+            okk = ~model.violations(model.solve(pc, qc), pc).import_side
+            lo = np.where(okk, mid, lo)
+            hi = np.where(okk, hi, mid)
+        d["hp_s"][hb] *= lo
+        d["ev_s"][hb] *= lo
+        p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
+        bad = model.violations(model.solve(p, q), p).import_side
+    return {"hours_checked": int(len(hrs)), "hours_tightened": n_tight, "violations_after": int(bad.sum())}
+
+
+def _verify_export(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
+    """Re-check the hours where the export envelope binds; bisect the envelope down where it fails."""
+    p, q = p0.copy(), q0.copy()
+    p[j], q[j] = _injection(d), _reactive(d)
+    net_j = _net(d)
+    # hours where the applicant exports and its envelope is below the inverter capacity
+    hrs = np.flatnonzero((d["desired"] > 0) & (d["env"] < d["cap"] - 1e-6))
+    n_bad = n_tightened = n_baseline = 0
+    if len(hrs):
+        qh = q[:, hrs]
+        res = model.solve(p[:, hrs], qh)
+        bad = model.violations(res, p[:, hrs]).export_side
+        if bad.any():
+            # bisection on the applicant's envelope in the failing hours (μ ∈ [0, 1])
+            hb = hrs[bad]
+            n_tightened = len(hb)
+            env0 = d["env"][hb].copy()
+            lo, hi = np.zeros(len(hb)), np.ones(len(hb))
+            cols = np.flatnonzero(bad)
+            for _ in range(16):
+                mid = (lo + hi) / 2
+                pc = p[:, hrs[cols]].copy()
+                pc[j] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], env0 * mid), net_j[hb])
+                okk = ~model.violations(model.solve(pc, qh[:, cols]), pc).export_side
+                lo = np.where(okk, mid, lo)
+                hi = np.where(okk, hi, mid)
+            d["env"][hb] = env0 * lo
+            p[j, hb] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], d["env"][hb]), net_j[hb])
+            res = model.solve(p[:, hrs], qh)
+            bad = model.violations(res, p[:, hrs]).export_side
+            # hours that still fail with zero export from the applicant are limits of the
+            # baseline itself (existing customers exactly at their own envelopes)
+            n_baseline = int(bad.sum())
+        n_bad = int(bad.sum())
+        d["curt"] = np.maximum(d["desired"] - d["env"], 0.0)
+    return {"hours_checked": int(len(hrs)), "hours_tightened": n_tightened,
+            "violations_after": n_bad - n_baseline, "baseline_limited_hours": n_baseline}
+
+
+def battery_params(bat_kwh: float) -> dict:
+    """Charge and discharge efficiencies (AC side) and power of a home battery (assumptions.toml)."""
+    dc = float(np.sqrt(A("battery_dc_eff")))
+    return {"kwh": float(bat_kwh), "kw": float(bat_kwh) * A("battery_kw_per_kwh"),
+            "eta_in": A("battery_ac2bat_eff") * dc, "eta_out": dc * A("battery_bat2ac_eff")}
+
+
+def _battery_dispatch(d: dict, bp: dict, blocked: np.ndarray | None = None) -> None:
+    """Store what the envelope would curtail; give it back to the house's own load later.
+
+    The battery charges only from curtailed energy, so the export it leaves is the envelope
+    exactly; it discharges only while the house imports, never into the grid, and no more than
+    the export headroom left in that hour (`blocked` closes hours the power flow refused).
+    """
+    H = len(d["pv"])
+    curt = d["curt"]
+    need = np.maximum(-_net(d), 0.0)
+    room = np.maximum(d["env_raw"] - np.maximum(d["pv"], 0.0), 0.0)
+    if blocked is not None:
+        room = np.where(blocked, 0.0, room)
+    kwh, kw, eta_in, eta_out = bp["kwh"], bp["kw"], bp["eta_in"], bp["eta_out"]
+    ch, dis, soc = np.zeros(H), np.zeros(H), np.zeros(H)
+    e = 0.0
+    for t in range(H):
+        c = min(curt[t], kw, (kwh - e) / eta_in)
+        if c > 1e-9:
+            e += c * eta_in
+            ch[t] = c
+        if need[t] > 1e-9 and e > 1e-9:
+            x = min(need[t], kw, e * eta_out, room[t])
+            if x > 1e-9:
+                e -= x / eta_out
+                dis[t] = x
+        soc[t] = e
+    d.update(bat_ch=ch, bat_dis=dis, bat_soc=soc)
+
+
+def _verify_battery(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict, bp: dict) -> dict:
+    """Re-check every hour the battery discharges; close the hours that fail and dispatch again."""
+    checked = 0
+    blocked = np.zeros(len(d["pv"]), dtype=bool)
+    for _ in range(3):
+        hrs = np.flatnonzero(d["bat_dis"] > 1e-9)
+        checked = max(checked, len(hrs))
+        if not len(hrs):
+            return {"hours_checked": checked, "hours_closed": int(blocked.sum()), "violations_after": 0}
+        p, q = p0[:, hrs].copy(), q0[:, hrs].copy()
+        p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
+        bad = model.violations(model.solve(p, q), p).export_side
+        if not bad.any():
+            return {"hours_checked": checked, "hours_closed": int(blocked.sum()), "violations_after": 0}
+        blocked[hrs[bad]] = True
+        _battery_dispatch(d, bp, blocked)
+    hrs = np.flatnonzero(d["bat_dis"] > 1e-9)
+    p, q = p0[:, hrs].copy(), q0[:, hrs].copy()
+    p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
+    bad = model.violations(model.solve(p, q), p).export_side
+    return {"hours_checked": checked, "hours_closed": int(blocked.sum()), "violations_after": int(bad.sum())}
+
+
+def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None,
+             ctx: Context | None = None) -> dict:
     """Full evaluation; `emit(stage, payload)` is called as each stage finishes (for SSE)."""
+    out, _ = run(model, req, hp, ev, emit=emit, ctx=ctx)
+    return out
+
+
+def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None, ctx: Context | None = None,
+        verify_years: list[int] | None = None) -> tuple[dict, dict]:
+    """The evaluation and, per weather year, the hourly arrays behind it (the queue keeps those)."""
     emit = emit or (lambda *_: None)
+    ctx = ctx or Context(req.baseline)
     cfg = settings()
     t_all = time.perf_counter()
     cust = customers()
     j = int(req.cid)
-    base = _baseline(req.baseline)
+    base = _baseline(ctx.name)
     had_pv = j in set(base["pv_cids"])
+    hp_new = bool(req.hp) and not bool(hp[j])
+    want_import = req.ev_kw > 0 or hp_new
+    bp = battery_params(req.bat_kwh) if (req.bat_kwh > 0 and req.pv_kwp > 0) else None
     ref = cfg.reference_year
-    years = [y for y in cfg.weather_years if processed("request", f"{req.baseline}_{y}.npz").exists()]
+    years = ctx.years(cfg.weather_years)
+    verify_years = [y for y in (verify_years or [ref]) if y in years]
     out: dict = {"request": dict(req.__dict__), "baseline": req.baseline, "customer": {
         "cid": j, "address": str(cust.loc[j, "address"]), "fuse_a": int(cust.loc[j, "fuse_a"]),
         "fuse_kva": float(cust.loc[j, "fuse_kva"]), "roof_kwp": float(cust.loc[j, "kwp"]),
@@ -210,21 +408,32 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
         "east_west": bool(cust.loc[j, "east_west"]), "dist_m": float(cust.loc[j, "dist_m"]),
         "feeder": int(cust.loc[j, "feeder"]), "had_pv_in_baseline": had_pv,
         "has_hp": bool(hp[j]), "has_ev": bool(ev[j])}}
+    if ctx.label:
+        out["queue"] = ctx.label
 
     # ---- 1) static method -------------------------------------------------------------------
     t0 = time.perf_counter()
-    out["static"] = _static(model, req, base, hp, ev)
+    out["static"] = _static(model, req, base, hp, ev, ctx, hp_new)
     emit("static", {"static": out["static"], "ms": 1000 * (time.perf_counter() - t0)})
 
-    # ---- 2) dynamic envelopes, every weather year --------------------------------------------
+    # ---- 2) dynamic envelopes, every weather year (closed form) ------------------------------
     t0 = time.perf_counter()
-    per_year, detail = [], {}
+    detail: dict[int, dict] = {}
     for y in years:
-        st = _state(req.baseline, y)
-        prof = _applicant_profiles(req, y, hp, ev)
+        st = ctx.state(y)
+        prof = _applicant_profiles(req, y, hp, ev, hp_new)
         H = len(prof["pv"])
-        entry: dict = {"year": y}
-        d: dict = {"pv": prof["pv"], "load": prof["load"], "cap": prof["cap"]}
+        d: dict = {"pv": prof["pv"], "load": prof["load"], "cap": prof["cap"], "hp": prof["hp"],
+                   "hp_s": np.zeros(H), "ev_s": np.zeros(H), "ev_want": np.zeros(H)}
+        if want_import:
+            d["head"] = _import_headroom(model, st, j)
+            d["hp_s"] = np.minimum(d["hp"], d["head"])          # the heat pump is served first
+            if req.ev_kw > 0:
+                room = np.minimum(np.maximum(d["head"] - d["hp_s"], 0.0), req.ev_kw)
+                ev_full = _serve_ev(np.full(H, req.ev_kw), _sessions(y), j, req.ev_kw, H)
+                ev_env = _serve_ev(room, _sessions(y), j, req.ev_kw, H)
+                d["ev_want"], d["ev_s"] = ev_full["served"], ev_env["served"]
+                d["ev_need"], d["ev_unmet"], d["ev_binding"] = ev_env["need"], ev_env["unmet"], ev_env["binding"]
         if req.pv_kwp > 0:
             released = np.zeros(H)
             if had_pv:
@@ -233,87 +442,74 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
                 old_pv = np.minimum(np.minimum(year_profiles(y)["pv_per_kwp"][j], 1.0 / A("pv_dc_ac_ratio")) * old_kwp,
                                     old_cap)
                 released = np.clip(old_pv - prof["load"], 0, None)
-            d["env"] = _export_envelope(model, st, j, prof["cap"], released)
-            d["desired"] = np.clip(prof["pv"] - prof["load"], 0.0, None)
+            # export space the house already uses in the baseline is released for the new system
+            d["env_raw"] = _export_headroom(model, st, j) + released
+            d["env"] = np.clip(d["env_raw"], 0.0, prof["cap"])
+            d["desired"] = np.clip(_net(d), 0.0, None)
             d["curt"] = np.maximum(d["desired"] - d["env"], 0.0)
-        if req.ev_kw > 0:
-            env_i = _import_envelope(model, st, j, req.ev_kw)
-            s = _sessions(y)
-            sel = s.customer == j
-            need = unmet = 0.0
-            binding = 0
-            for a, b, e in zip(s.start[sel], s.end[sel], s.energy_kwh[sel]):
-                rem = float(e)
-                need += rem
-                for h in range(int(a), min(int(b), H)):
-                    if rem <= 1e-9:
-                        break
-                    if env_i[h] < min(req.ev_kw, rem) - 1e-6:
-                        binding += 1
-                    rem -= min(req.ev_kw, env_i[h], rem)
-                unmet += rem
-            d["env_import"] = env_i
-            entry.update(ev_requested_kwh=need, ev_unmet_kwh=unmet, ev_hours_limited=binding)
         detail[y] = d
-        per_year.append(entry)
     emit("envelope", {"years": len(years), "ms": 1000 * (time.perf_counter() - t0)})
 
-    # ---- 3) verification with the nonlinear power flow (reference year) ---------------------
+    # ---- 3) verification with the nonlinear power flow ---------------------------------------
     t0 = time.perf_counter()
+    checks: dict[int, dict] = {}
+    for y in verify_years:
+        d = detail[y]
+        p0, q0 = ctx.pq(model, y, hp, ev)
+        c: dict = {}
+        if want_import:
+            c["import"] = _verify_import(model, p0, q0, j, d)
+            if req.pv_kwp > 0:      # less import served can mean more to export
+                d["desired"] = np.clip(_net(d), 0.0, None)
+                d["curt"] = np.maximum(d["desired"] - d["env"], 0.0)
+        if req.pv_kwp > 0:
+            c["export"] = _verify_export(model, p0, q0, j, d)
+        if bp is not None:
+            _battery_dispatch(d, bp)
+            c["battery"] = _verify_battery(model, p0, q0, j, d, bp)
+        checks[y] = c
+    for y in years:
+        if bp is not None and y not in checks:
+            _battery_dispatch(detail[y], bp)
+    method = "Z-bus nonlinear power flow on every hour where an envelope binds"
     verify: dict = {}
-    if req.pv_kwp > 0 and ref in detail:
-        d = detail[ref]
-        pvm = np.zeros(model.C, dtype=bool)
-        pvm[base["pv_cids"]] = True
-        arr = Scenario(year=ref, pv=pvm, hp=hp, ev=ev).arrays()
-        p = arr["p_net"].astype(float).copy()
-        if base["nonfirm_cids"]:
-            nf = np.array(base["nonfirm_cids"], dtype=int)
-            env_nf = _cached_doe(req.baseline, ref, model, hp, ev)
-            p[nf] = np.minimum(p[nf], 0.0) + np.minimum(np.clip(arr["p_net"][nf], 0, None), env_nf)
-        net_j = d["pv"] - d["load"]
-        p[j] = np.where(net_j > 0, np.minimum(net_j, d["env"]), net_j)
-        # hours where the applicant exports and its envelope is below the inverter capacity
-        hrs = np.flatnonzero((d["desired"] > 0) & (d["env"] < d["cap"] - 1e-6))
-        n_bad = n_tightened = n_baseline = 0
-        if len(hrs):
-            q = arr["q"][:, hrs]
-            res = model.solve(p[:, hrs], q)
-            bad = model.violations(res, p[:, hrs]).export_side
-            if bad.any():
-                # bisection on the applicant's envelope in the failing hours (μ ∈ [0, 1])
-                hb = hrs[bad]
-                n_tightened = len(hb)
-                env0 = d["env"][hb].copy()
-                lo, hi = np.zeros(len(hb)), np.ones(len(hb))
-                cols = np.flatnonzero(bad)
-                for _ in range(16):
-                    mid = (lo + hi) / 2
-                    pc = p[:, hrs[cols]].copy()
-                    pc[j] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], env0 * mid), net_j[hb])
-                    okk = ~model.violations(model.solve(pc, q[:, cols]), pc).export_side
-                    lo = np.where(okk, mid, lo)
-                    hi = np.where(okk, hi, mid)
-                d["env"][hb] = env0 * lo
-                p[j, hb] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], d["env"][hb]), net_j[hb])
-                res = model.solve(p[:, hrs], q)
-                bad = model.violations(res, p[:, hrs]).export_side
-                # hours that still fail with zero export from the applicant are limits of the
-                # baseline itself (existing customers exactly at their own envelopes)
-                n_baseline = int(bad.sum())
-            n_bad = int(bad.sum())
-            d["curt"] = np.maximum(d["desired"] - d["env"], 0.0)
-        verify = {"hours_checked": int(len(hrs)), "hours_tightened": n_tightened,
-                  "violations_after": n_bad - n_baseline, "baseline_limited_hours": n_baseline, "year": ref,
-                  "method": "Z-bus nonlinear power flow on every hour where the envelope is below capacity"}
+    if ref in checks:
+        cr = checks[ref]
+        if "export" in cr:
+            verify.update(cr["export"])
+        verify.update(year=ref, method=method)
+        if "import" in cr:
+            verify["import"] = cr["import"]
+        if "battery" in cr:
+            verify["battery"] = cr["battery"]
+    verify["years_verified"] = sorted(checks)
+    if len(checks) > 1:
+        verify["all_years"] = {
+            "export_violations_after": sum(c.get("export", {}).get("violations_after", 0) for c in checks.values()),
+            "import_violations_after": sum(c.get("import", {}).get("violations_after", 0) for c in checks.values()),
+            "battery_violations_after": sum(c.get("battery", {}).get("violations_after", 0) for c in checks.values())}
     out["verification"] = verify
     emit("verify", {"verification": verify, "ms": 1000 * (time.perf_counter() - t0)})
 
-    for e in per_year:
-        d = detail[e["year"]]
+    # ---- per-year figures ----------------------------------------------------------------------
+    per_year = []
+    for y in years:
+        d = detail[y]
+        e: dict = {"year": y}
         if "curt" in d:
             e.update(pv_kwh=float(d["pv"].sum()), export_kwh=float(d["desired"].sum()),
                      curtailed_kwh=float(d["curt"].sum()), hours_limited=int((d["curt"] > 1e-3).sum()))
+        if req.ev_kw > 0:
+            e.update(ev_requested_kwh=float(d["ev_need"]), ev_unmet_kwh=float(d["ev_need"] - d["ev_s"].sum()),
+                     ev_hours_limited=int(d["ev_binding"]))
+        if hp_new:
+            gap = d["hp"] - d["hp_s"]
+            e.update(hp_kwh=float(d["hp"].sum()), hp_unmet_kwh=float(gap.sum()),
+                     hp_hours_limited=int((gap > 1e-3).sum()))
+        if bp is not None:
+            e.update(bat_charged_kwh=float(d["bat_ch"].sum()), bat_discharged_kwh=float(d["bat_dis"].sum()),
+                     curtailed_after_battery_kwh=float((d["curt"] - d["bat_ch"]).sum()))
+        per_year.append(e)
     out["per_year"] = per_year
 
     # ---- 4) risk over weather years (weekly block bootstrap) ---------------------------------
@@ -342,7 +538,7 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
     out["risk"] = risk
     emit("risk", {"risk": risk, "ms": 1000 * (time.perf_counter() - t0)})
 
-    # ---- 5) economics at the real SE3 spot price ----------------------------------------------
+    # ---- 5) economics at the real spot price -------------------------------------------------
     t0 = time.perf_counter()
     econ: dict = {}
     if req.pv_kwp > 0:
@@ -351,21 +547,27 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
             if y not in detail:
                 continue
             d = detail[y]
-            self_use = np.minimum(d["pv"], d["load"])
+            self_use = np.minimum(d["pv"], d["load"] + d["hp_s"] + d["ev_s"])
             v_c = economics.value_sek(d["curt"], y)
             v_e = economics.value_sek(d["desired"] - d["curt"], y)
             v_s = economics.value_sek(self_use, y)
-            rows.append({"year": y, "curtailed_kwh": float(d["curt"].sum()),
-                         "curtailed_sek_gross": v_c["gross_sek"], "curtailed_sek_net": v_c["net_sek"],
-                         "export_kwh": float((d["desired"] - d["curt"]).sum()), "export_sek": v_e["net_sek"],
-                         "self_use_kwh": float(self_use.sum()), "self_use_spot_sek": v_s["net_sek"],
-                         "negative_price_kwh_curtailed": v_c["negative_price_kwh"]})
+            row = {"year": y, "curtailed_kwh": float(d["curt"].sum()),
+                   "curtailed_sek_gross": v_c["gross_sek"], "curtailed_sek_net": v_c["net_sek"],
+                   "export_kwh": float((d["desired"] - d["curt"]).sum()), "export_sek": v_e["net_sek"],
+                   "self_use_kwh": float(self_use.sum()), "self_use_spot_sek": v_s["net_sek"],
+                   "negative_price_kwh_curtailed": v_c["negative_price_kwh"]}
+            if bp is not None:
+                v_b = economics.value_sek(d["bat_dis"], y)
+                row.update(battery_discharged_kwh=float(d["bat_dis"].sum()), battery_sek=v_b["net_sek"])
+            rows.append(row)
         if rows:
             econ = {"by_year": rows,
                     "curtailed_sek_mean": float(np.mean([r["curtailed_sek_gross"] for r in rows])),
                     "export_sek_mean": float(np.mean([r["export_sek"] for r in rows])),
                     "self_use_spot_sek_mean": float(np.mean([r["self_use_spot_sek"] for r in rows])),
-                    "note": "Valued at the SE3 day-ahead spot price only (no grid fees, energy tax or compensation)."}
+                    "note": "Valued at the day-ahead spot price only (no grid fees, energy tax or compensation)."}
+            if bp is not None:
+                econ["battery_sek_mean"] = float(np.mean([r["battery_sek"] for r in rows]))
     out["economics"] = econ
     emit("economics", {"economics": econ, "ms": 1000 * (time.perf_counter() - t0)})
 
@@ -384,13 +586,71 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
             prof_out.update(envelope_kw=np.round(d["env"], 2).tolist(), desired_kw=np.round(d["desired"], 2).tolist(),
                             pv_kw=np.round(d["pv"], 2).tolist(), curtailed_kw=np.round(d["curt"], 2).tolist(),
                             envelope_min_month_hour=np.round(grid, 2).tolist(), cap_kw=float(d["cap"]))
-        if "env_import" in d:
-            prof_out["import_envelope_kw"] = np.round(d["env_import"], 2).tolist()
+        if want_import:
+            cap_i = (req.ev_kw if req.ev_kw > 0 else 0.0) + (float(d["hp"].max()) if hp_new else 0.0)
+            prof_out["import_envelope_kw"] = np.round(np.minimum(d["head"], cap_i), 2).tolist()
+        if hp_new:
+            prof_out.update(hp_kw=np.round(d["hp"], 2).tolist(), hp_unmet_kw=np.round(d["hp"] - d["hp_s"], 2).tolist())
+        if bp is not None:
+            prof_out.update(battery_charge_kw=np.round(d["bat_ch"], 2).tolist(),
+                            battery_discharge_kw=np.round(d["bat_dis"], 2).tolist(),
+                            battery_soc_kwh=np.round(d["bat_soc"], 2).tolist(),
+                            battery={"kwh": bp["kwh"], "kw": bp["kw"],
+                                     "round_trip": bp["eta_in"] * bp["eta_out"]})
         out["profiles"] = prof_out
-    out["summary"] = _summary(out, req)
+    out["summary"] = _summary(out, req, hp_new, bp is not None)
     out["seconds"] = time.perf_counter() - t_all
     emit("done", {"summary": out["summary"], "seconds": out["seconds"]})
-    return out
+    return out, detail
+
+
+def _static(model: NetModel, req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context,
+            hp_new: bool) -> dict:
+    cust = customers()
+    j = req.cid
+    static = {}
+    firm_mask = np.zeros(model.C, dtype=bool)
+    firm_mask[base["pv_cids"]] = True     # the static study treats every connected system as firm
+    pv_kw = hosting.cap_kw().copy()
+    hp_mask = hp.copy()
+    extra = np.zeros(model.C)
+    for c, ov in ctx.overrides.items():   # houses approved earlier in the queue count as connected
+        if ov.get("pv_kw", 0) > 0:
+            firm_mask[c] = True
+            pv_kw[c] = ov["pv_kw"]
+        if ov.get("hp"):
+            hp_mask[c] = True
+        extra[c] += ov.get("ev_kw", 0.0)
+    if req.pv_kwp > 0:
+        cap = min(req.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[j, "fuse_kva"]))
+        pv_kw[j] = cap
+        m = firm_mask.copy()
+        m[j] = True
+        p_s, q_s = hosting.summer_snapshot(m, pv_kw)
+        res = model.solve(p_s[:, None], q_s[:, None])
+        v = model.violations(res, p_s[:, None])
+        static["pv"] = {"approved": bool(~v.export_side[0]), "trafo_loading_pct": float(res.trafo_loading[0]),
+                        "max_voltage_pu": float(v.vmax[0]), "max_line_loading_pct": float(v.max_line_loading[0]),
+                        **_reason(v, res, 0, "export")}
+    if req.ev_kw > 0 or hp_new:
+        # the winter peak with every load the request adds: the charger at full power and the heat
+        # pump at its design-hour demand
+        x = extra.copy()
+        x[j] += req.ev_kw
+        hm = hp_mask.copy()
+        if hp_new:
+            hm[j] = True
+        p_w, q_w = hosting.winter_snapshot(hm, ev, x)
+        res = model.solve(p_w[:, None], q_w[:, None])
+        v = model.violations(res, p_w[:, None])
+        verdict = {"approved": bool(~v.import_side[0]), "trafo_loading_pct": float(res.trafo_loading[0]),
+                   "min_voltage_pu": float(v.vmin[0]), "max_line_loading_pct": float(v.max_line_loading[0]),
+                   **_reason(v, res, 0, "import")}
+        if req.ev_kw > 0:
+            static["ev"] = verdict
+        if hp_new:
+            static["hp"] = {**verdict, "design_kw": float(hosting.winter_design_load()["hp"][j])}
+    return static
 
 
 _REASONS = {
@@ -428,7 +688,7 @@ def _reason(v, res, h: int, side: str) -> dict:
             "reason_code": code, "reason_value": val}
 
 
-def _summary(out: dict, req: Request) -> dict:
+def _summary(out: dict, req: Request, hp_new: bool, battery: bool) -> dict:
     s: dict = {}
     ref = settings().reference_year
     e_ref = next((e for e in out["per_year"] if e["year"] == ref), {})
@@ -445,4 +705,18 @@ def _summary(out: dict, req: Request) -> dict:
         unmet = sum(e.get("ev_unmet_kwh", 0) for e in out["per_year"])
         s["ev_unmet_pct"] = 100 * unmet / max(req_kwh, 1e-9)
         s["ev_hours_limited_ref"] = e_ref.get("ev_hours_limited", 0)
+    if hp_new:
+        s["hp_static_approved"] = out["static"]["hp"]["approved"]
+        hp_kwh = sum(e.get("hp_kwh", 0) for e in out["per_year"])
+        unmet = sum(e.get("hp_unmet_kwh", 0) for e in out["per_year"])
+        s["hp_unmet_pct"] = 100 * unmet / max(hp_kwh, 1e-9)
+        s["hp_hours_limited_ref"] = e_ref.get("hp_hours_limited", 0)
+        s["hp_kwh_mean"] = hp_kwh / max(len(out["per_year"]), 1)
+    if battery:
+        curt = e_ref.get("curtailed_kwh", 0.0)
+        s["bat_charged_ref_kwh"] = e_ref.get("bat_charged_kwh", 0.0)
+        s["bat_discharged_ref_kwh"] = e_ref.get("bat_discharged_kwh", 0.0)
+        s["bat_captured_ref_pct"] = 100 * e_ref.get("bat_charged_kwh", 0.0) / curt if curt > 1e-9 else None
+        s["curtailment_after_battery_ref_pct"] = (100 * e_ref.get("curtailed_after_battery_kwh", 0.0)
+                                                  / max(e_ref.get("pv_kwh", 1), 1e-9))
     return s

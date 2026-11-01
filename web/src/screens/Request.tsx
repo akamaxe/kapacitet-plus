@@ -57,6 +57,9 @@ export default function Request() {
   const [baseline, setBaseline] = useState<"static" | "doe">("static");
   const [pv, setPv] = useState(10);
   const [ev, setEv] = useState(0);
+  const [hp, setHp] = useState(false);
+  const [bat, setBat] = useState(0);
+  const batMax = A.get("battery_max_kwh") ?? 0;
   const [job, setJob] = useState<Job | null>(null);
   const jobRef = useRef<Job | null>(null);
   jobRef.current = job;
@@ -90,6 +93,7 @@ export default function Request() {
     esRef.current?.close();
     setJob(null);
     if (house) setPv(Math.min(pvMax, Math.max(pvMin, Math.round(house.kwp))));
+    if (house?.has_hp) setHp(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house?.cid]);
 
@@ -112,6 +116,8 @@ export default function Request() {
         setJob(jobRef.current);
         setPv(q.pv_kwp ?? 0);
         setEv(q.ev_kw ?? 0);
+        setHp(!!q.hp);
+        setBat(q.bat_kwh ?? 0);
         if (q.baseline === "static" || q.baseline === "doe") setBaseline(q.baseline);
         if (typeof q.cid === "number" && q.cid !== useStore.getState().selectedCid) useStore.setState({ selectedCid: q.cid });
       })
@@ -216,7 +222,7 @@ export default function Request() {
       r = await fetch(`${API}/requests`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, baseline }),
+        body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0, baseline }),
       });
     } catch {
       fail(t("req.dropped"));
@@ -286,9 +292,11 @@ export default function Request() {
   const res = job?.result;
   const running = !!job && !job.result && !job.error;
   // an answer to a request that has since changed is cancelled, not removed
-  const stale = !!res && (res.request.cid !== cid || res.request.baseline !== baseline || res.request.pv_kwp !== pv || res.request.ev_kw !== ev);
+  const asked = res?.request;
+  const stale = !!asked && (asked.cid !== cid || asked.baseline !== baseline || asked.pv_kwp !== pv || asked.ev_kw !== ev
+    || !!asked.hp !== hp || (asked.bat_kwh ?? 0) !== (pv > 0 ? bat : 0));
   const evLabel = (v: number) => (v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`);
-  const nothing = pv === 0 && ev === 0;
+  const nothing = pv === 0 && ev === 0 && !hp;
 
   return (
     <div className="split wide-panel">
@@ -363,6 +371,24 @@ export default function Request() {
                   ))}
                 </div>
               </div>
+              <div className="stack">
+                <span className="field-label" id="hp-label">{t("req.hp")}</span>
+                <div className="seg" role="group" aria-labelledby="hp-label" aria-describedby={house.has_hp ? "hp-has" : undefined}>
+                  <button aria-pressed={!hp} onClick={() => setHp(false)}>{t("req.none")}</button>
+                  <button aria-pressed={hp} disabled={!!house.has_hp} onClick={() => setHp(true)}>{t("req.hp.add")}</button>
+                </div>
+                {house.has_hp && <p className="caption-muted" id="hp-has">{t("req.hp.has")}</p>}
+              </div>
+              {batMax > 0 && (
+                <div className="field">
+                  <label htmlFor="bat">{t("req.bat")}</label>
+                  <output htmlFor="bat">{bat > 0 ? `${f(bat)} kWh` : t("req.none")}</output>
+                  <input id="bat" type="range" min={0} max={batMax} step={1} value={bat} disabled={pv === 0}
+                    aria-describedby="bat-note" onChange={(e) => setBat(Number(e.target.value))} />
+                  <span className="field-ends"><span>0</span><span>{f(batMax)} kWh</span></span>
+                  <p className="caption-muted field-note" id="bat-note">{pv === 0 ? t("req.bat.needPv") : t("req.bat.note")}</p>
+                </div>
+              )}
             </fieldset>
 
             <fieldset className="stack form-group">
@@ -429,7 +455,7 @@ export default function Request() {
           <div ref={resultRef} tabIndex={-1} className={`answer${stale ? " stale" : ""}`} aria-label={t("req.answer")}>
             {stale && (
               <div className="stale-note" role="status">
-                <span>{t("req.stale", { pv: f(res.request.pv_kwp), ev: evLabel(res.request.ev_kw) })}</span>
+                <span>{t("req.stale", { what: describeRequest(t, f, res.request) })}</span>
                 <button className="btn small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
               </div>
             )}
@@ -459,6 +485,16 @@ export default function Request() {
       </aside>
     </div>
   );
+}
+
+/** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
+function describeRequest(t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string, q: any): string {
+  return [
+    q.pv_kwp > 0 ? `${f(q.pv_kwp)} kWp` : null,
+    q.ev_kw > 0 ? `${f(q.ev_kw, q.ev_kw % 1 ? 1 : 0)} kW ${t("req.evShort")}` : null,
+    q.hp ? t("req.hpShort") : null,
+    q.bat_kwh > 0 ? `${f(q.bat_kwh)} kWh ${t("req.batShort")}` : null,
+  ].filter(Boolean).join(" · ");
 }
 
 /** Keep the answer: print or save it as a PDF, download its hours or its record, copy its link. */
@@ -492,12 +528,7 @@ function History({ current, onOpen }: { current: string | null; onOpen: (item: a
   const items: any[] = list.data?.items ?? [];
   if (!items.length) return null;
   const when = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "short", timeStyle: "short" });
-  const asked = (q: any) => [
-    q.pv_kwp > 0 ? `${f(q.pv_kwp)} kWp` : null,
-    q.ev_kw > 0 ? `${f(q.ev_kw, q.ev_kw % 1 ? 1 : 0)} kW ${t("req.evShort")}` : null,
-    q.hp ? t("req.hpShort") : null,
-    q.bat_kwh > 0 ? `${f(q.bat_kwh)} kWh` : null,
-  ].filter(Boolean).join(" · ");
+  const asked = (q: any) => describeRequest(t, f, q);
   return (
     <details className="history">
       <summary>{t("req.history", { n: items.length })}</summary>
@@ -524,6 +555,8 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
   const sum = res.summary;
   const pvReq = res.request.pv_kwp > 0;
   const evReq = res.request.ev_kw > 0;
+  const hpReq = !!res.static?.hp;
+  const batReq = (res.request.bat_kwh ?? 0) > 0 && !!res.profiles?.battery;
   const refYear = res.per_year.find((e: any) => e.year === year);
   const prof = res.profiles;
   // does the envelope ever go below the system's own export capacity in the reference year?
@@ -570,6 +603,36 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
           <Tile label={t("req.ev.energy")} value={f(res.per_year.reduce((s: number, e: any) => s + (e.ev_requested_kwh ?? 0), 0) / Math.max(1, res.per_year.length))} unit="kWh" note={t("req.ev.energyNote")} />
         </div>
+      )}
+
+      {hpReq && (
+        <section className="stack">
+          <h3>{t("req.hp.title")}</h3>
+          <div className="tiles">
+            <Tile label={t("req.hp.static")} value={res.static.hp.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.hp)} />
+            <Tile label={t("req.hp.unmet")} value={f(sum.hp_unmet_pct, 2)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
+            <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
+            <Tile label={t("req.hp.energy")} value={f(sum.hp_kwh_mean)} unit="kWh" note={t("req.hp.energyNote", { kw: f(res.static.hp.design_kw, 1) })} />
+          </div>
+          <p className="caption-muted">{t("req.hp.caption")}</p>
+        </section>
+      )}
+
+      {batReq && (
+        <section className="stack">
+          <h3>{t("req.bat.title")}</h3>
+          {sum.bat_captured_ref_pct == null ? (
+            <Status kind="good">{t("req.bat.nothing", { year })}</Status>
+          ) : (
+            <div className="tiles">
+              <Tile label={t("req.bat.captured")} value={f(sum.bat_captured_ref_pct, 0)} unit="%" note={t("req.bat.capturedNote", { year })} />
+              <Tile label={t("req.bat.returned")} value={f(sum.bat_discharged_ref_kwh)} unit="kWh" note={`${year}`} />
+              <Tile label={t("req.bat.after")} value={f(sum.curtailment_after_battery_ref_pct, 1)} unit="%" note={t("req.bat.afterNote", { z: f(sum.pv_curtailment_ref_pct, 1) })} />
+              <Tile label={t("req.bat.value")} value={f(res.economics?.battery_sek_mean)} unit="kr/yr" note={t("req.bat.valueNote")} />
+            </div>
+          )}
+          <p className="caption-muted">{t("req.bat.caption", { kwh: f(prof.battery.kwh), kw: f(prof.battery.kw, 1), rte: f(100 * prof.battery.round_trip) })}</p>
+        </section>
       )}
 
       {pvReq && prof?.envelope_min_month_hour && (

@@ -599,8 +599,15 @@ class RequestIn(BaseModel):
     cid: int = Field(..., ge=0, description="customer (house) index")
     pv_kwp: float = Field(10.0, ge=0, le=40, description="PV system size, kWp DC")
     ev_kw: float = Field(0.0, ge=0, le=22, description="EV charger power, kW (0 = none)")
+    hp: bool = Field(False, description="add a heat pump sized to the house (not for a house that has one)")
+    bat_kwh: float = Field(0.0, ge=0, le=30, description="home battery, usable kWh (needs a PV request)")
     baseline: str = Field("static", pattern="^(static|doe)$",
                           description="static: today's approved grid; doe: the DOE scenario")
+
+    def engine_request(self):
+        from ..engine import request as rq
+        return rq.Request(cid=self.cid, pv_kwp=self.pv_kwp, ev_kw=self.ev_kw, hp=self.hp, bat_kwh=self.bat_kwh,
+                          baseline=self.baseline)
 
 
 _ENGINE: dict[str, Any] = {}
@@ -654,8 +661,7 @@ def _run_job(job_id: str, body: RequestIn) -> None:
 
     try:
         eng = _engine()
-        req = rq.Request(cid=body.cid, pv_kwp=body.pv_kwp, ev_kw=body.ev_kw, baseline=body.baseline)
-        result = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"], emit=emit)
+        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit)
         if job["status"] != "running":   # gave up on by the watchdog: the late answer is dropped
             return
         job["result"] = result
@@ -683,6 +689,17 @@ def _check_cid(cid: int) -> None:
     from ..engine.scenario import customers
     if cid >= len(customers()):
         raise HTTPException(422, "unknown customer")
+
+
+def _check_request(body: RequestIn) -> None:
+    """Refuse what the engine cannot answer honestly, before any work."""
+    _check_cid(body.cid)
+    if body.pv_kwp <= 0 and body.ev_kw <= 0 and not body.hp:
+        raise HTTPException(422, "nothing requested: ask for solar, an EV charger or a heat pump")
+    if body.bat_kwh > 0 and body.pv_kwp <= 0:
+        raise HTTPException(422, "a battery here stores curtailed solar, so it needs a solar request")
+    if body.hp and bool(_engine()["hp"][body.cid]):
+        raise HTTPException(422, "this house already has a heat pump")
 
 
 def _sweep_jobs() -> None:
@@ -723,7 +740,7 @@ def list_requests(limit: int = Query(30, ge=1, le=200)) -> dict:
 @app.post(f"{API}/requests", tags=["requests"])
 def create_request(body: RequestIn) -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
-    _check_cid(body.cid)
+    _check_request(body)
     _sweep_jobs()
     if sum(j["status"] == "running" for j in _JOBS.values()) >= MAX_JOBS:
         raise HTTPException(429, f"busy: {MAX_JOBS} requests are already being evaluated, try again shortly")
@@ -829,10 +846,9 @@ def request_hourly(job_id: str) -> Response:
 def evaluate_sync(body: RequestIn) -> JSONResponse:
     """Synchronous variant of /requests (returns the full result)."""
     from ..engine import request as rq
-    _check_cid(body.cid)
+    _check_request(body)
     eng = _engine()
-    req = rq.Request(cid=body.cid, pv_kwp=body.pv_kwp, ev_kw=body.ev_kw, baseline=body.baseline)
-    out = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"])
+    out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"])
     out["provenance"] = provenance("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
 
