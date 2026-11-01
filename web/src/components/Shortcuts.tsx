@@ -5,10 +5,11 @@
  */
 import { Dialog } from "./Dialog";
 import { useT } from "../lib/i18n";
+import { SCREENS } from "../lib/store";
 
 /** key hint, i18n key. The handler in App.tsx walks the same list. */
 export const KEYS: [string, string][] = [
-  ["1 – 6", "keys.screens"],
+  [`1 – ${SCREENS.length}`, "keys.screens"],
   ["Ctrl + ← →", "keys.step"],
   ["⌘ / Ctrl + K", "keys.palette"],
   ["/", "keys.search"],

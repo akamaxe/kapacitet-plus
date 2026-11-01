@@ -1,7 +1,7 @@
 import { create } from "zustand";
 
-export type Screen = "national" | "twin" | "compare" | "request" | "scenarios" | "method";
-export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "scenarios", "method"];
+export type Screen = "national" | "twin" | "compare" | "request" | "report" | "scenarios" | "method";
+export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "report", "scenarios", "method"];
 export type Scenario = "static" | "uncontrolled" | "doe";
 export type Theme = "light" | "dark" | "system";
 const THEMES: readonly string[] = ["light", "dark", "system"];
@@ -80,7 +80,7 @@ function writeHash(push: boolean) {
   const usesHour = st.screen === "twin" || st.screen === "request";
   if (usesHour && st.hourTouched) q.set("hour", String(st.hour));
   if (st.screen === "twin" && st.scenario !== "doe") q.set("scenario", st.scenario);
-  if (usesHour && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
+  if ((usesHour || st.screen === "report") && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
   if (st.screen === "request" && st.job) q.set("job", st.job);
   const qs = q.toString();
   const hash = `#/${st.screen}${qs ? `?${qs}` : ""}`;

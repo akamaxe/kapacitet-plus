@@ -36,15 +36,18 @@ non-firm offer.
 
 ## Operating Context
 
-- Six screens:
+- Seven screens:
   - Sweden: national production, consumption and prices.
   - Neighbourhood: the twin at any hour of the reference year, under three scenarios.
   - Static vs DOE: the central comparison.
-  - Connection request: evaluate one house's request live.
+  - Connection request: evaluate one house's request live (solar, EV charger, heat pump, battery), keep
+    the answer as a printable record, and decide on it in a queue of approvals.
+  - Annual report: the year's filing for conditional connection agreements, its hourly audit trail and each
+    house's own record.
   - 2030: adoption scenarios.
   - Method & data: sources, inputs and validation.
-- URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`.
-- Keyboard shortcuts: 1–6 for the screens, Ctrl+K for search, ? for the key sheet, N for notes, F for full
+- URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`, plus `job=` for a saved assessment.
+- Keyboard shortcuts: 1–7 for the screens, Ctrl+K for search, ? for the key sheet, N for notes, F for full
   screen.
 - Light and dark themes.
 - Used mostly on a laptop and on a projector. It must still work on a phone.

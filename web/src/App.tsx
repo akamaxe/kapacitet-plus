@@ -16,6 +16,7 @@ const National = lazy(() => import("./screens/National"));
 const Twin = lazy(() => import("./screens/Twin"));
 const Compare = lazy(() => import("./screens/Compare"));
 const Request = lazy(() => import("./screens/Request"));
+const Report = lazy(() => import("./screens/Report"));
 const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
 
@@ -26,7 +27,7 @@ const Method = lazy(() => import("./screens/Method"));
 function ScreenSkeleton({ screen }: { screen: Screen }) {
   if (screen === "national") return <SplitSkeleton wide />;
   if (screen === "twin" || screen === "request") return <SplitSkeleton />;
-  if (screen === "compare") return <PageSkeleton bar hero blocks={2} />;
+  if (screen === "compare" || screen === "report") return <PageSkeleton bar hero blocks={2} />;
   if (screen === "method") return <PageSkeleton bar blocks={2} />;
   return <PageSkeleton blocks={1} />;
 }
@@ -76,7 +77,7 @@ export default function App() {
   const [menu, setMenu] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  // Keys: 1–6 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
+  // Keys: 1–7 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
   // sheet, N the notes, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -171,6 +172,7 @@ export default function App() {
             {screen === "twin" && <Twin />}
             {screen === "compare" && <Compare />}
             {screen === "request" && <Request />}
+            {screen === "report" && <Report />}
             {screen === "scenarios" && <Scenarios />}
             {screen === "method" && <Method />}
           </Suspense>

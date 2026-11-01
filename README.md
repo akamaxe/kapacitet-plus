@@ -102,12 +102,12 @@ Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for
 **N** for the presenter notes. **1**–**6** jump straight to a screen, Ctrl + arrow keys or
 PageUp/PageDown step through them, **ES** switches language, and **?** lists every key.
 
-**Ctrl + K** is the way in if you know what you are looking for: it searches the six screens,
+**Ctrl + K** is the way in if you know what you are looking for: it searches the seven screens,
 all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
 handful of actions the chrome offers. Picking a house selects it everywhere.
 
 The interface opens on a white ground for new visitors; a designed night theme and the system
-setting are in the top bar, and the choice is remembered. The six screens sit in that bar, and
+setting are in the top bar, and the choice is remembered. The seven screens sit in that bar, and
 below 1100 px they fold into a menu. **Static vs envelopes** opens with the network on the real
 map in 3D: the houses raised by their floors and coloured by how their solar is connected, the
 cables and the substation. Drag to move and turn it (the wheel zooms with Ctrl held, so the page

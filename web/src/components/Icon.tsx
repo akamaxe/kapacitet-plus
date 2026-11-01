@@ -6,6 +6,7 @@ const paths = {
   request: "M7 3v5m10-5v5M5 8h14v3a7 7 0 0 1-7 7v3m-7-13v3a7 7 0 0 0 7 7",
   scenarios: "M4 19 10 13l4 3 6-11M14 5h6v6",
   method: "M9 4H5v16h14V4h-4M9 3h6v4H9V3Zm0 9h6m-6 4h6",
+  report: "M6 3h9l4 4v14H6V3Zm9 0v4h4M9 17v-3m3 3v-6m3 6v-4",
   arrow: "M4 12h16m-6-6 6 6-6 6",
   notes: "M5 3h14v18H5V3Zm4 5h6m-6 4h6m-6 4h3",
   expand: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5",
