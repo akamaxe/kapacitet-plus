@@ -15,7 +15,7 @@ const arg = (name, fallback) => {
 const langs = arg("lang", "en").split(",");
 const themes = arg("theme", "light").split(",");
 const widths = arg("width", "1536").split(",").map(Number);
-const screens = arg("screens", "national,twin,compare,request,report,scenarios,method").split(",");
+const screens = arg("screens", "national,twin,compare,request,operation,report,scenarios,method").split(",");
 const base = arg("base", "http://127.0.0.1:8130");
 const out = arg("out", "test-results/shots");
 mkdirSync(out, { recursive: true });

@@ -125,16 +125,16 @@ prices can be fetched from the source for all 11 weather years.
 ### Demo in five minutes
 
 Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for fullscreen and
-**N** for the presenter notes. **1**–**6** jump straight to a screen, Ctrl + arrow keys or
+**N** for the presenter notes. **1**–**8** jump straight to a screen, Ctrl + arrow keys or
 PageUp/PageDown step through them, **ES** switches language, and **?** lists every key.
 
-**Ctrl + K** is the way in if you know what you are looking for: it searches the seven screens,
+**Ctrl + K** is the way in if you know what you are looking for: it searches the eight screens,
 all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
 handful of actions the chrome offers. Picking a house selects it everywhere.
 
 The interface opens on a white ground for new visitors; a designed night theme and the system
-setting are in the top bar, and the choice is remembered. The seven screens sit in that bar, and
-below 1100 px they fold into a menu. **Static vs envelopes** opens with the network on the real
+setting are in the top bar, and the choice is remembered. The eight screens sit in that bar, and
+when they no longer fit (measured in each language) they fold into a menu. **Static vs envelopes** opens with the network on the real
 map in 3D: the houses raised by their floors and coloured by how their solar is connected, the
 cables and the substation. Drag to move and turn it (the wheel zooms with Ctrl held, so the page
 still scrolls), and click a house to test a connection there.
@@ -181,11 +181,15 @@ to navigate screens without affecting form fields.
    Approve it into the queue (*Connect with this envelope*), then ask for the house next door:
    it meets less headroom, because the approved house used it first. *Empty the queue* to start
    again. Every answer can be printed as a record or downloaded hour by hour.
-5. **Annual report** — what the DSO files with Ei: every curtailed hour, the part of the grid
+5. **Operation** — what the DSO would send: one house's 24 limits for a day, issued the day
+   before, beside the export it would make without them, and the file its inverter would receive.
+   Below, the summer replayed in the shadow against a pilot's two tests, and a meter checked
+   against what it was sent (try the synthetic day).
+6. **Annual report** — what the DSO files with Ei: every curtailed hour, the part of the grid
    that was full, the 43 agreements, and each house's own record to read and download.
-6. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
+7. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
    reinforcement.
-7. **Method & data** — live status of every API, every assumption with its source, the validation
+8. **Method & data** — live status of every API, every assumption with its source, the validation
    charts, the forecast schemes, a check for your own network export, and the limitations.
 
 New here? The *Tour* in the foot line walks through these screens in two minutes.
@@ -201,10 +205,11 @@ profiles/   weather (hour-beginning means), PV (pvlib, roof geometry from footpr
               households (CREST/richardsonpy pool), heat pumps (when2heat COP), EV charging
 engine/     Z-bus power flow, static and time-series hosting capacity, envelopes with
               nonlinear verification, risk, live connection requests (solar, EV charger,
-              heat pump, battery), the queue of approvals, 2030 scenarios
+              heat pump, battery), the queue of approvals, 2030 scenarios, day-ahead
+              schedules and the inverter's file (CSIP-AUS), the shadow season, meter checks
 api/        FastAPI: precomputed payloads, SSE for live requests and approvals, the saved
               assessments (data/requests/), serves web/dist
-web/        React + MapLibre + ECharts: 7 screens in English, Spanish and Swedish (docs/glossary.md)
+web/        React + MapLibre + ECharts: 8 screens in English, Spanish and Swedish (docs/glossary.md)
 ```
 
 **Power flow.** A batched Z-bus fixed point `V = w + Z·conj(S/V)` on pandapower's exact model
@@ -354,6 +359,34 @@ Annual report screen); the change is sealed with the rule it replaced, and the r
 trail, each house's envelope and the neighbourhood's envelope scenario follow it. The live
 request still meets the published envelopes allocated equally (its baselines are computed once
 for that rule).
+
+### Sending it: the schedule, the inverter's file, the shadow season and the meter
+
+Only the day-ahead basis is ever sent; a schedule with perfect foresight would be hindsight. The
+**Operation** screen and these endpoints read what the operation stage wrote:
+
+- `GET /api/v1/operation/schedule?cid=&date=` (`&format=csv`): a house's 24 limits for a date,
+  each with its interval start in UTC, on the study's clock (UTC+1 all year) and in Stockholm time,
+  beside the export it would make without them.
+- `GET /api/v1/operation/schedule.xml`: the same day as an IEEE 2030.5 `DERControlList` in the
+  CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`. Downloading it
+  issues it, and the issue is sealed with the limits it sent (`issue=false` is a preview that
+  leaves no record). `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
+  keeps when no schedule arrives: never above the lowest limit issued that year, so close to zero
+  here. The format is modelled on the profile, not certified, and no device is connected.
+- `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
+  judged by two tests: no hour above a grid limit, and every agreement within the level it was
+  promised (the DSO's `agreed_level_pct`, by default the capacity search's own 3 % of each house's
+  solar energy over the year). On the reference year the day-ahead envelope passes the first and
+  fails the second: 0 hours above a limit, but only 3 of 43 agreements within 3 % (median 10.4 %,
+  worst 24.9 %). With perfect foresight 35 of 43 would be, worst 4.3 %. Not ready to go live, and
+  the screen says so; the remedy, re-issuing during the day with measurements, is outside this
+  prototype.
+- `POST /api/v1/operation/meter-check` with `{cid, csv}`: measured export (a `timestamp` with its
+  UTC offset and `export_kw` or `export_w`) against the limits the house was sent. A breach is a
+  reading more than 250 W above its hour's limit, the measure SA Power Networks used in its
+  Flexible Exports trial (`meter_breach_tolerance_w`). `GET /api/v1/operation/meter-example`
+  writes a synthetic day to try it on, with one deliberate ten-minute breach.
 
 ## What the forecast is worth
 

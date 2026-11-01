@@ -124,6 +124,29 @@ export function dateTime(lang: string, value: string | number | Date, withTime =
   return Number.isNaN(d.getTime()) ? "–" : df.format(d);
 }
 
+/** A day of the study's calendar ("2025-06-12": no time, no zone) as a date is written everywhere: "12 Jun 2025". */
+export function studyDate(lang: string, iso: string): string {
+  const key = `${lang}:day`;
+  let df = dateFormatters.get(key);
+  if (!df) {
+    df = new Intl.DateTimeFormat(locale(lang), { dateStyle: "medium", timeZone: "UTC" });
+    dateFormatters.set(key, df);
+  }
+  const d = new Date(`${iso}T00:00:00Z`);
+  return Number.isNaN(d.getTime()) ? "–" : df.format(d);
+}
+
+/** A month's full name (1 = January) in the language, for a sentence that names a season. */
+export function monthLong(lang: string, month: number): string {
+  const key = `${lang}:month`;
+  let df = dateFormatters.get(key);
+  if (!df) {
+    df = new Intl.DateTimeFormat(locale(lang), { month: "long", timeZone: "UTC" });
+    dateFormatters.set(key, df);
+  }
+  return df.format(Date.UTC(2000, month - 1, 1));
+}
+
 /** The time of day alone, "14:03", for a reading taken today. */
 export function clock(lang: string, value: string | number | Date): string {
   const key = `${lang}:clock`;

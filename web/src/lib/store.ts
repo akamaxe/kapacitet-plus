@@ -1,8 +1,8 @@
 import { create } from "zustand";
 import { isLang, loadLang, type Lang } from "./i18n/core";
 
-export type Screen = "national" | "twin" | "compare" | "request" | "report" | "scenarios" | "method";
-export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "report", "scenarios", "method"];
+export type Screen = "national" | "twin" | "compare" | "request" | "operation" | "report" | "scenarios" | "method";
+export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "operation", "report", "scenarios", "method"];
 export type Scenario = "static" | "uncontrolled" | "doe";
 /** The envelope a screen reads: perfect foresight (the planning bound) or issued the day before. */
 export type Basis = "foresight" | "dayahead";
@@ -49,10 +49,14 @@ export interface UrlView {
   job?: string;
   basis?: Basis;
   policy?: string;
+  /** the day the operation screen shows, as YYYY-MM-DD */
+  date?: string;
 }
 
 /** A saved assessment's id (data/requests/<id>.json.gz). */
 export const JOB_ID = /^[0-9a-f]{12}$/;
+/** A calendar date as the date input and the API write it. */
+export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** What a link asks to look at. Pure: the address is an argument, so it can be tested. */
 export function parseHash(hash: string = window.location.hash): UrlView {
@@ -82,6 +86,8 @@ export function parseHash(hash: string = window.location.hash): UrlView {
   if (basis && (BASES as string[]).includes(basis)) out.basis = basis as Basis;
   const policy = q.get("policy");
   if (policy && (POLICIES as readonly string[]).includes(policy)) out.policy = policy;
+  const date = q.get("date");
+  if (date && ISO_DATE.test(date) && !Number.isNaN(Date.parse(date))) out.date = date;
   return out;
 }
 
@@ -90,7 +96,7 @@ let written = "";
 
 /** The parts of the view a link carries. */
 export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
-  Partial<Pick<State, "basis" | "policy">>;
+  Partial<Pick<State, "basis" | "policy" | "opDate">>;
 
 /** The address for what is on screen. Pure, like parseHash. */
 export function hashFor(st: LinkedView): string {
@@ -100,7 +106,9 @@ export function hashFor(st: LinkedView): string {
   const usesHour = st.screen === "twin" || st.screen === "request";
   if (usesHour && st.hourTouched) q.set("hour", String(st.hour));
   if (st.screen === "twin" && st.scenario !== "doe") q.set("scenario", st.scenario);
-  if ((usesHour || st.screen === "report") && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
+  const usesHouse = usesHour || st.screen === "report" || st.screen === "operation";
+  if (usesHouse && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
+  if (st.screen === "operation" && st.opDate) q.set("date", st.opDate);
   if (st.screen === "request" && st.job) q.set("job", st.job);
   // the screens that read a basis and a rule carry them: the basis away from its default, the rule
   // whenever one was chosen over the DSO's setting (which can change under a link)
@@ -135,6 +143,14 @@ function scheduleHashWrite() {
   hourTimer = window.setTimeout(() => writeHash(false), 250);
 }
 
+let dateTimer: number | undefined;
+
+/** A date input steps a day per arrow key: one replaceState once it settles, not one per day. */
+function scheduleDateWrite() {
+  window.clearTimeout(dateTimer);
+  dateTimer = window.setTimeout(() => writeHash(false), 250);
+}
+
 interface State {
   screen: Screen;
   lang: Lang;
@@ -151,6 +167,8 @@ interface State {
   /** the envelope the report reads, and the rule it reads it under (null: the DSO's setting) */
   basis: Basis;
   policy: string | null;
+  /** the day the operation screen shows (null: the season's busiest day, which it works out) */
+  opDate: string | null;
   /** the tour's step, or null when it is closed; `tourInstant` when opened from the keyboard */
   tour: number | null;
   tourInstant: boolean;
@@ -174,6 +192,7 @@ interface State {
   setJob: (job: string | null) => void;
   setBasis: (basis: Basis) => void;
   setPolicy: (policy: string | null) => void;
+  setOpDate: (date: string | null) => void;
 }
 
 // Fallback hour (12 July, 12:00 local standard time) until /meta provides the showcase hour.
@@ -196,6 +215,7 @@ export const useStore = create<State>((set) => ({
   job: initial.job ?? null,
   basis: initial.basis ?? "foresight",
   policy: initial.policy ?? null,
+  opDate: initial.date ?? null,
   tour: null,
   tourInstant: false,
   tourOffered: false,
@@ -258,6 +278,10 @@ export const useStore = create<State>((set) => ({
     set({ policy });
     writeHash(false);
   },
+  setOpDate: (opDate) => {
+    set({ opDate });
+    scheduleDateWrite();
+  },
 }));
 
 export function applyTheme(theme: Theme) {
@@ -285,6 +309,7 @@ window.addEventListener("hashchange", () => {
     ...(v.job !== undefined ? { job: v.job } : {}),
     ...(v.basis !== undefined ? { basis: v.basis } : {}),
     ...(v.policy !== undefined ? { policy: v.policy } : {}),
+    ...(v.date !== undefined ? { opDate: v.date } : {}),
     ...(v.notFound ? { notFound: v.notFound } : {}),
     playing: false,
   });

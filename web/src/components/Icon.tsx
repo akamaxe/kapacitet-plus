@@ -3,6 +3,7 @@ const paths = {
   twin: "m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5",
   compare: "M4 20h16M7 15V9M12 15V4M17 15V7",
   request: "M7 3v5m10-5v5M5 8h14v3a7 7 0 0 1-7 7v3m-7-13v3a7 7 0 0 0 7 7",
+  operation: "M4 5h16v15H4V5Zm0 5h16M8 3v4m8-4v4m-8 7h3v3H8v-3",
   scenarios: "M4 19 10 13l4 3 6-11M14 5h6v6",
   method: "M9 4H5v16h14V4h-4M9 3h6v4H9V3Zm0 9h6m-6 4h6",
   report: "M6 3h9l4 4v14H6V3Zm9 0v4h4M9 17v-3m3 3v-6m3 6v-4",
@@ -23,6 +24,7 @@ const paths = {
   sort: "M8 9 12 5l4 4M8 15l4 4 4-4",
   copy: "M9 9h10v10H9V9Zm-4 6V5h10",
   download: "M12 4v10m-4-4 4 4 4-4M5 19h14",
+  upload: "M12 20V10m-4 4 4-4 4 4M5 5h14",
 } as const;
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths; size?: number }) {

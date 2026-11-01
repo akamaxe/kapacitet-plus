@@ -21,6 +21,7 @@ const STEPS: Step[] = [
   { screen: "twin", scenario: "uncontrolled", hour: "showcase", place: "map" },
   { screen: "twin", scenario: "doe", hour: "showcase", place: "map" },
   { screen: "request", cid: "example", place: "map-wide" },
+  { screen: "operation" },
   { screen: "report", cid: "example" },
   { screen: "method" },
 ];

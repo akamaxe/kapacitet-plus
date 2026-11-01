@@ -43,7 +43,7 @@ function useFold(bar: React.RefObject<HTMLElement | null>, probe: React.RefObjec
       const gap = parseFloat(cs.columnGap) || 0;
       let used = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
       for (const child of Array.from(el.children) as HTMLElement[]) {
-        if (child === pr || child.classList.contains("topnav") || child.classList.contains("menu-btn")) continue;
+        if (child.contains(pr) || child.classList.contains("topnav") || child.classList.contains("menu-btn")) continue;
         if (getComputedStyle(child).display === "none") continue;
         used += child.getBoundingClientRect().width + gap;
       }
@@ -81,8 +81,11 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
   const folded = useFold(barRef, probeRef);
   return (
     <header className="topbar" ref={barRef} data-folded={folded || undefined}>
-      <div className="topnav-probe" ref={probeRef} aria-hidden="true">
-        {SCREENS.map((s) => <span key={s}>{t(`tab.${s}`)}</span>)}
+      {/* a zero-size box clips the probe, so the labels it measures never widen the bar */}
+      <div className="topnav-probe-box" aria-hidden="true">
+        <div className="topnav-probe" ref={probeRef}>
+          {SCREENS.map((s) => <span key={s}>{t(`tab.${s}`)}</span>)}
+        </div>
       </div>
       <button className="top-tool menu-btn" onClick={onMenu} aria-label={t("shell.menu")} aria-haspopup="dialog">
         <Icon name="menu" size={20} />
@@ -98,7 +101,7 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
         ))}
       </nav>
       <div className="top-tools">
-        <button className="top-search" onClick={onSearch}>
+        <button className="top-search" onClick={onSearch} aria-label={t("pal.searchHint")}>
           <Icon name="search" size={16} />
           <span className="top-search-label">{t("pal.searchHint")}</span>
           <kbd>Ctrl K</kbd>

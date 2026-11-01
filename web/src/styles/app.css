@@ -1124,18 +1124,15 @@ svg { flex-shrink: 0; }
 .topnav { display: flex; align-items: stretch; gap: var(--nav-gap); margin-left: auto; min-width: 0; padding: 0 var(--space-1); }
 /* the screens' labels at their widest weight, out of sight: the bar folds when they no longer fit
    (Shell.tsx useFold), which depends on the language rather than on a fixed width */
+.topnav-probe-box { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
 .topnav-probe {
-  position: absolute;
-  top: 0;
-  left: 0;
   display: flex;
+  width: max-content;
   gap: var(--nav-gap);
   padding: 0 var(--space-1);
   font-size: var(--text-small);
   font-weight: 600;
   white-space: nowrap;
-  visibility: hidden;
-  pointer-events: none;
 }
 .topbar[data-folded] .topnav { display: none; }
 .topbar[data-folded] .menu-btn { display: inline-flex; }
@@ -1285,7 +1282,6 @@ main:focus { outline: none; }
   /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
   .panel .seg button { padding-inline: var(--space-2); }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .topbar { --nav-gap: var(--space-4); }
 }
 @media (max-width: 1280px) {
   .top-search { min-width: 0; }
@@ -2059,7 +2055,14 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 /* the report's basis and rule: one row of controls above its downloads */
 .report-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
 .field-inline { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
-.field-inline select { min-height: 36px; padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-primary); font: inherit; }
+.field-inline select, .field-inline input { min-height: 36px; padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-elevated); color: var(--text-primary); font: inherit; }
+/* a document as it is sent (the inverter's XML), read on screen: the one face, on the inset grey */
+.payload {
+  margin: 0; max-height: 320px; overflow: auto; padding: var(--space-3); border-radius: var(--radius-sm);
+  background: var(--bg-inset); color: var(--text-primary); font: inherit; font-size: var(--text-small); line-height: var(--lh-small);
+  white-space: pre; tab-size: 2;
+}
+.payload:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 /* the seal: quiet, but there to be checked */
 .seal-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; margin: 0; color: var(--text-muted); font-size: var(--text-caption); }
 .seal-line svg { color: var(--good); flex: none; }
@@ -2172,9 +2175,11 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .report-worst .caption { margin: 0; }
 @media (max-width: 1100px) { .report-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); } }
 
-/* seven screens: the scope gives way first, then the search label, before the bar folds */
+/* eight screens: the scope gives way first, then the gaps between the screens tighten, then the
+   search keeps only its icon, before the bar folds (measured, Shell.tsx useFold) */
 @media (max-width: 1600px) { .brand-scope { display: none; } }
-@media (max-width: 1360px) { .top-search { min-width: 0; } .top-search-label, .top-search kbd { display: none; } }
+@media (max-width: 1680px) { .topbar { --nav-gap: var(--space-4); } }
+@media (max-width: 1440px) { .top-search { min-width: 0; } .top-search-label, .top-search kbd { display: none; } }
 
 /* ---------------------------------------------------------------- live strip (Sweden) */
 .live-strip { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }

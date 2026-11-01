@@ -108,6 +108,9 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
     caps = doe.customer_caps()[nf]
 
     root = processed("results", "operation", "index.json").parent
+    # what each non-firm house would export with no limit, hour by hour: the day's schedule is
+    # read against it, and it does not depend on rule or basis
+    np.save(processed("ui", "operation", "desired.npy"), desired.astype(np.float16))
     agree = agreements(m, order, int(show["firm"]), int(show["adopters"]), cids)
     _write_json(root / "agreements.json", {"year": y, "order": int(show["order"]), "agreements": agree})
 
@@ -156,7 +159,8 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
             }
             _write_json(folder / "days.json", {"year": y, "days": H // 24, "tz": "UTC+1", **per_day})
             np.savez_compressed(folder / "days.npz", curtailed=_days(curtailed, H).astype(np.float32),
-                                desired=_days(desired, H).astype(np.float32), cids=cids[nf])
+                                desired=_days(desired, H).astype(np.float32),
+                                pv=_days(arr["pv"][nf].astype(float), H).astype(np.float32), cids=cids[nf])
 
             lowest = published.min(axis=1)
             default_kw = np.minimum(kappa * caps, lowest)

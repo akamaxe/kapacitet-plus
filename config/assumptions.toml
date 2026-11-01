@@ -333,6 +333,30 @@ source = "IEC 60364-4-43:2008, 433.1 (coordination between conductors and overlo
 url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-43%7Bed3.0%7Db.pdf"
 note = ""
 
+[meter_breach_tolerance_w]
+value = 250
+unit = "W"
+tag = "sourced"
+label = "A meter reading counts as a breach of its export limit above this much"
+label_es = "Una lectura de contador cuenta como incumplimiento de su límite por encima de esto"
+label_sv = "En mätaravläsning räknas som överträdelse av exportgränsen över detta värde"
+source = "SA Power Networks, Flexible Exports for Solar PV trial, final report v1.3 (ARENA, 2023), 4.3.1: a breach is a deviation of more than 250 W above an issued envelope"
+url = "https://arena.gov.au/assets/2024/01/SA-Power-Networks-Flexible-Exports-for-Solar-PV-Trial-Final-Report.pdf"
+note = "The same trial found its limits kept in more than 99.97 % of 5-minute intervals."
+note_es = "El mismo ensayo encontró sus límites respetados en más del 99,97 % de los intervalos de 5 minutos."
+note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
+
+[shadow_season_months]
+value = [5, 8]
+unit = "month"
+tag = "team-assumption"
+label = "Season replayed in shadow operation (first and last month)"
+label_es = "Temporada que se reproduce en la operación en sombra (primer y último mes)"
+label_sv = "Säsong som spelas upp i skuggdriften (första och sista månad)"
+source = "The May–August window of the static study's summer snapshot (engine/hosting.py)"
+url = ""
+note = ""
+
 [mv_short_circuit_mva]
 value = 150.0
 unit = "MVA"

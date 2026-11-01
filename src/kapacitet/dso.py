@@ -13,7 +13,7 @@ import threading
 from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from . import seals
 from .paths import DATA
@@ -27,6 +27,15 @@ class DsoSettings(BaseModel):
 
     # how curtailment is shared between the houses on conditional agreements (engine/doe.py)
     allocation_policy: Literal["maxmin", "prorata", "propfair", "maxtotal"] = "maxmin"
+    # the most curtailment an agreement promises, as a share of the house's solar energy in a year;
+    # by default the budget the capacity search itself is held to (z_star_pct)
+    agreed_level_pct: float = Field(default_factory=lambda: float(_z_star()), ge=0, le=100)
+
+
+def _z_star() -> float:
+    from .config import A
+
+    return A("z_star_pct")
 
 
 class DsoSettingsChange(BaseModel):
@@ -35,6 +44,7 @@ class DsoSettingsChange(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     allocation_policy: Literal["maxmin", "prorata", "propfair", "maxtotal"] | None = None
+    agreed_level_pct: float | None = Field(None, ge=0, le=100)
 
 
 def path():
