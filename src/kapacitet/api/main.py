@@ -7,7 +7,9 @@ synthetic parts). OpenAPI documentation is served at /docs.
 from __future__ import annotations
 
 import asyncio
+import csv
 import gzip
+import io
 import json
 import logging
 import os
@@ -328,6 +330,14 @@ async def now() -> dict:
                 pass
         out["prices"] = prices_out
         out["price_attribution"] = "Elpriser tillhandahålls av Elpriset just nu.se"
+        rows_today = prices_out.get(today.isoformat()) or []
+        if rows_today:
+            vals = [r["sek_kwh"] for r in rows_today]
+            out["today_range"] = {"min_sek_kwh": min(vals), "max_sek_kwh": max(vals), "intervals": len(vals)}
+            now_utc = datetime.now(timezone.utc)
+            started = [r for r in rows_today if datetime.fromisoformat(r["start"]) <= now_utc]
+            if started:
+                out["current"] = started[-1]
     _NOW_CACHE.update(t=time.time(), data=out)
     return out
 
@@ -346,8 +356,10 @@ def network() -> dict:
 def _network(stamp: tuple) -> dict:
     import pandas as pd
 
+    from ..engine.run import background_masks
     from ..engine.scenario import customers
     cust = customers()
+    has_hp, has_ev = background_masks(len(cust))
     lines = pd.read_parquet(processed("grid", "lines.parquet"))
     buses = pd.read_parquet(processed("grid", "buses.parquet"))
     sub = json.loads(processed("grid", "substation.json").read_text(encoding="utf-8"))
@@ -369,6 +381,8 @@ def _network(stamp: tuple) -> dict:
                           "pv_status": "firm" if c.cid in firm else ("nonfirm" if c.cid in nonfirm else "none"),
                           "nodal_pv_kw": float(nodal["pv_kw"][int(c.cid)]) if nodal else None,
                           "nodal_import_kw": float(nodal["import_kw"][int(c.cid)]) if nodal else None,
+                          # synthetic: who has a heat pump or an EV today (fixed seeds, engine/run.py)
+                          "has_hp": bool(has_hp[int(c.cid)]), "has_ev": bool(has_ev[int(c.cid)]),
                       }})
     for ln in lines.itertuples():
         feats.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": json.loads(ln.coords)},
@@ -478,6 +492,94 @@ def scenarios() -> dict:
 @app.get(f"{API}/validation", tags=["provenance"])
 def validation() -> dict:
     return with_prov(result("validation.json"), "smhi_strang", "smhi_metobs", "esett", "scb")
+
+
+@app.get(f"{API}/forecast", tags=["doe"])
+def forecast_schemes() -> dict:
+    """The published envelopes against three day-ahead schemes: what perfect foresight is worth."""
+    return with_prov(result("forecast.json"), "smhi_strang", "smhi_metobs", "synthetic_grid")
+
+
+@app.get(f"{API}/phases", tags=["hosting"])
+def phases() -> dict:
+    """Static capacity when single-phase inverters and unknown phases are modelled."""
+    return with_prov(result("phases.json"), "osm", "synthetic_grid")
+
+
+@app.get(f"{API}/overinstallation", tags=["hosting"])
+def overinstallation() -> dict:
+    """Spot value delivered and curtailed as solar grows past the static limit, and the last kW."""
+    from ..engine.summaries import overinstallation_summary
+
+    return with_prov(overinstallation_summary(result("overinstallation.json")),
+                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
+
+
+# ---------------------------------------------------------------- annual filing and audit trail
+
+@app.get(f"{API}/compliance", tags=["compliance"])
+def compliance_report() -> dict:
+    """The annual filing for conditional connection agreements, with the worst hour's index."""
+    from ..engine.summaries import hour_of_timestamp
+
+    rep = dict(result("compliance.json"))
+    worst = rep.get("worst_uncontrolled") or {}
+    if worst.get("timestamp"):
+        rep["worst_uncontrolled"] = {**worst, "hour": hour_of_timestamp(worst["timestamp"], rep["year"])}
+    return with_prov(rep, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid")
+
+
+@app.get(f"{API}/compliance.txt", tags=["compliance"])
+def compliance_text() -> Response:
+    path = processed("results", "compliance.txt")
+    if not path.exists():
+        raise not_computed("compliance.txt")
+    year = result("compliance.json").get("year", "")
+    return Response(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}.txt"'})
+
+
+@lru_cache(maxsize=2)
+def _audit_table(stamp: float) -> tuple[list[str], list[dict]]:
+    with processed("results", "audit_trail.csv").open(encoding="utf-8", newline="") as fh:
+        reader = csv.DictReader(fh)
+        return list(reader.fieldnames or []), list(reader)
+
+
+def _audit(cid: int | None) -> tuple[list[str], list[dict]]:
+    path = processed("results", "audit_trail.csv")
+    if not path.exists():
+        raise not_computed("audit_trail.csv")
+    cols, rows = _audit_table(path.stat().st_mtime)
+    if cid is not None:
+        rows = [r for r in rows if int(r["customer_id"]) == cid]
+    return cols, rows
+
+
+_AUDIT_TYPES = {"hour": int, "customer_id": int, "desired_kw": float, "granted_kw": float,
+                "curtailed_kwh": float, "uncontrolled_pct": float, "rating_pct": float}
+
+
+@app.get(f"{API}/audit", tags=["compliance"])
+def audit(cid: int | None = Query(None, ge=0), limit: int = Query(200, ge=1, le=5000),
+          offset: int = Query(0, ge=0)) -> dict:
+    """Every curtailed customer-hour of the filing year, with the part of the grid that was full."""
+    cols, rows = _audit(cid)
+    page = [{k: _AUDIT_TYPES.get(k, str)(v) for k, v in r.items()} for r in rows[offset:offset + limit]]
+    return {"columns": cols, "total": len(rows), "offset": offset, "limit": limit, "rows": page,
+            "provenance": provenance("smhi_strang", "osm", "synthetic_grid")}
+
+
+@app.get(f"{API}/audit.csv", tags=["compliance"])
+def audit_csv(cid: int | None = Query(None, ge=0)) -> Response:
+    cols, rows = _audit(cid)
+    buf = io.StringIO()
+    writer = csv.DictWriter(buf, fieldnames=cols, lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    name = "kapacitet-audit-trail" + (f"-house-{cid}" if cid is not None else "") + ".csv"
+    return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
 @app.get(f"{API}/envelopes/{{cid}}", tags=["doe"])

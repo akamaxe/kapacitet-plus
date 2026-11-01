@@ -101,3 +101,52 @@ def test_the_engine_still_reproduces_the_published_capacity(model, results):
         kw = float(cap[order[:adopters]].sum())
         assert adopters == record["static"]["adopters"], f"order {record['order']}"
         assert np.isclose(kw, record["static"]["kw_ac"], rtol=1e-9)
+
+
+# ---------------------------------------------------------------- results the screens now show
+
+def test_the_audit_trail_adds_up_to_the_filing(results):
+    import csv
+
+    from kapacitet.engine.summaries import audit_totals
+
+    rep = results("compliance")
+    with processed("results", "audit_trail.csv").open(encoding="utf-8", newline="") as fh:
+        tot = audit_totals(list(csv.DictReader(fh)))
+    assert tot["hours"] == rep["hours_with_curtailment"]
+    assert abs(tot["kwh"] - rep["curtailed_kwh"]) < 0.5
+    for c in rep["per_customer"]:
+        mine = tot["per_customer"][c["customer_id"]]
+        assert mine["hours"] == c["hours_limited"], c["customer_id"]
+        assert abs(mine["kwh"] - c["curtailed_kwh"]) < 0.1, c["customer_id"]
+
+
+def test_the_overinstallation_summary_repeats_the_report_arithmetic(results):
+    """An independent recomputation of overinstallation_summary's sums from overinstallation.json."""
+    from kapacitet.engine.summaries import overinstallation_summary
+
+    d = results("overinstallation")
+    pts, priced = d["points"], set(d["price_years"])
+
+    def mean(p, key, value=None):
+        rows = [r for r in p["per_year"] if r["year"] in priced]
+        return sum((r[key][value] if value else r[key]) for r in rows) / len(rows)
+
+    i = next(i for i, p in enumerate(pts) if p["adopters"] == d["doe_adopters"])
+    s = overinstallation_summary(d)
+    assert abs(s["budget"]["delivered_sek"] - mean(pts[i], "delivered_value", "net_sek")) < 1e-6
+    assert abs(s["budget"]["curtailed_sek"] - mean(pts[i], "curtailed_value", "net_sek")) < 1e-6
+    assert abs(s["full"]["delivered_sek"] - mean(pts[-1], "delivered_value", "net_sek")) < 1e-6
+    a, b = pts[-2], pts[-1]
+    dcut = mean(b, "curtailed_kwh") - mean(a, "curtailed_kwh")
+    dpot = mean(b, "potential_kwh") - mean(a, "potential_kwh")
+    assert abs(s["full_marginal"]["energy_share_pct"] - 100 * dcut / dpot) < 1e-9
+    assert s["static"]["kw_ac_nonfirm"] == 0
+
+
+def test_persistence_is_the_one_unsafe_forecast_scheme(results):
+    rows = {r["scheme"]: r for r in results("forecast")["rows"]}
+    assert {"static", "climatological", "persistence", "foresight"} <= set(rows)
+    unsafe = {k for k, r in rows.items() if not r["safe"]}
+    assert unsafe == {"persistence"}
+    assert all(r["violation_hours"] == 0 for k, r in rows.items() if k != "persistence")

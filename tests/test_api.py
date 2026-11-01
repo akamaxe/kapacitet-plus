@@ -90,3 +90,30 @@ def test_bad_request_is_rejected(client):
     assert client.post(f"{API}/evaluate", json={"cid": -1}).status_code == 422
     assert client.post(f"{API}/evaluate", json={"cid": 0, "baseline": "nope"}).status_code == 422
     assert client.get(f"{API}/state/does-not-exist").status_code == 404
+
+
+def test_the_filing_and_its_audit_trail_are_served(client):
+    rep = client.get(f"{API}/compliance").json()["data"]
+    assert 0 <= rep["worst_uncontrolled"]["hour"] < 8784
+    top = rep["per_customer"][0]
+    page = client.get(f"{API}/audit", params={"cid": top["customer_id"], "limit": 5000}).json()
+    assert page["total"] == top["hours_limited"]
+    assert all(r["customer_id"] == top["customer_id"] for r in page["rows"])
+    r = client.get(f"{API}/audit.csv", params={"cid": top["customer_id"]})
+    assert r.headers["content-type"].startswith("text/csv")
+    assert r.text.splitlines()[0].startswith("hour,timestamp,customer_id")
+    assert len(r.text.strip().splitlines()) == top["hours_limited"] + 1
+    assert "attachment" in client.get(f"{API}/compliance.txt").headers["content-disposition"]
+
+
+def test_the_extra_results_are_served(client):
+    s = client.get(f"{API}/overinstallation").json()["data"]
+    assert s["budget"]["kw_ac"] > s["static"]["kw_ac"]
+    assert client.get(f"{API}/forecast").json()["data"]["rows"]
+    assert client.get(f"{API}/phases").json()["data"]["cases"]
+
+
+def test_houses_say_whether_they_have_a_heat_pump_or_an_ev(client):
+    houses = [f for f in client.get(f"{API}/network").json()["features"] if f["properties"]["layer"] == "house"]
+    assert all(isinstance(f["properties"]["has_hp"], bool) for f in houses)
+    assert any(f["properties"]["has_hp"] for f in houses)
