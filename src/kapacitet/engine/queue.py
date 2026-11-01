@@ -32,8 +32,26 @@ _LOCK = threading.RLock()
 DECISIONS = ("firm", "nonfirm", "declined")
 
 
+ERRORS = {
+    "unknown_decision": "unknown decision {decision}",
+    "already_approved": "this house is already approved in the queue",
+    "already_decided": "this assessment has already been decided",
+    "queue_changed": "the queue has changed since this assessment: evaluate it again",
+    "evaluate_against_queue": "the queue already holds approved requests: evaluate against the queue",
+    "other_situation": "the queue started from the other grid situation",
+    "static_rejects_firm": "the static study rejects this request, so it cannot be connected firm",
+    "still_violates": "the full-year check still finds a violation, so it is not approved",
+}
+
+
 class QueueError(ValueError):
-    """A decision the queue refuses, with the reason in words for the person deciding."""
+    """A decision the queue refuses: a code the interface translates (`err.<code>`), the reason in
+    English for the log and the API's `message`."""
+
+    def __init__(self, code: str, **params):
+        super().__init__(ERRORS[code].format(**params))
+        self.code = code
+        self.params = params
 
 
 def folder():
@@ -96,21 +114,21 @@ def in_queue(cid: int) -> bool:
 def _check(q: dict, record: dict, decision: str) -> str:
     """Refuse a decision on an answer that no longer describes the grid; return the queue's baseline."""
     if decision not in DECISIONS:
-        raise QueueError(f"unknown decision {decision!r}")
+        raise QueueError("unknown_decision", decision=repr(decision))
     req, res = record["request"], record["result"]
     if any(it["cid"] == req["cid"] for it in approved(q)):
-        raise QueueError("this house is already approved in the queue")
+        raise QueueError("already_approved")
     if any(it["assessment"] == record["id"] for it in q["items"]):
-        raise QueueError("this assessment has already been decided")
+        raise QueueError("already_decided")
     asked = req["baseline"]
     if asked == "queue":
         if (res.get("queue") or {}).get("version") != q["version"]:
-            raise QueueError("the queue has changed since this assessment: evaluate it again")
+            raise QueueError("queue_changed")
         return q["baseline"]
     if approved(q):
-        raise QueueError("the queue already holds approved requests: evaluate against the queue")
+        raise QueueError("evaluate_against_queue")
     if q["baseline"] not in (None, asked):
-        raise QueueError("the queue started from the other grid situation")
+        raise QueueError("other_situation")
     return asked
 
 
@@ -135,7 +153,7 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
 
         static = res.get("static", {})
         if decision == "firm" and not all(v.get("approved") for v in static.values()):
-            raise QueueError("the static study rejects this request, so it cannot be connected firm")
+            raise QueueError("static_rejects_firm")
         ctx = context() or rq.Context(base)
         r = rq.Request(cid=cid, pv_kwp=float(req.get("pv_kwp", 0)), ev_kw=float(req.get("ev_kw", 0)),
                        hp=bool(req.get("hp", False)), bat_kwh=float(req.get("bat_kwh", 0)), baseline=base)
@@ -144,7 +162,7 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
         out, detail = rq.run(model, r, hp, ev, ctx=ctx, verify_years=years)
         left = out["verification"].get("all_years", {})
         if any(left.get(k, 0) for k in ("export_violations_after", "import_violations_after", "battery_violations_after")):
-            raise QueueError("the full-year check still finds a violation, so it is not approved")
+            raise QueueError("still_violates")
 
         hp_new = bool(req.get("hp", False)) and not bool(hp[cid])
         tanphi = np.tan(np.arccos(A("load_power_factor")))

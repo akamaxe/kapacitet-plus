@@ -128,8 +128,12 @@ def test_missing_phases_are_a_warning_with_the_cost_spelled_out():
     data = good()
     data["customers"] = data["customers"].drop(columns=["phase"])
     found = findings(validate(data), WARNING, "phase not recorded")
-    assert found and "hosting capacity" in found[0].message
+    assert found and "unbalance is understated" in found[0].message
     assert found[0].count == 2
+    # with what not knowing the phases cost on the reference grid, the warning prices it
+    priced = findings(validate(data, phase_cost_pct=44.1), WARNING, "phase not recorded")
+    assert priced[0].code == "phase_not_recorded_cost" and priced[0].params == {"pct": "44"}
+    assert "44 % of the static hosting capacity" in priced[0].message
 
 
 def test_missing_coordinates_cost_the_map_but_not_the_answer():

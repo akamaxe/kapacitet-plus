@@ -6,6 +6,7 @@ import { toast } from "./Toast";
 import { API } from "../lib/api";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { responseRefusal } from "../lib/errors";
 import { useStore } from "../lib/store";
 
 export interface QueueState {
@@ -76,7 +77,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
     }
     if (!r.ok) {
       setBusy(null);
-      setError(await r.json().then((b) => b.detail).catch(() => `${r.status}`));
+      setError(await responseRefusal(t, r));
       return;
     }
     const { id } = await r.json();
@@ -92,7 +93,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
       setBusy(null);
       setProgress("");
       if (!res2.ok) {
-        setError(await res2.json().then((b) => b.detail).catch(() => `${res2.status}`));
+        setError(await responseRefusal(t, res2));
         return;
       }
       await client.invalidateQueries({ queryKey: ["/queue"] });

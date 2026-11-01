@@ -202,7 +202,7 @@ engine/     Z-bus power flow, static and time-series hosting capacity, envelopes
               heat pump, battery), the queue of approvals, 2030 scenarios
 api/        FastAPI: precomputed payloads, SSE for live requests and approvals, the saved
               assessments (data/requests/), serves web/dist
-web/        React + MapLibre + ECharts: 7 screens, English with a Spanish toggle
+web/        React + MapLibre + ECharts: 7 screens in English, Spanish and Swedish (docs/glossary.md)
 ```
 
 **Power flow.** A batched Z-bus fixed point `V = w + Z·conj(S/V)` on pandapower's exact model

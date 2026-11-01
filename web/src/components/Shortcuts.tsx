@@ -48,7 +48,7 @@ export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => voi
         </dl>
         <label className="keys-toggle">
           <input type="checkbox" checked={singleKeys} onChange={(e) => setSingleKeys(e.target.checked)} />
-          <span>{t("keys.single")}<small>{t("keys.singleNote")}</small></span>
+          <span>{t("keys.single")}<small>{t("keys.singleNote", { n: SCREENS.length })}</small></span>
         </label>
       </div>
     </Dialog>

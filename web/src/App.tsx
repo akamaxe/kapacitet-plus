@@ -77,7 +77,9 @@ export default function App() {
   // a fresh clone has no results: say how to make them instead of showing empty screens
   const health = useApi<any>("/health");
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
-  const net = useApi<any>(setupNeeded ? null : "/network");
+  // only once /health has said there is something to draw: before it answers, asking would be a
+  // guaranteed failure on a fresh clone
+  const net = useApi<any>(health.data && !setupNeeded ? "/network" : null);
   const notFound = useStore((s) => s.notFound);
   const selectedCid = useStore((s) => s.selectedCid);
 

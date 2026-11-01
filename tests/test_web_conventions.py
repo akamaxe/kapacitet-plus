@@ -1,8 +1,8 @@
 """Conventions of the web interface that a reviewer would otherwise check by eye.
 
 Standard library only, so it runs on a fresh clone without Node or the pipeline output:
-- every interface string exists in English and in Spanish, and every literal key a component
-  asks for exists;
+- every interface string exists in English, Spanish and Swedish (lib/i18n/{en,es,sv}.ts), and
+  every literal key a component asks for exists;
 - every screen has its tab label;
 - numbers are formatted through lib/format.ts (no `.toFixed(` for display);
 - nothing scrolls with `scrollIntoView(` except the palette's own list (it would lift the whole
@@ -21,18 +21,23 @@ WEB = Path(__file__).resolve().parents[1] / "web" / "src"
 SOURCES = [p for p in WEB.rglob("*") if p.suffix in (".ts", ".tsx") and ".test." not in p.name]
 
 
+LANGS = ("en", "es", "sv")
+
+
 def _dict_keys(name: str) -> set[str]:
-    text = (WEB / "lib" / "i18n.ts").read_text(encoding="utf-8")
+    text = (WEB / "lib" / "i18n" / f"{name}.ts").read_text(encoding="utf-8")
     start = text.index(f"const {name}: Dict = {{")
     end = text.index("\n};", start)
     return set(re.findall(r'^\s+"([^"]+)":', text[start:end], re.M))
 
 
-def test_english_and_spanish_have_the_same_keys():
-    en, es = _dict_keys("en"), _dict_keys("es")
+def test_every_language_has_the_same_keys():
+    en = _dict_keys("en")
     assert en, "no English keys found"
-    assert not en - es, f"missing in Spanish: {sorted(en - es)[:20]}"
-    assert not es - en, f"missing in English: {sorted(es - en)[:20]}"
+    for lang in LANGS[1:]:
+        other = _dict_keys(lang)
+        assert not en - other, f"missing in {lang}: {sorted(en - other)[:20]}"
+        assert not other - en, f"only in {lang}: {sorted(other - en)[:20]}"
 
 
 def test_every_literal_key_asked_for_exists():

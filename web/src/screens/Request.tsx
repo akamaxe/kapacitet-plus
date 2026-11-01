@@ -16,6 +16,7 @@ import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
 
@@ -237,9 +238,11 @@ export default function Request() {
   }, [net.data]);
 
   // ------------------------------------------------------------------ evaluation
-  const fail = (detail: string) => {
-    setJob((j) => ({ id: j?.id ?? "", stages: j?.stages ?? {}, result: null, error: t("req.failedPlain"), detail }));
-    toast.error(t("req.failedPlain"));
+  // `message` is a refusal the server explained (a coded 4xx); anything else reads as a failure
+  const fail = (detail: string, message?: string) => {
+    const error = message || t("req.failedPlain");
+    setJob((j) => ({ id: j?.id ?? "", stages: j?.stages ?? {}, result: null, error, detail }));
+    toast.error(error);
   };
 
   const evaluate = async () => {
@@ -259,8 +262,8 @@ export default function Request() {
       return;
     }
     if (!r.ok) {
-      const why = `${r.status} ${(await r.text()).slice(0, 120)}`.trim();
-      fail(why);
+      const refusal = refusalOf(await r.json().catch(() => null));
+      fail(`${r.status} ${refusal.message ?? ""}`.trim(), refusal.code ? refusalText(t, refusal) : undefined);
       return;
     }
     const { id } = await r.json();

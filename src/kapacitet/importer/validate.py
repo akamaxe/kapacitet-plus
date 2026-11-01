@@ -8,11 +8,14 @@ Severities. An `error` stops the import, because the engine would otherwise be a
 question about a network that does not exist. A `warning` means the import proceeds on a
 documented fallback and the result carries that caveat. A `note` records something worth
 knowing that costs nothing.
+
+Every finding carries a `code` and its `params` next to the English `message`, so the interface
+can say it in any of its languages (`chk.msg.<code>` in web/src/lib/i18n); `MESSAGES` is the one
+place the English wording lives, and tests/test_messages.py holds the three languages to it.
 """
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -25,12 +28,45 @@ LV_MAX_SECTION_M = 2000.0
 PLAUSIBLE_FUSES = {16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400}
 
 
+MESSAGES = {
+    "missing_file": "{table}.csv is not in the export",
+    "missing_column": "{table}.csv has no {columns}",
+    "empty_identifier": "{table}.csv has rows without {key}",
+    "duplicate_identifier": "{table}.csv repeats {key}",
+    "transformer_count": "exactly one transformer is supported; the export has {n}",
+    "dangling_cable": "lines.csv refers to {column} values that are not in buses.csv",
+    "transformer_bus": "the transformer's lv_bus is not in buses.csv",
+    "island": "buses cannot be reached from the transformer",
+    "meshed_network": "the export is not radial; the engine assumes a radial feeder",
+    "cable_type": "sections with neither a type name nor full r/x/c data; the site default cable will be assumed",
+    "cable_length_missing": "sections with a missing or non-positive length",
+    "cable_length_long": "sections longer than {m} m, which is unusual at low voltage and often means metres and feet are mixed",
+    "transformer_rating": "sn_mva is {value}, which is not a distribution transformer",
+    "vector_group": "not given, Dyn assumed",
+    "orphan_customer": "customers whose bus is not in buses.csv",
+    "fuse_rating": "customers with a fuse that is not a standard size, for example {fuse} A",
+    "phase_not_recorded": "no phase column, so every service is taken as three-phase and voltage unbalance is understated",
+    "phase_not_recorded_cost": "no phase column, so every service is taken as three-phase and voltage unbalance is understated; on the reference grid with single-phase inverters, not knowing the phases costs {pct} % of the static hosting capacity in the median placement",
+    "phase_all_three": "every service is three-phase",
+    "phase_some_blank": "services recorded as three-phase or with no phase given",
+    "phase_value": "unrecognised phase labels, for example {label}",
+    "footprint_column": "no footprint_m2 column, so no rooftop PV potential can be estimated",
+    "footprint_blank": "customers without footprint_m2, so no rooftop PV potential can be estimated",
+    "annual_kwh_column": "no annual_kwh column, so consumption will be estimated from the fuse rating",
+    "annual_kwh_blank": "customers without annual_kwh, so consumption will be estimated from the fuse rating",
+    "no_coordinates": "buses.csv has no usable lon/lat, so the map cannot be drawn",
+    "empty_export": "no contract files found in {directory}",
+}
+
+
 @dataclass
 class Finding:
     severity: str
     check: str
     message: str
     count: int = 0
+    code: str = ""
+    params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -38,8 +74,8 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     tables: dict[str, int] = field(default_factory=dict)
 
-    def add(self, severity: str, check: str, message: str, count: int = 0) -> None:
-        self.findings.append(Finding(severity, check, message, count))
+    def add(self, severity: str, check: str, code: str, count: int = 0, **params) -> None:
+        self.findings.append(Finding(severity, check, MESSAGES[code].format(**params), count, code, params))
 
     @property
     def errors(self) -> list[Finding]:
@@ -93,14 +129,16 @@ def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
     return out
 
 
-def validate(data: dict[str, pd.DataFrame]) -> Report:
+def validate(data: dict[str, pd.DataFrame], phase_cost_pct: float | None = None) -> Report:
+    """`phase_cost_pct`: what not knowing the phases costs on the reference grid, when the caller has
+    computed it (results/phases.json), so the warning can say so; without it the warning says less."""
     report = Report(tables={k: len(v) for k, v in data.items()})
     if not _check_tables_and_columns(data, report):
         return report
     _check_identifiers(data, report)
     _check_topology(data, report)
     _check_electrical_data(data, report)
-    _check_customers(data, report)
+    _check_customers(data, report, phase_cost_pct)
     return report
 
 
@@ -108,13 +146,12 @@ def _check_tables_and_columns(data: dict[str, pd.DataFrame], report: Report) -> 
     ok = True
     for table in TABLES:
         if table.name not in data:
-            report.add(ERROR, "missing file", f"{table.name}.csv is not in the export")
+            report.add(ERROR, "missing file", "missing_file", table=table.name)
             ok = False
             continue
         missing = [c for c in table.required_columns if c not in data[table.name].columns]
         if missing:
-            report.add(ERROR, "missing column",
-                       f"{table.name}.csv has no {', '.join(missing)}")
+            report.add(ERROR, "missing column", "missing_column", table=table.name, columns=", ".join(missing))
             ok = False
     return ok
 
@@ -124,16 +161,14 @@ def _check_identifiers(data: dict[str, pd.DataFrame], report: Report) -> None:
         df = data[table.name]
         key = table.key
         if df[key].isna().any():
-            report.add(ERROR, "empty identifier", f"{table.name}.csv has rows without {key}",
-                       int(df[key].isna().sum()))
+            report.add(ERROR, "empty identifier", "empty_identifier", int(df[key].isna().sum()),
+                       table=table.name, key=key)
         duplicated = int(df[key].duplicated().sum())
         if duplicated:
-            report.add(ERROR, "duplicate identifier",
-                       f"{table.name}.csv repeats {key}", duplicated)
+            report.add(ERROR, "duplicate identifier", "duplicate_identifier", duplicated, table=table.name, key=key)
     if len(data["transformer"]) != 1:
-        report.add(ERROR, "transformer count",
-                   "exactly one transformer is supported, the export has",
-                   len(data["transformer"]))
+        report.add(ERROR, "transformer count", "transformer_count", len(data["transformer"]),
+                   n=len(data["transformer"]))
 
 
 def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
@@ -142,11 +177,9 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
     for col in ("from_bus", "to_bus"):
         unknown = set(lines[col].astype(str)) - known
         if unknown:
-            report.add(ERROR, "dangling cable",
-                       f"lines.csv refers to {col} values that are not in buses.csv",
-                       len(unknown))
+            report.add(ERROR, "dangling cable", "dangling_cable", len(unknown), column=col)
     if len(trafo) == 1 and str(trafo["lv_bus"].iloc[0]) not in known:
-        report.add(ERROR, "transformer bus", "the transformer's lv_bus is not in buses.csv")
+        report.add(ERROR, "transformer bus", "transformer_bus")
 
     # Radial and connected, checked without pulling in a graph library.
     adjacency: dict[str, list[str]] = {b: [] for b in known}
@@ -170,11 +203,9 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
             stack.append((nxt, node))
     unreached = len(known) - len(seen)
     if unreached:
-        report.add(ERROR, "island",
-                   "buses cannot be reached from the transformer", unreached)
+        report.add(ERROR, "island", "island", unreached)
     if loops:
-        report.add(WARNING, "meshed network",
-                   "the export is not radial; the engine assumes a radial feeder", loops // 2)
+        report.add(WARNING, "meshed network", "meshed_network", loops // 2)
 
 
 def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report) -> None:
@@ -186,85 +217,69 @@ def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report) -> Non
         has_values &= lines[col].notna() if col in lines else pd.Series(False, index=lines.index)
     undefined = int((~has_type & ~has_values).sum())
     if undefined:
-        report.add(WARNING, "cable type",
-                   "sections with neither a type name nor full r/x/c data, the site default "
-                   "cable will be assumed", undefined)
+        report.add(WARNING, "cable type", "cable_type", undefined)
 
     bad_length = int(((lines["length_m"] <= 0) | lines["length_m"].isna()).sum())
     if bad_length:
-        report.add(ERROR, "cable length", "sections with a missing or non-positive length",
-                   bad_length)
+        report.add(ERROR, "cable length", "cable_length_missing", bad_length)
     long_sections = int((lines["length_m"] > LV_MAX_SECTION_M).sum())
     if long_sections:
-        report.add(WARNING, "cable length",
-                   f"sections longer than {LV_MAX_SECTION_M:.0f} m, which is unusual at low "
-                   "voltage and often means metres and feet are mixed", long_sections)
+        report.add(WARNING, "cable length", "cable_length_long", long_sections, m=f"{LV_MAX_SECTION_M:.0f}")
 
     trafo = data["transformer"]
     if len(trafo) == 1:
         row = trafo.iloc[0]
         if not (0.0 < float(row["sn_mva"]) < 5.0):
-            report.add(ERROR, "transformer rating",
-                       f"sn_mva is {row['sn_mva']}, which is not a distribution transformer")
+            report.add(ERROR, "transformer rating", "transformer_rating", value=str(row["sn_mva"]))
         if "vector_group" not in trafo or pd.isna(row.get("vector_group")):
-            report.add(NOTE, "vector group", "not given, Dyn assumed")
+            report.add(NOTE, "vector group", "vector_group")
 
 
-def _check_customers(data: dict[str, pd.DataFrame], report: Report) -> None:
+def _check_customers(data: dict[str, pd.DataFrame], report: Report, phase_cost_pct: float | None) -> None:
     cust, buses = data["customers"], data["buses"]
     known = set(buses["bus_id"].astype(str))
     orphan = int((~cust["bus"].astype(str).isin(known)).sum())
     if orphan:
-        report.add(ERROR, "orphan customer",
-                   "customers whose bus is not in buses.csv", orphan)
+        report.add(ERROR, "orphan customer", "orphan_customer", orphan)
 
     odd = cust.loc[~cust["fuse_a"].isin(PLAUSIBLE_FUSES), "fuse_a"]
     if len(odd):
-        report.add(WARNING, "fuse rating",
-                   f"customers with a fuse that is not a standard size, for example "
-                   f"{odd.iloc[0]} A", len(odd))
+        report.add(WARNING, "fuse rating", "fuse_rating", len(odd), fuse=str(odd.iloc[0]))
 
     if "phase" not in cust.columns:
-        report.add(WARNING, "phase not recorded",
-                   "no phase column, so every service is taken as three-phase and voltage "
-                   "unbalance is understated; on our reference grid with single-phase inverters, "
-                   "not knowing the phases costs 44 % of the static hosting capacity in the "
-                   "median placement", len(cust))
+        if phase_cost_pct is None:
+            report.add(WARNING, "phase not recorded", "phase_not_recorded", len(cust))
+        else:
+            report.add(WARNING, "phase not recorded", "phase_not_recorded_cost", len(cust),
+                       pct=f"{phase_cost_pct:.0f}")
     else:
         blank = int(cust["phase"].isna().sum())
         if blank == len(cust):
-            report.add(NOTE, "phase", "every service is three-phase")
+            report.add(NOTE, "phase", "phase_all_three")
         elif blank:
-            report.add(NOTE, "phase",
-                       "services recorded as three-phase or with no phase given", blank)
+            report.add(NOTE, "phase", "phase_some_blank", blank)
         bad = cust.loc[cust["phase"].notna() & ~cust["phase"].astype(str).str.lower()
                        .isin(["a", "b", "c", "l1", "l2", "l3"]), "phase"]
         if len(bad):
-            report.add(ERROR, "phase value",
-                       f"unrecognised phase labels, for example {bad.iloc[0]!r}", len(bad))
+            report.add(ERROR, "phase value", "phase_value", len(bad), label=repr(bad.iloc[0]))
 
-    for col, what in (("footprint_m2", "no rooftop PV potential can be estimated"),
-                      ("annual_kwh", "consumption will be estimated from the fuse rating")):
+    for col, code in (("footprint_m2", "footprint"), ("annual_kwh", "annual_kwh")):
         if col not in cust.columns:
-            report.add(WARNING, f"{col} missing", f"no {col} column, {what}", len(cust))
+            report.add(WARNING, f"{col} missing", f"{code}_column", len(cust))
         else:
             n = int(cust[col].isna().sum())
             if n:
-                report.add(WARNING, f"{col} missing", f"customers without {col}, {what}", n)
+                report.add(WARNING, f"{col} missing", f"{code}_blank", n)
 
     if "lon" not in buses.columns or buses["lon"].isna().all():
-        report.add(WARNING, "no coordinates",
-                   "buses.csv has no usable lon/lat, so the map cannot be drawn")
+        report.add(WARNING, "no coordinates", "no_coordinates")
 
 
 def check_directory(directory: str | Path) -> Report:
     data = read_export(directory)
     if not data:
         report = Report()
-        report.add(ERROR, "empty export", f"no contract files found in {directory}")
+        report.add(ERROR, "empty export", "empty_export", directory=str(directory))
         return report
     return validate(data)
 
-
-def _fmt(value: float) -> str:
-    return "-" if value is None or (isinstance(value, float) and math.isnan(value)) else str(value)

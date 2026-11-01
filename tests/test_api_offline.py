@@ -71,6 +71,21 @@ def test_a_missing_result_names_the_command_that_makes_it():
     assert err.detail["command"] == "python -m kapacitet compute"
 
 
+def test_the_network_says_it_is_not_built_rather_than_failing(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+
+    from kapacitet.api import main
+
+    monkeypatch.setattr(main, "processed", lambda *parts: tmp_path.joinpath(*parts))
+    try:
+        main.network()
+    except HTTPException as err:
+        assert err.status_code == 404 and err.detail["code"] == "not_computed"
+        assert err.detail["command"] == "python -m kapacitet build"
+    else:
+        raise AssertionError("an unbuilt network must be a 404 that names the command")
+
+
 def test_requests_are_refused_when_the_engine_is_busy(client, monkeypatch):
     from kapacitet.api import main
 

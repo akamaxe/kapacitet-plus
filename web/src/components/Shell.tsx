@@ -1,5 +1,6 @@
+import { useLayoutEffect, useRef, useState } from "react";
 import { useApi } from "../lib/api";
-import { useT } from "../lib/i18n";
+import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { SCREENS, useStore, type Theme } from "../lib/store";
 import { Mark } from "./bits";
 import { Dialog } from "./Dialog";
@@ -21,10 +22,48 @@ function toggleFullscreen() {
   else document.documentElement.requestFullscreen?.().catch(() => undefined);
 }
 
+/** Room the folded bar needs beyond the screens' own width before it unfolds again, so a window
+ *  resized across the edge does not flicker between the two. */
+const UNFOLD_SLACK = 24;
+
 /**
- * The top bar: the product and where it is, the six screens, and the global tools. It is
- * SL blue in both themes, the one place the chrome carries colour. Below 1100 px the
- * screens fold into a menu sheet.
+ * Whether the screens fit in the bar, measured rather than guessed: their width depends on the
+ * language (Swedish words run long) and on how many screens there are. A hidden probe holds
+ * the labels at their widest weight; the bar folds when the room left by the brand and the
+ * tools is less than the probe, and unfolds only with some slack.
+ */
+function useFold(bar: React.RefObject<HTMLElement | null>, probe: React.RefObject<HTMLElement | null>) {
+  const [folded, setFolded] = useState(false);
+  useLayoutEffect(() => {
+    const el = bar.current;
+    const pr = probe.current;
+    if (!el || !pr) return;
+    const check = () => {
+      const cs = getComputedStyle(el);
+      const gap = parseFloat(cs.columnGap) || 0;
+      let used = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+      for (const child of Array.from(el.children) as HTMLElement[]) {
+        if (child === pr || child.classList.contains("topnav") || child.classList.contains("menu-btn")) continue;
+        if (getComputedStyle(child).display === "none") continue;
+        used += child.getBoundingClientRect().width + gap;
+      }
+      const free = el.clientWidth - used;
+      const need = pr.scrollWidth;
+      setFolded((was) => (was ? free < need + UNFOLD_SLACK : free < need));
+    };
+    const ro = new ResizeObserver(check);
+    ro.observe(el);
+    ro.observe(pr);
+    check();
+    return () => ro.disconnect();
+  }, [bar, probe]);
+  return folded;
+}
+
+/**
+ * The top bar: the product and where it is, the screens, and the global tools. It is SL blue
+ * in both themes, the one place the chrome carries colour. When the screens do not fit they
+ * fold into a menu sheet (useFold).
  */
 export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () => void }) {
   const t = useT();
@@ -37,8 +76,14 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
   const setTheme = useStore((s) => s.setTheme);
   const notes = useStore((s) => s.notes);
   const toggleNotes = useStore((s) => s.toggleNotes);
+  const barRef = useRef<HTMLElement>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
+  const folded = useFold(barRef, probeRef);
   return (
-    <header className="topbar">
+    <header className="topbar" ref={barRef} data-folded={folded || undefined}>
+      <div className="topnav-probe" ref={probeRef} aria-hidden="true">
+        {SCREENS.map((s) => <span key={s}>{t(`tab.${s}`)}</span>)}
+      </div>
       <button className="top-tool menu-btn" onClick={onMenu} aria-label={t("shell.menu")} aria-haspopup="dialog">
         <Icon name="menu" size={20} />
       </button>
@@ -61,9 +106,13 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
         <button className="top-tool" onClick={toggleNotes} aria-pressed={notes} title={`${t("ui.notes")} (N)`} aria-label={t("ui.notes")}>
           <Icon name="notes" size={18} />
         </button>
-        <button className="top-tool lang" onClick={() => setLang(lang === "en" ? "es" : "en")} aria-label={t("shell.language")} title={t("shell.language")}>
-          {lang === "en" ? "ES" : "EN"}
-        </button>
+        <div className="top-lang" role="group" aria-label={t("shell.language")}>
+          {LANGS.map((l) => (
+            <button key={l} className="top-tool" lang={l} aria-pressed={lang === l} title={LANG_NAMES[l]} onClick={() => void setLang(l)}>
+              {l.toUpperCase()}
+            </button>
+          ))}
+        </div>
         <select className="top-tool theme-select" value={theme} onChange={(e) => setTheme(e.target.value as Theme)} aria-label={t("ui.theme")}>
           {(["light", "dark", "system"] as const).map((v) => <option key={v} value={v}>{t(`shell.theme.${v}`)}</option>)}
         </select>
@@ -75,7 +124,7 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
   );
 }
 
-/** The six screens as a sheet, for a window too narrow to hold them in the top bar. */
+/** The screens as a sheet, for a window too narrow to hold them in the top bar. */
 export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
   const screen = useStore((s) => s.screen);
@@ -95,8 +144,9 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
       </nav>
       <div className="menu-prefs">
         <div className="seg" role="group" aria-label={t("shell.language")}>
-          <button aria-pressed={lang === "en"} onClick={() => setLang("en")}>{t("lang.en")}</button>
-          <button aria-pressed={lang === "es"} onClick={() => setLang("es")}>{t("lang.es")}</button>
+          {LANGS.map((l) => (
+            <button key={l} lang={l} aria-pressed={lang === l} onClick={() => void setLang(l)}>{LANG_NAMES[l]}</button>
+          ))}
         </div>
         <div className="seg" role="group" aria-label={t("ui.theme")}>
           {(["light", "dark", "system"] as const).map((v) => (

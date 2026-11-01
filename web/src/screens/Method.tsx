@@ -17,6 +17,8 @@ interface Input {
   label: string;
   label_es?: string;
   note_es?: string;
+  label_sv?: string;
+  note_sv?: string;
   value: number | string | (number | string)[];
   unit?: string;
   tag: string;
@@ -26,6 +28,12 @@ interface Input {
 }
 
 const TAGS = ["sourced", "regulation", "library", "derived", "team-assumption"];
+
+/** An input's label or note in the reader's language, English when it has none. */
+function localized(a: Input, field: "label" | "note", lang: string): string {
+  const own = lang === "en" ? undefined : (a as unknown as Record<string, string | undefined>)[`${field}_${lang}`];
+  return own || (a[field] ?? "");
+}
 
 /** How many limitation notes the dictionaries carry, met.limit.1 onwards. */
 const N_LIMITS = 9;
@@ -73,7 +81,7 @@ export default function Method() {
   }, [status.data]);
 
   const cols: Col<Input>[] = useMemo(() => [
-    { key: "label", label: t("tbl.input"), value: (a) => (lang === "es" && a.label_es ? a.label_es : a.label) },
+    { key: "label", label: t("tbl.input"), value: (a) => localized(a, "label", lang) },
     {
       key: "value",
       label: t("tbl.value"),
@@ -93,7 +101,7 @@ export default function Method() {
       cell: (a) => (
         <>
           {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.source}</a> : a.source}
-          {a.note ? <div className="caption-muted">{lang === "es" && a.note_es ? a.note_es : a.note}</div> : null}
+          {a.note ? <div className="caption-muted">{localized(a, "note", lang)}</div> : null}
         </>
       ),
     },

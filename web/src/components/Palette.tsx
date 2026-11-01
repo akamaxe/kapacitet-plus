@@ -13,7 +13,7 @@ import { Icon } from "./Icon";
 import { useApi } from "../lib/api";
 import { copyText } from "../lib/clipboard";
 import { useFmt } from "../lib/format";
-import { useT } from "../lib/i18n";
+import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { SCREENS, applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
 
@@ -100,16 +100,16 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
           onClose();
         },
       },
-      {
-        id: "act:lang",
+      ...LANGS.filter((l) => l !== lang).map((l) => ({
+        id: `act:lang:${l}`,
         group: t("pal.actions"),
-        label: t("pal.language"),
-        icon: "method",
+        label: t("pal.languageTo", { name: LANG_NAMES[l] }),
+        icon: "method" as const,
         run: () => {
-          setLang(lang === "es" ? "en" : "es");
+          void setLang(l);
           onClose();
         },
-      },
+      })),
       {
         id: "act:notes",
         group: t("pal.actions"),

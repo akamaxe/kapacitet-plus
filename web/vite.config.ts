@@ -10,6 +10,8 @@ export default defineConfig({
   },
   build: {
     outDir: "dist",
+    // main.tsx awaits the stored language before the first render (top-level await)
+    target: "es2022",
     chunkSizeWarningLimit: 2500,
   },
   // MapLibre 6 runs its worker as an ES module (see MapView.tsx: setWorkerUrl).

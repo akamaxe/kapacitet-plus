@@ -13,6 +13,8 @@ def test_every_assumption_is_labelled_and_sourced():
         assert a.label, f"{key} has no label"
         assert a.label_es, f"{key} has no Spanish label (label_es)"
         assert bool(a.note) == bool(a.note_es), f"{key}: a note needs its Spanish note_es, and only then"
+        assert a.label_sv, f"{key} has no Swedish label (label_sv)"
+        assert bool(a.note) == bool(a.note_sv), f"{key}: a note needs its Swedish note_sv, and only then"
         if a.tag in ("sourced", "regulation", "library"):
             assert a.url, f"{key} is tagged {a.tag} but has no link"
 

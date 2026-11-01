@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isLang, loadLang, type Lang } from "./i18n/core";
 
 export type Screen = "national" | "twin" | "compare" | "request" | "report" | "scenarios" | "method";
 export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "report", "scenarios", "method"];
@@ -119,7 +120,7 @@ function scheduleHashWrite() {
 
 interface State {
   screen: Screen;
-  lang: "en" | "es";
+  lang: Lang;
   theme: Theme;
   notes: boolean;
   hour: number;
@@ -137,12 +138,13 @@ interface State {
   tourOffered: boolean;
   /** a link named a screen that does not exist; App says so once */
   notFound: string | null;
-  /** the shortcuts that are one character (1–7, N, F, /, ?), which a speech-input user may need off */
+  /** the shortcuts that are one character (the screen numbers, N, F, /, ?), which a speech-input user may need off */
   singleKeys: boolean;
   setSingleKeys: (on: boolean) => void;
   setTour: (step: number | null, instant?: boolean) => void;
   setScreen: (s: Screen) => void;
-  setLang: (l: "en" | "es") => void;
+  /** switches once the language's dictionary has loaded, so nothing shows in a half-loaded language */
+  setLang: (l: Lang) => Promise<void>;
   setTheme: (t: Theme) => void;
   toggleNotes: () => void;
   setHour: (h: number) => void;
@@ -160,7 +162,7 @@ const initial = parseHash();
 export const useStore = create<State>((set) => ({
   screen: initial.screen,
   // an unknown stored language would leave every lookup empty, so it falls back to English
-  lang: (readLS("kap.lang", "en") === "es" ? "es" : "en"),
+  lang: ((v) => (isLang(v) ? v : "en"))(readLS("kap.lang", "en")),
   // day is the default (DESIGN.md); a value this version does not know falls back to it
   theme: ((t) => (THEMES.includes(t) ? t : "light") as Theme)(readLS("kap.theme", "light")),
   notes: false,
@@ -184,7 +186,12 @@ export const useStore = create<State>((set) => ({
     set({ screen });
     writeHash(true); // a screen is a place, so it gets a history entry
   },
-  setLang: (lang) => {
+  setLang: async (lang) => {
+    try {
+      await loadLang(lang);
+    } catch {
+      return; // offline and not loaded yet: stay in the language that is on screen
+    }
     writeLS("kap.lang", lang);
     document.documentElement.lang = lang;
     set({ lang });

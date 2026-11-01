@@ -4,6 +4,7 @@ import { Status } from "./bits";
 import { API, useApi } from "../lib/api";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { refusalOf, refusalText } from "../lib/errors";
 
 const SEVERITY: Record<string, "critical" | "warning"> = { error: "critical", warning: "warning" };
 
@@ -30,6 +31,14 @@ export function NetworkCheck() {
     return label === key ? check : label;
   };
 
+  // the engine's sentence, said in the reader's language when this version knows its code
+  const findingText = (x: { code?: string; params?: Record<string, string | number>; message: string }) => {
+    if (!x.code) return x.message;
+    const key = `chk.msg.${x.code}`;
+    const text = t(key, x.params);
+    return text === key ? x.message : text;
+  };
+
   const check = async (files: Record<string, string>) => {
     setBusy(true);
     setError(null);
@@ -40,7 +49,7 @@ export function NetworkCheck() {
         body: JSON.stringify({ files }),
       });
       const body = await r.json();
-      if (!r.ok) setError(typeof body.detail === "string" ? body.detail : `${r.status}`);
+      if (!r.ok) setError(refusalText(t, refusalOf(body), String(r.status)));
       else setReport(body);
     } catch {
       setError(t("ui.offline"));
@@ -123,7 +132,7 @@ export function NetworkCheck() {
                     {SEVERITY[x.severity]
                       ? <Status kind={SEVERITY[x.severity]}>{t(`met.imp.sev.${x.severity}`)}</Status>
                       : <span className="status measured">{t(`met.imp.sev.${x.severity}`)}</span>}
-                    <span><strong>{checkLabel(x.check)}</strong>{x.count ? ` (${f(x.count)})` : ""} — {x.message}</span>
+                    <span><strong>{checkLabel(x.check)}</strong>{x.count ? ` (${f(x.count)})` : ""} — {findingText(x)}</span>
                   </li>
                 ))}
               </ul>

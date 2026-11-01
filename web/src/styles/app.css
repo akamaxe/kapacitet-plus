@@ -1106,6 +1106,8 @@ svg { flex-shrink: 0; }
 
 /* the top bar: SL blue, white type, the screens as text with the current one underlined */
 .topbar {
+  --nav-gap: var(--space-5);
+  position: relative;
   display: flex;
   align-items: stretch;
   gap: var(--space-5);
@@ -1119,7 +1121,25 @@ svg { flex-shrink: 0; }
 .roundel circle { fill: var(--chrome-ink); }
 .roundel path { stroke: var(--chrome); stroke-width: 2.6; stroke-linecap: round; }
 .brand-scope { display: inline-flex; align-items: center; color: var(--chrome-ink-2); font-size: var(--text-small); white-space: nowrap; }
-.topnav { display: flex; align-items: stretch; gap: var(--space-5); margin-left: auto; min-width: 0; padding: 0 var(--space-1); }
+.topnav { display: flex; align-items: stretch; gap: var(--nav-gap); margin-left: auto; min-width: 0; padding: 0 var(--space-1); }
+/* the screens' labels at their widest weight, out of sight: the bar folds when they no longer fit
+   (Shell.tsx useFold), which depends on the language rather than on a fixed width */
+.topnav-probe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: flex;
+  gap: var(--nav-gap);
+  padding: 0 var(--space-1);
+  font-size: var(--text-small);
+  font-weight: 600;
+  white-space: nowrap;
+  visibility: hidden;
+  pointer-events: none;
+}
+.topbar[data-folded] .topnav { display: none; }
+.topbar[data-folded] .menu-btn { display: inline-flex; }
+.topbar[data-folded] .top-tools { margin-left: auto; }
 .topnav a {
   display: inline-flex;
   align-items: center;
@@ -1158,6 +1178,9 @@ svg { flex-shrink: 0; }
 .top-search kbd { margin-left: auto; border-color: var(--chrome-rule); color: var(--chrome-ink-2); }
 .topbar :focus-visible { outline-color: var(--chrome-ink); }
 .theme-select.top-tool { appearance: auto; color-scheme: dark; background: none; max-width: 104px; }
+/* three languages, each named by its code; the pressed one sits on the bar's hover tone */
+.top-lang { display: inline-flex; align-items: center; }
+.top-lang .top-tool { min-width: 32px; padding: 0 var(--space-1); letter-spacing: 0.02em; }
 .theme-select.top-tool option { color: var(--text-primary); background: var(--bg-elevated); }
 .menu-btn { display: none; align-self: center; margin-left: calc(-1 * var(--space-2)); }
 
@@ -1252,8 +1275,8 @@ main:focus { outline: none; }
 .timeline-tools { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .timeline-tools button, .timeline-tools select { font-size: var(--text-caption); }
 
-/* the frame narrows: the scope, then the search label give way; below 1100 px the screens
-   fold into the menu sheet */
+/* the frame narrows: the scope, then the search label give way; when the screens no longer fit
+   they fold into the menu sheet (measured, see .topnav-probe) */
 @media (max-width: 1440px) {
   .brand-scope { display: none; }
 }
@@ -1262,7 +1285,7 @@ main:focus { outline: none; }
   /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
   .panel .seg button { padding-inline: var(--space-2); }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-  .topnav { gap: var(--space-4); }
+  .topbar { --nav-gap: var(--space-4); }
 }
 @media (max-width: 1280px) {
   .top-search { min-width: 0; }
@@ -1270,11 +1293,6 @@ main:focus { outline: none; }
 }
 @media (max-width: 1200px) {
   .page-inner { padding: var(--space-5); --gutter: var(--space-5); }
-}
-@media (max-width: 1100px) {
-  .topnav { display: none; }
-  .menu-btn { display: inline-flex; }
-  .top-tools { margin-left: auto; }
 }
 @media (max-width: 900px) {
   .overview-hero { gap: var(--space-4); }
@@ -1284,7 +1302,7 @@ main:focus { outline: none; }
   .footline { padding: 0 var(--space-4); }
 }
 @media (max-width: 700px) {
-  .fullscreen-btn, .theme-select.top-tool { display: none; }
+  .fullscreen-btn, .theme-select.top-tool, .top-lang { display: none; }
   .page-inner { padding: var(--space-4) var(--space-4) var(--space-6); gap: var(--space-4); --gutter: var(--space-4); }
   .overview-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
   .overview-copy { padding: 0; }

@@ -145,6 +145,7 @@ def annual_report(trail: Trail, result: DoeResult, cids: np.ndarray | None = Non
     return {
         "year": trail.year,
         "reporting_basis": "Ei2025:01, conditional connection agreements",
+        "reporting_basis_code": "Ei2025:01",
         "conditional_agreements": int(len(nonfirm)),
         "hours_with_curtailment": trail.hours_with_curtailment,
         "curtailed_kwh": round(trail.energy_kwh, 1),

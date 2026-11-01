@@ -10,6 +10,11 @@ describe("fmt", () => {
     expect(fmt("es", 1234)).toBe(`1${THIN}234`);
   });
 
+  it("writes Swedish with a decimal comma and a true minus sign", () => {
+    expect(fmt("sv", 1234.5, 1)).toBe(`1${THIN}234,5`);
+    expect(fmt("sv", -2.5, 1)).toBe("\u22122,5");
+  });
+
   it("writes a dash for a value that is not a number", () => {
     expect(fmt("en", null)).toBe("–");
     expect(fmt("en", undefined)).toBe("–");
@@ -51,6 +56,7 @@ describe("dates", () => {
     expect(dateTime("en", "2026-11-01T14:03:00Z")).toBe("1 Nov 2026, 14:03");
     expect(dateTime("en", "2026-11-01T14:03:00Z", false)).toBe("1 Nov 2026");
     expect(clock("en", "2026-11-01T14:03:00Z")).toBe("14:03");
+    expect(dateTime("sv", "2026-11-01T14:03:00Z", false)).toBe("1 nov. 2026");
   });
 
   it("writes a dash for anything that is not a date", () => {

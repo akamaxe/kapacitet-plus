@@ -359,7 +359,7 @@ Weights: 400 body, 500 labels, buttons and values, 600 headings, 700 only for th
 - A figure is said once per view: if the heading says it, the chart does not.
 
 ### Named Rules
-**The SEK Rule.** Money is SEK, never "kr": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `i18n.ts`, "SEK/año" in Spanish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.
+**The SEK Rule.** Money is SEK, never "kr": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, "SEK/año" in Spanish, "SEK/år" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.
 
 **The One Date Rule.** Every real-time date on screen and on paper goes through `format.dateTime`, and every time of day through `format.clock`. No screen builds its own date string.
 
@@ -547,7 +547,7 @@ MapLibre on all four map views: the opening network map, the Neighbourhood, the 
 - **Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.
 - **Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.
 - **Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.
-- **Do** write every string in `lib/i18n.ts`, in English and Spanish.
+- **Do** write every string in `lib/i18n/{en,es,sv}.ts`, in English, Spanish and Swedish, with the terms of `docs/glossary.md`.
 - **Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such.
 
 ### Don't:
@@ -583,7 +583,7 @@ Short, factual, sentence case. Plain words first: a viewer who has never heard o
 - [ ] Real and synthetic marked with their filled and dashed squares and sources
 - [ ] Status shown as mark + word; contrast measured, not assumed
 - [ ] No boxed cards, tile grids, kickers, uppercase labels or in-page shadows
-- [ ] New strings in English and Spanish
+- [ ] New strings in English, Spanish and Swedish
 - [ ] Motion: presses 0.97, colour 120 ms, nothing on keyboard dialogs or screen changes, reduced motion keeps colour and opacity only
 - [ ] Keyboard path complete, focus visible, hit targets 40/44 px
 - [ ] Alpha over a channel token written `rgba(var(--token), a)`

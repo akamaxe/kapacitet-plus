@@ -73,7 +73,7 @@ export default function Report() {
 
   return (
     <div className="page">
-      <SectionBar sections={sections} basis={<span>{t("rep.basis", { basis: R.reporting_basis, year: R.year })}</span>} />
+      <SectionBar sections={sections} basis={<span>{t("rep.basis", { code: R.reporting_basis_code ?? R.reporting_basis, year: R.year })}</span>} />
       <div className="page-inner">
         {/* ---------------------------------------------------------------- the filing */}
         <section className="region">

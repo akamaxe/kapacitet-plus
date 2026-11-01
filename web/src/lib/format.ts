@@ -1,5 +1,5 @@
 import { useStore } from "./store";
-import { locale } from "./i18n";
+import { locale } from "./i18n/core";
 
 /** Narrow no-break space: thousands separator, Swedish convention (DESIGN.md). */
 const THIN = " ";
@@ -34,24 +34,32 @@ export function fmt(lang: string, value: number | null | undefined, digits = 0):
     .join("");
 }
 
+type FmtFn = (value: number | null | undefined, digits?: number) => string;
+const FMT = new Map<string, FmtFn>();
+
 /** One formatting function per language, so a component's memos keep their identity. */
-const FMT: Record<string, (value: number | null | undefined, digits?: number) => string> = {
-  en: (value, digits = 0) => fmt("en", value, digits),
-  es: (value, digits = 0) => fmt("es", value, digits),
-};
+export function fmtFor(lang: string): FmtFn {
+  let f = FMT.get(lang);
+  if (!f) {
+    f = (value, digits = 0) => fmt(lang, value, digits);
+    FMT.set(lang, f);
+  }
+  return f;
+}
 
 export function useFmt() {
   const lang = useStore((s) => s.lang);
-  return FMT[lang] ?? FMT.en;
+  return fmtFor(lang);
 }
 
 const MONTHS = {
   en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
   es: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
+  sv: ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"],
 };
 
 export function monthNames(lang: string): string[] {
-  return lang === "es" ? MONTHS.es : MONTHS.en;
+  return MONTHS[lang as keyof typeof MONTHS] ?? MONTHS.en;
 }
 
 /** Hour index of the study year (UTC+1 standard time) → local date parts. */
@@ -64,9 +72,7 @@ export function hourToDate(year: number, hour: number): { month: number; day: nu
 export function hourLabel(lang: string, year: number, hour: number): string {
   const d = hourToDate(year, hour);
   const hh = String(d.hour).padStart(2, "0");
-  return lang === "es"
-    ? `${d.day} ${monthNames(lang)[d.month]} ${year}, ${hh}:00`
-    : `${d.day} ${monthNames(lang)[d.month]} ${year}, ${hh}:00`;
+  return `${d.day} ${monthNames(lang)[d.month]} ${year}, ${hh}:00`;
 }
 
 /** Hours in a calendar year of the study (8 760, or 8 784 in a leap year). */

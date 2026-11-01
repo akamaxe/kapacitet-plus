@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
-import { DICTS, translate } from "./i18n";
+import { beforeAll, describe, expect, it } from "vitest";
+import { DICTS, LANGS, loadLang, locale, translate } from "./i18n/core";
+
+beforeAll(async () => {
+  for (const lang of LANGS) await loadLang(lang);
+});
 
 describe("dictionaries", () => {
+  it("every language loads", () => {
+    for (const lang of LANGS) expect(DICTS[lang], lang).toBeTruthy();
+  });
+
   it("every language has exactly the English keys", () => {
     const en = Object.keys(DICTS.en).sort();
     for (const [lang, dict] of Object.entries(DICTS)) {
@@ -34,6 +42,12 @@ describe("translate", () => {
 
   it("falls back to English, then to the key itself", () => {
     expect(translate("xx", "pal.title")).toBe(DICTS.en["pal.title"]);
-    expect(translate("es", "no.such.key")).toBe("no.such.key");
+    expect(translate("sv", "no.such.key")).toBe("no.such.key");
+  });
+
+  it("names each language's own locale", () => {
+    expect(locale("en")).toBe("en-GB");
+    expect(locale("es")).toBe("es-ES");
+    expect(locale("sv")).toBe("sv-SE");
   });
 });

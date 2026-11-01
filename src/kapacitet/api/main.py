@@ -90,9 +90,34 @@ _WRITTEN_BY = {
     "overinstallation.json": "compute --stage extra --only overinstallation",
     "phases.json": "compute --stage extra --only phases",
     "validation.json": "compute --stage extra --only validation",
-    "reinforcement.json": "compute --stage extra --only reinforcement",
     "forecast.json": "forecast",
+    "grid/customers.parquet": "build",
 }
+
+
+# Refusals the interface translates: `{code, message, params}` in the detail, `err.<code>` in
+# web/src/lib/i18n. tests/test_messages.py holds the three languages to these templates.
+API_ERRORS = {
+    "not_in_contract": "not part of the contract: {tables}",
+    "too_large": "larger than {mb} MB: {tables}",
+    "unreadable_csv": "{table}.csv could not be read: {detail}",
+    "queue_busy": "the queue is being updated; try again when it finishes",
+    "queue_empty": "the queue is empty: choose today's grid or the envelope scenario",
+    "nothing_requested": "nothing requested: ask for solar, an EV charger or a heat pump",
+    "battery_needs_solar": "a battery here stores curtailed solar, so it needs a solar request",
+    "has_heat_pump": "this house already has a heat pump",
+    "unknown_customer": "unknown customer",
+    "busy": "busy: {n} requests are already being evaluated, try again shortly",
+}
+
+
+def api_error(status: int, code: str, **params) -> HTTPException:
+    """A refusal with a code and its parameters next to the English sentence."""
+    return HTTPException(status, {"code": code, "message": API_ERRORS[code].format(**params), "params": params})
+
+
+def queue_refusal(status: int, exc) -> HTTPException:
+    return HTTPException(status, {"code": exc.code, "message": str(exc), "params": exc.params})
 
 
 def command_for(name: str) -> str:
@@ -317,17 +342,30 @@ def post_check(body: ExportCheck) -> dict:
 
     unknown = set(body.files) - set(BY_NAME)
     if unknown:
-        raise HTTPException(422, f"not part of the contract: {', '.join(sorted(unknown))}")
+        raise api_error(422, "not_in_contract", tables=", ".join(sorted(unknown)))
     big = [name for name, text in body.files.items() if len(text.encode("utf-8")) > CHECK_MAX_BYTES]
     if big:
-        raise HTTPException(413, f"larger than {CHECK_MAX_BYTES // 1_000_000} MB: {', '.join(sorted(big))}")
+        raise api_error(413, "too_large", mb=CHECK_MAX_BYTES // 1_000_000, tables=", ".join(sorted(big)))
     data = {}
     for name, text in body.files.items():
         try:
             data[name] = pd.read_csv(io.StringIO(text))
         except Exception as err:
-            raise HTTPException(422, f"{name}.csv could not be read: {err}") from err
-    return validate(data).to_dict()
+            raise api_error(422, "unreadable_csv", table=name, detail=str(err)) from err
+    return validate(data, phase_cost_pct=_phase_cost_pct()).to_dict()
+
+
+def _phase_cost_pct() -> float | None:
+    """What not knowing the phases costs on the reference grid: the static capacity with every
+    connection single-phase on unknown phases (median), against the balanced model."""
+    try:
+        cases = {c["key"]: c for c in result("phases").get("cases", [])}
+    except HTTPException:
+        return None
+    bal, rnd = cases.get("balanced", {}), cases.get("single_random", {})
+    if not bal.get("kw_ac") or rnd.get("kw_ac_median") is None:
+        return None
+    return 100.0 * (1.0 - float(rnd["kw_ac_median"]) / float(bal["kw_ac"]))
 
 
 # ------------------------------------------------------------------------------ live "now" strip
@@ -386,6 +424,8 @@ async def now() -> dict:
 @app.get(f"{API}/network", tags=["twin"])
 def network() -> dict:
     """GeoJSON of the modelled neighbourhood: houses, cables, cabinets, substation, context."""
+    if not processed("grid", "customers.parquet").exists():
+        raise not_computed("grid/customers.parquet")
     stamp = tuple(p.stat().st_mtime for p in (processed("grid", "customers.parquet"), processed("results", "showcase.json"),
                                                processed("results", "nodal.json")) if p.exists())
     return _network(stamp)
@@ -576,6 +616,9 @@ def compliance_report() -> dict:
     from ..engine.summaries import hour_of_timestamp
 
     rep = dict(result("compliance.json"))
+    # the code of Ei's position alone, so the interface writes the words around it in its language
+    # (filings computed before the field existed carry it inside the sentence)
+    rep.setdefault("reporting_basis_code", str(rep.get("reporting_basis", "")).split(",")[0].strip())
     worst = rep.get("worst_uncontrolled") or {}
     if worst.get("timestamp"):
         rep["worst_uncontrolled"] = {**worst, "hour": hour_of_timestamp(worst["timestamp"], rep["year"])}
@@ -743,7 +786,7 @@ def _run_job(job_id: str, body: RequestIn, ctx=None) -> None:
 def _check_cid(cid: int) -> None:
     from ..engine.scenario import customers
     if cid >= len(customers()):
-        raise HTTPException(422, "unknown customer")
+        raise api_error(422, "unknown_customer")
 
 
 def _context_for(body: RequestIn):
@@ -752,12 +795,12 @@ def _context_for(body: RequestIn):
         return None
     from ..engine import queue as qu
     if _queue_busy():
-        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+        raise api_error(409, "queue_busy")
     ctx = qu.context()
     if ctx is None:
-        raise HTTPException(409, "the queue is empty: choose today's grid or the envelope scenario")
+        raise api_error(409, "queue_empty")
     if body.cid in ctx.overrides:
-        raise HTTPException(422, "this house is already approved in the queue")
+        raise queue_refusal(422, qu.QueueError("already_approved"))
     return ctx
 
 
@@ -765,11 +808,11 @@ def _check_request(body: RequestIn) -> None:
     """Refuse what the engine cannot answer honestly, before any work."""
     _check_cid(body.cid)
     if body.pv_kwp <= 0 and body.ev_kw <= 0 and not body.hp:
-        raise HTTPException(422, "nothing requested: ask for solar, an EV charger or a heat pump")
+        raise api_error(422, "nothing_requested")
     if body.bat_kwh > 0 and body.pv_kwp <= 0:
-        raise HTTPException(422, "a battery here stores curtailed solar, so it needs a solar request")
+        raise api_error(422, "battery_needs_solar")
     if body.hp and bool(_engine()["hp"][body.cid]):
-        raise HTTPException(422, "this house already has a heat pump")
+        raise api_error(422, "has_heat_pump")
 
 
 def _sweep_jobs() -> None:
@@ -814,7 +857,7 @@ def create_request(body: RequestIn) -> dict:
     ctx = _context_for(body)
     _sweep_jobs()
     if sum(j["status"] == "running" for j in _JOBS.values()) >= MAX_JOBS:
-        raise HTTPException(429, f"busy: {MAX_JOBS} requests are already being evaluated, try again shortly")
+        raise api_error(429, "busy", n=MAX_JOBS)
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time(),
                      "request": body.model_dump()}
@@ -970,7 +1013,8 @@ def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
         job.update(result=item, status="done", finished=time.time())
         job["events"].append({"stage": "done", "payload": {"decision": body.decision}, "t": time.time()})
     except qu.QueueError as exc:
-        job.update(status="error", error=str(exc), code=409, finished=time.time())
+        job.update(status="error", error=str(exc), code=409, refusal={"code": exc.code, "message": str(exc),
+                                                                        "params": exc.params}, finished=time.time())
         job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
     except Exception as exc:
         log.exception("decision failed")
@@ -987,14 +1031,14 @@ def post_decision(body: DecisionIn) -> dict:
     from ..engine import queue as qu
 
     if _queue_busy():
-        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+        raise api_error(409, "queue_busy")
     rec = records.load(body.assessment)
     if rec is None:
         raise HTTPException(404, "unknown assessment")
     try:
         qu._check(qu.load(), rec, body.decision)
     except qu.QueueError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise queue_refusal(409, exc) from exc
     job_id = uuid.uuid4().hex[:12]
     _QJOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time()}
     threading.Thread(target=_run_decision, args=(job_id, body, rec), daemon=True).start()
@@ -1016,7 +1060,7 @@ def decision_result(job_id: str) -> JSONResponse:
     if job["status"] == "running":
         return JSONResponse({"status": "running"}, status_code=202)
     if job["status"] == "error":
-        raise HTTPException(job.get("code", 500), job.get("error", "failed"))
+        raise HTTPException(job.get("code", 500), job.get("refusal") or job.get("error", "failed"))
     return JSONResponse(json.loads(json.dumps(job["result"], default=_json_default)))
 
 
@@ -1026,7 +1070,7 @@ def delete_queue() -> dict:
     from ..engine import queue as qu
 
     if _queue_busy():
-        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+        raise api_error(409, "queue_busy")
     qu.reset()
     return {"ok": True}
 
