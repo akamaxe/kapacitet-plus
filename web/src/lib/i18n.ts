@@ -823,6 +823,7 @@ const en: Dict = {
   "tor.minload": "Minimum load in the static snapshot",
   "tor.household": "Household demand",
   "tor.noLoad": "(no load)",
+  "req.liveOff": "Live requests need the request baselines, which this data folder does not have (a lite bundle shows the published results only). Unpack a full bundle, or make them:",
 };
 
 const es: Dict = {
@@ -1640,6 +1641,7 @@ const es: Dict = {
   "tor.minload": "Consumo mínimo en la instantánea estática",
   "tor.household": "Demanda de los hogares",
   "tor.noLoad": "(sin consumo)",
+  "req.liveOff": "Las solicitudes en vivo necesitan las bases de las solicitudes, que esta carpeta de datos no tiene (un paquete lite solo muestra los resultados publicados). Desempaqueta un paquete completo, o genéralas:",
 };
 
 export const DICTS: Record<string, Dict> = { en, es };

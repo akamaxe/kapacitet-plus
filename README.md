@@ -62,6 +62,30 @@ cd web && npm install && npm run build && cd ..                # the interface (
 `python -m kapacitet all --quick` runs a reduced version (fewer years and adoption orders) in a
 few minutes, for a first look or for CI.
 
+### Without the pipeline
+
+Whoever has computed the data can pack it for another machine, which then needs only Python (and no
+Node with `--web`):
+
+```bash
+.venv/Scripts/python -m kapacitet bundle --web              # full: every screen and live requests
+.venv/Scripts/python -m kapacitet bundle --level lite --web # the published results only (~7 MB)
+.venv/Scripts/python -m kapacitet unbundle kapacitet-data.zip   # on the other machine, then: serve
+```
+
+The bundle records a checksum for every file and `unbundle` checks them; it never overwrites
+existing files unless asked with `--force`. The data derive from OpenStreetMap (ODbL), so a
+bundle is shared privately, never published with the code. A lite bundle shows every result but
+cannot evaluate new requests, and the request screen says so.
+
+A container runs the same thing with the data mounted (`docker build -t kapacitet .`, then
+`docker run -p 8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
+Without data, the interface opens on a page that lists the commands to run.
+
+Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
+`KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
+access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests).
+
 The API documentation is at `/docs`; every JSON payload carries a `provenance` block with the
 sources and assumptions behind it.
 

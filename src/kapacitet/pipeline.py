@@ -11,6 +11,8 @@ Commands
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
   serve     run the API and the web UI on one port
+  bundle    pack the computed data (and optionally web/dist) to run elsewhere
+  unbundle  unpack such a bundle into data/ (and web/dist), checking every file
   all       fetch + build + profiles + compute
 """
 
@@ -105,6 +107,32 @@ def cmd_compute(args: argparse.Namespace) -> None:
             run.compute_extra(quick=args.quick, only=only, workers=args.workers)
         else:
             run.compute_all(quick=args.quick)
+
+
+def cmd_bundle(args: argparse.Namespace) -> None:
+    from .bundle import BundleError, make_bundle
+
+    try:
+        m = make_bundle(args.out, level=args.level, web=args.web)
+    except BundleError as err:
+        print(err)
+        sys.exit(2)
+    size = os.path.getsize(args.out) / 1e6
+    print(f"{args.out}: {len(m['files'])} files, {size:.0f} MB ({args.level}{', with web/dist' if args.web else ''}).")
+    print("The data derive from OpenStreetMap (ODbL): share this file privately, not with the code.")
+
+
+def cmd_unbundle(args: argparse.Namespace) -> None:
+    from .bundle import BundleError, unpack_bundle
+
+    try:
+        r = unpack_bundle(args.file, force=args.force)
+    except BundleError as err:
+        print(err)
+        sys.exit(2)
+    print(f"Unpacked {r['written']} files from a {r['level']} bundle made by Kapacitet+ {r['kapacitet']} "
+          f"on {r['created'][:10]}" + (f"; kept {r['skipped']} existing files (use --force to replace them)" if r["skipped"] else "") + ".")
+    print("Start the interface with: python -m kapacitet serve")
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
@@ -245,6 +273,18 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--host", default=os.environ.get("KAPACITET_HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("KAPACITET_PORT", "8000")))
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("bundle", help="pack the computed data to run it elsewhere")
+    p.add_argument("--out", default="kapacitet-data.zip", help="archive to write")
+    p.add_argument("--level", choices=["lite", "full"], default="full",
+                   help="lite: the published results only; full: also what live requests need")
+    p.add_argument("--web", action="store_true", help="include web/dist, so the receiver needs no Node")
+    p.set_defaults(func=cmd_bundle)
+
+    p = sub.add_parser("unbundle", help="unpack a data bundle into data/ (and web/dist)")
+    p.add_argument("file", help="the bundle (a .zip made by `kapacitet bundle`)")
+    p.add_argument("--force", action="store_true", help="replace files that already exist")
+    p.set_defaults(func=cmd_unbundle)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")
     p.add_argument("--only", default="")

@@ -37,3 +37,16 @@ jobs:
           cache: pip
       - run: python -m pip install -c constraints.txt -e ".[dev]"
       - run: python -m pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t kapacitet .
+      # without data the API still answers, and /health says what is missing
+      - run: |
+          docker run -d --name kapacitet -p 8000:8000 kapacitet
+          for i in $(seq 1 30); do curl -fs http://127.0.0.1:8000/api/v1/health && break; sleep 2; done
+          curl -fs http://127.0.0.1:8000/api/v1/health | grep -q '"status":"ok"'
+          curl -fs http://127.0.0.1:8000/ | grep -q '<div id="root">'
+          docker rm -f kapacitet

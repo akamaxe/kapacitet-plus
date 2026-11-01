@@ -6,7 +6,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { Icon } from "../components/Icon";
 import { toast } from "../components/Toast";
 import { SplitSkeleton } from "../components/Skeleton";
-import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
+import { CommandLine, ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
 import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
@@ -57,6 +57,7 @@ export default function Request() {
   const evOptions = [0, A.get("ev_charger_single_phase_kw"), A.get("ev_charger_kw")].filter((v): v is number => v !== undefined);
   // the queue of decisions: once it holds approvals, requests are evaluated against it by default
   const queueQ = useApi<QueueState>("/queue");
+  const health = useApi<any>("/health");
   const queue = queueQ.data;
   const queueRef = useRef<QueueState | undefined>(undefined);
   queueRef.current = queue;
@@ -324,6 +325,9 @@ export default function Request() {
     || !!asked.hp !== hp || (asked.bat_kwh ?? 0) !== (pv > 0 ? bat : 0));
   const evLabel = (v: number) => (v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`);
   const nothing = pv === 0 && ev === 0 && !hp;
+  // a lite data bundle shows every result but cannot evaluate: say so instead of failing
+  const live = health.data?.parts?.requests;
+  const liveOff = live?.ready === false;
 
   return (
     <div className="split wide-panel">
@@ -443,10 +447,16 @@ export default function Request() {
 
             {/* the screen's one action: kept at the foot of the panel so a short screen never hides it */}
             <div className="action-bar">
-              <button className="btn" disabled={running || nothing} onClick={evaluate} aria-describedby={nothing ? "why-disabled" : undefined}>
+              <button className="btn" disabled={running || nothing || liveOff} onClick={evaluate} aria-describedby={nothing || liveOff ? "why-disabled" : undefined}>
                 {running ? t("req.running") : t("req.evaluate")}
               </button>
-              {nothing && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
+              {nothing && !liveOff && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
+              {liveOff && (
+                <div id="why-disabled" className="stack">
+                  <p className="caption-muted">{t("req.liveOff")}</p>
+                  {live?.command && <CommandLine command={live.command} />}
+                </div>
+              )}
             </div>
           </>
         )}
