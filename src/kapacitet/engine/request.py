@@ -32,7 +32,7 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import A, settings
-from ..paths import processed
+from ..paths import DATA, processed
 from ..profiles.ev import EvSessions
 from ..timeindex import hour_of_day, local_standard, year_index
 from . import economics, hosting
@@ -102,12 +102,31 @@ _PQ_CACHE: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
 
 
 def baseline_pq(model: NetModel, name: str, year: int, hp: np.ndarray, ev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """The published baseline's injection for one year, kept for the last few years asked for."""
+    """The published baseline's injection for one year, kept for the last few years asked for.
+
+    Recomputing it means the non-firm customers' envelopes for that year, a few seconds each, so a
+    copy is also kept in data/requests/cache, tied to the baseline file it was computed from.
+    """
     key = (name, year)
     if key not in _PQ_CACHE:
         if len(_PQ_CACHE) >= 4:
             _PQ_CACHE.pop(next(iter(_PQ_CACHE)))
-        _PQ_CACHE[key] = base_injection(model, _baseline(name), year, hp, ev)
+        stamp = processed("request", f"{name}.json").stat().st_mtime
+        path = DATA / "requests" / "cache" / f"{name}_{year}.npz"
+        pq = None
+        if path.exists():
+            d = np.load(path)
+            if float(d["stamp"]) == stamp:
+                pq = (d["p"].astype(float), d["q"].astype(float))
+        if pq is None:
+            # rounded as the cache stores it, so a fresh run and a cached one give the same answer
+            pq = tuple(x.astype(np.float32).astype(float) for x in base_injection(model, _baseline(name), year, hp, ev))
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                np.savez(path, p=pq[0].astype(np.float32), q=pq[1].astype(np.float32), stamp=stamp)
+            except OSError:   # a read-only data folder only costs the next request some seconds
+                log.warning("could not cache %s", path)
+        _PQ_CACHE[key] = pq
     return _PQ_CACHE[key]
 
 

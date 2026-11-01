@@ -601,8 +601,9 @@ class RequestIn(BaseModel):
     ev_kw: float = Field(0.0, ge=0, le=22, description="EV charger power, kW (0 = none)")
     hp: bool = Field(False, description="add a heat pump sized to the house (not for a house that has one)")
     bat_kwh: float = Field(0.0, ge=0, le=30, description="home battery, usable kWh (needs a PV request)")
-    baseline: str = Field("static", pattern="^(static|doe)$",
-                          description="static: today's approved grid; doe: the DOE scenario")
+    baseline: str = Field("static", pattern="^(static|doe|queue)$",
+                          description="static: today's approved grid; doe: the DOE scenario; "
+                                      "queue: either of them with the requests approved in the queue")
 
     def engine_request(self):
         from ..engine import request as rq
@@ -648,7 +649,7 @@ def _warm() -> None:
         log.warning("warm-up failed: %s", exc)
 
 
-def _run_job(job_id: str, body: RequestIn) -> None:
+def _run_job(job_id: str, body: RequestIn, ctx=None) -> None:
     from ..engine import request as rq
     job = _JOBS[job_id]
 
@@ -661,7 +662,7 @@ def _run_job(job_id: str, body: RequestIn) -> None:
 
     try:
         eng = _engine()
-        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit)
+        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit, ctx=ctx)
         if job["status"] != "running":   # gave up on by the watchdog: the late answer is dropped
             return
         job["result"] = result
@@ -689,6 +690,21 @@ def _check_cid(cid: int) -> None:
     from ..engine.scenario import customers
     if cid >= len(customers()):
         raise HTTPException(422, "unknown customer")
+
+
+def _context_for(body: RequestIn):
+    """The grid a request meets: None for a published baseline, the queue's context for `queue`."""
+    if body.baseline != "queue":
+        return None
+    from ..engine import queue as qu
+    if _queue_busy():
+        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+    ctx = qu.context()
+    if ctx is None:
+        raise HTTPException(409, "the queue is empty: choose today's grid or the envelope scenario")
+    if body.cid in ctx.overrides:
+        raise HTTPException(422, "this house is already approved in the queue")
+    return ctx
 
 
 def _check_request(body: RequestIn) -> None:
@@ -741,13 +757,14 @@ def list_requests(limit: int = Query(30, ge=1, le=200)) -> dict:
 def create_request(body: RequestIn) -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
     _check_request(body)
+    ctx = _context_for(body)
     _sweep_jobs()
     if sum(j["status"] == "running" for j in _JOBS.values()) >= MAX_JOBS:
         raise HTTPException(429, f"busy: {MAX_JOBS} requests are already being evaluated, try again shortly")
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time(),
                      "request": body.model_dump()}
-    threading.Thread(target=_run_job, args=(job_id, body), daemon=True).start()
+    threading.Thread(target=_run_job, args=(job_id, body, ctx), daemon=True).start()
     return {"id": job_id, "events": f"{API}/requests/{job_id}/events", "result": f"{API}/requests/{job_id}"}
 
 
@@ -755,12 +772,17 @@ def create_request(body: RequestIn) -> dict:
 async def request_events(job_id: str) -> StreamingResponse:
     if _job_id(job_id) not in _JOBS:
         raise HTTPException(404, "unknown request")
+    return _stream(_JOBS, job_id, JOB_TIMEOUT_S)
+
+
+def _stream(jobs: dict, job_id: str, timeout_s: float) -> StreamingResponse:
+    """Server-sent events for a background job: every stage as it finishes, then `end`."""
 
     async def stream():
         sent = 0
         start = time.time()
         while True:
-            job = _JOBS[job_id]
+            job = jobs[job_id]
             while sent < len(job["events"]):
                 ev = job["events"][sent]
                 sent += 1
@@ -768,7 +790,7 @@ async def request_events(job_id: str) -> StreamingResponse:
             if job.get("closed") and sent >= len(job["events"]):
                 yield "event: end\ndata: {}\n\n"
                 return
-            if time.time() - start > JOB_TIMEOUT_S:
+            if time.time() - start > timeout_s:
                 yield "event: timeout\ndata: {}\n\n"
                 return
             await asyncio.sleep(0.05)
@@ -847,10 +869,112 @@ def evaluate_sync(body: RequestIn) -> JSONResponse:
     """Synchronous variant of /requests (returns the full result)."""
     from ..engine import request as rq
     _check_request(body)
+    ctx = _context_for(body)
     eng = _engine()
-    out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"])
+    out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
     out["provenance"] = provenance("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
+
+
+# ---------------------------------------------------------------- the queue of decisions
+
+class DecisionIn(BaseModel):
+    assessment: str = Field(..., pattern="^[0-9a-f]{12}$", description="a saved assessment's id")
+    decision: str = Field(..., pattern="^(firm|nonfirm|declined)$",
+                          description="firm: connect without an envelope (only if the static study approves); "
+                                      "nonfirm: connect with the verified envelope; declined: record a refusal")
+    note: str = Field("", max_length=500, description="the planner's reason, kept with the decision")
+
+
+_QJOBS: dict[str, dict] = {}
+QUEUE_TIMEOUT_S = 600.0
+
+
+def _queue_busy() -> bool:
+    return any(j["status"] == "running" for j in _QJOBS.values())
+
+
+@app.get(f"{API}/queue", tags=["queue"])
+def get_queue() -> dict:
+    """The decisions so far, the grid the queue started from, and whether an approval is running."""
+    from ..engine import queue as qu
+
+    q = qu.load()
+    return {**q, "approved": len(qu.approved(q)), "updating": _queue_busy()}
+
+
+def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
+    from ..engine import queue as qu
+    job = _QJOBS[job_id]
+
+    def emit(stage: str, payload: dict) -> None:
+        job["events"].append({"stage": stage, "payload": payload, "t": time.time()})
+
+    try:
+        eng = _engine()
+        item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, body.decision, body.note, emit=emit)
+        job.update(result=item, status="done", finished=time.time())
+        job["events"].append({"stage": "done", "payload": {"decision": body.decision}, "t": time.time()})
+    except qu.QueueError as exc:
+        job.update(status="error", error=str(exc), code=409, finished=time.time())
+        job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
+    except Exception as exc:
+        log.exception("decision failed")
+        job.update(status="error", error=str(exc), code=500, finished=time.time())
+        job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
+    finally:
+        job["closed"] = True
+
+
+@app.post(f"{API}/queue", tags=["queue"])
+def post_decision(body: DecisionIn) -> dict:
+    """Decide on a saved assessment. An approval re-verifies all weather years and updates the grid
+    the next request meets; follow it with GET /queue/jobs/{id}/events."""
+    from ..engine import queue as qu
+
+    if _queue_busy():
+        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+    rec = records.load(body.assessment)
+    if rec is None:
+        raise HTTPException(404, "unknown assessment")
+    try:
+        qu._check(qu.load(), rec, body.decision)
+    except qu.QueueError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    job_id = uuid.uuid4().hex[:12]
+    _QJOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time()}
+    threading.Thread(target=_run_decision, args=(job_id, body, rec), daemon=True).start()
+    return {"id": job_id, "events": f"{API}/queue/jobs/{job_id}/events", "result": f"{API}/queue/jobs/{job_id}"}
+
+
+@app.get(f"{API}/queue/jobs/{{job_id}}/events", tags=["queue"])
+async def decision_events(job_id: str) -> StreamingResponse:
+    if job_id not in _QJOBS:
+        raise HTTPException(404, "unknown decision")
+    return _stream(_QJOBS, job_id, QUEUE_TIMEOUT_S)
+
+
+@app.get(f"{API}/queue/jobs/{{job_id}}", tags=["queue"])
+def decision_result(job_id: str) -> JSONResponse:
+    job = _QJOBS.get(job_id)
+    if job is None:
+        raise HTTPException(404, "unknown decision")
+    if job["status"] == "running":
+        return JSONResponse({"status": "running"}, status_code=202)
+    if job["status"] == "error":
+        raise HTTPException(job.get("code", 500), job.get("error", "failed"))
+    return JSONResponse(json.loads(json.dumps(job["result"], default=_json_default)))
+
+
+@app.delete(f"{API}/queue", tags=["queue"])
+def delete_queue() -> dict:
+    """Empty the queue; the assessments stay saved."""
+    from ..engine import queue as qu
+
+    if _queue_busy():
+        raise HTTPException(409, "the queue is being updated; try again when it finishes")
+    qu.reset()
+    return {"ok": True}
 
 
 def _json_default(o):

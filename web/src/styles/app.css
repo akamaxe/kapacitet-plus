@@ -2080,3 +2080,36 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .field-note { grid-column: 1 / -1; margin: 0; }
 .field input[type="range"]:disabled { opacity: 0.45; cursor: not-allowed; }
 .seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------- the queue of decisions */
+.decision { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.decision h3 { margin: 0; }
+.decision-note { grid-template-columns: 1fr; }
+.decision-note textarea {
+  width: 100%; resize: vertical; min-height: 3.2em; padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-elevated);
+  color: var(--text-primary); font: inherit; font-size: var(--text-small); line-height: var(--lh-small);
+}
+.decision-note textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.decision-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.decision-done { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-small); font-weight: 500; }
+.decision-done svg { color: var(--good); }
+.decision-error { display: flex; align-items: flex-start; gap: var(--space-2); margin: 0; font-size: var(--text-small); color: var(--text-primary); }
+.decision-error svg { color: var(--danger); flex-shrink: 0; margin-top: 2px; }
+.sheet .decision-actions { margin-top: var(--space-5); }
+
+.queue-list { border-top: 1px solid var(--border); padding-top: var(--space-3); display: grid; gap: var(--space-2); }
+.queue-list summary { cursor: pointer; font-size: var(--text-small); font-weight: 500; color: var(--text-secondary); }
+.queue-list summary:hover { color: var(--text-primary); }
+.queue-list ol { list-style: none; margin: 0; padding: 0; counter-reset: q; }
+.queue-list li {
+  counter-increment: q; display: grid; grid-template-columns: 1.5em minmax(0, 1fr) auto; gap: 0 var(--space-2);
+  padding: var(--space-2) 0; border-bottom: 1px solid var(--border); font-size: var(--text-small);
+}
+.queue-list li::before { content: counter(q); grid-row: 1 / span 3; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.queue-house { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-when { grid-column: 3; grid-row: 1; color: var(--text-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
+.queue-decision { grid-column: 2; font-size: var(--text-caption); color: var(--text-secondary); }
+.queue-decision.nonfirm { color: var(--warning); }
+.queue-decision.firm { color: var(--good); }
+.queue-note { grid-column: 2 / -1; font-size: var(--text-caption); color: var(--text-muted); }

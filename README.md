@@ -149,8 +149,9 @@ to navigate screens without affecting form fields.
    map, what it costs in curtailment, and the hour-by-hour verification.
 4. **Connection request** — click a house, ask for 15 kWp and an 11 kW charger, press *Evaluate*:
    the static study says no, the envelope says yes with this limit, this risk and this value.
-   Switch the grid situation to *With envelopes* and ask again: the same request gets less
-   headroom, because the customers already on envelopes used it first.
+   Approve it into the queue (*Connect with this envelope*), then ask for the house next door:
+   it meets less headroom, because the approved house used it first. *Empty the queue* to start
+   again. Every answer can be printed as a record or downloaded hour by hour.
 5. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
    reinforcement.
 6. **Method & data** — live status of every API, every assumption with its source, the validation

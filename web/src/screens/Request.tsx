@@ -9,6 +9,7 @@ import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
 import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
+import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
 import { copyText } from "../lib/clipboard";
 import { reasonText } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
@@ -54,7 +55,12 @@ export default function Request() {
   }, [asm.data]);
   const pvMin = A.get("pv_min_kwp") ?? 0;
   const evOptions = [0, A.get("ev_charger_single_phase_kw"), A.get("ev_charger_kw")].filter((v): v is number => v !== undefined);
-  const [baseline, setBaseline] = useState<"static" | "doe">("static");
+  // the queue of decisions: once it holds approvals, requests are evaluated against it by default
+  const queueQ = useApi<QueueState>("/queue");
+  const queue = queueQ.data;
+  const queueRef = useRef<QueueState | undefined>(undefined);
+  queueRef.current = queue;
+  const [baseline, setBaseline] = useState<"static" | "doe" | "queue">("static");
   const [pv, setPv] = useState(10);
   const [ev, setEv] = useState(0);
   const [hp, setHp] = useState(false);
@@ -72,14 +78,33 @@ export default function Request() {
   const status = useMemo(() => {
     const m = new Map<number, string>();
     if (!S) return m;
+    // the grid the request meets: a published situation, or the queue built on one
+    const base = baseline === "queue" ? queue?.baseline ?? "static" : baseline;
     const firm = new Set<number>(S.firm_cids);
-    const nonfirm = new Set<number>(S.nonfirm_cids);
+    const nonfirm = new Set<number>(base === "doe" ? S.nonfirm_cids : []);
+    if (baseline === "queue") {
+      (queue?.items ?? []).forEach((it: any) => {
+        if (it.decision === "firm") firm.add(it.cid);
+        if (it.decision === "nonfirm") nonfirm.add(it.cid);
+      });
+    }
     houses.forEach((h: any) => {
       const c = h.properties.cid;
-      m.set(c, firm.has(c) ? "firm" : baseline === "doe" && nonfirm.has(c) ? "nonfirm" : "none");
+      m.set(c, firm.has(c) ? "firm" : nonfirm.has(c) ? "nonfirm" : "none");
     });
     return m;
-  }, [S, houses, baseline]);
+  }, [S, houses, baseline, queue]);
+
+  // a queue with approvals is the grid as it now stands, so that is what a request meets; an
+  // emptied queue sends the form back to the published situation it started from
+  const queueSeen = useRef(false);
+  useEffect(() => {
+    if (!queue) return;
+    if (queue.approved > 0 && !queueSeen.current && !urlJob) setBaseline("queue");
+    if (queue.approved === 0 && baseline === "queue") setBaseline(queue.baseline ?? "static");
+    queueSeen.current = true;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queue]);
 
   const house = houses.find((h: any) => h.properties.cid === cid)?.properties;
   // the slider ends where the roof does, so the value shown is always the value sent
@@ -94,6 +119,8 @@ export default function Request() {
     setJob(null);
     if (house) setPv(Math.min(pvMax, Math.max(pvMin, Math.round(house.kwp))));
     if (house?.has_hp) setHp(false);
+    // the next question meets the grid as the queue has left it
+    if (queueRef.current?.approved) setBaseline("queue");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house?.cid]);
 
@@ -118,7 +145,7 @@ export default function Request() {
         setEv(q.ev_kw ?? 0);
         setHp(!!q.hp);
         setBat(q.bat_kwh ?? 0);
-        if (q.baseline === "static" || q.baseline === "doe") setBaseline(q.baseline);
+        if (q.baseline === "static" || q.baseline === "doe" || q.baseline === "queue") setBaseline(q.baseline);
         if (typeof q.cid === "number" && q.cid !== useStore.getState().selectedCid) useStore.setState({ selectedCid: q.cid });
       })
       .catch(() => !cancelled && toast.error(t("req.gone")));
@@ -396,12 +423,19 @@ export default function Request() {
               <div className="seg" role="group" aria-label={t("req.baseline")}>
                 <button aria-pressed={baseline === "static"} onClick={() => setBaseline("static")}>{t("req.base.static")}</button>
                 <button aria-pressed={baseline === "doe"} onClick={() => setBaseline("doe")}>{t("req.base.doe")}</button>
+                {!!queue?.approved && (
+                  <button aria-pressed={baseline === "queue"} disabled={queue.updating} onClick={() => setBaseline("queue")}>
+                    {t("req.base.queue", { n: f(queue.approved) })}
+                  </button>
+                )}
               </div>
               {S && (
                 <p className="caption-muted">
                   {baseline === "static"
                     ? t("req.base.staticNote", { n: f(S.firm_cids.length) })
-                    : t("req.base.doeNote", { n: f(S.firm_cids.length), m: f(S.nonfirm_cids.length) })}
+                    : baseline === "doe"
+                      ? t("req.base.doeNote", { n: f(S.firm_cids.length), m: f(S.nonfirm_cids.length) })
+                      : t("req.base.queueNote", { n: f(queue?.approved ?? 0), base: queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}
                 </p>
               )}
             </fieldset>
@@ -420,6 +454,7 @@ export default function Request() {
           select(item.request.cid);
           setUrlJob(item.id);
         }} />
+        {queue && <QueueList queue={queue} />}
 
         {job && (
           <div className="steps" aria-live="polite">
@@ -460,8 +495,15 @@ export default function Request() {
               </div>
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} />
+            {!stale && res.id && queue && (
+              <DecisionBlock res={res} queue={queue} />
+            )}
             <Result res={res} year={year} lang={lang} />
-            <AssessmentRecord res={res} baselineLabel={res.request?.baseline === "doe" ? t("req.base.doe") : t("req.base.static")} />
+            <AssessmentRecord res={res} baselineLabel={
+              res.request?.baseline === "queue"
+                ? t("req.base.queueRecord", { n: f(res.queue?.approved ?? 0), base: res.queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })
+                : res.request?.baseline === "doe" ? t("req.base.doe") : t("req.base.static")
+            } />
             {res.profiles?.curtailed_kw && (
               <div className="hero-actions">
                 <button

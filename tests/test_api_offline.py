@@ -168,7 +168,7 @@ def stubbed(client, monkeypatch, tmp_path):
 
     monkeypatch.setattr(main, "_check_cid", lambda cid: None)
     monkeypatch.setattr(main, "_engine", lambda: {"model": None, "hp": None, "ev": None})
-    monkeypatch.setattr(rq, "evaluate", lambda model, req, hp, ev, emit=None: _stub_result(req.cid))
+    monkeypatch.setattr(rq, "evaluate", lambda model, req, hp, ev, emit=None, ctx=None: _stub_result(req.cid))
     monkeypatch.setattr(records, "folder", lambda: tmp_path)
     return main
 
@@ -211,3 +211,30 @@ def test_an_assessment_downloads_as_hourly_csv_and_as_a_record(client, stubbed):
 def test_malformed_assessment_ids_are_refused(client):
     for bad in ("..%2f..%2fpyproject", "ZZZ", "0123456789abcdef"):
         assert client.get(f"{API}/requests/{bad}").status_code == 404
+
+
+# ---------------------------------------------------------------- the queue (no data needed)
+
+def test_the_queue_reports_its_decisions_and_can_be_emptied(client, monkeypatch, tmp_path):
+    from kapacitet.api import records
+    from kapacitet.engine import queue as qu
+
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "queue")
+    monkeypatch.setattr(records, "folder", lambda: tmp_path)
+    body = client.get(f"{API}/queue").json()
+    assert body["items"] == [] and body["approved"] == 0 and body["updating"] is False
+    r = client.post(f"{API}/queue", json={"assessment": "0123456789ab", "decision": "nonfirm"})
+    assert r.status_code == 404
+    bad = client.post(f"{API}/queue", json={"assessment": "0123456789ab", "decision": "maybe"})
+    assert bad.status_code == 422
+    assert client.delete(f"{API}/queue").json() == {"ok": True}
+
+
+def test_a_request_against_an_empty_queue_is_refused(client, monkeypatch, tmp_path):
+    from kapacitet.api import main
+    from kapacitet.engine import queue as qu
+
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "queue")
+    monkeypatch.setattr(main, "_check_cid", lambda cid: None)
+    r = client.post(f"{API}/requests", json={"cid": 0, "pv_kwp": 5.0, "baseline": "queue"})
+    assert r.status_code == 409 and "queue is empty" in r.text
