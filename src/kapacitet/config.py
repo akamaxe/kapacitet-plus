@@ -53,6 +53,8 @@ class Assumption:
     source: str
     url: str
     note: str
+    label_es: str = ""
+    note_es: str = ""
 
 
 def _read_toml(name: str) -> dict[str, Any]:
@@ -115,6 +117,8 @@ def assumptions() -> dict[str, Assumption]:
             source=entry.get("source", ""),
             url=entry.get("url", ""),
             note=entry.get("note", ""),
+            label_es=entry.get("label_es", ""),
+            note_es=entry.get("note_es", ""),
         )
     return out
 

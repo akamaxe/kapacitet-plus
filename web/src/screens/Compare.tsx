@@ -364,7 +364,7 @@ export default function Compare() {
                   <tbody>
                     <tr><td>{t("tbl.base")}</td><td>–</td><td className="r">{f(H.tornado.base.static_kw)}</td><td className="r">{f(H.tornado.base.timeseries_kw)}</td><td className="r">{f(H.tornado.base.doe_kw)}</td></tr>
                     {H.tornado.cases.map((c: any) => (
-                      <tr key={c.label + c.level}><td>{c.label}</td><td>{c.level}</td><td className="r">{f(c.static_kw)}</td><td className="r">{f(c.timeseries_kw)}</td><td className="r">{f(c.doe_kw)}</td></tr>
+                      <tr key={c.label + c.level}><td>{tornadoLabel(t, c)}</td><td>{tornadoLevel(t, c.level)}</td><td className="r">{f(c.static_kw)}</td><td className="r">{f(c.timeseries_kw)}</td><td className="r">{f(c.doe_kw)}</td></tr>
                     ))}
                   </tbody>
                 </table>
@@ -454,6 +454,16 @@ function HeatTable({ HM, which }: { HM: any; which: "limited" | "unc" }) {
       </table>
     </div>
   );
+}
+
+/** A sensitivity case in the interface's language; a case this version does not know keeps the engine's words. */
+function tornadoLabel(t: (k: string) => string, c: { key: string; label: string }): string {
+  const s = t(`tor.${c.key}`);
+  return s === `tor.${c.key}` ? c.label : s;
+}
+
+function tornadoLevel(t: (k: string) => string, level: string): string {
+  return level.replace("(no load)", t("tor.noLoad"));
 }
 
 function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
@@ -635,7 +645,7 @@ function riskOption(tk: Tokens, R: any, zStar: number, f: (v: number | null | un
 function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number, f: (v: number | null | undefined, d?: number) => string) {
   const compact = width < 520;
   const groups: Record<string, any[]> = {};
-  for (const c of T.cases) (groups[c.label] ||= []).push(c);
+  for (const c of T.cases) (groups[tornadoLabel(t, c)] ||= []).push(c);
   const labels = Object.keys(groups);
   const rng = (key: "doe_kw" | "static_kw") => labels.map((l) => {
     const vs = groups[l].map((c) => c[key]);
@@ -643,7 +653,7 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
   });
   const d = rng("doe_kw");
   const s = rng("static_kw");
-  const levels = (l: string) => groups[l].map((c) => `${c.level}: ${t("m.static")} ${f(c.static_kw)} kW, ${t("cmp.fig.doe")} ${f(c.doe_kw)} kW`).join("<br/>");
+  const levels = (l: string) => groups[l].map((c) => `${tornadoLevel(t, c.level)}: ${t("m.static")} ${f(c.static_kw)} kW, ${t("cmp.fig.doe")} ${f(c.doe_kw)} kW`).join("<br/>");
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },

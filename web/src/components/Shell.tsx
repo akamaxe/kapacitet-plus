@@ -27,6 +27,8 @@ function toggleFullscreen() {
  */
 export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () => void }) {
   const t = useT();
+  // the scope is the site the data describe, read from the data like every other fact
+  const meta = useApi<any>("/meta");
   const screen = useStore((s) => s.screen);
   const lang = useStore((s) => s.lang);
   const setLang = useStore((s) => s.setLang);
@@ -43,7 +45,7 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
         <Roundel />
         <span className="brand-name">Kapacitet+</span>
       </a>
-      <span className="brand-scope">{t("tb.site")}</span>
+      <span className="brand-scope">{meta.data ? `${meta.data.site} · ${meta.data.bidding_zone}` : ""}</span>
       <nav className="topnav" aria-label={t("shell.navigation")}>
         {SCREENS.map((s) => (
           <a key={s} href={`#/${s}`} aria-current={screen === s ? "page" : undefined}>{t(`tab.${s}`)}</a>

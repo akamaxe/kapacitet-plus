@@ -15,6 +15,8 @@ import { useStore } from "../lib/store";
 interface Input {
   key: string;
   label: string;
+  label_es?: string;
+  note_es?: string;
   value: number | string | (number | string)[];
   unit?: string;
   tag: string;
@@ -47,6 +49,11 @@ export default function Method() {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
+  // text that comes with the data: the interface's words when it has them, the data's otherwise
+  const tr = (key: string, fallback: string) => {
+    const s = t(key);
+    return s === key ? fallback : s;
+  };
   const src = useApi<any>("/sources");
   const status = useApi<any>("/sources/status", { refetchMs: 5 * 60 * 1000 });
   const ass = useApi<any>("/assumptions");
@@ -66,7 +73,7 @@ export default function Method() {
   }, [status.data]);
 
   const cols: Col<Input>[] = useMemo(() => [
-    { key: "label", label: t("tbl.input"), value: (a) => a.label },
+    { key: "label", label: t("tbl.input"), value: (a) => (lang === "es" && a.label_es ? a.label_es : a.label) },
     {
       key: "value",
       label: t("tbl.value"),
@@ -86,7 +93,7 @@ export default function Method() {
       cell: (a) => (
         <>
           {a.url ? <a href={a.url} target="_blank" rel="noreferrer">{a.source}</a> : a.source}
-          {a.note ? <div className="caption-muted">{a.note}</div> : null}
+          {a.note ? <div className="caption-muted">{lang === "es" && a.note_es ? a.note_es : a.note}</div> : null}
         </>
       ),
     },
@@ -162,13 +169,13 @@ export default function Method() {
                 return (
                   <div key={s.key} className="src">
                     <div>
-                      <span className="src-name">{s.name}</span> <Chip kind={s.tag} />
+                      <span className="src-name">{tr(`src.${s.key}.name`, s.name)}</span> <Chip kind={s.tag} />
                     </div>
                     <div>
                       {st ? (st.ok ? <Status kind="good">{t("met.online")}, {st.ms} ms</Status> : <Status kind="serious">{t("met.offline")}</Status>) : null}
                     </div>
                     <div className="src-meta">
-                      {s.provider}. {s.used_for}. <em>{s.license}</em>.{" "}
+                      {s.provider}. {tr(`src.${s.key}.use`, s.used_for)}. <em>{s.license}</em>.{" "}
                       {s.files.length > 0 && (s.files.length === 1 ? t("met.file") : t("met.files", { n: s.files.length }))}
                       {s.files.length > 0 && `, ${s.files[0].fetched_at.slice(0, 10)}`}
                       {s.homepage && <> <a href={s.homepage} target="_blank" rel="noreferrer">{s.homepage.replace(/^https?:\/\//, "").split("/")[0]}</a></>}
