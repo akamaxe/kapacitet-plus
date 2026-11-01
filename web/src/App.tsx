@@ -242,10 +242,11 @@ export default function App() {
         </ErrorBoundary>
         )}
       </main>
-      <FootLine onKeys={() => setKeys(true)} onTour={() => useStore.getState().setTour(0)} />
+      {/* with nothing computed there is nothing to tour: no offer and no link until the data is in */}
+      <FootLine onKeys={() => setKeys(true)} onTour={setupNeeded ? undefined : () => useStore.getState().setTour(0)} />
       <Notes />
-      <Tour />
-      <TourOffer />
+      {!setupNeeded && <Tour />}
+      {!setupNeeded && <TourOffer />}
       <Palette open={palette} onClose={() => setPalette(false)} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
       <MenuSheet open={menu} onClose={() => setMenu(false)} />

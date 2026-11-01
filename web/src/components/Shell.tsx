@@ -112,7 +112,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
  * The foot line: which data are surveyed and which are assumed, on what year, and the key
  * sheet. Quiet, and the same on every screen.
  */
-export function FootLine({ onKeys, onTour }: { onKeys: () => void; onTour: () => void }) {
+export function FootLine({ onKeys, onTour }: { onKeys: () => void; onTour?: () => void }) {
   const t = useT();
   const meta = useApi<any>("/meta");
   return (
@@ -124,7 +124,7 @@ export function FootLine({ onKeys, onTour }: { onKeys: () => void; onTour: () =>
       <span className="fl-year">
         {t("tb.year")} <span className="num">{meta.data?.reference_year ?? "–"}</span>
       </span>
-      <button className="fl-keys" onClick={onTour}>{t("tour.start")}</button>
+      {onTour && <button className="fl-keys" onClick={onTour}>{t("tour.start")}</button>}
       <button className="fl-keys" onClick={onKeys} aria-haspopup="dialog">
         {t("tb.keys")}<kbd>?</kbd>
       </button>
