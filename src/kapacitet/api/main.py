@@ -680,6 +680,8 @@ def _engine() -> dict:
 
 def _warm() -> None:
     """Load the model and the request baselines in the background at startup."""
+    if not processed("results", "showcase.json").exists():
+        return   # nothing computed yet: /health and the setup screen say what to run
     try:
         for name in ("static", "uncontrolled", "doe"):        # compress the map payloads once
             path = processed("ui", f"state_{name}.bin")
