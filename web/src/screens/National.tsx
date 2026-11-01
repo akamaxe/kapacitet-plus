@@ -35,6 +35,9 @@ export default function National() {
   const f = useFmt();
   const theme = useStore((s) => s.theme);
   const nat = useApi<any>("/national");
+  // today's price and temperature, live (the API caches them for ten minutes)
+  const now = useApi<any>("/now", { refetchMs: 10 * 60 * 1000 });
+  const lang = useStore((s) => s.lang);
   const zones = useApi<any>("/zones");
   const N = nat.data?.data;
 
@@ -111,6 +114,8 @@ export default function National() {
           <div className="row"><Chip kind="real" /><span className="caption-muted">{t("nat.sources")}</span></div>
         </div>
 
+        <LiveStrip now={now.data} failed={now.isError} lang={lang} />
+
         <section className="stack">
           <h3>{t("nat.prodcons")}</h3>
           <Legend items={[{ color: "var(--data-production)", label: t("nat.production") }, { color: "var(--data-consumption)", label: t("nat.consumption") }]} />
@@ -150,6 +155,31 @@ export default function National() {
         </section>
       </aside>
     </div>
+  );
+}
+
+/** Right now in the site's bidding zone: this quarter hour's spot price, today's range, the air at Bromma. */
+function LiveStrip({ now, failed, lang }: { now: any; failed: boolean; lang: string }) {
+  const t = useT();
+  const f = useFmt();
+  if (!now && !failed) return null;
+  const cur = now?.current;
+  const range = now?.today_range;
+  const temp = now?.temperature;
+  const clock = (iso: string) => new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  if (failed || (!cur && !temp)) {
+    return <p className="caption-muted live-strip">{t("nat.live.off")}</p>;
+  }
+  return (
+    <section className="live-strip" aria-label={t("nat.live")}>
+      <h3>{t("nat.live")} <span className="live-dot" aria-hidden="true" /></h3>
+      <dl className="kv">
+        {cur && <><dt>{t("nat.live.price", { at: clock(cur.start) })}</dt><dd>{f(cur.sek_kwh, 2)} SEK/kWh</dd></>}
+        {range && <><dt>{t("nat.live.range")}</dt><dd>{f(range.min_sek_kwh, 2)}–{f(range.max_sek_kwh, 2)} SEK/kWh</dd></>}
+        {temp && <><dt>{t("nat.live.temp", { station: temp.station || "SMHI", at: clock(temp.time) })}</dt><dd>{f(temp.value_c, 1)} °C</dd></>}
+      </dl>
+      <p className="caption-muted">{now.price_attribution} · SMHI (CC BY)</p>
+    </section>
   );
 }
 

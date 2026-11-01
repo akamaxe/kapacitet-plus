@@ -609,6 +609,10 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
   const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
   // the years whose prices the money figures average, read from the answer
   const priceYears: number[] = (res.economics?.by_year ?? []).map((e: any) => e.year).sort((a: number, b: number) => a - b);
+  // of the curtailed energy, what fell in hours with a negative price (worth nothing to export)
+  const negRows: any[] = res.economics?.by_year ?? [];
+  const negKwh = negRows.length ? negRows.reduce((s, e) => s + (e.negative_price_kwh_curtailed ?? 0), 0) / negRows.length : 0;
+  const importMin: number | null = prof?.import_envelope_kw?.length ? Math.min(...prof.import_envelope_kw) : null;
 
   return (
     <div className="stack result">
@@ -632,6 +636,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
                 {res.verification.hours_checked > 0
                   ? t("req.verified", { n: res.verification.hours_checked, v: res.verification.violations_after })
                   : t("req.verifiedNone")}
+                {res.verification.hours_tightened > 0 ? ` ${t("req.tightened", { n: f(res.verification.hours_tightened) })}` : ""}
               </span>
             )}
           </div>
@@ -644,6 +649,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <Tile label={t("req.ev.unmet")} value={f(sum.ev_unmet_pct, 2)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
           <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
           <Tile label={t("req.ev.energy")} value={f(res.per_year.reduce((s: number, e: any) => s + (e.ev_requested_kwh ?? 0), 0) / Math.max(1, res.per_year.length))} unit="kWh" note={t("req.ev.energyNote")} />
+          {importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
         </div>
       )}
 
@@ -702,6 +708,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <Tile label={t("cmp.risk.p90")} value={f(res.risk.p90_pct, 2)} unit="%" />
             <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(res.risk.cvar95_pct, 2)} unit="%" />
           </div>
+          <p className="caption-muted">{t("req.risk.range", { best: f(res.risk.best_year_pct, 2), worst: f(res.risk.worst_year_pct, 2) })}</p>
           {/* with no curtailment at all, every year falls in one bin centred on zero and the
               axis would show negative shares, so the answer is said instead of drawn */}
           {res.risk.cvar95_pct > 0 ? (
@@ -721,6 +728,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <Tile label={t("req.money.self")} value={f(res.economics.self_use_spot_sek_mean)} unit="kr/yr" />
           </div>
           <p className="caption-muted">{t("req.money.note", { from: priceYears[0] ?? "–", to: priceYears[priceYears.length - 1] ?? "–" })}</p>
+          {negKwh > 0.5 && <p className="caption-muted">{t("req.money.negative", { kwh: f(negKwh) })}</p>}
         </section>
       )}
     </div>

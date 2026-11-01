@@ -322,7 +322,7 @@ export default function Twin() {
 
       <aside className="panel" data-playing={playing}>
         <h1 className="panel-title">{t("twin.title", { n: houses.length })}</h1>
-        {picked && <Inspector house={picked} rows={rows} st={st} onClear={() => select(null)} />}
+        {picked && <Inspector house={picked} rows={rows} st={st} scenario={scenario} curtailed={curtailed.get(picked.cid) ?? null} onClear={() => select(null)} />}
 
         <HourReadings agg={agg} ser={ser} year={year} center={center} scenario={scenario} />
 
@@ -479,13 +479,20 @@ function HouseStatus({ status }: { status: string }) {
  * The selected house: its state at this hour, where it sits on the network, and the next
  * step for it, a connection request.
  */
-function Inspector({ house, rows, st, onClear }: { house: any; rows: Rows | null; st: GridState; onClear: () => void }) {
+function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
+  house: any; rows: Rows | null; st: GridState; scenario: string; curtailed: number | null; onClear: () => void;
+}) {
   const t = useT();
   const f = useFmt();
   const hour = useStore((s) => s.hour);
   const r = rows?.busRow.get(house.bus);
   const v = st.data && r !== undefined ? st.data.voltage(r, hour) : null;
   const p = st.data ? st.data.power(house.cid, hour) : null;
+  // a house on an envelope: its own published limit, read for the hour on screen
+  const nonfirm = house.pv_status === "nonfirm";
+  const env = useApi<any>(nonfirm ? `/envelopes/${house.cid}` : null);
+  const limit: number | null = env.data?.envelope_kw?.[hour] ?? null;
+  const loads = [house.has_hp ? t("dt.hp") : null, house.has_ev ? t("dt.ev") : null].filter(Boolean).join(", ");
   return (
     <div className="stack inspector">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -501,9 +508,16 @@ function Inspector({ house, rows, st, onClear }: { house: any; rows: Rows | null
         <Tile label={t("dt.kwp")} value={f(house.kwp, 1)} unit="kWp" />
         <Tile label={t("dt.feeder")} value={house.feeder + 1} />
         <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
+        <Tile label={t("dt.loads")} value={<span className="t-word">{loads || t("dt.loadsNone")}</span>} note={t("dt.loadsNote")} mark="synthetic" />
+        {nonfirm && scenario === "doe" && (
+          <Tile label={t("dt.limit")} value={limit == null ? "–" : f(limit, 1)} unit="kW" note={curtailed == null ? undefined : t("dt.limitNote", { kwh: f(curtailed, 0) })} />
+        )}
       </div>
-      <div>
+      <div className="row">
         <button className="btn" onClick={() => useStore.getState().setScreen("request")}>{t("net.test")}</button>
+        {nonfirm && (
+          <button className="btn ghost" onClick={() => useStore.getState().setScreen("report")}>{t("dt.record")}</button>
+        )}
       </div>
     </div>
   );

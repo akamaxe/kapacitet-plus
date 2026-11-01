@@ -3,7 +3,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { DataTable, type Col } from "../components/DataTable";
-import { ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
+import { Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { round, useFmt } from "../lib/format";
@@ -52,6 +52,8 @@ export default function Method() {
   const val = useApi<any>("/validation");
   const meta = useApi<any>("/meta");
   const host = useApi<any>("/hosting");
+  const fc = useApi<any>("/forecast");
+  const FC = fc.data?.data;
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
   const F = host.data?.data?.foresight;
@@ -121,6 +123,14 @@ export default function Method() {
           <h1 className="headline">{t("met.title")}</h1>
           <p className="headline-sub">{t("met.sub")}</p>
           <p className="caption">{t("met.inputsLine", { n: f(inputs.length), rest: inputs.length - ours, team: ours })}</p>
+          {meta.data?.run?.computed_at && (
+            <p className="caption-muted">
+              {t(meta.data.run.quick ? "met.runQuick" : "met.run", {
+                when: new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "long" }).format(new Date(meta.data.run.computed_at)),
+                v: meta.data.run.versions?.kapacitet ?? "–",
+              })}
+            </p>
+          )}
         </section>
 
         {/* ---------------------------------------------------------------- how it works */}
@@ -286,6 +296,21 @@ export default function Method() {
                 note={t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
               />
             </div>
+            {FC && (
+              <section className="block stack">
+                <div className="block-head"><h3>{t("met.fc.schemes")}</h3></div>
+                <p className="caption">{t("met.fc.schemesCaption", { year: FC.year, days: FC.window_days })}</p>
+                <Protocol
+                  rows={(FC.rows as any[]).map((r) => ({
+                    ok: r.safe,
+                    label: t(`fc.scheme.${r.scheme}`),
+                    value: f(r.curtailed_share_pct, 1),
+                    unit: "%",
+                    criterion: t("met.fc.schemeLine", { v: f(r.violation_hours), h: f(r.hours_limited) }),
+                  }))}
+                />
+              </section>
+            )}
           </section>
         )}
 
