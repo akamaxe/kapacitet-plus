@@ -2138,3 +2138,16 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .live-strip { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .live-strip h3 { display: inline-flex; align-items: center; gap: var(--space-2); margin: 0; }
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--good-fill); }
+
+/* ---------------------------------------------------------------- bring your own network */
+.netcheck { align-items: start; }
+.netcheck-table p { margin: 0; }
+.netcheck-table + .netcheck-table { margin-top: var(--space-2); }
+.netcheck-cols { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); margin-top: var(--space-1) !important; }
+.netcheck-cols .req { text-decoration: underline; text-underline-offset: 3px; color: var(--text-secondary); }
+.netcheck-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); }
+.netcheck-score { font-size: var(--text-small); font-weight: 600; font-variant-numeric: tabular-nums; }
+.netcheck-findings { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-2); font-size: var(--text-small); }
+.netcheck-findings li { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: var(--space-2); align-items: start; padding-bottom: var(--space-2); border-bottom: 1px solid var(--border); }
+label.btn { cursor: pointer; }
+label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }

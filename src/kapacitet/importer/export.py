@@ -23,6 +23,15 @@ def export_grid(directory: str | Path, include_phase: bool = True) -> dict[str, 
     """Write buses.csv, lines.csv, transformer.csv and customers.csv into `directory`."""
     directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
+    out = export_tables(include_phase)
+    for table in TABLES:
+        out[table.name].to_csv(directory / f"{table.name}.csv", index=False)
+    (directory / "README.md").write_text(_readme(), encoding="utf-8")
+    return out
+
+
+def export_tables(include_phase: bool = True) -> dict[str, pd.DataFrame]:
+    """The built network as the contract's four tables, without writing anything."""
     net = load_net()
     buses, lines, cust = load_tables()
     # The contract describes the low-voltage network only: the transformer is declared by
@@ -48,10 +57,11 @@ def export_grid(directory: str | Path, include_phase: bool = True) -> dict[str, 
         "transformer": _transformer(net, buses),
         "customers": _customers(cust, include_phase),
     }
-    for table in TABLES:
-        out[table.name].to_csv(directory / f"{table.name}.csv", index=False)
-    (directory / "README.md").write_text(_readme(), encoding="utf-8")
     return out
+
+
+def readme() -> str:
+    return _readme()
 
 
 def _transformer(net, buses: pd.DataFrame) -> pd.DataFrame:

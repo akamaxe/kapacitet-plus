@@ -1,3 +1,4 @@
+import { NetworkCheck } from "../components/NetworkCheck";
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
@@ -106,6 +107,7 @@ export default function Method() {
     { id: "inputs", label: t("met.assumptions") },
     ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
     ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    { id: "import", label: t("met.nav.imp") },
     { id: "limits", label: t("met.limits") },
   ];
 
@@ -313,6 +315,17 @@ export default function Method() {
             )}
           </section>
         )}
+
+        {/* ---------------------------------------------------------------- bring your own network */}
+        <section className="region" id="import">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("met.imp")}</h2>
+              <p className="caption">{t("met.imp.caption")}</p>
+            </div>
+          </div>
+          <NetworkCheck />
+        </section>
 
         {/* ---------------------------------------------------------------- limits & refs */}
         <section className="region" id="limits">

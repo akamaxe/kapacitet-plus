@@ -267,6 +267,44 @@ def get_contract() -> dict:
     }
 
 
+@lru_cache(maxsize=1)
+def _example_files(stamp: float) -> dict[str, str]:
+    from ..importer.contract import TABLES
+    from ..importer.export import export_tables
+
+    tables = export_tables()
+    return {t.name: tables[t.name].to_csv(index=False) for t in TABLES}
+
+
+def _example() -> dict[str, str]:
+    path = processed("grid", "net.json")
+    if not path.exists():
+        raise not_computed("net.json")
+    return _example_files(path.stat().st_mtime)
+
+
+@app.get(f"{API}/contract/example", tags=["import"])
+def contract_example() -> dict:
+    """The reference network in the contract's four tables, as CSV text: a worked example."""
+    return {"files": _example(), "provenance": provenance("osm", "synthetic_grid")}
+
+
+@app.get(f"{API}/contract/example.zip", tags=["import"])
+def contract_example_zip() -> Response:
+    """The same four CSV files and the contract as README.md, zipped, to fill with one's own network."""
+    import zipfile
+
+    from ..importer.export import readme
+
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for name, text in _example().items():
+            z.writestr(f"{name}.csv", text)
+        z.writestr("README.md", readme())
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="kapacitet-network-contract-example.zip"'})
+
+
 @app.post(f"{API}/check", tags=["import"])
 def post_check(body: ExportCheck) -> dict:
     """Data-quality report on an export, before anybody promises a capacity for it."""

@@ -117,3 +117,13 @@ def test_houses_say_whether_they_have_a_heat_pump_or_an_ev(client):
     houses = [f for f in client.get(f"{API}/network").json()["features"] if f["properties"]["layer"] == "house"]
     assert all(isinstance(f["properties"]["has_hp"], bool) for f in houses)
     assert any(f["properties"]["has_hp"] for f in houses)
+
+
+def test_the_reference_network_is_a_worked_example_of_the_contract(client):
+    files = client.get(f"{API}/contract/example").json()["files"]
+    assert set(files) == {"buses", "lines", "transformer", "customers"}
+    body = client.post(f"{API}/check", json={"files": files}).json()
+    assert body["usable"], body["text"]
+    assert body["tables"]["customers"] > 0
+    z = client.get(f"{API}/contract/example.zip")
+    assert z.headers["content-type"] == "application/zip" and z.content[:2] == b"PK"
