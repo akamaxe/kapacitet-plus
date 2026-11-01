@@ -41,6 +41,12 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
           <dt>{t("rec.created")}</dt><dd>{when}</dd>
           <dt>{t("rec.engine")}</dt><dd>{res.version ?? "–"}</dd>
           <dt>{t("rec.run")}</dt><dd>{run}</dd>
+          {res.seal && (
+            <>
+              <dt>{t("rec.seal")}</dt>
+              <dd className="pr-digest">{res.seal.digest}<br />{t("rec.sealDetail", { n: res.seal.seq, when: dateTime(lang, res.seal.at) })}</dd>
+            </>
+          )}
         </dl>
       </header>
 

@@ -34,6 +34,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..config import assumptions, settings
 from . import records
+from .. import seals
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
 from ..paths import PROCESSED, WEB_DIST
@@ -70,6 +71,10 @@ app = FastAPI(
                 "built on real OpenStreetMap geometry and driven by real SMHI weather and SE3 prices.",
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+from .evidence import router as evidence_router  # noqa: E402 - the routers come after the app
+
+app.include_router(evidence_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -926,6 +931,9 @@ def request_result(job_id: str, download: bool = Query(False)) -> JSONResponse:
         return JSONResponse(rec, headers={"Content-Disposition": f'attachment; filename="kapacitet-assessment-{job_id}.json"'})
     body = dict(rec["result"])
     body.update(id=rec["id"], created=rec["created"], provenance=rec["provenance"], version=rec.get("version"))
+    entry = seals.entry_for("assessment", job_id)
+    if entry:
+        body["seal"] = {k: entry[k] for k in ("digest", "at", "seq", "fingerprint")}
     return JSONResponse(body)
 
 

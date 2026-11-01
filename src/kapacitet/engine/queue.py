@@ -23,6 +23,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 
+from .. import seals
 from ..config import A, settings
 from ..paths import DATA
 from . import request as rq
@@ -145,6 +146,7 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
             q["baseline"] = base
             q["items"].append(item)
             _save(q)
+            seals.seal("decision", record["id"], item)
             return item
 
         static = res.get("static", {})
@@ -194,12 +196,20 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
         q["version"] += 1
         _save(q)
         _CACHE["version"] = None
+        seals.seal("decision", record["id"], item)
         return item
 
 
 def reset() -> None:
-    """Empty the queue. The assessments themselves stay saved in data/requests/."""
+    """Empty the queue. The assessments themselves stay saved in data/requests/, and what the queue
+    held is sealed first, so its decisions do not leave the record with it."""
     with _LOCK:
+        q = load()
+        if q["items"]:
+            stamp = datetime.now(timezone.utc)
+            seals.seal("queue_reset", stamp.strftime("%Y%m%dT%H%M%S%fZ"),
+                       {"reset_at": stamp.isoformat(), "version": q["version"], "baseline": q["baseline"],
+                        "items": q["items"]})
         if folder().exists():
             shutil.rmtree(folder())
         _CACHE.update(version=None, states=None, overrides=None)

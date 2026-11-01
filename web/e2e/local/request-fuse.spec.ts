@@ -19,5 +19,11 @@ test("a charger request shows the main fuse verdict and the static study's numbe
   await expect(fuse).toBeVisible({ timeout: 90_000 });
   await expect(fuse).toContainText(/carries the busiest phase|needs a \d+ A fuse subscription|largest fuse subscription/);
   await expect(page.getByRole("main").getByText(/At the winter peak: transformer \d+ %/)).toBeVisible();
+
+  // the answer is sealed, and its seal checks out
+  const seal = page.getByRole("main").locator(".seal-line");
+  await expect(seal).toContainText("Sealed");
+  await seal.getByRole("button", { name: "Verify" }).click();
+  await expect(page.getByText(/Intact: the kept record still hashes to its seal/)).toBeVisible();
   expect(errors).toEqual([]);
 });

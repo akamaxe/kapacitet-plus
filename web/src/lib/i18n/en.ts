@@ -902,6 +902,14 @@ const en: Dict = {
   "dt.parallel": "Parallel",
   "dt.downstream": "Houses beyond",
   "dt.loading": "Loading",
+  "seal.sealed": "Sealed",
+  "seal.verify": "Verify",
+  "seal.ok": "Intact: the kept record still hashes to its seal, line {n} of {total} in an unbroken chain.",
+  "seal.broken": "The record no longer matches its seal: it has been changed since it was kept.",
+  "rec.seal": "Seal (SHA-256)",
+  "rec.sealDetail": "line {n} of the evidence chain, {when}",
+  "queue.sealed": "Every decision is sealed with its digest in the evidence chain, and stays there when the queue is emptied.",
+  "queue.log": "Decision log (CSV)",
 };
 
 export default en;

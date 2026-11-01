@@ -32,3 +32,11 @@ def results():
         return json.loads(processed("results", f"{name}.json").read_text(encoding="utf-8"))
 
     return load
+
+
+@pytest.fixture(autouse=True)
+def _seals_in_a_temporary_folder(tmp_path, monkeypatch):
+    """No test writes the real chain: seals go to the test's own folder (kapacitet.seals)."""
+    from kapacitet import seals
+
+    monkeypatch.setattr(seals, "folder", lambda: tmp_path / "seals")

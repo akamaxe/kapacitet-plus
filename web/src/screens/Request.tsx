@@ -510,7 +510,7 @@ export default function Request() {
                 <button className="btn ghost small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
               </div>
             )}
-            <AnswerActions id={res.id ?? job?.id ?? ""} />
+            <AnswerActions id={res.id ?? job?.id ?? ""} seal={res.seal} />
             <Result res={res} year={year} lang={lang} />
             {!stale && res.id && queue && (
               <DecisionBlock res={res} queue={queue} />
@@ -590,7 +590,33 @@ function describeRequest(t: (k: string) => string, f: (v: number | null | undefi
 }
 
 /** Keep the answer: print or save it as a PDF, download its hours or its record, copy its link. */
-function AnswerActions({ id }: { id: string }) {
+/** The answer's seal: its digest, and a check that the kept record still hashes to it. */
+function SealLine({ id, seal }: { id: string; seal: { digest: string; seq: number } }) {
+  const t = useT();
+  const [checking, setChecking] = useState(false);
+  const verify = async () => {
+    setChecking(true);
+    try {
+      const r = await fetch(`${API}/seals/verify?kind=assessment&id=${id}`);
+      const v = r.ok ? await r.json() : null;
+      if (v?.ok) toast.info(t("seal.ok", { n: v.seq, total: v.chain_length }));
+      else toast.error(t("seal.broken"));
+    } catch {
+      toast.error(t("ui.offline"));
+    } finally {
+      setChecking(false);
+    }
+  };
+  return (
+    <p className="seal-line">
+      <Icon name="check" size={14} />
+      <span>{t("seal.sealed")} <code title={seal.digest}>{seal.digest.slice(0, 12)}</code></span>
+      <button className="link-btn" onClick={verify} disabled={checking}>{t("seal.verify")}</button>
+    </p>
+  );
+}
+
+function AnswerActions({ id, seal }: { id: string; seal?: { digest: string; seq: number } }) {
   const t = useT();
   if (!id) return null;
   const copy = () =>
@@ -607,6 +633,7 @@ function AnswerActions({ id }: { id: string }) {
         <Icon name="download" size={15} />{t("req.json")}
       </a>
       <button className="btn ghost small" onClick={copy}><Icon name="copy" size={15} />{t("req.copyLink")}</button>
+      {seal && <SealLine id={id} seal={seal} />}
     </div>
   );
 }

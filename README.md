@@ -321,6 +321,16 @@ report and its evidence cannot drift apart: 43 agreements, 7 261 kWh curtailed, 
 what those customers would have exported, zero violations left after verification, and the
 allocation policy that decided who bore it.
 
+Every assessment, every queue decision and every emptying of the queue is also **sealed**
+(`src/kapacitet/seals.py`): its canonical JSON is hashed with SHA-256, kept as an immutable copy
+in `data/requests/sealed/`, and chained into `data/requests/seals.jsonl` with the fingerprint of
+the model and data it was computed with. Editing a kept answer, or removing or reordering a line
+of the chain, shows at once: `GET /api/v1/seals/verify?kind=assessment&id=…` (the *Verify* button
+under an answer) re-hashes both, `GET /api/v1/seals` gives the chain's head, and
+`GET /api/v1/queue/log.csv` is every decision ever sealed, including those an emptied queue no
+longer holds. This is tamper-evident, not tamper-proof: whoever can write the folder can rewrite
+the whole chain, so the head is worth writing down somewhere else, as the printed record does.
+
 ## What the forecast is worth
 
 Every figure above is computed with perfect foresight: the envelope for 11:00 is allocated

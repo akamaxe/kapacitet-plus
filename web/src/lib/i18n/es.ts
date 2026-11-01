@@ -895,6 +895,14 @@ const es: Dict = {
   "dt.parallel": "En paralelo",
   "dt.downstream": "Casas aguas abajo",
   "dt.loading": "Carga",
+  "seal.sealed": "Sellada",
+  "seal.verify": "Verificar",
+  "seal.ok": "Intacta: el registro guardado sigue dando su sello, línea {n} de {total} de una cadena sin roturas.",
+  "seal.broken": "El registro ya no coincide con su sello: ha cambiado desde que se guardó.",
+  "rec.seal": "Sello (SHA-256)",
+  "rec.sealDetail": "línea {n} de la cadena de evidencias, {when}",
+  "queue.sealed": "Cada decisión queda sellada con su huella en la cadena de evidencias, y sigue ahí aunque se vacíe la cola.",
+  "queue.log": "Registro de decisiones (CSV)",
 };
 
 export default es;

@@ -2056,6 +2056,13 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 
 /* ---------------------------------------------------------------- keeping an answer */
 .answer-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+/* the seal: quiet, but there to be checked */
+.seal-line { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); flex-basis: 100%; margin: 0; color: var(--text-muted); font-size: var(--text-caption); }
+.seal-line svg { color: var(--good); flex: none; }
+.seal-line code { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.link-btn { padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.link-btn:disabled { color: var(--text-muted); cursor: progress; }
+.pr-digest { overflow-wrap: anywhere; }
 .answer-actions .btn { gap: var(--space-1); }
 
 .history { border-top: 1px solid var(--border); padding-top: var(--space-3); }

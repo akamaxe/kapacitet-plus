@@ -902,6 +902,14 @@ const sv: Dict = {
   "dt.parallel": "Parallella",
   "dt.downstream": "Hus bortom",
   "dt.loading": "Belastning",
+  "seal.sealed": "Förseglad",
+  "seal.verify": "Kontrollera",
+  "seal.ok": "Intakt: den sparade posten ger fortfarande samma sigill, rad {n} av {total} i en obruten kedja.",
+  "seal.broken": "Posten stämmer inte längre med sitt sigill: den har ändrats sedan den sparades.",
+  "rec.seal": "Sigill (SHA-256)",
+  "rec.sealDetail": "rad {n} i beviskedjan, {when}",
+  "queue.sealed": "Varje beslut förseglas med sin kontrollsumma i beviskedjan och finns kvar när kön töms.",
+  "queue.log": "Beslutslogg (CSV)",
 };
 
 export default sv;

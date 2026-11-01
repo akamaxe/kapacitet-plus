@@ -176,7 +176,13 @@ export function QueueList({ queue }: { queue: QueueState }) {
         ))}
       </ol>
       <p className="caption-muted">{t("queue.basis", { base: queue.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}</p>
-      <button className="btn ghost small" disabled={queue.updating} onClick={() => setConfirm(true)}>{t("queue.empty")}</button>
+      <p className="caption-muted">{t("queue.sealed")}</p>
+      <div className="row">
+        <a className="btn ghost small" href={`${API}/queue/log.csv`} download>
+          <Icon name="download" size={15} />{t("queue.log")}
+        </a>
+        <button className="btn ghost small" disabled={queue.updating} onClick={() => setConfirm(true)}>{t("queue.empty")}</button>
+      </div>
       <Dialog open={confirm} onClose={() => setConfirm(false)} labelledBy="queue-confirm-title" width={440}>
         <div className="sheet">
           <h2 id="queue-confirm-title">{t("queue.confirm.title")}</h2>

@@ -253,3 +253,42 @@ def test_a_request_against_an_empty_queue_is_refused(client, monkeypatch, tmp_pa
     monkeypatch.setattr(main, "_check_cid", lambda cid: None)
     r = client.post(f"{API}/requests", json={"cid": 0, "pv_kwp": 5.0, "baseline": "queue"})
     assert r.status_code == 409 and "queue is empty" in r.text
+
+
+# ---------------------------------------------------------------- seals (stubbed engine)
+
+def test_a_saved_assessment_is_sealed_and_verifies(client, stubbed, tmp_path):
+    import gzip
+    import json as _json
+
+    job_id = client.post(f"{API}/requests", json={"cid": 5, "pv_kwp": 4.0}).json()["id"]
+    body = _finish(client, job_id)
+    assert len(body["seal"]["digest"]) == 64 and body["seal"]["seq"] >= 1
+    v = client.get(f"{API}/seals/verify", params={"kind": "assessment", "id": job_id}).json()
+    assert v["ok"] and v["record_ok"] and v["digest"] == body["seal"]["digest"]
+    # someone edits the kept answer on disk: the seal says so
+    path = tmp_path / f"{job_id}.json.gz"
+    rec = _json.loads(gzip.decompress(path.read_bytes()))
+    rec["result"]["summary"]["pv_static_approved"] = False
+    path.write_bytes(gzip.compress(_json.dumps(rec).encode()))
+    v = client.get(f"{API}/seals/verify", params={"kind": "assessment", "id": job_id}).json()
+    assert not v["ok"] and not v["record_ok"] and v["copy_ok"]
+    assert client.get(f"{API}/seals").json()["ok"]
+
+
+def test_an_unsealed_record_is_a_404_and_bad_ids_are_refused(client):
+    assert client.get(f"{API}/seals/verify", params={"kind": "assessment", "id": "ffffffffffff"}).status_code == 404
+    assert client.get(f"{API}/seals/verify", params={"kind": "assessment", "id": "../x"}).status_code == 422
+    assert client.get(f"{API}/seals/verify", params={"kind": "bogus", "id": "x"}).status_code == 422
+
+
+def test_decision_log_lists_sealed_decisions_with_digests(client):
+    from kapacitet import seals
+
+    seals.seal("decision", "0123456789ab", {"assessment": "0123456789ab", "cid": 7, "address": "Testvägen 7",
+                                             "decision": "nonfirm", "note": "pilot", "decided": "2026-11-01T10:00:00+00:00"})
+    r = client.get(f"{API}/queue/log.csv")
+    assert "attachment" in r.headers["content-disposition"]
+    rows = r.text.strip().splitlines()
+    assert rows[0].startswith("decided,assessment,house,address,decision,note")
+    assert "Testvägen 7" in rows[1] and "nonfirm" in rows[1] and len(rows[1].split(",")[-3]) == 64

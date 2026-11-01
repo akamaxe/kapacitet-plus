@@ -15,6 +15,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .. import seals
 from ..paths import DATA
 
 _ID = re.compile(r"[0-9a-f]{12}")
@@ -42,6 +43,8 @@ def save(record: dict[str, Any]) -> None:
             "seconds": res.get("seconds")}
     with _LOCK, (root / "index.jsonl").open("a", encoding="utf-8") as fh:
         fh.write(json.dumps(line) + "\n")
+    # kept as evidence: its canonical text sealed and chained (seals.py)
+    seals.seal("assessment", job_id, record)
 
 
 def load(job_id: str) -> dict[str, Any] | None:
