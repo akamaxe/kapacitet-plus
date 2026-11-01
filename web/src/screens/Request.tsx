@@ -1,4 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
 import { Chart, axisStyle } from "../components/Chart";
@@ -7,6 +8,9 @@ import { toast } from "../components/Toast";
 import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Legend, Missing, Status, Tile } from "../components/bits";
 import { Term } from "../components/Term";
+import { AssessmentRecord } from "../components/AssessmentRecord";
+import { copyText } from "../lib/clipboard";
+import { reasonText } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { hourLabel, monthNames, round, useFmt } from "../lib/format";
@@ -34,6 +38,10 @@ export default function Request() {
   const theme = useStore((s) => s.theme);
   const cid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
+  // the saved assessment the address bar points at (#/request?cid=&job=)
+  const urlJob = useStore((s) => s.job);
+  const setUrlJob = useStore((s) => s.setJob);
+  const queryClient = useQueryClient();
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
   const show = useApi<any>("/showcase");
@@ -50,6 +58,8 @@ export default function Request() {
   const [pv, setPv] = useState(10);
   const [ev, setEv] = useState(0);
   const [job, setJob] = useState<Job | null>(null);
+  const jobRef = useRef<Job | null>(null);
+  jobRef.current = job;
   const mapRef = useRef<MLMap | null>(null);
   const esRef = useRef<EventSource | null>(null);
   const resultRef = useRef<HTMLDivElement>(null);
@@ -75,11 +85,42 @@ export default function Request() {
   // A different house is a different question: its answer, finished or running, goes
   // (the palette and the map both change the house without leaving this screen).
   useEffect(() => {
+    // ...unless the answer on screen is this house's, opened from a link or the history
+    if (house && jobRef.current?.result?.request?.cid === house.cid) return;
     esRef.current?.close();
     setJob(null);
     if (house) setPv(Math.min(pvMax, Math.max(pvMin, Math.round(house.kwp))));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [house?.cid]);
+
+  // A saved assessment named in the address bar: fetch it and put its question back in the form.
+  useEffect(() => {
+    if (!urlJob || jobRef.current?.id === urlJob) return;
+    let cancelled = false;
+    fetch(`${API}/requests/${urlJob}`)
+      .then(async (r) => {
+        if (cancelled) return;
+        if (!r.ok) {
+          toast.error(t("req.gone"));
+          setUrlJob(null);
+          return;
+        }
+        const res = await r.json();
+        if (cancelled) return;
+        const q = res.request ?? {};
+        jobRef.current = { id: urlJob, stages: {}, result: res, error: null };
+        setJob(jobRef.current);
+        setPv(q.pv_kwp ?? 0);
+        setEv(q.ev_kw ?? 0);
+        if (q.baseline === "static" || q.baseline === "doe") setBaseline(q.baseline);
+        if (typeof q.cid === "number" && q.cid !== useStore.getState().selectedCid) useStore.setState({ selectedCid: q.cid });
+      })
+      .catch(() => !cancelled && toast.error(t("req.gone")));
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlJob]);
 
   // the house the published year curtails most: the one whose answer is worth seeing first
   const exampleCid = useMemo(() => {
@@ -168,6 +209,7 @@ export default function Request() {
   const evaluate = async () => {
     if (cid === null) return;
     esRef.current?.close();
+    setUrlJob(null);
     setJob({ id: "", stages: {}, result: null, error: null });
     let r: Response;
     try {
@@ -207,7 +249,10 @@ export default function Request() {
         fail(t("req.ended"));
         return;
       }
-      setJob((j) => (j ? { ...j, stages: { ...j.stages, done: 0 }, result: res } : j));
+      setJob((j) => (j ? { ...j, id, stages: { ...j.stages, done: 0 }, result: res } : j));
+      jobRef.current = { id, stages: {}, result: res, error: null };
+      setUrlJob(id);
+      void queryClient.invalidateQueries({ queryKey: ["/requests?limit=12"] });
     });
     // The engine reports its own failure as a named event. Without this the stepper
     // simply stopped, indistinguishable from a transport drop, and the button never
@@ -345,6 +390,11 @@ export default function Request() {
           </>
         )}
 
+        <History current={job?.id ?? null} onOpen={(item) => {
+          select(item.request.cid);
+          setUrlJob(item.id);
+        }} />
+
         {job && (
           <div className="steps" aria-live="polite">
             {STAGES.map((s, i) => {
@@ -383,7 +433,9 @@ export default function Request() {
                 <button className="btn small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
               </div>
             )}
+            <AnswerActions id={res.id ?? job?.id ?? ""} />
             <Result res={res} year={year} lang={lang} />
+            <AssessmentRecord res={res} baselineLabel={res.request?.baseline === "doe" ? t("req.base.doe") : t("req.base.static")} />
             {res.profiles?.curtailed_kw && (
               <div className="hero-actions">
                 <button
@@ -409,12 +461,61 @@ export default function Request() {
   );
 }
 
-/** Static-study reason in the current language (falls back to the API's English text). */
-function reasonText(t: (k: string, v?: any) => string, f: (x: any, d?: number) => string, s: any): string {
-  if (!s?.reason_code) return s?.reason ?? "";
-  const pu = s.reason_code === "over_v" || s.reason_code === "under_v";
-  return t(`req.reason.${s.reason_code}`, { v: s.reason_value == null ? "" : f(s.reason_value, pu ? 3 : 0) });
+/** Keep the answer: print or save it as a PDF, download its hours or its record, copy its link. */
+function AnswerActions({ id }: { id: string }) {
+  const t = useT();
+  if (!id) return null;
+  const copy = () =>
+    copyText(window.location.href)
+      .then(() => toast.info(t("pal.copied")))
+      .catch(() => toast.error(t("req.copyFailed")));
+  return (
+    <div className="answer-actions" role="group" aria-label={t("req.keep")}>
+      <button className="btn ghost small" onClick={() => window.print()}>{t("req.print")}</button>
+      <a className="btn ghost small" href={`${API}/requests/${id}/hourly.csv`} download>
+        <Icon name="download" size={15} />{t("req.csv")}
+      </a>
+      <a className="btn ghost small" href={`${API}/requests/${id}?download=true`} download>
+        <Icon name="download" size={15} />{t("req.json")}
+      </a>
+      <button className="btn ghost small" onClick={copy}><Icon name="copy" size={15} />{t("req.copyLink")}</button>
+    </div>
+  );
 }
+
+/** The assessments already made, newest first: each one opens again exactly as it was answered. */
+function History({ current, onOpen }: { current: string | null; onOpen: (item: any) => void }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const list = useApi<any>("/requests?limit=12");
+  const items: any[] = list.data?.items ?? [];
+  if (!items.length) return null;
+  const when = new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { dateStyle: "short", timeStyle: "short" });
+  const asked = (q: any) => [
+    q.pv_kwp > 0 ? `${f(q.pv_kwp)} kWp` : null,
+    q.ev_kw > 0 ? `${f(q.ev_kw, q.ev_kw % 1 ? 1 : 0)} kW ${t("req.evShort")}` : null,
+    q.hp ? t("req.hpShort") : null,
+    q.bat_kwh > 0 ? `${f(q.bat_kwh)} kWh` : null,
+  ].filter(Boolean).join(" · ");
+  return (
+    <details className="history">
+      <summary>{t("req.history", { n: items.length })}</summary>
+      <ul>
+        {items.map((it) => (
+          <li key={it.id}>
+            <button className="history-item" aria-current={it.id === current ? "true" : undefined} onClick={() => onOpen(it)}>
+              <span className="history-house">{it.address || t("dt.unnamed", { id: it.request.cid })}</span>
+              <span className="history-asked">{asked(it.request)}</span>
+              <span className="history-when">{when.format(new Date(it.created))}</span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 
 // memo: the form above re-renders on every step of the PV slider, the answer does not change
 const Result = memo(function Result({ res, year, lang }: { res: any; year: number; lang: string }) {

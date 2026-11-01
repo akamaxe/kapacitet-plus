@@ -85,14 +85,14 @@ def test_a_job_that_runs_too_long_is_given_up_and_a_finished_one_is_forgotten(cl
 
     from kapacitet.api import main
 
-    main._JOBS["stuck0000000"] = {"status": "running", "events": [], "result": None,
+    main._JOBS["5ccc00000000"] = {"status": "running", "events": [], "result": None,
                                   "created": time.time() - main.JOB_TIMEOUT_S - 5, "request": {}}
-    main._JOBS["old000000000"] = {"status": "done", "events": [], "result": {"x": 1},
+    main._JOBS["01d000000000"] = {"status": "done", "events": [], "result": {"x": 1},
                                   "created": time.time() - 2 * main.JOB_TTL_S,
                                   "finished": time.time() - main.JOB_TTL_S - 5, "request": {}}
-    r = client.get(f"{API}/requests/stuck0000000")
+    r = client.get(f"{API}/requests/5ccc00000000")
     assert r.status_code == 500 and "timed out" in r.text
-    assert client.get(f"{API}/requests/old000000000").status_code == 404
+    assert client.get(f"{API}/requests/01d000000000").status_code == 404
 
 
 # ---------------------------------------------------------------- network export check (no data needed)
@@ -148,3 +148,66 @@ def test_an_oversized_table_is_refused(client):
     big = "bus_id,kind\n" + "B,service\n" * 600_000
     r = client.post(f"{API}/check", json={"files": {"buses": big}})
     assert r.status_code == 413
+
+
+# ---------------------------------------------------------------- saved assessments (stubbed engine)
+
+def _stub_result(cid: int) -> dict:
+    hours = 8760
+    return {"request": {"cid": cid}, "baseline": "static", "customer": {"cid": cid, "address": "Testvägen 1"},
+            "static": {}, "per_year": [], "verification": {}, "risk": {}, "economics": {},
+            "profiles": {"year": 2025, "pv_kw": [0.5] * hours, "desired_kw": [0.2] * hours,
+                         "envelope_kw": [1.0] * hours, "curtailed_kw": [0.0] * hours},
+            "summary": {"pv_static_approved": True}, "seconds": 0.01}
+
+
+@pytest.fixture()
+def stubbed(client, monkeypatch, tmp_path):
+    from kapacitet.api import main, records
+    from kapacitet.engine import request as rq
+
+    monkeypatch.setattr(main, "_check_cid", lambda cid: None)
+    monkeypatch.setattr(main, "_engine", lambda: {"model": None, "hp": None, "ev": None})
+    monkeypatch.setattr(rq, "evaluate", lambda model, req, hp, ev, emit=None: _stub_result(req.cid))
+    monkeypatch.setattr(records, "folder", lambda: tmp_path)
+    return main
+
+
+def _finish(client, job_id):
+    import time
+
+    for _ in range(100):
+        r = client.get(f"{API}/requests/{job_id}")
+        if r.status_code == 200:
+            return r.json()
+        time.sleep(0.02)
+    raise AssertionError("the stubbed job never finished")
+
+
+def test_an_assessment_is_saved_and_survives_a_restart(client, stubbed, tmp_path):
+    job_id = client.post(f"{API}/requests", json={"cid": 3, "pv_kwp": 6.0}).json()["id"]
+    first = _finish(client, job_id)
+    assert first["id"] == job_id and first["customer"]["address"] == "Testvägen 1"
+    assert (tmp_path / f"{job_id}.json.gz").exists()
+    stubbed._JOBS.clear()                                   # what a restart forgets
+    again = client.get(f"{API}/requests/{job_id}")
+    assert again.status_code == 200 and again.json()["summary"] == first["summary"]
+    items = client.get(f"{API}/requests").json()["items"]
+    assert items[0]["id"] == job_id and items[0]["request"]["pv_kwp"] == 6.0
+
+
+def test_an_assessment_downloads_as_hourly_csv_and_as_a_record(client, stubbed):
+    job_id = client.post(f"{API}/requests", json={"cid": 4, "pv_kwp": 5.0}).json()["id"]
+    _finish(client, job_id)
+    csv_text = client.get(f"{API}/requests/{job_id}/hourly.csv").text
+    lines = csv_text.strip().splitlines()
+    assert lines[0].startswith("hour,timestamp_utc+1,pv_kw")
+    assert len(lines) == 8760 + 1
+    r = client.get(f"{API}/requests/{job_id}", params={"download": True})
+    assert "attachment" in r.headers["content-disposition"]
+    assert r.json()["request"]["cid"] == 4 and r.json()["version"]
+
+
+def test_malformed_assessment_ids_are_refused(client):
+    for bad in ("..%2f..%2fpyproject", "ZZZ", "0123456789abcdef"):
+        assert client.get(f"{API}/requests/{bad}").status_code == 404

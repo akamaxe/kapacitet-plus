@@ -2025,3 +2025,53 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   .tile .t-value { white-space: normal; }
   .tile .t-value small { white-space: nowrap; }
 }
+
+/* ---------------------------------------------------------------- keeping an answer */
+.answer-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.answer-actions .btn { gap: var(--space-1); }
+
+.history { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.history summary { cursor: pointer; font-size: var(--text-small); font-weight: 500; color: var(--text-secondary); list-style-position: inside; }
+.history summary:hover { color: var(--text-primary); }
+.history ul { list-style: none; margin: var(--space-2) 0 0; padding: 0; display: grid; }
+.history-item {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 var(--space-3); width: 100%;
+  padding: var(--space-2) 0; border: 0; border-bottom: 1px solid var(--border); background: none;
+  color: var(--text-primary); text-align: left; font: inherit; cursor: pointer;
+}
+.history-item:hover .history-house { color: var(--accent); }
+.history-item[aria-current="true"] .history-house { color: var(--accent); font-weight: 600; }
+.history-house { font-size: var(--text-small); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-asked { grid-column: 1; font-size: var(--text-caption); color: var(--text-muted); }
+.history-when { grid-column: 2; grid-row: 1 / span 2; align-self: center; font-size: var(--text-caption); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- the printed assessment */
+.print-record { display: none; }
+
+@media print {
+  @page { size: A4; margin: 14mm 14mm 16mm; }
+  html, body { background: var(--print-paper); }
+  #root { display: none !important; }
+  .print-record {
+    display: block; color: var(--print-ink); font-family: var(--font-sans); font-size: 10pt; line-height: 1.4;
+    font-variant-numeric: tabular-nums; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .print-record h1 { margin: 0 0 3mm; font-size: 18pt; line-height: 1.15; letter-spacing: var(--track-h1); }
+  .print-record h2 { margin: 6mm 0 2mm; font-size: 11pt; break-after: avoid; }
+  .print-record section { break-inside: avoid; }
+  .print-record .pr-break { break-before: auto; }
+  .pr-brand { margin: 0 0 1mm; font-weight: 700; letter-spacing: 0.01em; }
+  .pr-head { padding-bottom: 3mm; border-bottom: 1.5pt solid var(--print-ink); }
+  .pr-meta, .pr-kv { display: grid; grid-template-columns: max-content 1fr; gap: 1mm 6mm; margin: 0; }
+  .pr-meta dt, .pr-kv dt { color: var(--print-muted); }
+  .pr-meta dd, .pr-kv dd { margin: 0; }
+  .pr-table { width: 100%; border-collapse: collapse; }
+  .pr-table th, .pr-table td { padding: 1.2mm 2mm 1.2mm 0; border-bottom: 0.5pt solid var(--print-rule); text-align: left; vertical-align: top; }
+  .pr-grid { font-size: 7.5pt; }
+  .pr-grid th, .pr-grid td { padding: 0.6mm 1mm; text-align: right; }
+  .pr-grid th:first-child { text-align: left; }
+  .pr-note { margin: 1.5mm 0 0; color: var(--print-muted); font-size: 8.5pt; }
+  .pr-foot { margin-top: 6mm; padding-top: 2mm; border-top: 0.5pt solid var(--print-rule); font-size: 8.5pt; color: var(--print-muted); break-inside: avoid; }
+  .pr-foot h2 { color: var(--print-ink); }
+  .pr-foot ul { margin: 1mm 0; padding-left: 4mm; }
+}

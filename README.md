@@ -133,7 +133,9 @@ clicked, and the basis of every figure on that screen on the right. The model in
 searchable and sortable: filter by where a value comes from, or search a word in any column.
 
 The address bar carries what you are looking at — `#/twin?hour=4000&scenario=uncontrolled&cid=14`
-— so a view can be sent to someone and reproduce exactly. Scrubbing the year does not fill your
+— so a view can be sent to someone and reproduce exactly. Every connection assessment is saved in
+`data/requests/`, and on the request screen the address carries it (`#/request?cid=84&job=…`), so
+an answer can be reopened, printed as a record, or downloaded hour by hour. Scrubbing the year does not fill your
 history: only changing screen does. Charts retain their table alternatives, and
 animations respect reduced-motion preferences. Use **Ctrl + Left/Right** or **PageUp/PageDown**
 to navigate screens without affecting form fields.

@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from .. import __version__
 from ..config import assumptions, settings
+from . import records
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
 from ..paths import PROCESSED, WEB_DIST
@@ -658,6 +659,10 @@ def _run_job(job_id: str, body: RequestIn) -> None:
         if job["status"] != "running":   # gave up on by the watchdog: the late answer is dropped
             return
         job["result"] = result
+        try:
+            records.save(_record(job_id, job, result))
+        except Exception:   # the answer still reaches the screen; only its saved copy is lost
+            log.exception("could not save assessment %s", job_id)
         job["status"] = "done"
         job["finished"] = time.time()
         job["events"].extend(held)
@@ -693,6 +698,28 @@ def _sweep_jobs() -> None:
             _JOBS.pop(jid, None)
 
 
+_REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
+
+
+def _record(job_id: str, job: dict, result: dict) -> dict:
+    """What is kept of an assessment: the question, the full answer and what it was computed with."""
+    return {"id": job_id, "created": datetime.fromtimestamp(job["created"], timezone.utc).isoformat(),
+            "request": job["request"], "result": json.loads(json.dumps(result, default=_json_default)),
+            "version": __version__, "provenance": provenance(*_REQUEST_SOURCES)}
+
+
+def _job_id(job_id: str) -> str:
+    if not records.valid_id(job_id):
+        raise HTTPException(404, "unknown request")
+    return job_id
+
+
+@app.get(f"{API}/requests", tags=["requests"])
+def list_requests(limit: int = Query(30, ge=1, le=200)) -> dict:
+    """The saved assessments, newest first: the request, the house and the verdicts."""
+    return {"items": records.listing(limit)}
+
+
 @app.post(f"{API}/requests", tags=["requests"])
 def create_request(body: RequestIn) -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
@@ -709,7 +736,7 @@ def create_request(body: RequestIn) -> dict:
 
 @app.get(f"{API}/requests/{{job_id}}/events", tags=["requests"])
 async def request_events(job_id: str) -> StreamingResponse:
-    if job_id not in _JOBS:
+    if _job_id(job_id) not in _JOBS:
         raise HTTPException(404, "unknown request")
 
     async def stream():
@@ -733,19 +760,69 @@ async def request_events(job_id: str) -> StreamingResponse:
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
 
-@app.get(f"{API}/requests/{{job_id}}", tags=["requests"])
-def request_result(job_id: str) -> JSONResponse:
+def _finished(job_id: str) -> dict:
+    """A finished assessment, from memory while it is fresh and from disk afterwards."""
     _sweep_jobs()
-    job = _JOBS.get(job_id)
-    if job is None:
-        raise HTTPException(404, "unknown request")
-    if job["status"] == "running":
-        return JSONResponse({"status": "running"}, status_code=202)
-    if job["status"] == "error":
-        raise HTTPException(500, job.get("error", "failed"))
-    body = dict(job["result"])
-    body["provenance"] = provenance("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
-    return JSONResponse(json.loads(json.dumps(body, default=_json_default)))
+    job = _JOBS.get(_job_id(job_id))
+    if job is not None:
+        if job["status"] == "running":
+            raise HTTPException(202, "running")
+        if job["status"] == "error":
+            raise HTTPException(500, job.get("error", "failed"))
+    rec = records.load(job_id)
+    if rec is not None:
+        return rec
+    if job is not None:   # finished but not saved (disk trouble): still answer from memory
+        return _record(job_id, job, job["result"])
+    raise HTTPException(404, "unknown request")
+
+
+@app.get(f"{API}/requests/{{job_id}}", tags=["requests"])
+def request_result(job_id: str, download: bool = Query(False)) -> JSONResponse:
+    """The full answer; `download=true` returns the whole record as a file."""
+    try:
+        rec = _finished(job_id)
+    except HTTPException as exc:
+        if exc.status_code == 202:
+            return JSONResponse({"status": "running"}, status_code=202)
+        raise
+    if download:
+        return JSONResponse(rec, headers={"Content-Disposition": f'attachment; filename="kapacitet-assessment-{job_id}.json"'})
+    body = dict(rec["result"])
+    body.update(id=rec["id"], created=rec["created"], provenance=rec["provenance"], version=rec.get("version"))
+    return JSONResponse(body)
+
+
+# hourly columns of an assessment's CSV, in the order a spreadsheet reader expects them
+_HOURLY = (("pv_kw", "pv_kw"), ("desired_kw", "desired_export_kw"), ("envelope_kw", "export_envelope_kw"),
+           ("curtailed_kw", "curtailed_kw"), ("import_envelope_kw", "import_envelope_kw"),
+           ("hp_kw", "heat_pump_kw"), ("hp_unmet_kw", "heat_pump_above_envelope_kw"),
+           ("battery_charge_kw", "battery_charge_kw"), ("battery_discharge_kw", "battery_discharge_kw"),
+           ("battery_soc_kwh", "battery_stored_kwh"))
+
+
+@app.get(f"{API}/requests/{{job_id}}/hourly.csv", tags=["requests"])
+def request_hourly(job_id: str) -> Response:
+    """Every hour of the reference year behind an assessment: production, export, envelope, curtailment."""
+    try:
+        rec = _finished(job_id)
+    except HTTPException as exc:
+        if exc.status_code == 202:
+            raise HTTPException(409, "still running") from exc
+        raise
+    prof = rec["result"].get("profiles") or {}
+    cols = [(k, name) for k, name in _HOURLY if isinstance(prof.get(k), list)]
+    if not cols:
+        raise HTTPException(404, "this assessment has no hourly profile")
+    year = int(prof["year"])
+    start = datetime(year, 1, 1)
+    buf = io.StringIO()
+    w = csv.writer(buf, lineterminator="\n")
+    w.writerow(["hour", "timestamp_utc+1", *[name for _, name in cols]])
+    for h in range(len(prof[cols[0][0]])):
+        w.writerow([h, (start + timedelta(hours=h)).strftime("%Y-%m-%d %H:%M"), *[prof[k][h] for k, _ in cols]])
+    return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-assessment-{job_id}-{year}.csv"'})
 
 
 @app.post(f"{API}/evaluate", tags=["requests"])

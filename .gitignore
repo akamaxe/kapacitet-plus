@@ -15,3 +15,4 @@ web/*.tsbuildinfo
 .impeccable/mocks/
 .impeccable/live/
 .impeccable/config.local.json
+data/requests/

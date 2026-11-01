@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "config"
-DATA = ROOT / "data"
+# KAPACITET_DATA_DIR points the whole project at another data folder, such as an unpacked bundle
+# (python -m kapacitet unbundle) or a volume mounted into a container.
+DATA = Path(os.environ["KAPACITET_DATA_DIR"]).resolve() if os.environ.get("KAPACITET_DATA_DIR") else ROOT / "data"
 RAW = DATA / "raw"
 PROCESSED = DATA / "processed"
 WEB_DIST = ROOT / "web" / "dist"

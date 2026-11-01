@@ -26,9 +26,10 @@ function writeLS(key: string, value: string) {
  * `#/<screen>?hour=…&scenario=…&cid=…` — what someone is looking at, so a view can be
  * sent to a colleague and a figure in a report can be traced back to it.
  *
- * Only things that change what the numbers mean travel: the hour, the scenario and the
- * selected house. A link that autoplays, or that pre-fills a request form with an answer
- * nobody computed, would be worse than no link at all.
+ * Only things that change what the numbers mean travel: the hour, the scenario, the selected
+ * house and, on the request screen, the saved assessment being read (`job`). A link that
+ * autoplays, or that pre-fills a request form with an answer nobody computed, would be worse
+ * than no link at all; a `job` is an answer the engine did compute, kept on disk.
  */
 export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
 
@@ -37,7 +38,11 @@ export interface UrlView {
   hour?: number;
   scenario?: Scenario;
   cid?: number;
+  job?: string;
 }
+
+/** A saved assessment's id (data/requests/<id>.json.gz). */
+export const JOB_ID = /^[0-9a-f]{12}$/;
 
 function parseHash(): UrlView {
   const raw = window.location.hash.replace(/^#\/?/, "");
@@ -59,6 +64,8 @@ function parseHash(): UrlView {
   if (scenario && (SCENARIOS as string[]).includes(scenario)) out.scenario = scenario as Scenario;
   const cid = num("cid");
   if (cid !== undefined && cid >= 0) out.cid = cid;
+  const job = q.get("job");
+  if (job && JOB_ID.test(job)) out.job = job;
   return out;
 }
 
@@ -74,6 +81,7 @@ function writeHash(push: boolean) {
   if (usesHour && st.hourTouched) q.set("hour", String(st.hour));
   if (st.screen === "twin" && st.scenario !== "doe") q.set("scenario", st.scenario);
   if (usesHour && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
+  if (st.screen === "request" && st.job) q.set("job", st.job);
   const qs = q.toString();
   const hash = `#/${st.screen}${qs ? `?${qs}` : ""}`;
   if (hash === written) return;
@@ -103,6 +111,8 @@ interface State {
   scenario: Scenario;
   playing: boolean;
   selectedCid: number | null;
+  /** the saved assessment shown on the request screen, if any */
+  job: string | null;
   setScreen: (s: Screen) => void;
   setLang: (l: "en" | "es") => void;
   setTheme: (t: Theme) => void;
@@ -111,6 +121,7 @@ interface State {
   setScenario: (s: Scenario) => void;
   setPlaying: (p: boolean) => void;
   select: (cid: number | null) => void;
+  setJob: (job: string | null) => void;
 }
 
 // Fallback hour (12 July, 12:00 local standard time) until /meta provides the showcase hour.
@@ -130,6 +141,7 @@ export const useStore = create<State>((set) => ({
   scenario: initial.scenario ?? "doe",
   playing: false,
   selectedCid: initial.cid ?? null,
+  job: initial.job ?? null,
   setScreen: (screen) => {
     set({ screen });
     writeHash(true); // a screen is a place, so it gets a history entry
@@ -161,7 +173,12 @@ export const useStore = create<State>((set) => ({
     if (!playing) writeHash(false); // catch up with where playback left the hour
   },
   select: (selectedCid) => {
-    set({ selectedCid });
+    // an assessment belongs to its house: choosing another house leaves it behind
+    set((s) => ({ selectedCid, job: selectedCid === s.selectedCid ? s.job : null }));
+    writeHash(false);
+  },
+  setJob: (job) => {
+    set({ job });
     writeHash(false);
   },
 }));
@@ -188,6 +205,7 @@ window.addEventListener("hashchange", () => {
     ...(v.scenario ? { scenario: v.scenario } : {}),
     // a link without a parameter means "this screen", not "forget what I had selected"
     ...(v.cid !== undefined ? { selectedCid: v.cid } : {}),
+    ...(v.job !== undefined ? { job: v.job } : {}),
     playing: false,
   });
   // A tab link carries only the screen, but the view still has an hour and a selection.

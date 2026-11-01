@@ -65,6 +65,12 @@
   --z-overlay: 40;
   --z-dialog: 50;
   --z-toast: 60;
+
+  /* paper: the printed assessment is black on white whatever the screen theme */
+  --print-paper: #ffffff;
+  --print-ink: #000000;
+  --print-muted: #4a4a4a;
+  --print-rule: #9a9a9a;
 }
 
 /* ---------------------------------------------------------------- day, the default */
