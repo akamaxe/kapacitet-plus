@@ -30,6 +30,11 @@ describe("parseHash", () => {
     expect(parseHash("#/twin?scenario=bogus").scenario).toBeUndefined();
   });
 
+  it("reads a basis and a rule only from their own lists", () => {
+    expect(parseHash("#/report?basis=dayahead&policy=prorata")).toEqual({ screen: "report", basis: "dayahead", policy: "prorata" });
+    expect(parseHash("#/report?basis=hindsight&policy=cheapest")).toEqual({ screen: "report" });
+  });
+
   it("takes only a saved assessment's id as a job", () => {
     expect(parseHash("#/request?job=0123456789ab").job).toBe("0123456789ab");
     expect(parseHash("#/request?job=../../etc").job).toBeUndefined();
@@ -56,6 +61,12 @@ describe("hashFor", () => {
     expect(hashFor({ ...base, screen: "method", selectedCid: 7 })).toBe("#/method");
     expect(hashFor({ ...base, screen: "request", selectedCid: 7, job: "0123456789ab" })).toBe("#/request?cid=7&job=0123456789ab");
     expect(hashFor({ ...base, screen: "twin", job: "0123456789ab" })).toBe("#/twin");
+  });
+
+  it("carries the basis away from its default and a chosen rule, on the report", () => {
+    expect(hashFor({ ...base, screen: "report", basis: "foresight", policy: null })).toBe("#/report");
+    expect(hashFor({ ...base, screen: "report", basis: "dayahead", policy: "prorata" })).toBe("#/report?basis=dayahead&policy=prorata");
+    expect(hashFor({ ...base, screen: "twin", basis: "dayahead", policy: "prorata" })).toBe("#/twin");
   });
 
   it("round-trips through parseHash", () => {

@@ -4,6 +4,11 @@ import { isLang, loadLang, type Lang } from "./i18n/core";
 export type Screen = "national" | "twin" | "compare" | "request" | "report" | "scenarios" | "method";
 export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "report", "scenarios", "method"];
 export type Scenario = "static" | "uncontrolled" | "doe";
+/** The envelope a screen reads: perfect foresight (the planning bound) or issued the day before. */
+export type Basis = "foresight" | "dayahead";
+export const BASES: Basis[] = ["foresight", "dayahead"];
+/** The sharing rules of engine/doe.py; a screen follows the DSO's setting unless a link names one. */
+export const POLICIES = ["maxmin", "prorata", "propfair", "maxtotal"] as const;
 export type Theme = "light" | "dark" | "system";
 const THEMES: readonly string[] = ["light", "dark", "system"];
 
@@ -42,6 +47,8 @@ export interface UrlView {
   scenario?: Scenario;
   cid?: number;
   job?: string;
+  basis?: Basis;
+  policy?: string;
 }
 
 /** A saved assessment's id (data/requests/<id>.json.gz). */
@@ -71,6 +78,10 @@ export function parseHash(hash: string = window.location.hash): UrlView {
   if (cid !== undefined && cid >= 0) out.cid = cid;
   const job = q.get("job");
   if (job && JOB_ID.test(job)) out.job = job;
+  const basis = q.get("basis");
+  if (basis && (BASES as string[]).includes(basis)) out.basis = basis as Basis;
+  const policy = q.get("policy");
+  if (policy && (POLICIES as readonly string[]).includes(policy)) out.policy = policy;
   return out;
 }
 
@@ -78,7 +89,8 @@ export function parseHash(hash: string = window.location.hash): UrlView {
 let written = "";
 
 /** The parts of the view a link carries. */
-export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job">;
+export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
+  Partial<Pick<State, "basis" | "policy">>;
 
 /** The address for what is on screen. Pure, like parseHash. */
 export function hashFor(st: LinkedView): string {
@@ -90,6 +102,11 @@ export function hashFor(st: LinkedView): string {
   if (st.screen === "twin" && st.scenario !== "doe") q.set("scenario", st.scenario);
   if ((usesHour || st.screen === "report") && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
   if (st.screen === "request" && st.job) q.set("job", st.job);
+  // the screens that read a basis and a rule carry them: the basis away from its default, the rule
+  // whenever one was chosen over the DSO's setting (which can change under a link)
+  const readsCombo = st.screen === "report";
+  if (readsCombo && st.basis && st.basis !== "foresight") q.set("basis", st.basis);
+  if (readsCombo && st.policy) q.set("policy", st.policy);
   const qs = q.toString();
   return `#/${st.screen}${qs ? `?${qs}` : ""}`;
 }
@@ -131,6 +148,9 @@ interface State {
   selectedCid: number | null;
   /** the saved assessment shown on the request screen, if any */
   job: string | null;
+  /** the envelope the report reads, and the rule it reads it under (null: the DSO's setting) */
+  basis: Basis;
+  policy: string | null;
   /** the tour's step, or null when it is closed; `tourInstant` when opened from the keyboard */
   tour: number | null;
   tourInstant: boolean;
@@ -152,6 +172,8 @@ interface State {
   setPlaying: (p: boolean) => void;
   select: (cid: number | null) => void;
   setJob: (job: string | null) => void;
+  setBasis: (basis: Basis) => void;
+  setPolicy: (policy: string | null) => void;
 }
 
 // Fallback hour (12 July, 12:00 local standard time) until /meta provides the showcase hour.
@@ -172,6 +194,8 @@ export const useStore = create<State>((set) => ({
   playing: false,
   selectedCid: initial.cid ?? null,
   job: initial.job ?? null,
+  basis: initial.basis ?? "foresight",
+  policy: initial.policy ?? null,
   tour: null,
   tourInstant: false,
   tourOffered: false,
@@ -226,6 +250,14 @@ export const useStore = create<State>((set) => ({
     set({ job });
     writeHash(false);
   },
+  setBasis: (basis) => {
+    set({ basis });
+    writeHash(false);
+  },
+  setPolicy: (policy) => {
+    set({ policy });
+    writeHash(false);
+  },
 }));
 
 export function applyTheme(theme: Theme) {
@@ -251,6 +283,8 @@ window.addEventListener("hashchange", () => {
     // a link without a parameter means "this screen", not "forget what I had selected"
     ...(v.cid !== undefined ? { selectedCid: v.cid } : {}),
     ...(v.job !== undefined ? { job: v.job } : {}),
+    ...(v.basis !== undefined ? { basis: v.basis } : {}),
+    ...(v.policy !== undefined ? { policy: v.policy } : {}),
     ...(v.notFound ? { notFound: v.notFound } : {}),
     playing: false,
   });

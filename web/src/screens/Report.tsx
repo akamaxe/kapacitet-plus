@@ -1,16 +1,19 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Chart, axisStyle } from "../components/Chart";
 import { DataTable, type Col } from "../components/DataTable";
 import { Icon } from "../components/Icon";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Missing, Protocol, Tile } from "../components/bits";
+import { ReportRecord } from "../components/ReportRecord";
+import { toast } from "../components/Toast";
 import { Term } from "../components/Term";
 import { API, useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { hourLabel, hoursInYear, monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { useStore } from "../lib/store";
+import { POLICIES, useStore } from "../lib/store";
 
 /** A part of the grid as the audit trail names it: transformer, voltage, or "line N" for a cable. */
 function elementLabel(t: (k: string) => string, el: string): string {
@@ -37,9 +40,36 @@ export default function Report() {
   const lang = useStore((s) => s.lang);
   const cid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
-  const comp = useApi<any>("/compliance");
+  const basis = useStore((s) => s.basis);
+  const chosen = useStore((s) => s.policy);
+  const setBasis = useStore((s) => s.setBasis);
+  const setPolicy = useStore((s) => s.setPolicy);
+  const client = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  // the rule in force is the DSO's setting; a link or the selector may read the filing under another
+  const settings = useApi<any>("/settings");
+  const active: string | undefined = settings.data?.settings?.allocation_policy;
+  const ops = useApi<any>("/operation/index");
+  const policy = chosen ?? active ?? "maxmin";
+  const q = `basis=${basis}&policy=${policy}`;
+  const comp = useApi<any>(settings.data ? `/compliance?${q}` : null);
   const net = useApi<any>("/network");
   const R = comp.data?.data;
+
+  const makeRule = async () => {
+    setSaving(true);
+    try {
+      const r = await fetch(`${API}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allocation_policy: policy }) });
+      if (!r.ok) throw new Error(String(r.status));
+      setPolicy(null);
+      await client.invalidateQueries();
+      toast.info(t("rep.ruleSet", { rule: t(`pol.${policy}`) }));
+    } catch {
+      toast.error(t("rep.ruleFailed"));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const addresses = useMemo(() => {
     const m = new Map<number, string>();
@@ -51,8 +81,8 @@ export default function Report() {
     [R, addresses, t],
   );
 
-  if (comp.isLoading || net.isLoading) return <PageSkeleton bar hero blocks={2} />;
-  if (!R) return <Missing of={[comp, net]} />;
+  if (settings.isLoading || comp.isLoading || net.isLoading) return <PageSkeleton bar hero blocks={2} />;
+  if (!R) return <Missing of={[settings, comp, net]} />;
 
   const H = hoursInYear(R.year);
   const binding = Object.entries(R.binding_constraint_hours ?? {}) as [string, number][];
@@ -85,9 +115,27 @@ export default function Report() {
                 <span className="rf-value">{f(R.curtailed_share_of_export_pct, 1)}<small>%</small></span>
                 <span className="rf-label">{t("rep.figure", { n: f(R.conditional_agreements) })}</span>
               </p>
+              {ops.data && (
+                <div className="report-controls">
+                  <div className="seg" role="group" aria-label={t("rep.basisLabel")}>
+                    <button aria-pressed={basis === "foresight"} onClick={() => setBasis("foresight")}>{t("rep.basis.foresight")}</button>
+                    <button aria-pressed={basis === "dayahead"} onClick={() => setBasis("dayahead")}>{t("rep.basis.dayahead")}</button>
+                  </div>
+                  <label className="field-inline">
+                    <span>{t("rep.rule")}</span>
+                    <select value={policy} onChange={(e) => setPolicy(e.target.value === active ? null : e.target.value)}>
+                      {POLICIES.map((p) => <option key={p} value={p}>{t(`pol.${p}`)}{p === active ? ` · ${t("rep.ruleActive")}` : ""}</option>)}
+                    </select>
+                  </label>
+                  {policy !== active && <button className="btn ghost small" disabled={saving} onClick={makeRule}>{t("rep.makeRule")}</button>}
+                </div>
+              )}
+              <p className="caption-muted">{t(basis === "dayahead" ? "rep.basis.dayaheadNote" : "rep.basis.foresightNote")}</p>
+              {policy !== active && active && <p className="caption-muted">{t("rep.ruleView", { rule: t(`pol.${policy}`), active: t(`pol.${active}`) })}</p>}
               <div className="answer-actions">
-                <a className="btn" href={`${API}/compliance.txt`} download><Icon name="download" size={15} />{t("rep.dl.filing")}</a>
-                <a className="btn ghost" href={`${API}/audit.csv`} download><Icon name="download" size={15} />{t("rep.dl.audit")}</a>
+                <a className="btn" href={`${API}/compliance.txt?${q}`} download><Icon name="download" size={15} />{t("rep.dl.filing")}</a>
+                <a className="btn ghost" href={`${API}/audit.csv?${q}`} download><Icon name="download" size={15} />{t("rep.dl.audit")}</a>
+                <button className="btn ghost" onClick={() => window.print()}>{t("rep.print")}</button>
               </div>
             </div>
             <div className="tiles cols-1 answer-sheet">
@@ -103,13 +151,17 @@ export default function Report() {
         <section className="region" id="resort">
           <div className="region-head">
             <div className="region-title">
-              <h2>{t("rep.resort")}</h2>
-              <p className="caption">{t("rep.resort.caption")}</p>
+              <h2>{t(basis === "dayahead" ? "rep.resortDayahead" : "rep.resort")}</h2>
+              <p className="caption">{t(basis === "dayahead" ? "rep.resort.captionDayahead" : "rep.resort.caption")}</p>
             </div>
           </div>
           <Protocol
             rows={[
               { ok: R.verified_violations === 0, label: t("rep.verified"), value: f(R.verified_violations), unit: "h", criterion: t("rep.verifiedNote") },
+              ...(R.activations_necessary_hours !== undefined && R.activations_unnecessary_hours ? [{
+                ok: null, label: t("rep.necessary"), value: `${f(R.activations_necessary_hours)} / ${f(R.hours_with_curtailment)}`, unit: "h",
+                criterion: t("rep.necessaryNote", { n: f(R.activations_unnecessary_hours) }),
+              }] : []),
               ...binding.map(([el, h]) => ({ ok: null, label: t("rep.binding", { el: t(`rep.el.${el}`) }), value: f(h), unit: "h", criterion: t("rep.bindingNote") })),
               { ok: null, label: t("rep.limits"), value: `${f(R.voltage_limits_pu[0], 2)}–${f(R.voltage_limits_pu[1], 2)}`, unit: "pu", criterion: t("rep.limitsNote", { pct: f(R.thermal_limit_pct) }) },
             ]}
@@ -159,22 +211,23 @@ export default function Report() {
             </div>
           </div>
           {selected ? (
-            <HouseRecord row={selected} year={R.year} />
+            <HouseRecord row={selected} year={R.year} q={q} />
           ) : (
             <p className="caption-muted">{cid === null ? t("rep.house.pick") : t("rep.house.firm", { house: addresses.get(cid) || t("dt.unnamed", { id: cid }) })}</p>
           )}
         </section>
       </div>
+      <ReportRecord R={R} rows={rows} />
     </div>
   );
 }
 
-function HouseRecord({ row, year }: { row: Agreement; year: number }) {
+function HouseRecord({ row, year, q }: { row: Agreement; year: number; q: string }) {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
-  const env = useApi<any>(`/envelopes/${row.customer_id}`);
-  const audit = useApi<any>(`/audit?cid=${row.customer_id}&limit=5000`);
+  const env = useApi<any>(`/envelopes/${row.customer_id}?${q}`);
+  const audit = useApi<any>(`/audit?cid=${row.customer_id}&limit=5000&${q}`);
   const grid = useMemo(() => (env.data?.envelope_kw ? minByMonthHour(env.data.envelope_kw, year) : null), [env.data, year]);
   const auditRows: any[] = audit.data?.rows ?? [];
   const cols: Col<any>[] = [
@@ -215,7 +268,7 @@ function HouseRecord({ row, year }: { row: Agreement; year: number }) {
       <section className="block stack">
         <div className="block-head">
           <h3>{t("rep.house.hours", { n: f(auditRows.length) })}</h3>
-          <a className="btn ghost small" href={`${API}/audit.csv?cid=${row.customer_id}`} download>
+          <a className="btn ghost small" href={`${API}/audit.csv?cid=${row.customer_id}&${q}`} download>
             <Icon name="download" size={15} />{t("rep.dl.house")}
           </a>
         </div>

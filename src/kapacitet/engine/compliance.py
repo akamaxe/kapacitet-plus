@@ -47,12 +47,17 @@ class Trail:
 
 
 def audit_trail(model: NetModel, result: DoeResult, arrays: dict[str, np.ndarray],
-                year: int, cids: np.ndarray | None = None) -> Trail:
+                year: int, cids: np.ndarray | None = None, necessary_hours: np.ndarray | None = None) -> Trail:
     """One row per customer and hour where an envelope cut a customer's export.
 
     `uncontrolled_pct` is the load the binding component would have carried had the
     envelopes not been issued. It is the number that makes the curtailment defensible, so
     it is measured with the full nonlinear flow rather than estimated.
+
+    `necessary_hours`, when given, are the hours in which the grid with nobody limited breaks a
+    limit (nonlinear flow); each row then says whether its hour was one of them. With perfect
+    foresight every row is; an envelope issued the day before also limits hours that turned out
+    to need nothing, and the trail has to say so.
     """
     if result.binding is None:
         raise ValueError("this result predates the binding-constraint record; recompute it")
@@ -96,7 +101,10 @@ def audit_trail(model: NetModel, result: DoeResult, arrays: dict[str, np.ndarray
         "binding_element": element,
         "uncontrolled_pct": np.round(loading, 1),
         "rating_pct": model.thermal,
-    }).sort_values(["hour", "customer_id"]).reset_index(drop=True)
+    })
+    if necessary_hours is not None:
+        events["necessary"] = np.isin(events["hour"].to_numpy(), np.asarray(necessary_hours))
+    events = events.sort_values(["hour", "customer_id"]).reset_index(drop=True)
     return Trail(events, year, str(result.info.get("policy", "")))
 
 
@@ -106,7 +114,7 @@ def _empty_events() -> pd.DataFrame:
                                  "uncontrolled_pct", "rating_pct"])
 
 
-def annual_report(trail: Trail, result: DoeResult, cids: np.ndarray | None = None) -> dict:
+def annual_report(trail: Trail, result: DoeResult, cids: np.ndarray | None = None, basis: str = "foresight") -> dict:
     """The filing: what was curtailed, from whom, why, and on what terms.
 
     Every figure is derived from the trail, so the report and the evidence behind it cannot
@@ -142,8 +150,15 @@ def annual_report(trail: Trail, result: DoeResult, cids: np.ndarray | None = Non
              and events["uncontrolled_pct"].notna().any() else None)
 
     total_exported = float(exported.sum())
+    activations = {}
+    if len(events) and "necessary" in events:
+        by_hour = events.groupby("hour")["necessary"].first()
+        activations = {"activations_necessary_hours": int(by_hour.sum()),
+                       "activations_unnecessary_hours": int((~by_hour.astype(bool)).sum())}
     return {
         "year": trail.year,
+        "basis": basis,
+        **activations,
         "reporting_basis": "Ei2025:01, conditional connection agreements",
         "reporting_basis_code": "Ei2025:01",
         "conditional_agreements": int(len(nonfirm)),
@@ -178,9 +193,20 @@ def report_text(report: dict) -> str:
         f"  ({report['curtailed_share_of_export_pct']} % of what those customers would have exported)",
         f"Allocation policy              {report['allocation_policy']}",
         "",
-        "Curtailment was a last resort. The hours above are the hours in which a component",
-        "would have been loaded beyond its rating had no envelope been issued:",
     ]
+    if report.get("activations_unnecessary_hours"):
+        lines += [
+            f"Envelopes issued the day before limited {report['hours_with_curtailment']} hours. In "
+            f"{report.get('activations_necessary_hours', 0)} of them a component would have been loaded",
+            f"beyond its rating had no envelope been issued; in {report['activations_unnecessary_hours']} the "
+            "grid would have coped: the price of issuing without a forecast.",
+            "The component that bound each limited hour:",
+        ]
+    else:
+        lines += [
+            "Curtailment was a last resort. The hours above are the hours in which a component",
+            "would have been loaded beyond its rating had no envelope been issued:",
+        ]
     for name, hours in sorted(report["binding_constraint_hours"].items(), key=lambda kv: -kv[1]):
         lines.append(f"   {name:<14} {hours} hours")
     worst = report["worst_uncontrolled"]

@@ -40,3 +40,13 @@ def _seals_in_a_temporary_folder(tmp_path, monkeypatch):
     from kapacitet import seals
 
     monkeypatch.setattr(seals, "folder", lambda: tmp_path / "seals")
+
+
+def _has_operation() -> bool:
+    from kapacitet.paths import processed_ro
+
+    return processed_ro("results", "operation", "index.json").exists()
+
+
+needs_operation = pytest.mark.skipif(not _has_operation(),
+                                     reason="run: python -m kapacitet compute --stage extra --only operation")

@@ -331,6 +331,30 @@ under an answer) re-hashes both, `GET /api/v1/seals` gives the chain's head, and
 longer holds. This is tamper-evident, not tamper-proof: whoever can write the folder can rewrite
 the whole chain, so the head is worth writing down somewhere else, as the printed record does.
 
+## Every rule, and what can be sent the day before
+
+```bash
+.venv/Scripts/python -m kapacitet compute --stage extra --only operation    # about two minutes
+```
+
+The published envelopes use perfect foresight: each hour's limit knows that hour, which is the
+bound an operator works towards but cannot send in advance. `engine/operation.py` computes the
+published deployment under each of the four sharing rules and on two bases, perfect foresight
+and **issued the day before** (the dominating state of `forecast.climatological`: safe without a
+forecast), and verifies every combination over the whole year with the nonlinear flow before it
+can be served. Each one gets its own envelopes, filing, audit trail and map state under
+`results/operation/<basis>/<rule>/`; the audit trail now says whether each limited hour needed
+limiting at all. On the reference year the day-ahead envelope keeps the grid inside its limits
+in every hour but curtails 17.9 % of the non-firm export instead of 2.67 %, in 1 146 hours of
+which only 148 needed it: the price of issuing without a forecast, and a reason to say so in the
+filing rather than call it a last resort.
+
+The DSO picks its sharing rule (`PUT /api/v1/settings`, or *Make this the DSO's rule* on the
+Annual report screen); the change is sealed with the rule it replaced, and the report, the audit
+trail, each house's envelope and the neighbourhood's envelope scenario follow it. The live
+request still meets the published envelopes allocated equally (its baselines are computed once
+for that rule).
+
 ## What the forecast is worth
 
 Every figure above is computed with perfect foresight: the envelope for 11:00 is allocated

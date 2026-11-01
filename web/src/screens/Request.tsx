@@ -161,14 +161,15 @@ export default function Request() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlJob]);
 
-  // the house the published year curtails most: the one whose answer is worth seeing first
+  // the house the published year curtails most under the DSO's rule: the one worth seeing first
+  const rules = useApi<any>("/settings");
   const exampleCid = useMemo(() => {
-    const pc = S?.policies?.[meta.data?.run?.policy ?? ""]?.per_customer;
+    const pc = S?.policies?.[rules.data?.settings?.allocation_policy ?? meta.data?.run?.policy ?? ""]?.per_customer;
     if (!pc?.cid?.length) return null;
     let best = 0;
     pc.curtailed_kwh.forEach((v: number, i: number) => { if (v > pc.curtailed_kwh[best]) best = i; });
     return pc.cid[best] as number;
-  }, [S, meta.data]);
+  }, [S, meta.data, rules.data]);
 
   // the answer arrives below the fold: bring it into view inside whichever box scrolls (the
   // panel on a laptop, the main column on a phone) and hand it the focus

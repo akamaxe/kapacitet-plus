@@ -72,9 +72,12 @@ app = FastAPI(
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
-from .evidence import router as evidence_router  # noqa: E402 - the routers come after the app
+from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
+from .evidence import router as evidence_router  # noqa: E402
+from .operation import router as operation_router  # noqa: E402
 
 app.include_router(evidence_router)
+app.include_router(operation_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -98,6 +101,7 @@ _WRITTEN_BY = {
     "forecast.json": "forecast",
     "grid/customers.parquet": "build",
     "protection.json": "compute --stage extra --only protection",
+    "operation/index.json": "compute --stage extra --only operation",
 }
 
 
@@ -522,28 +526,40 @@ def _state_name(name: str) -> str:
     return name
 
 
+def _state_path(name: str, suffix: str, basis: str | None, policy: str | None):
+    """A scenario's state file. The envelope scenario follows the rule and basis asked for (the DSO's
+    rule by default); the other two do not depend on them."""
+    name = _state_name(name)
+    if name == "doe":
+        return resolve(basis, policy).state(suffix)
+    return processed("ui", f"state_{name}.{suffix}")
+
+
 @app.get(f"{API}/state/{{name}}", tags=["twin"])
-def state_header(name: str) -> dict:
-    path = processed("ui", f"state_{_state_name(name)}.json")
+def state_header(name: str, basis: str | None = Query(None, pattern=BASIS_PATTERN),
+                 policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
+    path = _state_path(name, "json", basis, policy)
     if not path.exists():
         raise HTTPException(404, f"unknown state {name}")
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@lru_cache(maxsize=8)
-def _state_gz(name: str, stamp: float) -> bytes:
+@lru_cache(maxsize=12)
+def _state_gz(path: str, stamp: float) -> bytes:
     """Gzip the uint8 grid state once per file version (4 MB raw, ~1.8 MB compressed)."""
-    return gzip.compress(processed("ui", f"state_{name}.bin").read_bytes(), 6)
+    return gzip.compress(open(path, "rb").read(), 6)
 
 
 @app.get(f"{API}/state/{{name}}/bin", tags=["twin"])
-def state_bin(name: str, request: Request) -> Response:
-    path = processed("ui", f"state_{_state_name(name)}.bin")
+def state_bin(name: str, request: Request, basis: str | None = Query(None, pattern=BASIS_PATTERN),
+              policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
+    path = _state_path(name, "bin", basis, policy)
     if not path.exists():
         raise HTTPException(404, f"unknown state {name}")
-    headers = {"Cache-Control": "max-age=600"}
+    # the default follows the DSO's setting, so a cache must not outlive a change of it
+    headers = {"Cache-Control": "no-cache"}
     if "gzip" in request.headers.get("accept-encoding", ""):
-        body = _state_gz(name, path.stat().st_mtime)
+        body = _state_gz(str(path), path.stat().st_mtime)
         headers["Content-Encoding"] = "gzip"
     else:
         body = path.read_bytes()
@@ -623,12 +639,24 @@ def reinforcement() -> dict:
 
 # ---------------------------------------------------------------- annual filing and audit trail
 
+def _combo_json(combo, name: str) -> dict:
+    path = combo.result(name)
+    if not path.exists():
+        raise not_computed(name)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 @app.get(f"{API}/compliance", tags=["compliance"])
-def compliance_report() -> dict:
-    """The annual filing for conditional connection agreements, with the worst hour's index."""
+def compliance_report(basis: str | None = Query(None, pattern=BASIS_PATTERN),
+                      policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
+    """The annual filing for conditional connection agreements, with the worst hour's index, for a
+    sharing rule (the DSO's by default) and a basis (perfect foresight by default)."""
     from ..engine.summaries import hour_of_timestamp
 
-    rep = dict(result("compliance.json"))
+    combo = resolve(basis, policy)
+    rep = dict(_combo_json(combo, "compliance.json"))
+    rep.setdefault("basis", combo.basis)
+    rep["policy"] = combo.policy
     # the code of Ei's position alone, so the interface writes the words around it in its language
     # (filings computed before the field existed carry it inside the sentence)
     rep.setdefault("reporting_basis_code", str(rep.get("reporting_basis", "")).split(",")[0].strip())
@@ -639,30 +667,40 @@ def compliance_report() -> dict:
 
 
 @app.get(f"{API}/compliance.txt", tags=["compliance"])
-def compliance_text() -> Response:
-    path = processed("results", "compliance.txt")
+def compliance_text(basis: str | None = Query(None, pattern=BASIS_PATTERN),
+                    policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
+    combo = resolve(basis, policy)
+    path = combo.result("compliance.txt")
     if not path.exists():
         raise not_computed("compliance.txt")
-    year = result("compliance.json").get("year", "")
+    year = _combo_json(combo, "compliance.json").get("year", "")
     return Response(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8",
-                    headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}.txt"'})
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}-{combo.basis}-{combo.policy}.txt"'})
 
 
-@lru_cache(maxsize=2)
-def _audit_table(stamp: float) -> tuple[list[str], list[dict]]:
-    with processed("results", "audit_trail.csv").open(encoding="utf-8", newline="") as fh:
+@lru_cache(maxsize=4)
+def _audit_table(path: str, stamp: float) -> tuple[list[str], list[dict]]:
+    with open(path, encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
         return list(reader.fieldnames or []), list(reader)
 
 
-def _audit(cid: int | None) -> tuple[list[str], list[dict]]:
-    path = processed("results", "audit_trail.csv")
+def _audit(cid: int | None, basis: str | None = None, policy: str | None = None) -> tuple[list[str], list[dict]]:
+    path = resolve(basis, policy).result("audit_trail.csv")
     if not path.exists():
         raise not_computed("audit_trail.csv")
-    cols, rows = _audit_table(path.stat().st_mtime)
+    cols, rows = _audit_table(str(path), path.stat().st_mtime)
     if cid is not None:
         rows = [r for r in rows if int(r["customer_id"]) == cid]
     return cols, rows
+
+
+def _audit_value(key: str, value: str):
+    if key == "necessary":
+        return value == "True"
+    if value == "" and key == "uncontrolled_pct":
+        return None
+    return _AUDIT_TYPES.get(key, str)(value)
 
 
 _AUDIT_TYPES = {"hour": int, "customer_id": int, "desired_kw": float, "granted_kw": float,
@@ -671,17 +709,19 @@ _AUDIT_TYPES = {"hour": int, "customer_id": int, "desired_kw": float, "granted_k
 
 @app.get(f"{API}/audit", tags=["compliance"])
 def audit(cid: int | None = Query(None, ge=0), limit: int = Query(200, ge=1, le=5000),
-          offset: int = Query(0, ge=0)) -> dict:
+          offset: int = Query(0, ge=0), basis: str | None = Query(None, pattern=BASIS_PATTERN),
+          policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     """Every curtailed customer-hour of the filing year, with the part of the grid that was full."""
-    cols, rows = _audit(cid)
-    page = [{k: _AUDIT_TYPES.get(k, str)(v) for k, v in r.items()} for r in rows[offset:offset + limit]]
+    cols, rows = _audit(cid, basis, policy)
+    page = [{k: _audit_value(k, v) for k, v in r.items()} for r in rows[offset:offset + limit]]
     return {"columns": cols, "total": len(rows), "offset": offset, "limit": limit, "rows": page,
             "provenance": provenance("smhi_strang", "osm", "synthetic_grid")}
 
 
 @app.get(f"{API}/audit.csv", tags=["compliance"])
-def audit_csv(cid: int | None = Query(None, ge=0)) -> Response:
-    cols, rows = _audit(cid)
+def audit_csv(cid: int | None = Query(None, ge=0), basis: str | None = Query(None, pattern=BASIS_PATTERN),
+              policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
+    cols, rows = _audit(cid, basis, policy)
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=cols, lineterminator="\n")
     writer.writeheader()
@@ -692,13 +732,16 @@ def audit_csv(cid: int | None = Query(None, ge=0)) -> Response:
 
 
 @app.get(f"{API}/envelopes/{{cid}}", tags=["doe"])
-def envelope(cid: int) -> dict:
-    idx = result("envelopes_index.json")
-    if cid not in idx["cids"]:
-        return {"cid": cid, "nonfirm": False}
-    env = np.load(processed("ui", "envelopes_doe.npy"), mmap_mode="r")
-    row = np.asarray(env[idx["cids"].index(cid)], dtype=float)
-    return {"cid": cid, "nonfirm": True, "envelope_kw": np.round(row, 2).tolist()}
+def envelope(cid: int, basis: str | None = Query(None, pattern=BASIS_PATTERN),
+             policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
+    combo = resolve(basis, policy)
+    cids = combo.nonfirm_cids()
+    if cid not in cids:
+        return {"cid": cid, "nonfirm": False, "basis": combo.basis, "policy": combo.policy}
+    env = np.load(combo.envelopes, mmap_mode="r")
+    row = np.asarray(env[cids.index(cid)], dtype=float)
+    return {"cid": cid, "nonfirm": True, "basis": combo.basis, "policy": combo.policy,
+            "envelope_kw": np.round(row, 2).tolist()}
 
 
 # ------------------------------------------------------------------------------ live requests
@@ -745,7 +788,7 @@ def _warm() -> None:
         for name in ("static", "uncontrolled", "doe"):        # compress the map payloads once
             path = processed("ui", f"state_{name}.bin")
             if path.exists():
-                _state_gz(name, path.stat().st_mtime)
+                _state_gz(str(path), path.stat().st_mtime)
         eng = _engine()
         from ..engine import request as rq
         from ..engine.netmodel3ph import get_model3ph

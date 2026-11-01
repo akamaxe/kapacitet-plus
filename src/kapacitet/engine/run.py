@@ -260,7 +260,7 @@ def compute_all(quick: bool = False) -> None:
 
 
 EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "foresight", "overinstallation",
-                "phases", "validation", "protection")
+                "phases", "validation", "protection", "operation")
 
 
 def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] | None = None,
@@ -305,6 +305,10 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
     if want("protection"):
         from . import protection
         protection.write()
+    if want("operation"):
+        from . import operation
+        operation.build()
+        log.info("operation done (%.0f s)", time.perf_counter() - t0)
     if only is not None:
         log.info("stages %s finished in %.0f s", ",".join(sorted(only)), time.perf_counter() - t0)
         return

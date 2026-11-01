@@ -19,8 +19,6 @@ type ColorBy = "voltage" | "power";
 /** Colour scales saturate here: ±6 % voltage (limits are ±10 %) and ±8 kW net power. */
 const V_SPAN = 0.06;
 const P_SPAN = 8;
-/** The policy the published per-customer figures use (engine/run.py REF_POLICY). */
-const REF_POLICY = "maxmin";
 
 type GridState = ReturnType<typeof useGridState>;
 type Rows = { busRow: Map<number, number>; lineRow: Map<number, number> };
@@ -94,12 +92,15 @@ export default function Twin() {
   const cablesById = useMemo(() => new Map<number, any>(cables.map((c: any) => [c.properties.line, c.properties])), [cables]);
   const picked = selectedCid == null ? null : housesById.get(selectedCid) ?? null;
 
+  // the per-house figures of the DSO's sharing rule, the one the map's envelope scenario follows
+  const rules = useApi<any>("/settings");
+  const rule: string = rules.data?.settings?.allocation_policy ?? "maxmin";
   const curtailed = useMemo(() => {
-    const per = show.data?.data?.showcase?.policies?.[REF_POLICY]?.per_customer;
+    const per = show.data?.data?.showcase?.policies?.[rule]?.per_customer;
     const cut = new Map<number, number>();
     if (per) per.cid.forEach((c: number, i: number) => cut.set(c, per.curtailed_kwh[i]));
     return cut;
-  }, [show.data]);
+  }, [show.data, rule]);
 
   // bus / line → row in the state arrays
   const rows: Rows | null = useMemo(() => {
