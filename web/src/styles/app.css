@@ -226,12 +226,6 @@ p {
   flex-wrap: wrap;
 }
 
-.divider {
-  height: 1px;
-  background: var(--border);
-  border: 0;
-  margin: 0;
-}
 
 /* ---------------------------------------------------------------- headline */
 .headline {
@@ -1511,10 +1505,6 @@ main:focus { outline: none; }
   border-radius: var(--radius-md);
 }
 
-.sk-rows {
-  display: grid;
-  gap: var(--space-3);
-}
 
 .page > .page-inner > .block > .sk:first-child { margin-bottom: var(--space-2); }
 .tile .sk + .sk { margin-top: var(--space-2); }
@@ -1752,16 +1742,10 @@ th[aria-sort="descending"] .dt-sort svg { transform: rotate(180deg); }
 .tiles.cols-1 { grid-template-columns: minmax(0, 1fr); }
 .tiles.cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tiles.cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.tiles.cols-6 { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-
-@media (max-width: 1350px) {
-  .tiles.cols-6 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
 
 @media (max-width: 900px) {
   .tiles.cols-3,
-  .tiles.cols-4,
-  .tiles.cols-6 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .tiles.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* ---------------------------------------------------------------- the screen bar

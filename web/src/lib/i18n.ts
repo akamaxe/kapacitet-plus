@@ -4,7 +4,6 @@ type Dict = Record<string, string>;
 
 const en: Dict = {
   "pal.title": "Search",
-  "pal.search": "Search",
   "pal.placeholder": "An address, a screen, an action…",
   "pal.screens": "Screens",
   "pal.houses": "Houses",
@@ -103,8 +102,6 @@ const en: Dict = {
   "ui.reference": "Reference",
   "ui.loading": "Loading results…",
   "ui.missing": "We could not load the results. Check that the local service is available and the study has been prepared, then try again.",
-  "ui.within": "Within limits",
-  "ui.exceeded": "Limit exceeded",
 
   // national
   "nat.title": "Power is produced in the north and used in the south",
@@ -123,10 +120,8 @@ const en: Dict = {
   "type.hydro": "Hydro",
   "type.nuclear": "Nuclear",
   "type.wind": "Wind",
-  "type.windOffshore": "Offshore wind",
   "type.solar": "Solar",
   "type.thermal": "Thermal",
-  "type.energyStorage": "Storage",
   "type.other": "Other",
 
   // twin
@@ -327,7 +322,6 @@ const en: Dict = {
   "scn.unmet": "EV energy delivered late with smart charging",
   "scn.firm": "Hours that fail even without EVs (heat pumps)",
   "scn.staticMethod": "Static study",
-  "scn.staticUpTo": "The static study accepts up to {pv} of houses with solar when {ev} have an EV.",
   "scn.doeMethod": "Dynamic envelopes",
   "scn.ok": "accepted",
   "scn.nok": "needs reinforcement",
@@ -833,7 +827,6 @@ const en: Dict = {
 
 const es: Dict = {
   "pal.title": "Buscar",
-  "pal.search": "Buscar",
   "pal.placeholder": "Una dirección, una pantalla, una acción…",
   "pal.screens": "Pantallas",
   "pal.houses": "Viviendas",
@@ -932,8 +925,6 @@ const es: Dict = {
   "ui.reference": "Referencia",
   "ui.loading": "Cargando resultados…",
   "ui.missing": "No se han podido cargar los resultados. Comprueba que el servicio local esté disponible y el estudio esté preparado, e inténtalo de nuevo.",
-  "ui.within": "Dentro de los límites",
-  "ui.exceeded": "Límite superado",
 
   "nat.title": "La electricidad se produce en el norte y se consume en el sur",
   "nat.sub": "Producción y consumo por zona de oferta en {year}, con el precio medio del mercado diario.",
@@ -951,10 +942,8 @@ const es: Dict = {
   "type.hydro": "Hidráulica",
   "type.nuclear": "Nuclear",
   "type.wind": "Eólica",
-  "type.windOffshore": "Eólica marina",
   "type.solar": "Solar",
   "type.thermal": "Térmica",
-  "type.energyStorage": "Almacenamiento",
   "type.other": "Otras",
 
   "twin.title": "Una subestación, {n} viviendas",
@@ -1151,7 +1140,6 @@ const es: Dict = {
   "scn.unmet": "Energía de VE entregada tarde con carga inteligente",
   "scn.firm": "Horas que fallan incluso sin VE (bombas de calor)",
   "scn.staticMethod": "Estudio estático",
-  "scn.staticUpTo": "El estudio estático acepta hasta un {pv} de viviendas con solar cuando un {ev} tiene VE.",
   "scn.doeMethod": "Envolventes dinámicas",
   "scn.ok": "acepta",
   "scn.nok": "requiere refuerzo",

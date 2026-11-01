@@ -168,11 +168,6 @@ export function Legend({ items }: { items: { color: string; label: string; line?
   );
 }
 
-export function Loading() {
-  const t = useT();
-  return <div className="empty" role="status"><span className="caption-muted">{t("ui.loading")}</span></div>;
-}
-
 /** A shell command to copy, said as it must be typed. */
 export function CommandLine({ command }: { command: string }) {
   const t = useT();

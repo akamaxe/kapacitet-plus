@@ -169,11 +169,6 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = f
   };
 }
 
-/** Horizontal gridlines, for the charts where a value has to be read off the axis. */
-export function gridLines(tk: Tokens) {
-  return { splitLine: { show: true, lineStyle: { color: tk.border, width: 1, type: "solid" as const } } };
-}
-
 /** Hairline axis, no ticks, tick labels at caption size in the text face. */
 export function axisStyle(tk: Tokens) {
   return {
