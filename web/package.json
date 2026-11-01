@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
-    "typecheck": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "preview": "vite preview",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
