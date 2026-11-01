@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MLMap, StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -8,6 +8,7 @@ import workerUrl from "maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url";
 
 maplibregl.setWorkerUrl(workerUrl);
 import { isDark, useStore } from "../lib/store";
+import { useT } from "../lib/i18n";
 import { token } from "../lib/colors";
 
 const BASEMAP = {
@@ -54,6 +55,9 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
   onReadyRef.current = onReady;
   const theme = useStore((s) => s.theme);
   const offlineRef = useRef(!basemap);
+  // the basemap was wanted and could not be fetched: the modelled layers still draw, on a plain ground
+  const [offline, setOffline] = useState(false);
+  const t = useT();
   const themeRef = useRef(theme);
 
   useEffect(() => {
@@ -98,7 +102,6 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
     if (attrib) attribObserver.observe(attrib, { attributes: true, attributeFilter: ["class"] });
     if (interactive) map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "top-left");
     mapRef.current = map;
-    (window as any).__kapMap = map; // handy when inspecting the demo in the browser console
     const onStyle = () => {
       styleReady = true;
       try {
@@ -121,6 +124,7 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
     const fallback = () => {
       if (offlineRef.current || styleReady) return;
       offlineRef.current = true;
+      setOffline(true);
       map.setStyle(offlineStyle());
     };
     map.on("error", (e: any) => {
@@ -148,6 +152,7 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
     <div className="map" role="application" aria-label={ariaLabel}>
       <div ref={ref} style={{ position: "absolute", inset: 0 }} />
       {children}
+      {offline && basemap && <p className="map-notice" role="status">{t("map.offline")}</p>}
     </div>
   );
 }

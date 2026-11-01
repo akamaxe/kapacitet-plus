@@ -173,6 +173,36 @@ export function Loading() {
   return <div className="empty" role="status"><span className="caption-muted">{t("ui.loading")}</span></div>;
 }
 
+/** A shell command to copy, said as it must be typed. */
+export function CommandLine({ command }: { command: string }) {
+  const t = useT();
+  return (
+    <p className="command-line">
+      <code>{command}</code>
+      <button className="icon-btn" aria-label={t("ui.copyCommand")} title={t("ui.copyCommand")}
+        onClick={() => void navigator.clipboard?.writeText(command).catch(() => undefined)}>
+        <Icon name="copy" size={15} />
+      </button>
+    </p>
+  );
+}
+
+/**
+ * Where a section would be, when its data could not be had: the section stays, and says why
+ * (a result not computed yet names the command that makes it), instead of disappearing.
+ */
+export function SectionMissing({ title, q }: { title: string; q: { isError?: boolean; error?: unknown } }) {
+  const t = useT();
+  if (!q.isError) return null;
+  const e = q.error instanceof ApiError ? q.error : null;
+  return (
+    <div className="section-missing" role="note">
+      <p className="caption"><strong>{title}</strong> · {e?.info?.code === "not_computed" ? t("ui.notComputedHow", { file: e.info.file ?? "" }) : e?.status === 0 ? t("ui.offline") : t("ui.missing")}</p>
+      {e?.info?.command && <CommandLine command={e.info.command} />}
+    </div>
+  );
+}
+
 /**
  * What failed, which source, and what to do about it (§7). Pass the queries the screen
  * depends on and the first one that broke names itself; with none, it still says the
@@ -183,10 +213,12 @@ export function Missing({ of }: { of?: { isError?: boolean; error?: unknown }[] 
   const client = useQueryClient();
   const failed = of?.map((q) => q.error).find((e): e is ApiError => e instanceof ApiError);
   const gone = failed?.status === 0;
+  const notComputed = failed?.info?.code === "not_computed";
   return (
     <div className="empty" role="alert">
-      <h2>{t("ui.unavailable")}</h2>
-      <p className="caption">{gone ? t("ui.offline") : t("ui.missing")}</p>
+      <h2>{notComputed ? t("ui.notComputed") : t("ui.unavailable")}</h2>
+      <p className="caption">{gone ? t("ui.offline") : notComputed ? t("ui.notComputedHow", { file: failed!.info!.file ?? "" }) : t("ui.missing")}</p>
+      {notComputed && failed?.info?.command && <CommandLine command={failed.info.command} />}
       <button className="btn ghost" onClick={() => void client.refetchQueries({ type: "active" })}>
         <Icon name="reset" size={16} />{t("ui.retry")}
       </button>

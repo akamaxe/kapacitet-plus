@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import * as maplibregl from "maplibre-gl";
 import type { Map as MLMap } from "maplibre-gl";
 import { MapView, fitTo } from "../components/MapView";
@@ -65,9 +65,24 @@ export default function National() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zones.data, N, theme]);
 
+  // the zone labels are HTML markers, so their text is set again whenever the language changes
+  const labels = useRef<{ zone: string; b: HTMLDivElement; s: HTMLElement }[]>([]);
+  const labelText = useCallback((z: string) => {
+    const bal = N.zones[z].balance_twh;
+    return [`${z}  ${bal > 0 ? "+" : bal < 0 ? "−" : ""}${f(Math.abs(bal), 1)} TWh`, `${f(N.zones[z].price_mean_sek_kwh, 2)} kr/kWh`];
+  }, [N, f]);
+  useEffect(() => {
+    labels.current.forEach(({ zone, b, s }) => {
+      const [top, bottom] = labelText(zone);
+      b.textContent = top;
+      s.textContent = bottom;
+    });
+  }, [labelText]);
+
   const onReady = useCallback((map: MLMap) => {
     fitTo(map, SWEDEN_BBOX, 28);
     if (!zones.data || !N) return;
+    labels.current = [];
     // zone labels as HTML markers (no font server needed)
     for (const ft of zones.data.features) {
       const z = ft.properties.zone;
@@ -76,14 +91,13 @@ export default function National() {
       const el = document.createElement("div");
       el.className = "zone-label";
       const b = document.createElement("div");
-      const bal = N.zones[z].balance_twh;
-      b.textContent = `${z}  ${bal > 0 ? "+" : bal < 0 ? "−" : ""}${f(Math.abs(bal), 1)} TWh`;
       const s = document.createElement("small");
-      s.textContent = `${f(N.zones[z].price_mean_sek_kwh, 2)} kr/kWh`;
+      [b.textContent, s.textContent] = labelText(z);
+      labels.current.push({ zone: z, b, s });
       el.append(b, s);
       new maplibregl.Marker({ element: el }).setLngLat([lon, lat]).addTo(map);
     }
-  }, [zones.data, N, f]);
+  }, [zones.data, N, labelText]);
 
   if (nat.isLoading || zones.isLoading) return <SplitSkeleton wide />;
   if (!N || !zones.data) return <Missing of={[nat, zones]} />;

@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
-import { ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
+import { SectionMissing, ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
 import { Icon } from "../components/Icon";
 import { NetworkMap } from "../components/NetworkMap";
 import { Term } from "../components/Term";
@@ -225,6 +225,7 @@ export default function Compare() {
               </table>
             }
           />
+          <SectionMissing title={t("cmp.risk")} q={risk} />
           {R && (
             <section className="block stack">
               <div className="block-head"><h3>{t("cmp.risk")}</h3></div>
@@ -241,6 +242,8 @@ export default function Compare() {
         </section>
 
         {/* ---------------------------------------------------------------- value */}
+        {!OV && <SectionMissing title={t("cmp.value")} q={over} />}
+        {!RF && <SectionMissing title={t("cmp.reinf")} q={reinf} />}
         {OV && (
           <section className="region" id="value">
             <div className="region-head">
@@ -342,6 +345,7 @@ export default function Compare() {
                 </table>
               }
             />
+            <SectionMissing title={t("cmp.phases")} q={phases} />
             {PH && (
               <section className="block stack">
                 <div className="block-head"><h3>{t("cmp.phases")}</h3></div>

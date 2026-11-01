@@ -4,7 +4,7 @@ import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { DataTable, type Col } from "../components/DataTable";
-import { Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
+import { SectionMissing, Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { round, useFmt } from "../lib/format";
@@ -204,6 +204,7 @@ export default function Method() {
         </section>
 
         {/* ---------------------------------------------------------------- validation */}
+        {!V && <SectionMissing title={t("met.validation")} q={val} />}
         {!V && val.isLoading && (
           <section className="region" id="validation" aria-busy="true">
             <div className="region-head"><div className="region-title"><h2>{t("met.validation")}</h2></div></div>
@@ -270,6 +271,7 @@ export default function Method() {
         )}
 
         {/* ---------------------------------------------------------------- the cost of foresight */}
+        {!F && <SectionMissing title={t("met.fc")} q={host} />}
         {!F && host.isLoading && (
           <section className="region" id="forecast" aria-busy="true">
             <div className="region-head"><div className="region-title"><h2>{t("met.fc")}</h2></div></div>
@@ -298,6 +300,7 @@ export default function Method() {
                 note={t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
               />
             </div>
+            <SectionMissing title={t("met.fc.schemes")} q={fc} />
             {FC && (
               <section className="block stack">
                 <div className="block-head"><h3>{t("met.fc.schemes")}</h3></div>

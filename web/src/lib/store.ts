@@ -35,6 +35,8 @@ export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
 
 export interface UrlView {
   screen: Screen;
+  /** a screen name in the link that does not exist (the view falls back to the opening screen) */
+  notFound?: string;
   hour?: number;
   scenario?: Scenario;
   cid?: number;
@@ -47,9 +49,10 @@ export const JOB_ID = /^[0-9a-f]{12}$/;
 function parseHash(): UrlView {
   const raw = window.location.hash.replace(/^#\/?/, "");
   const [path, search] = raw.split("?");
-  const screen = (SCREENS as string[]).includes(path) ? (path as Screen) : "compare";
+  const known = (SCREENS as string[]).includes(path);
+  const screen = known ? (path as Screen) : "compare";
   const q = new URLSearchParams(search ?? "");
-  const out: UrlView = { screen };
+  const out: UrlView = { screen, ...(path && !known ? { notFound: path } : {}) };
   // Number(null) is 0, so every one of these needs the presence check first: without it
   // a link with no hour reads as hour 0 and resets the view on every tab click.
   const num = (key: string) => {
@@ -92,6 +95,12 @@ function writeHash(push: boolean) {
   history[push ? "pushState" : "replaceState"](null, "", hash);
 }
 
+/** Write what is on screen into the address bar without a history entry (a link that fell back). */
+export function syncUrl() {
+  written = "";
+  writeHash(false);
+}
+
 let hourTimer: number | undefined;
 
 function scheduleHashWrite() {
@@ -113,6 +122,14 @@ interface State {
   selectedCid: number | null;
   /** the saved assessment shown on the request screen, if any */
   job: string | null;
+  /** the tour's step, or null when it is closed; `tourInstant` when opened from the keyboard */
+  tour: number | null;
+  tourInstant: boolean;
+  /** a first visit is offered the tour once (Tour.tsx decides whether it was seen) */
+  tourOffered: boolean;
+  /** a link named a screen that does not exist; App says so once */
+  notFound: string | null;
+  setTour: (step: number | null, instant?: boolean) => void;
   setScreen: (s: Screen) => void;
   setLang: (l: "en" | "es") => void;
   setTheme: (t: Theme) => void;
@@ -142,6 +159,11 @@ export const useStore = create<State>((set) => ({
   playing: false,
   selectedCid: initial.cid ?? null,
   job: initial.job ?? null,
+  tour: null,
+  tourInstant: false,
+  tourOffered: false,
+  notFound: initial.notFound ?? null,
+  setTour: (tour, instant = false) => set((s) => ({ tour, tourInstant: tour === null ? false : s.tour === null ? instant : s.tourInstant, tourOffered: false })),
   setScreen: (screen) => {
     set({ screen });
     writeHash(true); // a screen is a place, so it gets a history entry
@@ -206,6 +228,7 @@ window.addEventListener("hashchange", () => {
     // a link without a parameter means "this screen", not "forget what I had selected"
     ...(v.cid !== undefined ? { selectedCid: v.cid } : {}),
     ...(v.job !== undefined ? { job: v.job } : {}),
+    ...(v.notFound ? { notFound: v.notFound } : {}),
     playing: false,
   });
   // A tab link carries only the screen, but the view still has an hour and a selection.

@@ -122,6 +122,17 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
         },
       },
       {
+        id: "act:tour",
+        group: t("pal.actions"),
+        label: t("tour.start"),
+        icon: "next",
+        run: () => {
+          onClose();
+          // from the keyboard, so the card appears at once rather than rising in
+          useStore.getState().setTour(0, true);
+        },
+      },
+      {
         id: "act:link",
         group: t("pal.actions"),
         label: t("pal.copyLink"),

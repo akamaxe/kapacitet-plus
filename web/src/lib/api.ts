@@ -8,6 +8,9 @@ export const API = "/api/v1";
  * screen could say which endpoint had let it down.
  */
 export class ApiError extends Error {
+  /** what the server said, when it said it in the structured form (`not_computed`) */
+  readonly info: { code?: string; file?: string; command?: string; message?: string } | null;
+
   constructor(
     readonly path: string,
     readonly status: number,
@@ -15,6 +18,14 @@ export class ApiError extends Error {
   ) {
     super(`${status} ${API}${path}${detail ? ` — ${detail}` : ""}`);
     this.name = "ApiError";
+    let info = null;
+    try {
+      const body = JSON.parse(detail);
+      info = typeof body?.detail === "object" ? body.detail : typeof body?.detail === "string" ? { message: body.detail } : null;
+    } catch {
+      /* not JSON: the plain text stays in `detail` */
+    }
+    this.info = info;
   }
 
   /** `GET /api/v1/hosting` — what the user is shown, and what a bug report needs. */
@@ -31,7 +42,7 @@ export async function getJSON<T = any>(path: string): Promise<T> {
     // the server is down, or the network is: status 0 says "never answered"
     throw new ApiError(path, 0, (e as Error)?.message ?? "");
   }
-  if (!r.ok) throw new ApiError(path, r.status, (await r.text()).slice(0, 160));
+  if (!r.ok) throw new ApiError(path, r.status, (await r.text()).slice(0, 600));
   return r.json();
 }
 

@@ -7,10 +7,12 @@ import { modalOpen, useDismissable } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
-import { Toasts } from "./components/Toast";
+import { Toasts, toast } from "./components/Toast";
+import { Setup } from "./components/Setup";
+import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { NOTE_COUNT } from "./lib/notes";
 import { useApi } from "./lib/api";
-import { SCREENS, scrollPositions, useStore, type Screen } from "./lib/store";
+import { SCREENS, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
 
 const National = lazy(() => import("./screens/National"));
 const Twin = lazy(() => import("./screens/Twin"));
@@ -72,6 +74,39 @@ function Notes() {
 export default function App() {
   const t = useT();
   const screen = useStore((s) => s.screen);
+  // a fresh clone has no results: say how to make them instead of showing empty screens
+  const health = useApi<any>("/health");
+  const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
+  const net = useApi<any>(setupNeeded ? null : "/network");
+  const notFound = useStore((s) => s.notFound);
+  const selectedCid = useStore((s) => s.selectedCid);
+
+  // a link to a screen that does not exist opens the first one, and says so once
+  useEffect(() => {
+    if (!notFound) return;
+    toast.info(t("ui.noScreen", { name: notFound }));
+    useStore.setState({ notFound: null });
+    syncUrl();
+  }, [notFound, t]);
+
+  // a link to a house number this neighbourhood does not have: say so and select nothing
+  useEffect(() => {
+    if (selectedCid === null || !net.data) return;
+    const known = net.data.features.some((ft: any) => ft.properties?.layer === "house" && ft.properties.cid === selectedCid);
+    if (!known) {
+      toast.info(t("ui.noHouse", { id: selectedCid }));
+      useStore.getState().select(null);
+    }
+  }, [selectedCid, net.data, t]);
+
+  // a first visit is offered the tour after a moment; it never starts by itself
+  useEffect(() => {
+    if (tourSeen()) return;
+    const id = window.setTimeout(() => {
+      if (!modalOpen() && useStore.getState().tour === null) useStore.setState({ tourOffered: true });
+    }, 1500);
+    return () => window.clearTimeout(id);
+  }, []);
   const [palette, setPalette] = useState(false);
   const [keys, setKeys] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -166,6 +201,7 @@ export default function App() {
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
       <TopBar onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} />
       <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
+        {setupNeeded ? <Setup health={health.data} /> : (
         <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
           <Suspense fallback={<ScreenSkeleton screen={screen} />}>
             {screen === "national" && <National />}
@@ -177,9 +213,12 @@ export default function App() {
             {screen === "method" && <Method />}
           </Suspense>
         </ErrorBoundary>
+        )}
       </main>
-      <FootLine onKeys={() => setKeys(true)} />
+      <FootLine onKeys={() => setKeys(true)} onTour={() => useStore.getState().setTour(0)} />
       <Notes />
+      <Tour />
+      <TourOffer />
       <Palette open={palette} onClose={() => setPalette(false)} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
       <MenuSheet open={menu} onClose={() => setMenu(false)} />
