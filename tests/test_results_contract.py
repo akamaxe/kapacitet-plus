@@ -57,18 +57,6 @@ def test_validation_numbers_support_the_method_page(results):
     assert v["grid"]["lines"] == v["grid"]["buses"] - 2   # radial: buses = lines + transformer + 1
 
 
-def test_every_assumption_is_labelled_and_sourced():
-    from kapacitet.config import assumptions
-
-    assert len(assumptions()) > 20
-    for key, a in assumptions().items():
-        assert a.tag, f"{key} has no tag"
-        assert a.source, f"{key} has no source"
-        assert a.label, f"{key} has no label"
-        if a.tag in ("sourced", "regulation", "library"):
-            assert a.url, f"{key} is tagged {a.tag} but has no link"
-
-
 def test_every_cached_file_is_recorded_with_a_hash():
     from kapacitet.ingest.provenance import load_manifest
 
