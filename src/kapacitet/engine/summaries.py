@@ -108,3 +108,45 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
                                  "with_station": [per_year(t_lo + station), per_year(t_hi + station)]},
         "order": tornado.get("order"), "order_over": over.get("order"),
     }
+
+
+def annuity(rate: float, years: int) -> float:
+    """Present value of 1 a year for `years` years at `rate`, paid at the end of each year."""
+    return (1 - (1 + rate) ** -years) / rate if rate else float(years)
+
+
+def deferral_value(cost: float, rate: float, years: int) -> float:
+    """Present value of paying `cost` `years` years later instead of now."""
+    return cost * (1 - (1 + rate) ** -years)
+
+
+def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20) -> dict:
+    """The DSO's case for deferring the reinforcement with envelopes, from `reinforcement()`.
+
+    Deferring a cost C by T years is worth C(1 - (1+r)^-T) today; the envelopes cost the houses
+    their curtailed energy, k a year, worth k a(r, T) over the same years. The net,
+    (1 - (1+r)^-T)(C - k/r), is positive for every horizon when C exceeds k/r, the value of the
+    curtailment forever. r is Ei's real rate and C its norm values at their fixed price level, so the
+    two are on the same real basis; k is the mean spot value of the curtailed energy over the price
+    years, in the money of each year (not deflated).
+    """
+    r = rate_pct / 100.0
+    k = reinf["envelopes"]["curtailed_sek_per_year"]
+    lo, hi = reinf["transformer_sek"]
+    slo, shi = reinf["with_station_sek"]
+
+    def point(cost: float, t: int) -> dict:
+        d, c = deferral_value(cost, r, t), k * annuity(r, t)
+        return {"years": t, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
+
+    years = range(0, max_years + 1)
+    return {
+        "rate_pct": rate_pct, "rate_basis": "real", "price_level_year": reinf["price_level_year"],
+        "horizon_years": horizon, "price_years": reinf["envelopes"]["price_years"],
+        "curtailed_sek_per_year": k, "delivered_sek_per_year": reinf["envelopes"]["delivered_sek_per_year"],
+        "costs": {"transformer": [lo, hi], "with_station": [slo, shi]},
+        "perpetual_curtailment_sek": k / r if r else None,
+        "curves": {"low": [point(lo, t) for t in years], "high": [point(hi, t) for t in years]},
+        "at_horizon": {"transformer": [point(lo, horizon), point(hi, horizon)],
+                       "with_station": [point(slo, horizon), point(shi, horizon)]},
+    }

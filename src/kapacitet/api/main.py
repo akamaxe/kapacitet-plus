@@ -641,6 +641,19 @@ def reinforcement() -> dict:
                      "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
 
 
+@app.get(f"{API}/business", tags=["hosting"])
+def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
+    """The DSO's case for deferring the reinforcement with envelopes: what deferring is worth at Ei's
+    real rate against what the curtailment costs the houses, for every horizon up to 20 years."""
+    from .. import dso
+    from ..config import A
+    from ..engine.summaries import business as case
+
+    horizon = years or dso.load().deferral_years
+    reinf = reinforcement()["data"]
+    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon), "elprisetjustnu", "synthetic_grid")
+
+
 # ---------------------------------------------------------------- annual filing and audit trail
 
 def _combo_json(combo, name: str) -> dict:
@@ -1013,6 +1026,27 @@ def request_result(job_id: str, download: bool = Query(False)) -> JSONResponse:
     if entry:
         body["seal"] = {k: entry[k] for k in ("digest", "at", "seq", "fingerprint")}
     return JSONResponse(body)
+
+
+@app.get(f"{API}/requests/{{job_id}}/owner-case", tags=["requests"])
+def request_owner_case(job_id: str, years: int | None = Query(None, ge=1, le=40)) -> dict:
+    """Connect now with the envelope, or wait for the reinforcement: what the house's solar is worth
+    during the wait at retail prices, from the saved answer (economics.owner_case)."""
+    from .. import dso
+    from ..config import A
+    from ..engine.economics import owner_case
+
+    try:
+        rec = _finished(job_id)
+    except HTTPException as exc:
+        if exc.status_code == 202:
+            raise HTTPException(409, "still running") from exc
+        raise
+    horizon = years or dso.load().deferral_years
+    out = owner_case(rec["result"], horizon, A("household_discount_rate_pct"), datetime.now(timezone.utc).year)
+    if out is None:
+        raise HTTPException(404, "this assessment has no solar to value")
+    return {"id": job_id, **out}
 
 
 # hourly columns of an assessment's CSV, in the order a spreadsheet reader expects them

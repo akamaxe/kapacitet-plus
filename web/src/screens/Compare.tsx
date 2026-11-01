@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Deferral } from "../components/Business";
 import { Chart, axisStyle } from "../components/Chart";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
@@ -347,6 +348,7 @@ export default function Compare() {
               })}</p>
             )}
             <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
+            <Deferral />
           </section>
         )}
 

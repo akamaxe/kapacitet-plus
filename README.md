@@ -413,6 +413,27 @@ events: the median and P90 time to a decision, the share the rule decided, and t
 firm and with an envelope. The **Operation** screen shows the inbox; an application waiting for a
 person is decided there with the queue's usual decision, or sent back to be evaluated again.
 
+## The business case
+
+Two sides, both from published results and sourced prices (`config/assumptions.toml`, shown on
+the Method screen):
+
+- **The DSO's** (`GET /api/v1/business`, under the reinforcement comparison): deferring a cost C
+  by T years is worth C(1 − (1+r)^−T) today; the envelopes cost the houses their curtailed energy,
+  k a year, worth k·a(r, T) over the same years. With Ei's real rate for 2024–2027 (4.53 %) and
+  its norm values at 2022 prices, deferring the transformer swap by one regulatory period (four
+  years, the DSO's `deferral_years`) is worth 15–24 kSEK after the curtailment, 2 878 SEK a year
+  at the spot prices of the price years (not deflated). It pays at any horizon while the swap
+  costs more than k/r, about 64 kSEK, and the swap's own norm cost is 156–209 kSEK.
+- **The house's** (`GET /api/v1/requests/{id}/owner-case`, under an answer with solar): connect now
+  with the envelope, or wait for the reinforcement. Solar used at home saves the spot price plus
+  the energy tax (36.0 öre/kWh from 2026), Ellevio's transfer fee (20.8 öre/kWh from June 2026)
+  and VAT; exported solar earns the spot price and Ellevio's compensation for its net benefit
+  (4.40 or 3.30 öre/kWh, weighted by when the house exports). The tax reduction for exported solar
+  ended on 1 January 2026 and is not counted. The sum over the wait is discounted at a household
+  rate that is a team assumption (3 %), with the undiscounted sum beside it; the solar system's own
+  cost is the same either way and is left out.
+
 ## What the forecast is worth
 
 Every figure above is computed with perfect foresight: the envelope for 11:00 is allocated

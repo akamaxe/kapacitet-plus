@@ -1085,3 +1085,135 @@ source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1: 
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = ""
 note_es = ""
+
+# ---------------------------------------------------------------- the business case (summaries.business, economics.retail)
+[ei_wacc_real_pct]
+value = 4.53
+unit = "% per year, real"
+tag = "regulation"
+label = "Ei's allowed return on grid assets (real kalkylränta), 2024–2027"
+label_es = "Rentabilidad permitida por Ei sobre los activos de red (kalkylränta real), 2024–2027"
+label_sv = "Ei:s tillåtna avkastning på nätets kapital (real kalkylränta), 2024–2027"
+source = "Energimarknadsinspektionen, decision on the revenue caps 2024–2027 (3 April 2024): 'den tillåtna avkastningen (reala kalkylräntan) har fastställts till 4,53 procent'"
+url = "https://ei.se/om-oss/nyheter/2024/2024-04-03-nu-har-ei-beslutat-om-elnatsforetagens-intaktsramar-for-perioden-2024-2027"
+note = "Real, so it discounts costs at a fixed price level, such as Ei's norm values at 2022 prices."
+note_es = "Real, así que descuenta costes a un nivel de precios fijo, como los valores normativos de Ei a precios de 2022."
+note_sv = "Real, så den diskonterar kostnader i fast prisnivå, som Ei:s normvärden i 2022 års priser."
+
+[regulatory_period_years]
+value = 4
+unit = "years"
+tag = "regulation"
+label = "Length of a regulatory period, the DSO's default deferral horizon"
+label_es = "Duración de un periodo regulatorio, el horizonte de aplazamiento por defecto de la distribuidora"
+label_sv = "Längden på en tillsynsperiod, nätbolagets förvalda horisont för uppskjutning"
+source = "Energimarknadsinspektionen: revenue caps are decided for the period 2024–2027, four years"
+url = "https://ei.se/om-oss/nyheter/2024/2024-04-03-nu-har-ei-beslutat-om-elnatsforetagens-intaktsramar-for-perioden-2024-2027"
+note = ""
+
+[energy_tax_sek_kwh]
+value = 0.360
+unit = "SEK/kWh, excl. VAT"
+tag = "regulation"
+label = "Energy tax on electricity from 1 January 2026"
+label_es = "Impuesto sobre la electricidad desde el 1 de enero de 2026"
+label_sv = "Energiskatt på el från den 1 januari 2026"
+source = "Energimarknadsbyrån, Sänkt energiskatt på el 2026: 36.0 öre per kWh excluding VAT (45.0 including) for most consumers, after the Riksdag's decision in November 2025"
+url = "https://www.energimarknadsbyran.se/nyheter/nyhetsarkiv/2025/sankt-energiskatt-pa-el-2026/"
+note = "A house in the north pays less; Smedslätten is in Stockholm and pays the full rate."
+note_es = "Una casa del norte paga menos; Smedslätten está en Estocolmo y paga la tarifa completa."
+note_sv = "Ett hus i norra Sverige betalar mindre; Smedslätten ligger i Stockholm och betalar full skatt."
+
+[vat_rate]
+value = 0.25
+unit = "share"
+tag = "regulation"
+label = "VAT on electricity and grid fees"
+label_es = "IVA sobre la electricidad y las tarifas de red"
+label_sv = "Moms på el och nätavgifter"
+source = "Ellevio, Säkringsabonnemang from 1 June 2026: 'I priser inklusive moms ingår moms med 25 %'"
+url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/sakring/sakringsabonnemang-16-63a_260601.pdf"
+note = ""
+
+[grid_transfer_fee_sek_kwh]
+value = 0.208
+unit = "SEK/kWh, excl. VAT"
+tag = "sourced"
+label = "Grid transfer fee for a house, the part solar used at home avoids"
+label_es = "Tarifa de transporte de red de una casa, la parte que evita la solar que se usa en casa"
+label_sv = "Överföringsavgift för ett hus, den del som egenanvänd solel undviker"
+source = "Ellevio, Säkringsabonnemang 16–63 A from 1 June 2026: överföringsavgift 20.8 öre/kWh excluding VAT (26.0 including); Ellevio is the DSO of the City of Stockholm, Bromma included"
+url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/sakring/sakringsabonnemang-16-63a_260601.pdf"
+note = "The fixed monthly fee depends on the main fuse, not on the energy, so solar does not change it."
+note_es = "La cuota fija mensual depende del fusible principal, no de la energía, así que la solar no la cambia."
+note_sv = "Den fasta månadsavgiften beror på huvudsäkringen, inte på energin, så solel ändrar den inte."
+
+[feed_in_peak_sek_kwh]
+value = 0.044
+unit = "SEK/kWh"
+tag = "sourced"
+label = "DSO's compensation for exported solar (nätnytta), peak-load time"
+label_es = "Compensación de la distribuidora por la solar exportada (nätnytta), horas punta"
+label_sv = "Nätbolagets ersättning för inmatad solel (nätnytta), höglasttid"
+source = "Ellevio, Mikroproduktion 16–25 A from 1 January 2026, price area Stockholm: 4.40 öre/kWh in peak-load time (Monday to Friday 06–22, 1 November to 31 March), excluding VAT, paid without VAT to private persons"
+url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/produktion/prislista_mikro_16-25a_260101.pdf"
+note = "Public holidays in that window count as off-peak in Ellevio's list; the model treats them as peak (a few hours of winter export)."
+note_es = "Los festivos de esa franja cuentan como horas valle en la lista de Ellevio; el modelo los trata como punta (unas pocas horas de exportación de invierno)."
+note_sv = "Helgdagar i det fönstret räknas som låglasttid i Ellevios lista; modellen räknar dem som höglasttid (några timmar vinterexport)."
+
+[feed_in_offpeak_sek_kwh]
+value = 0.033
+unit = "SEK/kWh"
+tag = "sourced"
+label = "DSO's compensation for exported solar (nätnytta), other time"
+label_es = "Compensación de la distribuidora por la solar exportada (nätnytta), resto del tiempo"
+label_sv = "Nätbolagets ersättning för inmatad solel (nätnytta), låglasttid"
+source = "Ellevio, Mikroproduktion 16–25 A from 1 January 2026, price area Stockholm: 3.30 öre/kWh outside peak-load time, excluding VAT"
+url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/produktion/prislista_mikro_16-25a_260101.pdf"
+note = ""
+
+[micro_tax_reduction_sek_kwh]
+value = 0.60
+unit = "SEK/kWh"
+tag = "regulation"
+label = "Tax reduction for exported solar (until 31 December 2025)"
+label_es = "Reducción fiscal por la solar exportada (hasta el 31 de diciembre de 2025)"
+label_sv = "Skattereduktion för inmatad solel (till och med den 31 december 2025)"
+source = "Skatteverket, Mikroproduktion av förnybar el: 60 öre per kWh fed in, at most 30 000 kWh a year; 'Från och med 1 januari 2026 får du ingen skattereduktion för den el du matar in på elnätet'"
+url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
+note = "Abolished from 1 January 2026, so a connection made now never receives it."
+note_es = "Suprimida desde el 1 de enero de 2026, así que una conexión hecha ahora nunca la recibe."
+note_sv = "Slopad från den 1 januari 2026, så en anslutning som görs nu får den aldrig."
+
+[micro_tax_reduction_cap_kwh]
+value = 30000
+unit = "kWh per year"
+tag = "regulation"
+label = "Most exported energy a year the tax reduction counted"
+label_es = "Energía exportada máxima al año que contaba la reducción fiscal"
+label_sv = "Mest inmatad energi per år som skattereduktionen räknade"
+source = "Skatteverket, Mikroproduktion av förnybar el: 'Underlaget kan heller aldrig bli större än 30 000 kilowattimmar'"
+url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
+note = ""
+
+[micro_tax_reduction_last_year]
+value = 2025
+unit = "year"
+tag = "regulation"
+label = "Last year the tax reduction for exported solar applied"
+label_es = "Último año en que se aplicó la reducción fiscal por la solar exportada"
+label_sv = "Sista året skattereduktionen för inmatad solel gällde"
+source = "Skatteverket, Mikroproduktion av förnybar el: none from 1 January 2026"
+url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
+note = ""
+
+[household_discount_rate_pct]
+value = 3.0
+unit = "% per year, real"
+tag = "team-assumption"
+label = "A household's discount rate for the value of its solar over the years"
+label_es = "Tasa de descuento de un hogar para el valor de su solar a lo largo de los años"
+label_sv = "Ett hushålls diskonteringsränta för värdet av dess solel över åren"
+source = "Team assumption, not a published figure; the owner's case shows the undiscounted sum beside it"
+url = ""
+note = ""

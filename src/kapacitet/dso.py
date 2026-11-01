@@ -39,6 +39,9 @@ class DsoSettings(BaseModel):
     auto_ev_unserved_pct: float = Field(default_factory=lambda: float(_assumption("ev_unserved_limit_pct")), ge=0, le=100)
     # the published grid an application is evaluated against while the queue is empty
     inbox_baseline: Literal["static", "doe"] = "static"
+    # how many years the envelopes defer the reinforcement, for the business case (by default one
+    # regulatory period)
+    deferral_years: int = Field(default_factory=lambda: int(_assumption("regulatory_period_years")), ge=1, le=40)
 
 
 def _assumption(key: str) -> float:
@@ -59,6 +62,7 @@ class DsoSettingsChange(BaseModel):
     auto_curtailment_p90_pct: float | None = Field(None, ge=0, le=100)
     auto_ev_unserved_pct: float | None = Field(None, ge=0, le=100)
     inbox_baseline: Literal["static", "doe"] | None = None
+    deferral_years: int | None = Field(None, ge=1, le=40)
 
 
 def path():

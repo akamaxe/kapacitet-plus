@@ -11,6 +11,7 @@ import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
 import { ApplyBlock } from "../components/Inbox";
+import { OwnerCase } from "../components/Business";
 import { copyText } from "../lib/clipboard";
 import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
@@ -520,6 +521,7 @@ export default function Request() {
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} seal={res.seal} />
             <Result res={res} year={year} lang={lang} />
+            {!stale && res.id && res.request?.pv_kwp > 0 && <OwnerCase id={res.id} />}
             {!stale && res.id && queue && (
               <>
                 <ApplyBlock res={res} queue={queue} />
