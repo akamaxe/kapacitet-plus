@@ -10,10 +10,12 @@ import asyncio
 import gzip
 import json
 import logging
+import os
 import threading
 import time
 import uuid
 import warnings
+from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from functools import lru_cache
 from typing import Any
@@ -34,10 +36,30 @@ from ..ingest.sources import SOURCES
 from ..paths import PROCESSED, WEB_DIST
 from ..paths import processed_ro as processed
 
-warnings.filterwarnings("ignore")
+# The engine's libraries announce API changes on every call; the server log is for requests and
+# failures, so those two categories are quietened and everything else still shows.
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 log = logging.getLogger("kapacitet.api")
 
+# Live connection requests: how many may run at once, how long one may take, and how long a
+# finished one stays in memory (it is also saved to disk, see the requests section).
+MAX_JOBS = int(os.environ.get("KAPACITET_MAX_JOBS", "4"))
+JOB_TIMEOUT_S = float(os.environ.get("KAPACITET_JOB_TIMEOUT_S", "120"))
+JOB_TTL_S = 15 * 60
+# Largest CSV accepted per table by the network-import check.
+CHECK_MAX_BYTES = 5_000_000
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    # load the model and the request baselines in the background, so the first request is fast
+    threading.Thread(target=_warm, daemon=True).start()
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Kapacitet+ API",
     version=__version__,
     description="Digital twin of a Swedish LV neighbourhood: static hosting capacity vs Dynamic Operating "
@@ -45,17 +67,45 @@ app = FastAPI(
                 "built on real OpenStreetMap geometry and driven by real SMHI weather and SE3 prices.",
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# The interface is served from the same origin, so cross-origin access is off unless an operator
+# lists the origins that may call the API (comma-separated).
+_CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
+if _CORS:
+    app.add_middleware(CORSMiddleware, allow_origins=_CORS, allow_methods=["GET", "POST"], allow_headers=["*"])
 
 API = "/api/v1"
 
 
 # ------------------------------------------------------------------------------ helpers
 
+# Which command writes each results file, so a missing one can say exactly what to run.
+_WRITTEN_BY = {
+    "national.json": "compute --stage extra --only national",
+    "scenarios.json": "compute --stage extra --only scenarios",
+    "tornado.json": "compute --stage extra --only tornado",
+    "foresight.json": "compute --stage extra --only foresight",
+    "overinstallation.json": "compute --stage extra --only overinstallation",
+    "phases.json": "compute --stage extra --only phases",
+    "validation.json": "compute --stage extra --only validation",
+    "reinforcement.json": "compute --stage extra --only reinforcement",
+    "forecast.json": "forecast",
+}
+
+
+def command_for(name: str) -> str:
+    return f"python -m kapacitet {_WRITTEN_BY.get(name, 'compute')}"
+
+
+def not_computed(name: str) -> HTTPException:
+    """404 that says what is missing and the command that makes it (the interface shows both)."""
+    return HTTPException(404, {"code": "not_computed", "file": name, "command": command_for(name),
+                               "message": f"{name} has not been computed yet"})
+
+
 def _read(name: str) -> Any:
     path = processed("results", name)
     if not path.exists():
-        raise HTTPException(404, f"{name} not computed yet — run `python -m kapacitet compute`")
+        raise not_computed(name)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -67,7 +117,7 @@ def _cached(name: str, mtime: float) -> Any:
 def result(name: str) -> Any:
     path = processed("results", name)
     if not path.exists():
-        raise HTTPException(404, f"{name} not computed yet — run `python -m kapacitet compute`")
+        raise not_computed(name)
     return _cached(name, path.stat().st_mtime)
 
 
@@ -88,10 +138,31 @@ def with_prov(obj: Any, *sources: str) -> dict:
 
 # ------------------------------------------------------------------------------ basics
 
+# What each part of the interface needs on disk; /health reports which parts are ready.
+_NEEDS = {
+    "network": [("grid", "customers.parquet"), ("grid", "lines.parquet"), ("grid", "substation.json")],
+    "results": [("results", "meta.json"), ("results", "showcase.json"), ("results", "hosting_summary.json"),
+                ("results", "risk.json"), ("ui", "state_doe.json")],
+    "extra": [("results", "scenarios.json"), ("results", "validation.json"), ("results", "national.json")],
+    "requests": [("request", "static.json"), ("request", "doe.json")],
+}
+
+
 @app.get(f"{API}/health", tags=["system"])
 def health() -> dict:
+    """Liveness, the version, and which parts have their data (with the command for what is missing)."""
+    parts = {}
+    for part, files in _NEEDS.items():
+        missing = ["/".join(f) for f in files if not processed(*f).exists()]
+        parts[part] = {"ready": not missing, "missing": missing}
+    commands = {"network": "python -m kapacitet build", "results": "python -m kapacitet compute",
+                "extra": "python -m kapacitet compute --stage extra",
+                "requests": "python -m kapacitet compute --stage extra --only requests"}
+    for part, info in parts.items():
+        if not info["ready"]:
+            info["command"] = commands[part]
     return {"status": "ok", "version": __version__, "time": datetime.now(timezone.utc).isoformat(),
-            "results_ready": processed("results", "showcase.json").exists()}
+            "results_ready": parts["results"]["ready"], "parts": parts}
 
 
 @lru_cache(maxsize=2)
@@ -206,6 +277,9 @@ def post_check(body: ExportCheck) -> dict:
     unknown = set(body.files) - set(BY_NAME)
     if unknown:
         raise HTTPException(422, f"not part of the contract: {', '.join(sorted(unknown))}")
+    big = [name for name, text in body.files.items() if len(text.encode("utf-8")) > CHECK_MAX_BYTES]
+    if big:
+        raise HTTPException(413, f"larger than {CHECK_MAX_BYTES // 1_000_000} MB: {', '.join(sorted(big))}")
     data = {}
     for name, text in body.files.items():
         try:
@@ -464,11 +538,6 @@ def _warm() -> None:
         log.warning("warm-up failed: %s", exc)
 
 
-@app.on_event("startup")
-def _startup() -> None:
-    threading.Thread(target=_warm, daemon=True).start()
-
-
 def _run_job(job_id: str, body: RequestIn) -> None:
     from ..engine import request as rq
     job = _JOBS[job_id]
@@ -483,12 +552,17 @@ def _run_job(job_id: str, body: RequestIn) -> None:
     try:
         eng = _engine()
         req = rq.Request(cid=body.cid, pv_kwp=body.pv_kwp, ev_kw=body.ev_kw, baseline=body.baseline)
-        job["result"] = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"], emit=emit)
+        result = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"], emit=emit)
+        if job["status"] != "running":   # gave up on by the watchdog: the late answer is dropped
+            return
+        job["result"] = result
         job["status"] = "done"
+        job["finished"] = time.time()
         job["events"].extend(held)
     except Exception as exc:
         log.exception("request failed")
         job["status"] = "error"
+        job["finished"] = time.time()
         job["error"] = str(exc)
         # not "error": EventSource fires its own `error` event for transport trouble, and
         # a stage of the same name is indistinguishable from the stream simply dropping.
@@ -504,10 +578,26 @@ def _check_cid(cid: int) -> None:
         raise HTTPException(422, "unknown customer")
 
 
+def _sweep_jobs() -> None:
+    """Forget finished jobs after JOB_TTL_S and give up on any that ran past JOB_TIMEOUT_S."""
+    now = time.time()
+    for jid, job in list(_JOBS.items()):
+        if job["status"] == "running" and now - job["created"] > JOB_TIMEOUT_S:
+            job["status"] = "error"
+            job["error"] = f"timed out after {JOB_TIMEOUT_S:.0f} s"
+            job["events"].append({"stage": "failed", "payload": {"error": job["error"]}, "t": now})
+            job["closed"] = True
+        elif job["status"] != "running" and now - job.get("finished", job["created"]) > JOB_TTL_S:
+            _JOBS.pop(jid, None)
+
+
 @app.post(f"{API}/requests", tags=["requests"])
 def create_request(body: RequestIn) -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
     _check_cid(body.cid)
+    _sweep_jobs()
+    if sum(j["status"] == "running" for j in _JOBS.values()) >= MAX_JOBS:
+        raise HTTPException(429, f"busy: {MAX_JOBS} requests are already being evaluated, try again shortly")
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time(),
                      "request": body.model_dump()}
@@ -532,7 +622,7 @@ async def request_events(job_id: str) -> StreamingResponse:
             if job.get("closed") and sent >= len(job["events"]):
                 yield "event: end\ndata: {}\n\n"
                 return
-            if time.time() - start > 120:
+            if time.time() - start > JOB_TIMEOUT_S:
                 yield "event: timeout\ndata: {}\n\n"
                 return
             await asyncio.sleep(0.05)
@@ -543,6 +633,7 @@ async def request_events(job_id: str) -> StreamingResponse:
 
 @app.get(f"{API}/requests/{{job_id}}", tags=["requests"])
 def request_result(job_id: str) -> JSONResponse:
+    _sweep_jobs()
     job = _JOBS.get(job_id)
     if job is None:
         raise HTTPException(404, "unknown request")

@@ -242,8 +242,8 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=cmd_export_grid)
 
     p = sub.add_parser("serve", help="serve API + web UI")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=8000)
+    p.add_argument("--host", default=os.environ.get("KAPACITET_HOST", "127.0.0.1"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("KAPACITET_PORT", "8000")))
     p.set_defaults(func=cmd_serve)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")

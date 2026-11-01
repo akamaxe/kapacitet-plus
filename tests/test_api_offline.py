@@ -48,6 +48,53 @@ def test_an_unknown_house_is_refused_before_any_work(client, route):
     assert r.status_code == 422
 
 
+def test_health_lists_each_part_and_what_to_run_for_it(client):
+    body = client.get(f"{API}/health").json()
+    assert body["version"]
+    assert set(body["parts"]) >= {"network", "results", "extra", "requests"}
+    for part in body["parts"].values():
+        assert part["ready"] or part["command"].startswith("python -m kapacitet")
+
+
+def test_cross_origin_access_is_off_by_default(client):
+    r = client.get(f"{API}/health", headers={"Origin": "https://example.org"})
+    assert "access-control-allow-origin" not in {k.lower() for k in r.headers}
+
+
+def test_a_missing_result_names_the_command_that_makes_it():
+    from kapacitet.api import main
+
+    assert main.command_for("forecast.json") == "python -m kapacitet forecast"
+    assert main.command_for("scenarios.json").endswith("--stage extra --only scenarios")
+    err = main.not_computed("risk.json")
+    assert err.status_code == 404 and err.detail["code"] == "not_computed"
+    assert err.detail["command"] == "python -m kapacitet compute"
+
+
+def test_requests_are_refused_when_the_engine_is_busy(client, monkeypatch):
+    from kapacitet.api import main
+
+    monkeypatch.setattr(main, "_check_cid", lambda cid: None)
+    monkeypatch.setattr(main, "MAX_JOBS", 0)
+    r = client.post(f"{API}/requests", json={"cid": 0, "pv_kwp": 5.0})
+    assert r.status_code == 429
+
+
+def test_a_job_that_runs_too_long_is_given_up_and_a_finished_one_is_forgotten(client):
+    import time
+
+    from kapacitet.api import main
+
+    main._JOBS["stuck0000000"] = {"status": "running", "events": [], "result": None,
+                                  "created": time.time() - main.JOB_TIMEOUT_S - 5, "request": {}}
+    main._JOBS["old000000000"] = {"status": "done", "events": [], "result": {"x": 1},
+                                  "created": time.time() - 2 * main.JOB_TTL_S,
+                                  "finished": time.time() - main.JOB_TTL_S - 5, "request": {}}
+    r = client.get(f"{API}/requests/stuck0000000")
+    assert r.status_code == 500 and "timed out" in r.text
+    assert client.get(f"{API}/requests/old000000000").status_code == 404
+
+
 # ---------------------------------------------------------------- network export check (no data needed)
 
 GOOD_EXPORT = {
@@ -95,3 +142,9 @@ def test_a_file_outside_the_contract_is_refused(client):
 def test_unreadable_csv_is_refused(client):
     r = client.post(f"{API}/check", json={"files": {"buses": '"unterminated\n\x00'}})
     assert r.status_code == 422
+
+
+def test_an_oversized_table_is_refused(client):
+    big = "bus_id,kind\n" + "B,service\n" * 600_000
+    r = client.post(f"{API}/check", json={"files": {"buses": big}})
+    assert r.status_code == 413

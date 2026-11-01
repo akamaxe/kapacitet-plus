@@ -7,4 +7,9 @@ buildings, driven by real SMHI weather and SE3 spot prices.
 
 from . import _compat  # noqa: F401  (NumPy 2.x aliases for pandapower 2.14; must run first)
 
-__version__ = "0.1.0"
+from importlib.metadata import PackageNotFoundError, version
+
+try:  # one source of truth: the version in pyproject.toml, as installed
+    __version__ = version("kapacitet")
+except PackageNotFoundError:  # running from a source tree that was never installed
+    __version__ = "0+unknown"
