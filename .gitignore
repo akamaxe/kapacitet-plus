@@ -16,3 +16,4 @@ web/*.tsbuildinfo
 .impeccable/live/
 .impeccable/config.local.json
 data/requests/
+.impeccable/review/

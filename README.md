@@ -35,7 +35,9 @@ Three findings worth a sentence each:
   stay at 1.048 pu (limit 1.10). The sensitivity chart shows the result moves with the
   transformer rating and the inverter sizing, and barely with the voltage assumptions.
 - **Envelopes beat reinforcement on the same asset.** 0.4 MVA with envelopes (787 kW) carries
-  more than a 0.63 MVA transformer studied statically (651 kW).
+  more than a 0.63 MVA transformer studied statically (655 kW, sensitivity run). At Ei's standard
+  costs that transformer alone costs 156–209 kSEK, as much as 54–73 years of the curtailment the
+  envelopes impose, valued at spot prices.
 - **Fairness is free in this network.** Max-min, pro-rata, proportional-fair and max-total all
   curtail the same total energy (1.98 % in the showcase year) because one shared constraint
   binds; they only differ in *who* is curtailed (Jain index 0.59 → 0.92).
@@ -171,15 +173,20 @@ to navigate screens without affecting form fields.
    houses, always within limits. Drag the year strip to move through the year.
 3. **Static vs envelopes** — the headline: 413 kW against 787 kW beside the network on the 3D
    map, what it costs in curtailment, and the hour-by-hour verification.
-4. **Connection request** — click a house, ask for 15 kWp and an 11 kW charger, press *Evaluate*:
-   the static study says no, the envelope says yes with this limit, this risk and this value.
+4. **Connection request** — click a house (or find it by address), ask for 15 kWp and an 11 kW
+   charger, or add a heat pump or a battery, press *Evaluate*: the static study says no, the
+   envelope says yes with this limit, this risk and this value.
    Approve it into the queue (*Connect with this envelope*), then ask for the house next door:
    it meets less headroom, because the approved house used it first. *Empty the queue* to start
    again. Every answer can be printed as a record or downloaded hour by hour.
-5. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
+5. **Annual report** — what the DSO files with Ei: every curtailed hour, the part of the grid
+   that was full, the 43 agreements, and each house's own record to read and download.
+6. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
    reinforcement.
-6. **Method & data** — live status of every API, every assumption with its source, the validation
-   charts and the limitations.
+7. **Method & data** — live status of every API, every assumption with its source, the validation
+   charts, the forecast schemes, a check for your own network export, and the limitations.
+
+New here? The *Tour* in the foot line walks through these screens in two minutes.
 
 ## How it works
 
@@ -191,9 +198,11 @@ grid/       OSM buildings and streets -> street graph -> radial feeders from the
 profiles/   weather (hour-beginning means), PV (pvlib, roof geometry from footprints),
               households (CREST/richardsonpy pool), heat pumps (when2heat COP), EV charging
 engine/     Z-bus power flow, static and time-series hosting capacity, envelopes with
-              nonlinear verification, risk, live connection requests, 2030 scenarios
-api/        FastAPI: precomputed payloads, SSE for live requests, serves web/dist
-web/        React + MapLibre + ECharts: 6 screens, English with a Spanish toggle
+              nonlinear verification, risk, live connection requests (solar, EV charger,
+              heat pump, battery), the queue of approvals, 2030 scenarios
+api/        FastAPI: precomputed payloads, SSE for live requests and approvals, the saved
+              assessments (data/requests/), serves web/dist
+web/        React + MapLibre + ECharts: 7 screens, English with a Spanish toggle
 ```
 
 **Power flow.** A batched Z-bus fixed point `V = w + Z·conj(S/V)` on pandapower's exact model
@@ -385,6 +394,17 @@ writes `phases.json`). In the median placement 44 % of the static hosting capaci
 record the operator may not have. Under the same
 export pattern the balanced model sees 1 violating hour out of 300 where the unbalanced one
 sees 75.
+
+The newer parts carry their own limits. A **battery** in a request stores only the solar its
+envelope would curtail and gives it back to the house, its efficiencies come from Orth et al.
+(2023), standby consumption is not modelled, and its energy is valued at the spot price, so the
+figure is what it recovers from curtailment, not a payback. A held-back **heat pump** could shift
+some heating with the house's thermal mass, which is not modelled, and its import limit ignores
+the house's own solar. The **queue** is one per server, first come first served; it is a tool for
+one planner on a trusted machine, and the API has no accounts or authentication, so it must not
+be exposed to the internet as it is. The **reinforcement** comparison uses Ei's norm values,
+standard costs at 2022 prices rather than quotes, undiscounted, with the bigger unit's capacity
+taken from one adoption order of the sensitivity run.
 
 ## Licence
 
