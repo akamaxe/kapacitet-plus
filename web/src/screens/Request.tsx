@@ -14,7 +14,7 @@ import { copyText } from "../lib/clipboard";
 import { reasonText } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
-import { dateTime, hourLabel, monthNames, round, useFmt } from "../lib/format";
+import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
@@ -504,7 +504,7 @@ export default function Request() {
             {stale && (
               <div className="stale-note" role="status">
                 <span>{t("req.stale", { what: describeRequest(t, f, res.request) })}</span>
-                <button className="btn small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
+                <button className="btn ghost small" onClick={evaluate} disabled={running || nothing}>{t("req.again")}</button>
               </div>
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} />
@@ -574,11 +574,6 @@ function HouseSearch({ houses, onPick }: { houses: any[]; onPick: (cid: number) 
       </datalist>
     </div>
   );
-}
-
-/** A share to one decimal, as every percentage on the screen; a share too small for that says so instead of "0.0". */
-function pct1(f: (v: number | null | undefined, d?: number) => string, v: number | null | undefined): string {
-  return v != null && v > 0 && v < 0.05 ? `< ${f(0.1, 1)}` : f(v, 1);
 }
 
 /** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
@@ -724,7 +719,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <Status kind="good">{t("req.bat.nothing", { year })}</Status>
           ) : (
             <div className="tiles">
-              <Tile label={t("req.bat.captured")} value={f(sum.bat_captured_ref_pct, 0)} unit="%" note={t("req.bat.capturedNote", { year })} />
+              <Tile label={t("req.bat.captured")} value={pct1(f, sum.bat_captured_ref_pct)} unit="%" note={t("req.bat.capturedNote", { year })} />
               <Tile label={t("req.bat.returned")} value={f(sum.bat_discharged_ref_kwh)} unit="kWh" note={`${year}`} />
               <Tile label={t("req.bat.after")} value={f(sum.curtailment_after_battery_ref_pct, 1)} unit="%" note={t("req.bat.afterNote", { z: f(sum.pv_curtailment_ref_pct, 1) })} />
               <Tile label={t("req.bat.value")} value={f(res.economics?.battery_sek_mean)} unit={t("unit.sekYr")} note={t("req.bat.valueNote")} />
@@ -767,11 +762,11 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <h3>{t("req.risk")}</h3>
           <p className="caption-muted">{t("req.risk.caption", { n: f(resampled), from: weatherYears[0], to: weatherYears[weatherYears.length - 1] })}</p>
           <div className="tiles cols-3">
-            <Tile label={t("cmp.risk.mean")} value={f(res.risk.mean_pct, 2)} unit="%" />
-            <Tile label={t("cmp.risk.p90")} value={f(res.risk.p90_pct, 2)} unit="%" />
-            <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(res.risk.cvar95_pct, 2)} unit="%" />
+            <Tile label={t("cmp.risk.mean")} value={pct1(f, res.risk.mean_pct)} unit="%" />
+            <Tile label={t("cmp.risk.p90")} value={pct1(f, res.risk.p90_pct)} unit="%" />
+            <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={pct1(f, res.risk.cvar95_pct)} unit="%" />
           </div>
-          <p className="caption-muted">{t("req.risk.range", { best: f(res.risk.best_year_pct, 2), worst: f(res.risk.worst_year_pct, 2) })}</p>
+          <p className="caption-muted">{t("req.risk.range", { best: pct1(f, res.risk.best_year_pct), worst: pct1(f, res.risk.worst_year_pct) })}</p>
           {/* with no curtailment at all, every year falls in one bin centred on zero and the
               axis would show negative shares, so the answer is said instead of drawn */}
           {res.risk.cvar95_pct > 0 ? (
@@ -874,8 +869,9 @@ function envOption(tk: Tokens, prof: any, lang: string, t: (k: string) => string
     visualMap: {
       min: 0, max: cap, orient: "vertical", right: 0, top: "middle", itemHeight: 120, itemWidth: 10,
       textStyle: { color: tk.muted, fontFamily: tk.font }, text: [`${f(cap, 1)} kW`, f(0)],
-      // one amber ramp: the lower the limit, the stronger the amber (DESIGN.md heatmap palette)
-      inRange: { color: [tk.warningFill, tk.warningQuiet] },
+      // one amber ramp: the lower the limit, the stronger the amber (DESIGN.md heatmap palette);
+      // an alpha ramp, so a limit just under capacity still shows on the white
+      inRange: { color: [tk.warningFill], colorAlpha: [1, 0.3] },
     },
     tooltip: { formatter: (p: any) => `${monthNames(lang)[p.value[0]]} ${String(p.value[1]).padStart(2, "0")}:00<br/>${t("req.tt.lowest")} <b>${f(p.value[2], 1)} kW</b>` },
     series: [{ type: "heatmap", data, itemStyle: { borderColor: tk.surface, borderWidth: 2, borderRadius: 0 } }],

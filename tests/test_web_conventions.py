@@ -73,7 +73,8 @@ def test_money_is_sek_never_kr():
 
 
 def test_dates_are_formatted_in_one_place():
-    hits = [p.name for p in SOURCES if "Intl.DateTimeFormat" in p.read_text(encoding="utf-8") and p.name != "format.ts"]
+    local = ("Intl.DateTimeFormat", ".toLocaleDateString(", ".toLocaleTimeString(")
+    hits = [p.name for p in SOURCES if p.name != "format.ts" and any(s in p.read_text(encoding="utf-8") for s in local)]
     assert not hits, f"format dates with dateTime() or clock() from lib/format.ts, not in {hits}"
 
 

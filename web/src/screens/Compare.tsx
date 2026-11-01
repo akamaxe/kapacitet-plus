@@ -590,7 +590,9 @@ function heatOption(tk: Tokens, HM: any, which: "limited" | "unc", lang: string,
           min: 1, max: Math.max(1, vmax), calculable: false, orient: "vertical", right: 0, top: "middle",
           itemHeight: 140, itemWidth: 10,
           textStyle: { color: tk.muted, fontFamily: tk.font },
-          inRange: { color: [tk.load[1], tk.load[2]] },
+          // a count of houses held back: the amber of "limited", faint for one, full for the most;
+          // an alpha ramp, because the amber wash is as light as the well this chart sits on
+          inRange: { color: [tk.warningFill], colorAlpha: [0.35, 1] },
           text: [f(vmax), f(1)],
         }
       : {

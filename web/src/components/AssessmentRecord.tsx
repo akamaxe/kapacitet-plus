@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { Roundel } from "./Shell";
-import { dateTime, useFmt, monthNames } from "../lib/format";
+import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { reasonText } from "../lib/reasons";
 import { useStore } from "../lib/store";
@@ -93,16 +93,16 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
               <tr><th>{t("rec.evStatic")}</th><td>{yesNo(res.static.ev.approved)}</td><td>{reasonText(t, f, res.static.ev)}</td></tr>
             )}
             {rq.ev_kw > 0 && (
-              <tr><th>{t("rec.evDoe")}</th><td>{f(sum.ev_unmet_pct, 2)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
+              <tr><th>{t("rec.evDoe")}</th><td>{pct1(f, sum.ev_unmet_pct)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
             )}
             {res.static?.hp && (
               <tr><th>{t("rec.hpStatic")}</th><td>{yesNo(res.static.hp.approved)}</td><td>{reasonText(t, f, res.static.hp)}</td></tr>
             )}
             {res.static?.hp && (
-              <tr><th>{t("rec.hpDoe")}</th><td>{f(sum.hp_unmet_pct, 2)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
+              <tr><th>{t("rec.hpDoe")}</th><td>{pct1(f, sum.hp_unmet_pct)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
             )}
             {sum.bat_charged_ref_kwh !== undefined && (
-              <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${f(sum.bat_captured_ref_pct, 0)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
+              <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${pct1(f, sum.bat_captured_ref_pct)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
             )}
             {res.verification?.import && (
               <tr><th>{t("rec.importVerified")}</th><td>{f(res.verification.import.violations_after)} {t("rec.violations")}</td><td>{t("rec.importVerifiedDetail", { n: f(res.verification.import.hours_checked) })}</td></tr>
@@ -132,10 +132,10 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         <section>
           <h2>{t("req.risk")}</h2>
           <dl className="pr-kv">
-            <dt>{t("cmp.risk.mean")}</dt><dd>{f(res.risk.mean_pct, 2)} %</dd>
-            <dt>{t("cmp.risk.p90")}</dt><dd>{f(res.risk.p90_pct, 2)} %</dd>
-            <dt>{t("cmp.risk.cvar")}</dt><dd>{f(res.risk.cvar95_pct, 2)} %</dd>
-            <dt>{t("rec.yearsRange")}</dt><dd>{f(res.risk.best_year_pct, 2)} – {f(res.risk.worst_year_pct, 2)} %</dd>
+            <dt>{t("cmp.risk.mean")}</dt><dd>{pct1(f, res.risk.mean_pct)} %</dd>
+            <dt>{t("cmp.risk.p90")}</dt><dd>{pct1(f, res.risk.p90_pct)} %</dd>
+            <dt>{t("cmp.risk.cvar")}</dt><dd>{pct1(f, res.risk.cvar95_pct)} %</dd>
+            <dt>{t("rec.yearsRange")}</dt><dd>{pct1(f, res.risk.best_year_pct)} – {pct1(f, res.risk.worst_year_pct)} %</dd>
           </dl>
           <p className="pr-note">{t("rec.riskNote", { n: weatherYears.length, from: weatherYears[0] ?? "–", to: weatherYears[weatherYears.length - 1] ?? "–" })}</p>
         </section>

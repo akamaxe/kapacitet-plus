@@ -87,6 +87,14 @@ export function median(xs: number[]): number {
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
 }
 
+/**
+ * A share to one decimal, as every percentage on the request answer and its record; a non-zero
+ * share too small for that says so instead of "0.0".
+ */
+export function pct1(f: (v: number | null | undefined, d?: number) => string, v: number | null | undefined): string {
+  return v != null && v > 0 && v < 0.05 ? `< ${f(0.1, 1)}` : f(v, 1);
+}
+
 /** A value rounded for a chart's data (not for display: that goes through `fmt`). */
 export function round(value: number, digits = 0): number {
   const k = 10 ** digits;

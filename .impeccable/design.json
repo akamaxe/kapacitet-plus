@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-30T16:48:30+00:00",
+  "generatedAt": "2026-11-01T18:00:00+01:00",
   "title": "Design System: Kapacitet+",
   "extensions": {
     "colorMeta": {
@@ -8,7 +8,7 @@
         "role": "primary",
         "displayName": "SL Blue",
         "canonical": "#123e7c",
-        "purpose": "The one action, selection, links, focus, feeder badges, the transformer symbol.",
+        "purpose": "The one action, selection, links, focus, the substation ring, the open entry of the evaluation history.",
         "tonalRamp": [
           "#152338",
           "#1e3c67",
@@ -40,7 +40,7 @@
         "role": "primary",
         "displayName": "SL Wash",
         "canonical": "#e4ecf7",
-        "purpose": "Selected rows, palette items and menu entries.",
+        "purpose": "Selected rows, palette items, the current menu entry and the tour card.",
         "tonalRamp": [
           "#192433",
           "#283e5d",
@@ -56,7 +56,7 @@
         "role": "secondary",
         "displayName": "Firm Green",
         "canonical": "#1f7a44",
-        "purpose": "Firm houses on the maps and the envelope (dynamic) series. Data only.",
+        "purpose": "Firm houses on the maps, the envelope (dynamic) series, energy delivered in the envelope, the live mark. Data only.",
         "tonalRamp": [
           "#183424",
           "#255f3d",
@@ -72,7 +72,7 @@
         "role": "secondary",
         "displayName": "Envelope Amber",
         "canonical": "#c48405",
-        "purpose": "Houses under an envelope on the maps; meters at 85 % of a limit. Data only.",
+        "purpose": "Houses under an envelope; meters at 85 % of a limit; curtailed energy; the strong end of the envelope heatmaps. Data only.",
         "tonalRamp": [
           "#3d2e10",
           "#715214",
@@ -88,7 +88,7 @@
         "role": "secondary",
         "displayName": "Above-Rating Red",
         "canonical": "#d8352a",
-        "purpose": "Only above a rating, or a rejection. Data only.",
+        "purpose": "Only above a rating, or a rejection; as red-ink, the label of a destructive answer in a confirm dialog.",
         "tonalRamp": [
           "#361816",
           "#642521",
@@ -136,7 +136,7 @@
         "role": "neutral",
         "displayName": "Ink",
         "canonical": "#16202b",
-        "purpose": "Headings, values, the line-map lines.",
+        "purpose": "Headings, values, the synthetic cables on the maps.",
         "tonalRamp": [
           "#1f262e",
           "#334252",
@@ -200,7 +200,7 @@
         "role": "neutral",
         "displayName": "Well Grey",
         "canonical": "#f2f4f6",
-        "purpose": "Insets: segmented tracks, fields, the dense band, skeletons.",
+        "purpose": "Insets: segmented tracks, range fields, the dense band, skeletons, a command to copy.",
         "tonalRamp": [
           "#22262b",
           "#39424b",
@@ -243,12 +243,76 @@
           "#d2d6db",
           "#f1f2f3"
         ]
+      },
+      "print-paper": {
+        "role": "neutral",
+        "displayName": "Paper",
+        "canonical": "#ffffff",
+        "purpose": "The printed record's page, whatever the screen theme.",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
+      },
+      "print-ink": {
+        "role": "neutral",
+        "displayName": "Print Ink",
+        "canonical": "#000000",
+        "purpose": "Printed text, the brand roundel and the head rule.",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
+      },
+      "print-muted": {
+        "role": "neutral",
+        "displayName": "Print Muted",
+        "canonical": "#4a4a4a",
+        "purpose": "Printed labels and notes.",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
+      },
+      "print-rule": {
+        "role": "neutral",
+        "displayName": "Print Rule",
+        "canonical": "#9a9a9a",
+        "purpose": "Printed table rows and the foot rule.",
+        "tonalRamp": [
+          "#262626",
+          "#424242",
+          "#5e5e5e",
+          "#7a7a7a",
+          "#999999",
+          "#b8b8b8",
+          "#d6d6d6",
+          "#f2f2f2"
+        ]
       }
     },
     "typographyMeta": {
       "display": {
         "displayName": "Display",
-        "purpose": "The one answer figure per screen."
+        "purpose": "The one answer figure per screen: 787 kW on Static vs envelopes, the curtailed share on the Annual report."
       },
       "headline": {
         "displayName": "Headline (h1)",
@@ -260,7 +324,7 @@
       },
       "title-small": {
         "displayName": "Title small (h3)",
-        "purpose": "Sub-headings, the hour verdict, the inspector title."
+        "purpose": "Sub-headings, the hour verdict, the inspector title, the decision and live-strip heads, the tour card's title."
       },
       "body": {
         "displayName": "Body",
@@ -279,7 +343,7 @@
       {
         "name": "float",
         "value": "0 0 0 1px rgba(22, 32, 43, 0.08), 0 10px 28px -8px rgba(22, 32, 43, 0.22)",
-        "purpose": "Day. Only floating layers: dialogs, palette, toasts, notes drawer, glossary popovers, tooltips."
+        "purpose": "Day. Only floating layers: dialogs, palette, toasts, notes drawer, glossary popovers, tooltips. The tour card and the offline-map note are edged, never shadowed."
       },
       {
         "name": "float-night",
@@ -306,7 +370,7 @@
       {
         "name": "dur-micro",
         "value": "120ms",
-        "purpose": "Colour changes, presses, line-map recolouring."
+        "purpose": "Colour changes and presses."
       },
       {
         "name": "dur-popover",
@@ -316,7 +380,7 @@
       {
         "name": "dur-panel",
         "value": "200ms",
-        "purpose": "Toasts, meters, the request answer rising in, a chart's first draw."
+        "purpose": "Toasts, meters, the request answer rising in, the tour card rising 8 px, a chart's first draw."
       },
       {
         "name": "dur-drawer",
@@ -337,15 +401,15 @@
     "breakpoints": [
       {
         "name": "scope-hides",
-        "value": "1440px"
+        "value": "1600px"
+      },
+      {
+        "name": "search-label-hides",
+        "value": "1360px"
       },
       {
         "name": "panel-narrows",
         "value": "1350px"
-      },
-      {
-        "name": "search-label-hides",
-        "value": "1280px"
       },
       {
         "name": "gutter-tightens",
@@ -356,6 +420,10 @@
         "value": "1100px"
       },
       {
+        "name": "tour-beside-panel",
+        "value": "1101px"
+      },
+      {
         "name": "single-column",
         "value": "900px"
       },
@@ -363,7 +431,49 @@
         "name": "phone",
         "value": "700px"
       }
-    ]
+    ],
+    "layout": [
+      {
+        "name": "panel-w",
+        "value": "460px",
+        "purpose": "The side panel beside a map; 390px between 1101 and 1350px."
+      },
+      {
+        "name": "panel-w-wide",
+        "value": "560px",
+        "purpose": "The request's wider panel; 450px between 1101 and 1350px."
+      }
+    ],
+    "scrim": {
+      "value": "rgba(var(--night), 0.38)",
+      "purpose": "Dialog scrim; the night tint is comma-separated channels, so alpha is written rgba(var(--token), a)."
+    },
+    "heatmaps": [
+      {
+        "name": "envelope-minimum",
+        "value": "warning-fill, opacity 1 at 0 kW to 0.3 at the system's own capacity",
+        "purpose": "A house's lowest export limit by month and hour, on the request answer and the Annual report; square-cornered cells parted by 2px of the page colour; only cells below capacity drawn."
+      },
+      {
+        "name": "transformer-loading",
+        "value": "load-0 / load-50 / load-85 pieces, load-over above 100 %",
+        "purpose": "The transformer's loading through the year on Static vs envelopes."
+      },
+      {
+        "name": "houses-limited",
+        "value": "warning-fill, opacity 0.35 for one house to 1 for the most",
+        "purpose": "How many houses are held back in each hour of the year, the other view of the same chart on Static vs envelopes."
+      }
+    ],
+    "print": {
+      "page": "A4, margins 14mm 14mm 16mm",
+      "body": "10pt, line-height 1.4, tabular figures",
+      "h1": "18pt",
+      "h2": "11pt",
+      "grid": "7.5pt",
+      "headRule": "1.5pt print-ink",
+      "rowRule": "0.5pt print-rule"
+    }
   },
   "components": [
     {
@@ -381,6 +491,22 @@
       "description": "Secondary actions: an ink label on a strong hairline.",
       "html": "<button class=\"ds-btn-ghost\">Open the neighbourhood</button>",
       "css": ".ds-btn-ghost{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border:1px solid var(--border-strong,#858e97);border-radius:var(--radius-sm,4px);background:transparent;color:var(--text-primary,#16202b);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;font-weight:500;cursor:pointer;transition:background-color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-btn-ghost:hover{background:var(--bg-inset,#f2f4f6)}.ds-btn-ghost:active{transform:scale(.97)}.ds-btn-ghost:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Destructive Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost-danger",
+      "description": "The last answer of a confirm dialog only: never filled, its label in danger ink; Cancel comes first and takes focus.",
+      "html": "<div class=\"ds-confirm\"><button class=\"ds-btn-ghost2\">Cancel</button><button class=\"ds-btn-ghost2 ds-danger\">Empty the queue</button></div>",
+      "css": ".ds-confirm{display:flex;gap:8px}.ds-btn-ghost2{display:inline-flex;align-items:center;min-height:40px;padding:0 16px;border:1px solid var(--border-strong,#858e97);border-radius:var(--radius-sm,4px);background:transparent;color:var(--text-primary,#16202b);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;font-weight:500;cursor:pointer;transition:background-color 120ms cubic-bezier(.23,1,.32,1),border-color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-btn-ghost2:hover{background:var(--bg-inset,#f2f4f6)}.ds-btn-ghost2:active{transform:scale(.97)}.ds-btn-ghost2:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}.ds-danger{color:var(--danger,#b3261e)}.ds-danger:hover{border-color:var(--danger,#b3261e)}"
+    },
+    {
+      "name": "Small Button",
+      "kind": "button",
+      "refersTo": "button-small",
+      "description": "32px: ways to keep an answer, retries, the tour's buttons, in-region actions.",
+      "html": "<button class=\"ds-btn-sm\">Copy link</button>",
+      "css": ".ds-btn-sm{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:0 12px;border:1px solid var(--border-strong,#858e97);border-radius:var(--radius-sm,4px);background:transparent;color:var(--text-primary,#16202b);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;font-weight:500;cursor:pointer;transition:background-color 120ms cubic-bezier(.23,1,.32,1),transform 120ms cubic-bezier(.23,1,.32,1)}.ds-btn-sm:hover{background:var(--bg-inset,#f2f4f6)}.ds-btn-sm:active{transform:scale(.97)}.ds-btn-sm:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
     },
     {
       "name": "Segmented Control",
@@ -402,8 +528,8 @@
       "name": "Top Bar",
       "kind": "nav",
       "refersTo": "top-bar",
-      "description": "SL-blue chrome: roundel and name, the screens as text, the current one white and underlined.",
-      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a></nav></header>",
+      "description": "SL-blue chrome: roundel and name, the seven screens as text, the current one white and underlined.",
+      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a><a href=\"#\">Annual report</a><a href=\"#\">2030 scenarios</a><a href=\"#\">Method &amp; data</a></nav></header>",
       "css": ".ds-top{display:flex;align-items:stretch;gap:24px;height:56px;padding:0 24px;background:var(--chrome,#123e7c);color:#fff;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-brand{display:inline-flex;align-items:center;gap:8px;font-size:1.0625rem;font-weight:700}.ds-top nav{display:flex;gap:24px;margin-left:auto}.ds-top a{position:relative;display:inline-flex;align-items:center;color:var(--chrome-ink-2,#c9d6ea);font-size:.8125rem;font-weight:500;text-decoration:none;transition:color 120ms cubic-bezier(.23,1,.32,1)}.ds-top a:hover{color:#fff}.ds-top a[aria-current=page]{color:#fff;font-weight:600}.ds-top a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff}.ds-top a:focus-visible{outline:2px solid #fff;outline-offset:-2px}"
     },
     {
@@ -421,23 +547,48 @@
       "description": "A dotted-underlined term whose definition floats above it, grown from the word.",
       "html": "<span class=\"ds-term-wrap\"><button class=\"ds-term\">curtailment</button><span class=\"ds-pop\" role=\"tooltip\">Solar energy the system could have produced but was not allowed to export.</span></span>",
       "css": ".ds-term-wrap{position:relative;display:inline-block;margin-top:64px;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-term{padding:0;border:0;background:none;font:inherit;color:inherit;cursor:help;text-decoration:underline dotted;text-decoration-color:var(--border-strong,#858e97);text-underline-offset:3px}.ds-term:hover,.ds-term:focus-visible{text-decoration-color:var(--accent,#123e7c)}.ds-term:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}.ds-pop{position:absolute;left:50%;bottom:calc(100% + 8px);width:max-content;max-width:280px;padding:8px 12px;border-radius:var(--radius-md,8px);background:var(--bg-elevated,#fff);box-shadow:var(--shadow-popover,0 0 0 1px rgba(22,32,43,.08),0 10px 28px -8px rgba(22,32,43,.22));color:var(--text-primary,#16202b);font-size:.8125rem;line-height:1.45;transform:translateX(-50%)}"
+    },
+    {
+      "name": "Search Field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "The house search and decision note: 40px, strong hairline on the elevated surface.",
+      "html": "<label class=\"ds-search\"><span>Find a house</span><input type=\"search\" placeholder=\"Address\"></label>",
+      "css": ".ds-search{display:grid;gap:4px;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;color:var(--text-secondary,#3d4752)}.ds-search input{min-height:40px;padding:0 12px;border:1px solid var(--border-strong,#858e97);border-radius:var(--radius-sm,4px);background:var(--bg-elevated,#fff);color:var(--text-primary,#16202b);font:inherit}.ds-search input:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:1px}"
+    },
+    {
+      "name": "Command Line",
+      "kind": "custom",
+      "refersTo": "command-line",
+      "description": "A shell command to copy, in the one face on the inset grey, with a copy button.",
+      "html": "<p class=\"ds-cmd\"><code>python -m kapacitet all</code><button aria-label=\"Copy the command\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><rect x=\"9\" y=\"9\" width=\"12\" height=\"12\" rx=\"2\"/><path d=\"M5 15V5a2 2 0 0 1 2-2h10\"/></svg></button></p>",
+      "css": ".ds-cmd{display:flex;align-items:center;gap:8px;margin:0;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-cmd code{font-family:inherit;padding:4px 8px;border-radius:var(--radius-sm,4px);background:var(--bg-inset,#f2f4f6);color:var(--text-primary,#16202b);font-size:.8125rem;overflow-wrap:anywhere}.ds-cmd button{display:inline-grid;place-items:center;min-width:32px;min-height:32px;border:1px solid var(--border,#e1e5e9);border-radius:var(--radius-sm,4px);background:var(--bg-base,#fff);color:var(--text-secondary,#3d4752);cursor:pointer}.ds-cmd button:hover{color:var(--text-primary,#16202b);border-color:var(--border-strong,#858e97)}.ds-cmd button:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
+    },
+    {
+      "name": "Tour Card",
+      "kind": "card",
+      "refersTo": "tour-card",
+      "description": "Non-modal, offered once, never starts itself: on the SL wash with a hairline, no shadow.",
+      "html": "<aside class=\"ds-tour\"><div class=\"ds-tour-head\"><span>2 of 6</span></div><h2>Without any control</h2><p>The neighbourhood at the busiest hour of the year with those same houses and no limits: the transformer runs beyond its rating.</p><div class=\"ds-tour-act\"><button class=\"ds-tb ghost\">Back</button><button class=\"ds-tb\">Next</button></div></aside>",
+      "css": ".ds-tour{display:grid;gap:8px;width:380px;max-width:100%;padding:16px 24px;border:1px solid var(--border,#e1e5e9);border-radius:var(--radius-md,8px);background:var(--accent-quiet,#e4ecf7);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-tour-head span{font-size:.75rem;color:var(--text-muted,#56606b);font-variant-numeric:tabular-nums}.ds-tour h2{margin:0;font-size:1.0625rem;font-weight:600;color:var(--text-primary,#16202b)}.ds-tour p{margin:0;font-size:.8125rem;line-height:1.45;color:var(--text-secondary,#3d4752)}.ds-tour-act{display:flex;justify-content:flex-end;gap:8px}.ds-tb{min-height:32px;padding:0 12px;border:1px solid transparent;border-radius:var(--radius-sm,4px);background:var(--accent,#123e7c);color:var(--on-accent,#fff);font:inherit;font-size:.8125rem;font-weight:500;cursor:pointer}.ds-tb:hover{background:var(--accent-hover,#0c2d5c)}.ds-tb.ghost{background:transparent;color:var(--text-primary,#16202b);border-color:var(--border-strong,#858e97)}.ds-tb.ghost:hover{background:var(--bg-inset,#f2f4f6)}.ds-tb:active{transform:scale(.97)}.ds-tb:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
     }
   ],
   "narrative": {
     "northStar": "The Network on the Map, in Stockholm's Colours",
-    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the six screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner and for the applicant on the other side of the same connection. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)",
+    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the seven screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in a queue and files the year's report, and for the applicant on the other side of the same connection. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
     "keyCharacteristics": [
       "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
       "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",
       "One typeface, Familjen Grotesk, with its default tabular figures for every reading.",
       "No boxed cards: regions part by hairlines and space; only floating layers cast a shadow.",
       "The network on the real map in 3D, coloured by connection, is the signature on three screens; every number on it comes from the API.",
-      "Real data is drawn solid, synthetic data dashed, on every screen."
+      "Real data is drawn solid, synthetic data dashed, on every screen.",
+      "One way to write money (SEK), dates (`1 Nov 2026, 14:03`) and shares, on screen and on paper."
     ],
     "rules": [
       {
         "name": "The Quarantine Rule",
-        "body": "Green, amber and red appear only in the network, charts, maps, meters and status marks. The chrome is ink and SL blue. A button, a heading or a field is never green, amber or red.",
+        "body": "Green, amber and red appear only in the network, charts, maps, meters and status marks. The chrome is ink and SL blue. A button, a heading or a field is never green, amber or red. One exception: the destructive answer in a confirm dialog is a ghost button with its label in `--danger`, never filled, so it never reads as the recommended one.",
         "section": "colors"
       },
       {
@@ -456,6 +607,21 @@
         "section": "colors"
       },
       {
+        "name": "The Comma Tint Rule",
+        "body": "`--night-tint` is three comma-separated channels, so alpha over it is written `rgba(var(--night), a)`: the dialog scrim at 0.38, MapLibre's gesture notice at 0.55. `rgb(var(--night) / a)` is invalid there and paints nothing. The same holds for any tint token written as channels.",
+        "section": "colors"
+      },
+      {
+        "name": "The SEK Rule",
+        "body": "Money is SEK, never \"kr\": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `i18n.ts`, \"SEK/año\" in Spanish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.",
+        "section": "typography"
+      },
+      {
+        "name": "The One Date Rule",
+        "body": "Every real-time date on screen and on paper goes through `format.dateTime`, and every time of day through `format.clock`. No screen builds its own date string.",
+        "section": "typography"
+      },
+      {
         "name": "The One Face Rule",
         "body": "Familjen Grotesk sets everything, identifiers and figures included. No monospace, no second display face.",
         "section": "typography"
@@ -467,7 +633,7 @@
       },
       {
         "name": "The Only-What-Floats Rule",
-        "body": "The map key, the segmented control's chosen option and MapLibre's controls are edged with a hairline, never shadowed. No glows, no accent-coloured shadows, no decorative gradients; the only gradients are colour-scale keys drawn from the same function as the marks they explain.",
+        "body": "The map key, the segmented control's chosen option, MapLibre's controls, the offline-map note and the tour card are edged with a hairline, never shadowed; the tour card sits beside the screen on the SL wash rather than floating over it. No glows, no accent-coloured shadows, no decorative gradients; the only gradients are colour-scale keys drawn from the same function as the marks they explain.",
         "section": "elevation"
       }
     ],
@@ -479,6 +645,8 @@
       "**Do** draw static against dynamic as one comparison, pencil against green.",
       "**Do** give every status a mark and a word (circle, triangle, cross); colour never carries meaning alone.",
       "**Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.",
+      "**Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.",
+      "**Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.",
       "**Do** write every string in `lib/i18n.ts`, in English and Spanish.",
       "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such."
     ],
@@ -490,6 +658,8 @@
       "**Don't** shadow anything that sits in the page; only floating layers take the float shadow.",
       "**Don't** use letter-spaced uppercase, kickers above headings, Title Case, two-tone headlines, a monospace or a second display face.",
       "**Don't** animate keyboard-opened dialogs, the palette or screen changes, and don't let anything pulse or loop.",
+      "**Don't** write \"kr\", or build a date string by hand.",
+      "**Don't** start the tour, or anything else, for the viewer.",
       "**Don't** show customers, pilots, testimonials, or a patented or proprietary algorithm; none exist."
     ]
   }

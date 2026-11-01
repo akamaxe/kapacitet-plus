@@ -7,7 +7,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { SectionMissing, Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { dateTime, round, useFmt } from "../lib/format";
+import { clock, dateTime, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -123,7 +123,7 @@ export default function Method() {
       <SectionBar
         sections={sections}
         basis={status.data?.checked_at
-          ? <span>{t("met.status")}: {new Date(status.data.checked_at).toLocaleTimeString(lang === "es" ? "es-ES" : "en-GB")}</span>
+          ? <span>{t("met.status")}: {clock(lang, status.data.checked_at)}</span>
           : undefined}
       />
       <div className="page-inner">

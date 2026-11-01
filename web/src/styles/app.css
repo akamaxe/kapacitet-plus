@@ -2136,7 +2136,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 /* ---------------------------------------------------------------- the annual report */
 .report-hero { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: var(--space-7); align-items: start; }
 .report-figure { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2) var(--space-3); margin: var(--space-5) 0; }
-.rf-value { font-size: var(--text-display); line-height: var(--lh-display); letter-spacing: var(--track-display); font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text-primary); }
+.rf-value { font-size: var(--text-display); line-height: var(--lh-display); letter-spacing: var(--track-display); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .rf-value small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
 .rf-label { max-width: 32ch; font-size: var(--text-body); color: var(--text-secondary); }
 .report-worst { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
@@ -2198,7 +2198,7 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .tour p { margin: 0; font-size: var(--text-small); line-height: var(--lh-small); color: var(--text-secondary); }
 .tour-head { display: flex; align-items: center; justify-content: space-between; }
 .tour-head .icon-btn { min-height: 32px; min-width: 32px; padding: var(--space-1); }
-.tour-count { font-size: var(--text-caption); font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.tour-count { font-size: var(--text-caption); font-weight: 500; color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .tour-actions { display: flex; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-1); }
 .tour-actions .btn { gap: var(--space-1); }
 @media (prefers-reduced-motion: reduce) { .tour { transition: opacity var(--dur-panel) linear; } @starting-style { .tour { transform: none; } } }
