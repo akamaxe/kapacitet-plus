@@ -27,6 +27,10 @@ export default function Compare() {
   // the hour the transformer is most loaded without control, which the neighbourhood opens on
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
+  // what the extra solar is worth, the reinforcement it avoids, and the phase-by-phase check
+  const over = useApi<any>("/overinstallation");
+  const reinf = useApi<any>("/reinforcement");
+  const phases = useApi<any>("/phases");
   const trafoMva: number | null =
     net.data?.features?.find((x: any) => x.properties?.layer === "substation")?.properties?.trafo_sn_mva ?? null;
   const [heat, setHeat] = useState<"limited" | "unc">("limited");
@@ -36,6 +40,9 @@ export default function Compare() {
   const HM = show.data?.data?.heatmaps;
   const R = risk.data?.data;
   const PF = val.data?.data?.powerflow;
+  const OV = over.data?.data;
+  const RF = reinf.data?.data;
+  const PH = phases.data?.data;
 
   const zDoeMedian = useMemo(() => {
     if (!H) return null;
@@ -67,8 +74,11 @@ export default function Compare() {
     { id: "verify", label: t("cmp.sec.verify") },
     ...(HM ? [{ id: "when", label: t("cmp.sec.when") }] : []),
     { id: "fair", label: t("cmp.sec.fair") },
+    ...(OV ? [{ id: "value", label: t("cmp.sec.value") }] : []),
+    ...(RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce") }] : []),
     ...(H.tornado ? [{ id: "sensitivity", label: t("cmp.sec.sensitivity") }] : []),
   ];
+  const priceSpan = (ys: number[] | undefined) => (ys?.length ? `${ys[0]}–${ys[ys.length - 1]}` : "–");
 
   return (
     <div className="page">
@@ -230,6 +240,81 @@ export default function Compare() {
           )}
         </section>
 
+        {/* ---------------------------------------------------------------- value */}
+        {OV && (
+          <section className="region" id="value">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("cmp.value")}</h2>
+                <p className="caption">{t("cmp.value.caption", { span: priceSpan(OV.price_years), order: OV.order })}</p>
+              </div>
+              <Legend items={[
+                { color: "var(--series-main)", label: t("cmp.value.delivered") },
+                { color: "var(--warning-fill)", label: t("cmp.value.curtailed") },
+              ]} />
+            </div>
+            <ChartOrTable
+              chart={<Chart ariaLabel={t("cmp.value")} height={260} deps={[OV]} build={(tk, _w, fm) => valueOption(tk, OV, t, fm)} />}
+              table={
+                <table className="data">
+                  <thead><tr><th className="r">{t("tbl.kwAc")}</th><th className="r">{t("tbl.beyondStatic")}</th><th className="r">{t("cmp.value.delivered")}, kSEK</th><th className="r">{t("cmp.value.curtailed")}, kSEK</th></tr></thead>
+                  <tbody>
+                    {OV.curve.map((p: any) => (
+                      <tr key={p.adopters}><td className="r">{f(p.kw_ac)}</td><td className="r">{f(p.kw_ac_nonfirm)}</td><td className="r">{f(p.delivered_sek / 1000, 1)}</td><td className="r">{f(p.curtailed_sek / 1000, 2)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              }
+            />
+            <div className="tiles cols-3">
+              <Tile label={t("cmp.value.atBudget", { kw: f(OV.budget.kw_ac) })} value={f(OV.budget.delivered_sek / 1000)} unit={t("cmp.value.unit")} note={t("cmp.value.atBudgetNote", { kw: f(OV.budget.kw_ac_nonfirm) })} />
+              <Tile label={t("cmp.value.curtAtBudget")} value={f(OV.budget.curtailed_sek / 1000, 1)} unit={t("cmp.value.unit")} />
+              {OV.budget_marginal && (
+                <Tile label={t("cmp.value.lastKw")} value={f(OV.budget_marginal.energy_share_pct, 0)} unit="%" note={t("cmp.value.lastKwNote", { v: f(OV.budget_marginal.value_share_pct, 0) })} />
+              )}
+            </div>
+          </section>
+        )}
+
+        {/* ---------------------------------------------------------------- reinforcement */}
+        {RF && (
+          <section className="region" id="reinforce">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("cmp.reinf")}</h2>
+                <p className="caption">{t("cmp.reinf.caption")}</p>
+              </div>
+            </div>
+            <div className="reinf">
+              <div className="reinf-side">
+                <h3>{t("cmp.reinf.env")}</h3>
+                <dl className="kv">
+                  <dt>{t("cmp.reinf.connected")}</dt><dd>{f(RF.envelopes.kw_ac)} kW</dd>
+                  <dt>{t("cmp.reinf.beyond")}</dt><dd>{f(RF.envelopes.nonfirm_kw)} kW</dd>
+                  <dt>{t("cmp.reinf.curtCost")}</dt><dd>{f(RF.envelopes.curtailed_sek_per_year)} {t("cmp.reinf.perYear")}</dd>
+                  <dt>{t("cmp.reinf.delivered")}</dt><dd>{f(RF.envelopes.delivered_sek_per_year)} {t("cmp.reinf.perYear")}</dd>
+                </dl>
+              </div>
+              <div className="reinf-side">
+                <h3>{t("cmp.reinf.big", { level: RF.bigger.level })}</h3>
+                <dl className="kv">
+                  <dt><Term id="static">{t("cmp.reinf.static")}</Term></dt><dd>{f(RF.today.static_kw)} → {f(RF.bigger.static_kw)} kW</dd>
+                  <dt>{t("cmp.reinf.uncontrolled")}</dt><dd>{f(RF.today.timeseries_kw)} → {f(RF.bigger.timeseries_kw)} kW</dd>
+                  <dt>{t("cmp.reinf.cost")}</dt><dd>{f(RF.transformer_sek[0] / 1000)}–{f(RF.transformer_sek[1] / 1000)} kSEK</dd>
+                  <dt>{t("cmp.reinf.station")}</dt><dd>+{f(RF.station_sek / 1000)} kSEK</dd>
+                </dl>
+              </div>
+            </div>
+            {RF.years_of_curtailment.transformer[0] != null && (
+              <p className="lead-answer">{t("cmp.reinf.years", {
+                a: f(RF.years_of_curtailment.transformer[0]), b: f(RF.years_of_curtailment.transformer[1]),
+                c: f(RF.years_of_curtailment.with_station[0]), d: f(RF.years_of_curtailment.with_station[1]),
+              })}</p>
+            )}
+            <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
+          </section>
+        )}
+
         {/* ---------------------------------------------------------------- sensitivity */}
         {H.tornado && (
           <section className="region" id="sensitivity">
@@ -257,11 +342,64 @@ export default function Compare() {
                 </table>
               }
             />
+            {PH && (
+              <section className="block stack">
+                <div className="block-head"><h3>{t("cmp.phases")}</h3></div>
+                <p className="caption">{t("cmp.phases.caption", { order: PH.order, kva: f(PH.single_phase_limit_kva, 1) })}</p>
+                <table className="data">
+                  <thead><tr><th>{t("tbl.case")}</th><th className="r">{t("tbl.houses")}</th><th className="r">{t("tbl.staticKw")}</th></tr></thead>
+                  <tbody>
+                    {PH.cases.map((c: any) => (
+                      <tr key={c.key}>
+                        <td>{t(`phase.${c.key}`)}</td>
+                        <td className="r">{f(c.adopters ?? c.adopters_median, c.adopters === undefined ? 1 : 0)}</td>
+                        <td className="r">{c.kw_ac !== undefined ? f(c.kw_ac) : t("cmp.phases.range", { m: f(c.kw_ac_median), a: f(c.kw_ac_min), b: f(c.kw_ac_max) })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </section>
+            )}
           </section>
         )}
       </div>
     </div>
   );
+}
+
+function valueOption(tk: Tokens, OV: any, t: (k: string, v?: any) => string, f: (v: number | null | undefined, d?: number) => string) {
+  const pts = OV.curve as any[];
+  const xs = pts.map((p) => p.kw_ac);
+  return {
+    grid: { left: 52, right: 24, top: 18, bottom: 44 },
+    xAxis: { type: "value", min: Math.floor(Math.min(...xs) / 50) * 50, ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 28 },
+    yAxis: { type: "value", ...axisStyle(tk), name: "kSEK", min: 0 },
+    tooltip: {
+      trigger: "axis",
+      formatter: (ps: any[]) => {
+        const p = pts[ps[0].dataIndex];
+        return `<b>${f(p.kw_ac)} kW</b> (${t("cmp.value.tt", { n: f(p.kw_ac_nonfirm) })})<br/>${t("cmp.value.delivered")}: <b>${f(p.delivered_sek / 1000, 1)} kSEK</b><br/>${t("cmp.value.curtailed")}: <b>${f(p.curtailed_sek / 1000, 2)} kSEK</b>`;
+      },
+    },
+    series: [
+      {
+        type: "line", name: t("cmp.value.delivered"), data: pts.map((p) => [p.kw_ac, p.delivered_sek / 1000]), symbol: "circle", symbolSize: 6,
+        lineStyle: { width: 2, color: tk.main }, itemStyle: { color: tk.main, borderColor: tk.surface, borderWidth: 2 }, areaStyle: { color: tk.main, opacity: 0.08 },
+        markLine: {
+          symbol: "none", silent: true, lineStyle: { color: tk.borderStrong, type: "solid", width: 1 },
+          label: { color: tk.text2, fontFamily: tk.font, fontSize: tk.size.caption, position: "insideEndTop", rotate: 90 },
+          data: [
+            { xAxis: OV.static.kw_ac, label: { formatter: t("m.static") } },
+            { xAxis: OV.budget.kw_ac, label: { formatter: t("cmp.value.budget", { z: f(OV.z_star_pct) }) } },
+          ],
+        },
+      },
+      {
+        type: "line", name: t("cmp.value.curtailed"), data: pts.map((p) => [p.kw_ac, p.curtailed_sek / 1000]), symbol: "circle", symbolSize: 6,
+        lineStyle: { width: 2, color: tk.warningFill }, itemStyle: { color: tk.warningFill, borderColor: tk.surface, borderWidth: 2 }, areaStyle: { color: tk.warningFill, opacity: 0.15 },
+      },
+    ],
+  };
 }
 
 function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
