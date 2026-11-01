@@ -109,3 +109,15 @@ export function dateTime(lang: string, value: string | number | Date, withTime =
   const d = value instanceof Date ? value : new Date(value);
   return Number.isNaN(d.getTime()) ? "–" : df.format(d);
 }
+
+/** The time of day alone, "14:03", for a reading taken today. */
+export function clock(lang: string, value: string | number | Date): string {
+  const key = `${lang}:clock`;
+  let df = dateFormatters.get(key);
+  if (!df) {
+    df = new Intl.DateTimeFormat(locale(lang), { hour: "2-digit", minute: "2-digit" });
+    dateFormatters.set(key, df);
+  }
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? "–" : df.format(d);
+}

@@ -7,7 +7,7 @@ import { SplitSkeleton } from "../components/Skeleton";
 import { ChartOrTable, Chip, Legend, Missing } from "../components/bits";
 import { useApi } from "../lib/api";
 import { balanceColor, rampCss, tokens, type Tokens } from "../lib/colors";
-import { round, useFmt } from "../lib/format";
+import { clock as clockOf, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -198,7 +198,7 @@ function LiveStrip({ now, failed, lang }: { now: any; failed: boolean; lang: str
   const cur = now?.current;
   const range = now?.today_range;
   const temp = now?.temperature;
-  const clock = (iso: string) => new Intl.DateTimeFormat(lang === "es" ? "es-ES" : "en-GB", { hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
+  const clock = (iso: string) => clockOf(lang, iso);
   if (failed || (!cur && !temp)) {
     return <p className="caption-muted live-strip">{t("nat.live.off")}</p>;
   }

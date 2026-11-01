@@ -7,7 +7,8 @@ Standard library only, so it runs on a fresh clone without Node or the pipeline 
 - numbers are formatted through lib/format.ts (no `.toFixed(` for display);
 - nothing scrolls with `scrollIntoView(` except the palette's own list (it would lift the whole
   frame off screen, see lib/scroll.ts);
-- colours come from tokens: no raw hex outside styles/tokens.css and lib/colors.ts.
+- colours come from tokens: no raw hex outside styles/tokens.css and lib/colors.ts;
+- money is SEK, never kr (DESIGN.md), and dates are formatted only in lib/format.ts.
 """
 
 from __future__ import annotations
@@ -62,6 +63,18 @@ def test_numbers_are_not_formatted_with_toFixed():
 def test_only_the_palette_scrolls_into_view():
     hits = [p.name for p in SOURCES if ".scrollIntoView(" in p.read_text(encoding="utf-8") and p.name != "Palette.tsx"]
     assert not hits, f"use lib/scroll.ts instead of scrollIntoView in {hits}"
+
+
+def test_money_is_sek_never_kr():
+    kr = re.compile(r"\bkr\b")
+    hits = [f"{p.name}:{i + 1}" for p in SOURCES for i, line in enumerate(p.read_text(encoding="utf-8").splitlines())
+            if kr.search(line)]
+    assert not hits, f"write SEK, not kr: {hits}"
+
+
+def test_dates_are_formatted_in_one_place():
+    hits = [p.name for p in SOURCES if "Intl.DateTimeFormat" in p.read_text(encoding="utf-8") and p.name != "format.ts"]
+    assert not hits, f"format dates with dateTime() or clock() from lib/format.ts, not in {hits}"
 
 
 def test_colours_come_from_tokens():
