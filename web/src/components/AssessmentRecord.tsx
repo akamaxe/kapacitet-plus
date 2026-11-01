@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { Roundel } from "./Shell";
 import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { fuseText, reasonText, staticNumbers } from "../lib/reasons";
+import { fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { useStore } from "../lib/store";
 
 /**
@@ -110,6 +110,9 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
             {sum.bat_charged_ref_kwh !== undefined && (
               <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${pct1(f, sum.bat_captured_ref_pct)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
             )}
+            {(res.phases?.devices as any[] | undefined)?.map((d) => (
+              <tr key={`ph-${d.device}`}><th>{t("req.phase.title")}</th><td>{phaseVerdict(t, d).text}</td><td>{phaseText(t, f, d, res.phases.limit_pct)}</td></tr>
+            ))}
             {res.fuse && (
               <tr><th>{t("req.fuse.title")}</th><td>{res.fuse.ok ? t("req.fuse.ok") : t("req.fuse.over")}</td><td>{fuseText(t, f, res.fuse)}</td></tr>
             )}

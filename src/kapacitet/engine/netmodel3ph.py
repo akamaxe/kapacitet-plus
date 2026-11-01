@@ -66,7 +66,7 @@ class NetModel3Ph:
         self.v_max = A("v_max_pu") - A("v_margin_pu")
         self.v_min = A("v_min_pu") + A("v_margin_pu")
         self.thermal = A("thermal_limit_pct")
-        self.unbalance_limit = 2.0           # EN 50160, negative over positive sequence
+        self.unbalance_limit = A("vuf_limit_pct")      # negative over positive sequence
 
         # Voltage is checked on all three phases of every customer bus.
         bus_pos = pd.Series(np.arange(len(self.net.bus)), index=self.net.bus.index)

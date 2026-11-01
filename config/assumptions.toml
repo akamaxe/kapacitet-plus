@@ -235,6 +235,104 @@ note = "A connection request that would overload the house's main fuse names the
 note_es = "Una solicitud que sobrecargaría el fusible principal de la casa indica el menor de estos que la soporta."
 note_sv = "En ansökan som skulle överbelasta husets huvudsäkring anger den minsta av dessa som klarar den."
 
+[vuf_limit_pct]
+value = 2.0
+unit = "%"
+tag = "regulation"
+label = "Voltage unbalance limit (negative over positive sequence)"
+label_es = "Límite de desequilibrio de tensión (secuencia inversa sobre directa)"
+label_sv = "Gräns för spänningsobalans (minusföljd genom plusföljd)"
+source = "Ei EIFS 2023:3; EN 50160 (95 % of 10-min means within 2 %)"
+url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
+note = "Held against the static study's worst-case hour, which is stricter than a week of 10-minute means."
+note_es = "Se compara con la peor hora del estudio estático, más exigente que una semana de medias de 10 minutos."
+note_sv = "Jämförs med den statiska studiens värsta timme, vilket är strängare än en veckas 10-minutersmedelvärden."
+
+[mv_short_circuit_min_factor]
+value = 0.8
+unit = "×"
+tag = "team-assumption"
+label = "Minimum short-circuit power of the 10 kV network, as a share of the maximum"
+label_es = "Potencia de cortocircuito mínima de la red de 10 kV, como fracción de la máxima"
+label_sv = "Lägsta kortslutningseffekt i 10 kV-nätet, som andel av den högsta"
+source = "Modelling choice for the minimum-current case of IEC 60909"
+url = ""
+note = "Barely matters at low voltage: the transformer's own impedance dominates a fault in the neighbourhood."
+note_es = "Apenas influye en baja tensión: la impedancia del propio transformador domina una falta en el barrio."
+note_sv = "Spelar knappt roll på lågspänning: transformatorns egen impedans dominerar ett fel i området."
+
+[line_sc_end_temperature_c]
+value = 80.0
+unit = "°C"
+tag = "team-assumption"
+label = "Cable conductor temperature at the end of a fault, for the minimum fault current"
+label_es = "Temperatura del conductor al final de una falta, para la corriente de falta mínima"
+label_sv = "Ledartemperatur i slutet av ett fel, för den lägsta felströmmen"
+source = "IEC 60909-0: minimum short-circuit currents use the conductor resistance at its end-of-fault temperature"
+url = ""
+note = "A hotter conductor lowers the fault current; 80 °C is the warm end of normal operation, not the insulation's short-circuit limit."
+note_es = "Un conductor más caliente reduce la corriente de falta; 80 °C es el extremo cálido del servicio normal, no el límite del aislamiento en cortocircuito."
+note_sv = "En varmare ledare sänker felströmmen; 80 °C är den varma änden av normal drift, inte isolationens kortslutningsgräns."
+
+[protection_max_disconnect_s]
+value = 5.0
+unit = "s"
+tag = "regulation"
+label = "Longest disconnection time for a fault on a distribution circuit (TN system)"
+label_es = "Tiempo máximo de desconexión de una falta en un circuito de distribución (sistema TN)"
+label_sv = "Längsta frånkopplingstid vid fel i en distributionskrets (TN-system)"
+source = "IEC 60364-4-41:2005+A1:2017, 411.3.2.3 (in Sweden through SS 436 40 00)"
+url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-41%7Bed5.1%7Db.pdf"
+note = ""
+
+[fuse_gg_ratings_a]
+value = [25, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630]
+unit = "A"
+tag = "sourced"
+label = "gG fuse ratings with a published 5-second gate"
+label_es = "Calibres de fusible gG con una puerta de 5 segundos publicada"
+label_sv = "Märkströmmar för gG-säkringar med en publicerad 5-sekundersgräns"
+source = "Enel GSCL004 (2016), table 7, reproducing the gates of IEC 60269 for gG fuse-links"
+url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
+note = "Feeder head fuses are chosen from these; a house's 16 or 20 A fuse takes the 25 A gate as a bound, since it melts sooner."
+note_es = "Los fusibles de cabecera se eligen entre estos; el fusible de 16 o 20 A de una casa toma la puerta de 25 A como cota, porque funde antes."
+note_sv = "Ledningarnas huvudsäkringar väljs bland dessa; ett hus 16- eller 20-amperessäkring använder 25 A-gränsen som övre gräns, eftersom den smälter tidigare."
+
+[fuse_gg_imax_5s_a]
+value = [110, 190, 250, 320, 425, 580, 715, 950, 1250, 1650, 2200, 2840, 3800, 5100]
+unit = "A"
+tag = "sourced"
+label = "Current at which a gG fuse of each rating melts within 5 s (Imax at 5 s)"
+label_es = "Corriente a la que un fusible gG de cada calibre funde en 5 s (Imax a 5 s)"
+label_sv = "Ström vid vilken en gG-säkring av varje märkström smälter inom 5 s (Imax vid 5 s)"
+source = "Enel GSCL004 (2016), table 7 (IEC 60269 gates); the 25, 80 and 250 A rows also in Mersen TM-104"
+url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
+note = "One value per rating in fuse_gg_ratings_a, in the same order."
+note_es = "Un valor por calibre de fuse_gg_ratings_a, en el mismo orden."
+note_sv = "Ett värde per märkström i fuse_gg_ratings_a, i samma ordning."
+
+[fuse_conventional_factor]
+value = 1.6
+unit = "× In"
+tag = "regulation"
+label = "Conventional fusing current of a gG fuse"
+label_es = "Corriente convencional de fusión de un fusible gG"
+label_sv = "Konventionell smältström för en gG-säkring"
+source = "IEC 60269-1, as reproduced in Enel GSCL004 (2016), table 6: If = 1.6 In for gG fuse-links from 16 A"
+url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
+note = ""
+
+[cable_overload_factor]
+value = 1.45
+unit = "× Iz"
+tag = "regulation"
+label = "Overload rule: a fuse's conventional current within this multiple of the cable's rating"
+label_es = "Regla de sobrecarga: la corriente convencional del fusible dentro de este múltiplo de la del cable"
+label_sv = "Överlastregel: säkringens konventionella ström inom denna multipel av kabelns märkström"
+source = "IEC 60364-4-43:2008, 433.1 (coordination between conductors and overload protective devices)"
+url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-43%7Bed3.0%7Db.pdf"
+note = ""
+
 [mv_short_circuit_mva]
 value = 150.0
 unit = "MVA"

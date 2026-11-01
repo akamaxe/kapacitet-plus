@@ -11,6 +11,7 @@ import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
 import { hoursInYear, hourLabel, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { faultText } from "../lib/reasons";
 import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
@@ -508,6 +509,8 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
   const env = useApi<any>(nonfirm ? `/envelopes/${house.cid}` : null);
   const limit: number | null = env.data?.envelope_kw?.[hour] ?? null;
   const loads = [house.has_hp ? t("dt.hp") : null, house.has_ev ? t("dt.ev") : null].filter(Boolean).join(", ");
+  const prot = useApi<any>("/protection");
+  const fault = (prot.data?.data?.houses as any[] | undefined)?.find((x) => x.cid === house.cid);
   return (
     <div className="stack inspector">
       <div className="row" style={{ justifyContent: "space-between" }}>
@@ -524,6 +527,10 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
         <Tile label={t("dt.feeder")} value={house.feeder + 1} />
         <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
         <Tile label={t("dt.loads")} value={<span className="t-word">{loads || t("dt.loadsNone")}</span>} note={t("dt.loadsNote")} mark="synthetic" />
+        {fault && (
+          <Tile label={t("req.fault")} value={f(fault.ik1_min_a)} unit="A"
+            note={faultText(t, f, fault, prot.data.data.criterion.disconnect_s)} mark="synthetic" />
+        )}
         {nonfirm && scenario === "doe" && (
           <Tile label={t("dt.limit")} value={limit == null ? "–" : f(limit, 1)} unit="kW" note={curtailed == null ? undefined : t("dt.limitNote", { kwh: f(curtailed, 0) })} />
         )}

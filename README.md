@@ -398,11 +398,20 @@ and an operator lands between them.
 Stated openly on the Method screen and repeated here: the published envelopes use perfect
 foresight (measured against a forecast-free alternative in the section above); the model is hourly while the
 Swedish voltage limit applies to 10-minute means (covered by a 1 % margin); **every published
-number comes from the balanced three-phase model**, so single-phase unbalance is not in them;
-the LV topology is synthetic;
+number comes from the balanced three-phase model**, so single-phase unbalance is not in them
+(a request with a single-phase charger or inverter is checked on the unbalanced model, phase by
+phase, at the static study's worst hour); the LV topology is synthetic;
 household demand comes from a UK behaviour model scaled to Swedish consumption; the MV supply is
-held at 1.00 pu; economics use the SE3 spot price only. Protection (minimum fault current at
-feeder ends versus fuse ratings) is not checked yet.
+held at 1.00 pu; economics use the SE3 spot price only.
+
+Protection is checked by `compute --stage extra --only protection` (`engine/protection.py`, under a
+second): a single-phase fault at the weakest point of each feeder and at each house, at the minimum
+fault current (IEC 60909, pandapower `calc_sc`), must blow its fuse within 5 s (IEC 60364-4-41,
+411.3.2.3). Each feeder's head fuse is the largest gG rating its main cable allows (1.6·I_n within
+1.45·I_z, IEC 60364-4-43, 433.1), and the melting currents are the IEC 60269 gates (Enel GSCL004,
+table 7). On the reference grid every house's main fuse clears (lowest fault current 805 A), but 6 of
+the 11 feeders do not at their far end with a 200 A fuse: the synthetic design would need a smaller
+fuse or a heavier cable there. Cabinet fuses and what inverters add to a fault are not modelled.
 
 An unbalanced three-phase model now exists alongside the balanced one
 (`engine/powerflow3ph.py` and `engine/netmodel3ph.py`), validated against pandapower on the

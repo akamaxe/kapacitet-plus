@@ -154,7 +154,8 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
             raise QueueError("static_rejects_firm")
         ctx = context() or rq.Context(base)
         r = rq.Request(cid=cid, pv_kwp=float(req.get("pv_kwp", 0)), ev_kw=float(req.get("ev_kw", 0)),
-                       hp=bool(req.get("hp", False)), bat_kwh=float(req.get("bat_kwh", 0)), baseline=base)
+                       hp=bool(req.get("hp", False)), bat_kwh=float(req.get("bat_kwh", 0)), baseline=base,
+                       ev_phases=int(req.get("ev_phases", 0)))
         years = ctx.years(settings().weather_years)
         emit("verify", {"years": len(years)})
         out, detail = rq.run(model, r, hp, ev, ctx=ctx, verify_years=years)

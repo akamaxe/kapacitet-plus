@@ -174,6 +174,16 @@ class Request:
     hp: bool = False
     bat_kwh: float = 0.0
     baseline: str = "static"
+    ev_phases: int = 0          # 1 or 3; 0 = the usual (the small charger single-phase, larger three-phase)
+
+
+def ev_single_phase(req: Request) -> bool:
+    """Whether the requested charger is single-phase."""
+    if req.ev_kw <= 0:
+        return False
+    if req.ev_phases in (1, 3):
+        return req.ev_phases == 1
+    return req.ev_kw <= A("ev_charger_single_phase_kw") + 1e-9
 
 
 @lru_cache(maxsize=16)
@@ -437,6 +447,10 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     # queue's "firm only if every static study approves" keeps meaning the grid
     if want_import:
         out["fuse"] = _fuse_check(req, hp, ev, hp_new)
+    # a single-phase device on each phase, on the unbalanced model (a key of its own, like the fuse)
+    phases = _phase_check(req, base, hp, ev, ctx, hp_new)
+    if phases is not None:
+        out["phases"] = phases
     emit("static", {"static": out["static"], "ms": 1000 * (time.perf_counter() - t0)})
 
     # ---- 2) dynamic envelopes, every weather year (closed form) ------------------------------
@@ -652,9 +666,100 @@ def _fuse_check(req: Request, hp: np.ndarray, ev: np.ndarray, hp_new: bool) -> d
     j = int(req.cid)
     prof = _applicant_profiles(req, settings().reference_year, hp, ev, hp_new)
     house = (prof["load"] + prof["hp"]) / A("load_power_factor")
-    single = req.ev_kw if 0 < req.ev_kw <= A("ev_charger_single_phase_kw") + 1e-9 else 0.0
+    single = req.ev_kw if ev_single_phase(req) else 0.0
     return fuse_verdict(float(house.max()), float(req.ev_kw - single), float(single),
                         float(cust.loc[j, "fuse_a"]), list(A("main_fuse_sizes_a")))
+
+
+PHASE_LABELS = ("L1", "L2", "L3")
+
+
+def solve_with_device(model3, p_kw: np.ndarray, q_kvar: np.ndarray, j: int, device_kw: float, phase: int,
+                      customer_phase: np.ndarray | None = None):
+    """The unbalanced model with one extra single-phase device at customer j's bus, on `phase`.
+
+    The house's own row keeps its three-phase load; the device is a row of its own on the same
+    bus. Z depends only on the network, so a shallow copy of the solver with one more customer row
+    gives exactly what a customer of that size on that phase would.
+    """
+    import copy
+
+    pf = copy.copy(model3.pf)
+    pf.customer_ppc = np.append(model3.pf.customer_ppc, model3.pf.customer_ppc[j])
+    phases = np.append(model3.phase if customer_phase is None else customer_phase, phase)
+    p = np.append(np.asarray(p_kw, dtype=float), device_kw)[:, None]
+    q = np.append(np.asarray(q_kvar, dtype=float), 0.0)[:, None]
+    return pf.solve(p, q, phases, model3.vm_slack, flows=True)
+
+
+def _phase_check(req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context, hp_new: bool) -> dict | None:
+    """A single-phase charger or inverter on each of the three phases, at the static study's
+    worst-case hour, on the unbalanced model: the unbalance it causes and the voltages it leaves.
+
+    The envelope's verification stays on the balanced model; this says which phase to connect to.
+    """
+    from .netmodel3ph import get_model3ph
+    from .phases import THREE_PHASE
+
+    cust = customers()
+    j = int(req.cid)
+    devices = []
+    pv_cap = min(req.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[j, "fuse_kva"])) if req.pv_kwp > 0 else 0.0
+    if 0 < pv_cap <= A("pv_single_phase_max_kva") + 1e-9:
+        devices.append(("pv", pv_cap))
+    if ev_single_phase(req):
+        devices.append(("ev", req.ev_kw))
+    if not devices:
+        return None
+    m3 = get_model3ph()
+    # the house's own row stays three-phase and the device is a row apart; a local copy, because
+    # the model is shared by every evaluation running at the same time
+    customer_phase = m3.phase.copy()
+    customer_phase[j] = THREE_PHASE
+    firm_mask = np.zeros(m3.C, dtype=bool)
+    firm_mask[base["pv_cids"]] = True
+    pv_kw = hosting.cap_kw().copy()
+    hm = hp.copy()
+    extra = np.zeros(m3.C)
+    for c, ov in ctx.overrides.items():     # houses approved earlier in the queue are connected
+        if ov.get("pv_kw", 0) > 0:
+            firm_mask[c] = True
+            pv_kw[c] = ov["pv_kw"]
+        if ov.get("hp"):
+            hm[c] = True
+        extra[c] += ov.get("ev_kw", 0.0)
+    if hp_new:
+        hm[j] = True
+    out = []
+    for kind, kw in devices:
+        if kind == "pv":
+            # the summer snapshot without the applicant's panels; they go on one phase
+            p, q = hosting.summer_snapshot(firm_mask, pv_kw)
+            device = kw
+            season = "summer"
+        else:
+            p, q = hosting.winter_snapshot(hm, ev, extra)
+            device = -kw
+            season = "winter"
+        rows = []
+        for ph in range(3):
+            res = solve_with_device(m3, p, q, j, device, ph, customer_phase)
+            buses = m3.check_buses
+            vuf = float(res.unbalance_pct[buses, 0].max())
+            vm = res.vm[m3.check_rows, 0]
+            rows.append({"phase": PHASE_LABELS[ph], "vuf_pct": vuf, "v_max_pu": float(vm.max()),
+                         "v_min_pu": float(vm.min()), "neutral_a": float(res.i_neutral_ka[:, 0].max() * 1000.0)})
+        limit = float(A("vuf_limit_pct"))
+        vmax, vmin = A("v_max_pu") - A("v_margin_pu"), A("v_min_pu") + A("v_margin_pu")
+        ok = [r["vuf_pct"] <= limit and vmin <= r["v_min_pu"] and r["v_max_pu"] <= vmax for r in rows]
+        order = sorted(range(3), key=lambda i: (not ok[i], rows[i]["vuf_pct"]))
+        best, worst = order[0], max(range(3), key=lambda i: (rows[i]["vuf_pct"], not ok[i]))
+        out.append({"device": kind, "kw": float(kw), "season": season, "by_phase": rows,
+                    "best": PHASE_LABELS[best], "worst": PHASE_LABELS[worst],
+                    "ok_best": bool(ok[best]), "ok_all": bool(all(ok))})
+    return {"devices": out, "limit_pct": float(A("vuf_limit_pct")),
+            "ok": all(d["ok_best"] for d in out),
+            "assumption": "existing single-phase systems on their phases by " + str(A("phase_allocation"))}
 
 
 def _static(model: NetModel, req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context,
@@ -760,6 +865,8 @@ def _summary(out: dict, req: Request, hp_new: bool, battery: bool) -> dict:
         s["ev_hours_limited_ref"] = e_ref.get("ev_hours_limited", 0)
     if "fuse" in out:
         s["fuse_ok"] = out["fuse"]["ok"]
+    if "phases" in out:
+        s["phases_ok"] = out["phases"]["ok"]
     if hp_new:
         s["hp_static_approved"] = out["static"]["hp"]["approved"]
         hp_kwh = sum(e.get("hp_kwh", 0) for e in out["per_year"])

@@ -250,7 +250,7 @@ def main(argv: list[str] | None = None) -> None:
                                 "scenarios, tornado, foresight, over-installation, phases, validation)")
             p.add_argument("--only", default="",
                            help="with --stage extra: comma list of national,requests,scenarios,tornado,"
-                                "foresight,overinstallation,phases,validation")
+                                "foresight,overinstallation,phases,validation,protection")
             p.add_argument("--workers", type=int, default=4,
                            help="with --stage extra: worker processes for the heavy stages")
         p.set_defaults(func=func)

@@ -97,6 +97,7 @@ _WRITTEN_BY = {
     "validation.json": "compute --stage extra --only validation",
     "forecast.json": "forecast",
     "grid/customers.parquet": "build",
+    "protection.json": "compute --stage extra --only protection",
 }
 
 
@@ -113,6 +114,7 @@ API_ERRORS = {
     "has_heat_pump": "this house already has a heat pump",
     "unknown_customer": "unknown customer",
     "busy": "busy: {n} requests are already being evaluated, try again shortly",
+    "bad_phases": "a charger is single-phase (1) or three-phase (3)",
 }
 
 
@@ -584,6 +586,12 @@ def forecast_schemes() -> dict:
     return with_prov(result("forecast.json"), "smhi_strang", "smhi_metobs", "synthetic_grid")
 
 
+@app.get(f"{API}/protection", tags=["hosting"])
+def protection() -> dict:
+    """Whether a fault at the far end of each feeder, and at each house, blows its fuse in time."""
+    return with_prov(result("protection.json"), "osm", "synthetic_grid")
+
+
 @app.get(f"{API}/phases", tags=["hosting"])
 def phases() -> dict:
     """Static capacity when single-phase inverters and unknown phases are modelled."""
@@ -701,6 +709,8 @@ class RequestIn(BaseModel):
     ev_kw: float = Field(0.0, ge=0, le=22, description="EV charger power, kW (0 = none)")
     hp: bool = Field(False, description="add a heat pump sized to the house (not for a house that has one)")
     bat_kwh: float = Field(0.0, ge=0, le=30, description="home battery, usable kWh (needs a PV request)")
+    ev_phases: int = Field(0, ge=0, le=3, description="charger phases: 1 or 3; 0 for the usual (the small "
+                                                       "charger single-phase, larger ones three-phase)")
     baseline: str = Field("static", pattern="^(static|doe|queue)$",
                           description="static: today's approved grid; doe: the DOE scenario; "
                                       "queue: either of them with the requests approved in the queue")
@@ -708,6 +718,7 @@ class RequestIn(BaseModel):
     def engine_request(self):
         from ..engine import request as rq
         return rq.Request(cid=self.cid, pv_kwp=self.pv_kwp, ev_kw=self.ev_kw, hp=self.hp, bat_kwh=self.bat_kwh,
+                          ev_phases=self.ev_phases,
                           baseline=self.baseline)
 
 
@@ -737,6 +748,8 @@ def _warm() -> None:
                 _state_gz(name, path.stat().st_mtime)
         eng = _engine()
         from ..engine import request as rq
+        from ..engine.netmodel3ph import get_model3ph
+        get_model3ph()          # the unbalanced model the phase check uses, built once
         cfg = settings()
         for name in rq.BASELINES:
             for y in cfg.weather_years:
@@ -818,6 +831,8 @@ def _check_request(body: RequestIn) -> None:
         raise api_error(422, "battery_needs_solar")
     if body.hp and bool(_engine()["hp"][body.cid]):
         raise api_error(422, "has_heat_pump")
+    if body.ev_phases == 2:
+        raise api_error(422, "bad_phases")
 
 
 def _sweep_jobs() -> None:

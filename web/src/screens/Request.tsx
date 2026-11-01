@@ -11,7 +11,7 @@ import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
 import { copyText } from "../lib/clipboard";
-import { fuseText, reasonText, staticNumbers } from "../lib/reasons";
+import { faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
@@ -45,6 +45,8 @@ export default function Request() {
   const setUrlJob = useStore((s) => s.setJob);
   const queryClient = useQueryClient();
   const meta = useApi<any>("/meta");
+  // the network's protection check, when it has been computed: one fact per house
+  const prot = useApi<any>("/protection");
   const net = useApi<any>("/network");
   const show = useApi<any>("/showcase");
   // the request form's limits and choices are model inputs, read like every other figure
@@ -388,6 +390,10 @@ export default function Request() {
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
                 <dt><Term id="feeder">{t("req.feeder")}</Term></dt><dd>{house.feeder + 1}</dd>
                 <dt>{t("req.distance")}</dt><dd>{f(house.dist_m)} m</dd>
+                {(() => {
+                  const h = (prot.data?.data?.houses as any[] | undefined)?.find((x) => x.cid === house.cid);
+                  return h ? <><dt>{t("req.fault")}</dt><dd>{faultText(t, f, h, prot.data.data.criterion.disconnect_s)}</dd></> : null;
+                })()}
               </dl>
               {status.get(house.cid) !== "none" && <p className="caption-muted">{t("req.hadpv")}</p>}
             </div>
@@ -743,6 +749,22 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {!evReq && <p className="caption-muted">{staticNumbers(t, f, res.static.hp)}</p>}
           <p className="caption-muted">{t("req.hp.caption")}</p>
         </section>
+      )}
+
+      {res.phases && (
+        <div className="verdicts">
+          {(res.phases.devices as any[]).map((d) => {
+            const v = phaseVerdict(t, d);
+            return (
+              <div className="verdict" key={d.device}>
+                <span className="v-method">{t("req.phase.title")}</span>
+                <Status kind={v.kind}>{v.text}</Status>
+                <span className="v-detail">{phaseText(t, f, d, res.phases.limit_pct)}</span>
+              </div>
+            );
+          })}
+          <p className="caption-muted">{t("req.phase.caption")}</p>
+        </div>
       )}
 
       {res.fuse && (

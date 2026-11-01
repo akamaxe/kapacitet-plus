@@ -452,7 +452,8 @@ def build() -> Network:
     net = pp.create_empty_network(name=f"Kapacitet+ {site.name}", f_hz=50.0, sn_mva=1.0)
     b_mv = pp.create_bus(net, vn_kv=10.0, name="MV 10 kV")
     pp.create_ext_grid(net, b_mv, vm_pu=A("mv_voltage_pu"), s_sc_max_mva=A("mv_short_circuit_mva"),
-                       rx_max=0.1, s_sc_min_mva=A("mv_short_circuit_mva") * 0.8, rx_min=0.1)
+                       rx_max=0.1, s_sc_min_mva=A("mv_short_circuit_mva") * A("mv_short_circuit_min_factor"),
+                       rx_min=0.1)
     b_lv = pp.create_bus(net, vn_kv=0.4, name="LV busbar")
     pp.create_transformer(net, b_mv, b_lv, std_type=trafo_type, name="T1", tap_pos=A("trafo_tap_pos"))
 

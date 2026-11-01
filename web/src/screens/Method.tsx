@@ -69,6 +69,8 @@ export default function Method() {
   const meta = useApi<any>("/meta");
   const host = useApi<any>("/hosting");
   const fc = useApi<any>("/forecast");
+  const prot = useApi<any>("/protection");
+  const P = prot.data?.data;
   const FC = fc.data?.data;
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
@@ -122,6 +124,7 @@ export default function Method() {
     { id: "inputs", label: t("met.assumptions") },
     ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
     ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    ...(P ? [{ id: "protection", label: t("met.nav.prot") }] : []),
     { id: "import", label: t("met.nav.imp") },
     { id: "limits", label: t("met.limits") },
   ];
@@ -347,6 +350,48 @@ export default function Method() {
                 />
               </section>
             )}
+          </section>
+        )}
+
+        {/* ---------------------------------------------------------------- protection */}
+        <SectionMissing title={t("met.prot")} q={prot} />
+        {P && (
+          <section className="region" id="protection">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("met.prot")}</h2>
+                <p className="caption">{t("met.prot.caption", { s: f(P.criterion.disconnect_s) })}</p>
+              </div>
+            </div>
+            <p className="lead-answer">{t("met.prot.summary", {
+              ok: f(P.summary.feeders_ok), n: f(P.summary.feeders), s: f(P.criterion.disconnect_s),
+              hok: f(P.summary.houses_ok), hn: f(P.summary.houses),
+            })}</p>
+            <Protocol
+              rows={[
+                ...(P.feeders as any[]).map((r) => ({
+                  ok: r.ok,
+                  label: t("met.prot.feeder", { n: r.feeder + 1 }),
+                  value: f(r.ik1_min_a),
+                  unit: "A",
+                  criterion: r.fuse_a == null ? t("met.prot.noFuse", { cable: r.cable, iz: f(r.i_z_a) }) : t("met.prot.line", {
+                    fuse: f(r.fuse_a), cable: r.cable, iz: f(r.i_z_a), s: f(P.criterion.disconnect_s), gate: f(r.gate_5s_a),
+                    margin: f(r.margin, 2),
+                  }),
+                })),
+                {
+                  ok: P.summary.houses_ok === P.summary.houses,
+                  label: t("met.prot.houses"),
+                  value: f(P.summary.ik1_min_a),
+                  unit: "A",
+                  criterion: t("met.prot.housesLine", {
+                    ok: f(P.summary.houses_ok), n: f(P.summary.houses), s: f(P.criterion.disconnect_s),
+                    median: f(P.summary.ik1_median_a),
+                  }),
+                },
+              ]}
+            />
+            <p className="caption-muted">{t("met.prot.missing")}</p>
           </section>
         )}
 
