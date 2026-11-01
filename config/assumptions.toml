@@ -636,3 +636,49 @@ label = "Largest battery a connection request can ask for"
 source = "Close to the largest usable capacity measured by Orth et al. (2023), 16.7 kWh"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
+
+# ---------------------------------------------------------------- reinforcement, Ei norm values (price level 2022)
+[reinforce_trafo_500_sek]
+value = 156126
+unit = "SEK"
+tag = "sourced"
+label = "Standard cost of a 500 kVA 12/0.4 kV distribution transformer"
+source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15922, normvärde 2022"
+url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
+note = "Ei's norm values price the grid companies' assets for the revenue cap; they are standard costs, not quotes."
+
+[reinforce_trafo_800_sek]
+value = 209053
+unit = "SEK"
+tag = "sourced"
+label = "Standard cost of an 800 kVA 12/0.4 kV distribution transformer"
+source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15921, normvärde 2022"
+url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
+note = "The list has no 630 kVA unit, so a 0.63 MVA upgrade is bracketed between the 500 and 800 kVA codes."
+
+[reinforce_station_800_sek]
+value = 280564
+unit = "SEK"
+tag = "sourced"
+label = "Standard cost of an 800 kVA secondary substation, sheet metal, without transformer"
+source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15223, normvärde 2022"
+url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
+note = "Only if the existing station cannot take the larger transformer."
+
+[reinforce_urban_supplement_sek]
+value = 126861
+unit = "SEK"
+tag = "sourced"
+label = "Supplement for a secondary substation inside an urban area"
+source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15271 (city- och tätortstillägg), normvärde 2022"
+url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
+note = "Smedslätten lies inside Stockholm's urban area on Statistics Sweden's map."
+
+[reinforce_price_level_year]
+value = 2022
+unit = "year"
+tag = "sourced"
+label = "Price level of the Ei norm values"
+source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1: column 'Normvärde 2022 [SEK]'"
+url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
+note = ""

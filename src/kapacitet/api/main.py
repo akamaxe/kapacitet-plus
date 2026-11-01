@@ -516,6 +516,20 @@ def overinstallation() -> dict:
                      "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
 
 
+@app.get(f"{API}/reinforcement", tags=["hosting"])
+def reinforcement() -> dict:
+    """A bigger transformer at Ei's norm cost, against connecting the same houses with envelopes."""
+    from ..config import A
+    from ..engine.summaries import overinstallation_summary
+    from ..engine.summaries import reinforcement as reinforce
+
+    keys = ("reinforce_trafo_500_sek", "reinforce_trafo_800_sek", "reinforce_station_800_sek",
+            "reinforce_urban_supplement_sek", "reinforce_price_level_year")
+    over = overinstallation_summary(result("overinstallation.json"))
+    return with_prov(reinforce(result("tornado.json"), over, {k: A(k) for k in keys}),
+                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
+
+
 # ---------------------------------------------------------------- annual filing and audit trail
 
 @app.get(f"{API}/compliance", tags=["compliance"])

@@ -73,3 +73,38 @@ def audit_totals(rows: list[dict]) -> dict:
         c["kwh"] += float(r["curtailed_kwh"])
     return {"hours": len(hours), "kwh": sum(float(r["curtailed_kwh"]) for r in rows),
             "per_customer": {cid: {"hours": len(v["hours"]), "kwh": v["kwh"]} for cid, v in per.items()}}
+
+
+def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
+    """Reinforce the transformer, or connect the same houses with envelopes? Both from published results.
+
+    - Cost: Ei's norm values (assumptions.toml). The list has no 630 kVA unit, so the transformer
+      swap is bracketed between its 500 and 800 kVA codes; a new station (and the urban supplement)
+      is added only if the existing one cannot take the bigger unit.
+    - Capacity with a 0.63 MVA transformer: the tornado's case, for its adoption order.
+    - What the envelopes cost instead: the spot value of the energy they curtail at the published
+      deployment, and what the houses beyond the static limit deliver each year meanwhile
+      (over-installation summary, the same adoption order).
+    The ratio is undiscounted and compares a one-off cost with a yearly one; it says how many years
+    of curtailment the reinforcement would buy, nothing more.
+    """
+    big = next(c for c in tornado["cases"] if c["key"] == "trafo" and c["level"].startswith("0.63"))
+    base = tornado["base"]
+    t_lo, t_hi = cost["reinforce_trafo_500_sek"], cost["reinforce_trafo_800_sek"]
+    station = cost["reinforce_station_800_sek"] + cost["reinforce_urban_supplement_sek"]
+    budget = over["budget"]
+    curt = budget["curtailed_sek"]
+    per_year = (lambda x: x / curt) if curt > 0 else (lambda x: None)
+    return {
+        "price_level_year": int(cost["reinforce_price_level_year"]),
+        "transformer_sek": [t_lo, t_hi], "station_sek": station, "with_station_sek": [t_lo + station, t_hi + station],
+        "today": {"static_kw": base["static_kw"], "timeseries_kw": base["timeseries_kw"], "doe_kw": base["doe_kw"]},
+        "bigger": {"level": big["level"], "static_kw": big["static_kw"], "timeseries_kw": big["timeseries_kw"],
+                   "doe_kw": big["doe_kw"]},
+        "envelopes": {"kw_ac": budget["kw_ac"], "nonfirm_kw": budget["kw_ac_nonfirm"],
+                      "curtailed_sek_per_year": curt, "delivered_sek_per_year": budget["delivered_sek"],
+                      "price_years": over["price_years"]},
+        "years_of_curtailment": {"transformer": [per_year(t_lo), per_year(t_hi)],
+                                 "with_station": [per_year(t_lo + station), per_year(t_hi + station)]},
+        "order": tornado.get("order"), "order_over": over.get("order"),
+    }

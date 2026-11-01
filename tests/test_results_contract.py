@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 import numpy as np
 
 from conftest import needs_results
@@ -150,3 +152,20 @@ def test_persistence_is_the_one_unsafe_forecast_scheme(results):
     unsafe = {k for k, r in rows.items() if not r["safe"]}
     assert unsafe == {"persistence"}
     assert all(r["violation_hours"] == 0 for k, r in rows.items() if k != "persistence")
+
+
+def test_the_reinforcement_comparison_rests_on_the_published_results(results):
+    from kapacitet.config import A
+    from kapacitet.engine.summaries import overinstallation_summary, reinforcement
+
+    keys = ("reinforce_trafo_500_sek", "reinforce_trafo_800_sek", "reinforce_station_800_sek",
+            "reinforce_urban_supplement_sek", "reinforce_price_level_year")
+    over = overinstallation_summary(results("overinstallation"))
+    r = reinforcement(results("tornado"), over, {k: A(k) for k in keys})
+    assert r["order"] == r["order_over"], "both halves must come from the same adoption order"
+    lo, hi = r["transformer_sek"]
+    assert 0 < lo < hi and r["with_station_sek"][0] > hi
+    assert r["bigger"]["static_kw"] > r["today"]["static_kw"]
+    assert r["bigger"]["timeseries_kw"] >= r["envelopes"]["kw_ac"], "the bigger unit carries the deployment uncontrolled"
+    yrs = r["years_of_curtailment"]["transformer"]
+    assert yrs[0] == pytest.approx(lo / r["envelopes"]["curtailed_sek_per_year"])
