@@ -1,0 +1,108 @@
+{
+ "header": {
+  "name": "tiny",
+  "hours": 4,
+  "n_bus": 3,
+  "n_line": 2,
+  "n_cust": 2,
+  "layout": "time-major blocks: V[H][bus] uint8, loading[H][line] uint8, p[H][cust] uint8",
+  "v_offset": 0.85,
+  "v_scale": 0.001176470588235294,
+  "loading_scale": 0.5882352941176471,
+  "p_offset": -25.0,
+  "p_scale": 0.19607843137254902,
+  "bus_index": [
+   0,
+   1,
+   2
+  ],
+  "line_index": [
+   0,
+   1
+  ],
+  "aggregates": {
+   "trafo_loading": [
+    10.0,
+    20.0,
+    30.0,
+    40.0
+   ],
+   "violation": [
+    0,
+    0,
+    1,
+    0
+   ],
+   "curtailed_kw": null
+  }
+ },
+ "blob_b64": "gFWAkap3Zv+I1QCZABFVgKr//wgAkGY/gP//AA==",
+ "probes": [
+  {
+   "kind": "voltage",
+   "row": 0,
+   "hour": 0,
+   "value": 1.0005882352941176
+  },
+  {
+   "kind": "voltage",
+   "row": 1,
+   "hour": 2,
+   "value": 1.15
+  },
+  {
+   "kind": "voltage",
+   "row": 1,
+   "hour": 3,
+   "value": 0.85
+  },
+  {
+   "kind": "voltage",
+   "row": 2,
+   "hour": 1,
+   "value": 0.99
+  },
+  {
+   "kind": "loading",
+   "row": 0,
+   "hour": 3,
+   "value": 150.0
+  },
+  {
+   "kind": "loading",
+   "row": 1,
+   "hour": 1,
+   "value": 75.29411764705883
+  },
+  {
+   "kind": "loading",
+   "row": 1,
+   "hour": 2,
+   "value": 150.0
+  },
+  {
+   "kind": "power",
+   "row": 0,
+   "hour": 0,
+   "value": -25.0
+  },
+  {
+   "kind": "power",
+   "row": 1,
+   "hour": 0,
+   "value": 3.235294117647058
+  },
+  {
+   "kind": "power",
+   "row": 1,
+   "hour": 2,
+   "value": 25.0
+  },
+  {
+   "kind": "power",
+   "row": 1,
+   "hour": 3,
+   "value": -25.0
+  }
+ ]
+}

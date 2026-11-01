@@ -260,6 +260,21 @@ dominates the year it plans, the radiality of the built network, the parsers
 on offline fixtures, the API contract, and that the published results are internally consistent.
 Tests that need pipeline output skip themselves on a fresh clone.
 
+The interface has its own, in `web/`:
+
+```bash
+npm run test:unit        # Vitest: formatting, dictionaries, the URL rule, the map's binary reader
+npm run test:e2e         # Playwright on a fresh clone's view: the API with an empty data folder
+npm run test:e2e:local   # Playwright on this machine's computed data (reuses a server on :8130)
+npm run perf             # what the opening screen costs a first visit (bytes, requests, LCP)
+```
+
+Playwright drives the Chrome already installed on the machine (`channel: "chrome"`), so nothing
+downloads a browser; the end-to-end runs need `web/dist` built and the project's Python
+(`KAPACITET_PY`, or `.venv` by default). The map's binary layout is pinned from both sides by one
+golden file, `tests/fixtures/state_tiny.json`: the Python test encodes it and the Vitest test
+decodes it.
+
 ## Running it on someone else's network
 
 The engine does not have to stay on the reference neighbourhood. `src/kapacitet/importer/`

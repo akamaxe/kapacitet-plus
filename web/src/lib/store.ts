@@ -46,8 +46,9 @@ export interface UrlView {
 /** A saved assessment's id (data/requests/<id>.json.gz). */
 export const JOB_ID = /^[0-9a-f]{12}$/;
 
-function parseHash(): UrlView {
-  const raw = window.location.hash.replace(/^#\/?/, "");
+/** What a link asks to look at. Pure: the address is an argument, so it can be tested. */
+export function parseHash(hash: string = window.location.hash): UrlView {
+  const raw = hash.replace(/^#\/?/, "");
   const [path, search] = raw.split("?");
   const known = (SCREENS as string[]).includes(path);
   const screen = known ? (path as Screen) : "compare";
@@ -75,8 +76,11 @@ function parseHash(): UrlView {
 /** The last hash this module wrote, so our own replaceState does not look like a visit. */
 let written = "";
 
-function writeHash(push: boolean) {
-  const st = useStore.getState();
+/** The parts of the view a link carries. */
+export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job">;
+
+/** The address for what is on screen. Pure, like parseHash. */
+export function hashFor(st: LinkedView): string {
   const q = new URLSearchParams();
   // omit anything at its default, and anything this screen does not read: an hour on the
   // method appendix is noise in a link somebody is meant to paste somewhere
@@ -86,7 +90,11 @@ function writeHash(push: boolean) {
   if ((usesHour || st.screen === "report") && st.selectedCid !== null) q.set("cid", String(st.selectedCid));
   if (st.screen === "request" && st.job) q.set("job", st.job);
   const qs = q.toString();
-  const hash = `#/${st.screen}${qs ? `?${qs}` : ""}`;
+  return `#/${st.screen}${qs ? `?${qs}` : ""}`;
+}
+
+function writeHash(push: boolean) {
+  const hash = hashFor(useStore.getState());
   if (hash === written) return;
   written = hash;
   // replaceState, not location.hash: the hour changes up to eight times a second during

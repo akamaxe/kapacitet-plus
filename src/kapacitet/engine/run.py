@@ -18,6 +18,7 @@ from ..timeindex import day_of_year, hour_of_day, year_index
 from . import compliance, doe, economics, hosting
 from .netmodel import NetModel
 from .scenario import Scenario, adoption_order, customers, mask_from_share
+from .stateblob import encode_state
 
 log = logging.getLogger(__name__)
 REF_POLICY = "maxmin"
@@ -442,15 +443,9 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
     _write("envelopes_index.json", {"cids": cust["cid"].to_numpy()[nf].tolist(), "hours": H})
 
 
-def write_state(name: str, res, viol, p_net, pv, load, curtailed_total) -> None:
+def write_state(name: str, res, viol, p_net, pv, load, curtailed_total, folder: tuple[str, ...] = ("ui",)) -> None:
+    """One scenario's year for the map (the contract is engine/stateblob.py)."""
     m = model()
-    H = res.v.shape[1]
-    vm = np.abs(res.v)                                               # (n_bus, H)
-    v_q = np.clip(np.round((vm - 0.85) / 0.30 * 255), 0, 255).astype(np.uint8)
-    l_q = np.clip(np.round(res.line_loading / 150.0 * 255), 0, 255).astype(np.uint8)
-    p_q = np.clip(np.round((np.asarray(p_net) + 25.0) / 50.0 * 255), 0, 255).astype(np.uint8)
-    blob = np.concatenate([v_q.T.ravel(), l_q.T.ravel(), p_q.T.ravel()])   # time-major blocks
-    processed("ui", f"state_{name}.bin").write_bytes(blob.tobytes())
     agg = {
         "trafo_loading": np.round(res.trafo_loading, 2), "trafo_p_kw": np.round(res.trafo_p_mw * 1000, 2),
         "vmax": np.round(viol.vmax, 4), "vmin": np.round(viol.vmin, 4),
@@ -459,15 +454,10 @@ def write_state(name: str, res, viol, p_net, pv, load, curtailed_total) -> None:
         "pv_kw": np.round(np.asarray(pv).sum(axis=0), 2), "load_kw": np.round(np.asarray(load).sum(axis=0), 2),
         "curtailed_kw": np.round(curtailed_total, 2) if curtailed_total is not None else None,
     }
-    header = {
-        "name": name, "hours": H, "n_bus": int(vm.shape[0]), "n_line": int(res.line_loading.shape[0]),
-        "n_cust": int(np.asarray(p_net).shape[0]),
-        "layout": "time-major blocks: V[H][bus] uint8, loading[H][line] uint8, p[H][cust] uint8",
-        "v_offset": 0.85, "v_scale": 0.30 / 255, "loading_scale": 150.0 / 255, "p_offset": -25.0,
-        "p_scale": 50.0 / 255, "bus_index": m.net.bus.index.tolist(), "line_index": m.net.line.index.tolist(),
-        "aggregates": agg,
-    }
-    processed("ui", f"state_{name}.json").write_text(json.dumps(header, default=_default), encoding="utf-8")
+    header, blob = encode_state(name, np.abs(res.v), res.line_loading, np.asarray(p_net),
+                                m.net.bus.index.tolist(), m.net.line.index.tolist(), agg)
+    processed(*folder, f"state_{name}.bin").write_bytes(blob)
+    processed(*folder, f"state_{name}.json").write_text(json.dumps(header, default=_default), encoding="utf-8")
 
 
 def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:

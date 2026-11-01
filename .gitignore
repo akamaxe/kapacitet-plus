@@ -17,3 +17,7 @@ web/*.tsbuildinfo
 .impeccable/config.local.json
 data/requests/
 .impeccable/review/
+# Playwright: the empty data folder of the CI project and the run reports
+web/e2e/.empty-data/
+web/test-results/
+web/playwright-report/

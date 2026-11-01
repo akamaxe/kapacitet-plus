@@ -17,7 +17,8 @@ import re
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parents[1] / "web" / "src"
-SOURCES = [p for p in WEB.rglob("*") if p.suffix in (".ts", ".tsx")]
+# the interface itself; its unit tests (*.test.ts) may write raw values on purpose
+SOURCES = [p for p in WEB.rglob("*") if p.suffix in (".ts", ".tsx") and ".test." not in p.name]
 
 
 def _dict_keys(name: str) -> set[str]:

@@ -92,16 +92,12 @@ export interface GridState {
   power: (cid: number, hour: number) => number;
 }
 
-/** Full-year grid state of a scenario: uint8 blocks, time-major (see engine/run.py write_state). */
-export async function loadState(name: string): Promise<GridState> {
-  const [header, buf] = await Promise.all([
-    getJSON<StateHeader>(`/state/${name}`),
-    fetch(`${API}/state/${name}/bin`).then((r) => {
-      if (!r.ok) throw new Error(`state ${name}: ${r.status}`);
-      return r.arrayBuffer();
-    }),
-  ]);
-  const bytes = new Uint8Array(buf);
+/**
+ * Read a year of grid state: uint8 blocks, time-major, with the scales in the header. The other
+ * half of the contract is engine/stateblob.py; tests/fixtures/state_tiny.json pins both.
+ */
+export function decodeState(header: StateHeader, buf: ArrayBuffer | Uint8Array): GridState {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
   const H = header.hours;
   const nb = header.n_bus;
   const nl = header.n_line;
@@ -115,6 +111,18 @@ export async function loadState(name: string): Promise<GridState> {
     loading: (l, h) => bytes[offL + h * nl + l] * header.loading_scale,
     power: (c, h) => header.p_offset + bytes[offP + h * nc + c] * header.p_scale,
   };
+}
+
+/** Full-year grid state of a scenario, fetched and decoded. */
+export async function loadState(name: string): Promise<GridState> {
+  const [header, buf] = await Promise.all([
+    getJSON<StateHeader>(`/state/${name}`),
+    fetch(`${API}/state/${name}/bin`).then((r) => {
+      if (!r.ok) throw new Error(`state ${name}: ${r.status}`);
+      return r.arrayBuffer();
+    }),
+  ]);
+  return decodeState(header, buf);
 }
 
 export function useGridState(name: string) {
