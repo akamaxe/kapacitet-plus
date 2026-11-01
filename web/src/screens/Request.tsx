@@ -344,6 +344,7 @@ export default function Request() {
 
       <aside className="panel">
         <h1 className="panel-title">{t("req.title")}</h1>
+        <HouseSearch houses={houses} onPick={(c) => select(c)} />
 
         {!house ? (
           <div className="blank">
@@ -529,6 +530,40 @@ export default function Request() {
   );
 }
 
+/** Find a house by its address: the map is one way in, this is the one a keyboard or a screen reader can use. */
+function HouseSearch({ houses, onPick }: { houses: any[]; onPick: (cid: number) => void }) {
+  const t = useT();
+  const [q, setQ] = useState("");
+  const byLabel = useMemo(() => {
+    const m = new Map<string, number>();
+    houses.forEach((h: any) => m.set(h.properties.address || t("dt.unnamed", { id: h.properties.cid }), h.properties.cid));
+    return m;
+  }, [houses, t]);
+  return (
+    <div className="house-search">
+      <label htmlFor="house-search" className="field-label">{t("req.find")}</label>
+      <input
+        id="house-search"
+        list="house-list"
+        value={q}
+        placeholder={t("req.findPlaceholder")}
+        autoComplete="off"
+        onChange={(e) => {
+          setQ(e.target.value);
+          const cid = byLabel.get(e.target.value);
+          if (cid !== undefined) {
+            onPick(cid);
+            setQ("");
+          }
+        }}
+      />
+      <datalist id="house-list">
+        {[...byLabel.keys()].sort((a, b) => a.localeCompare(b)).map((label) => <option key={label} value={label} />)}
+      </datalist>
+    </div>
+  );
+}
+
 /** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
 function describeRequest(t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string, q: any): string {
   return [
@@ -689,7 +724,19 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {everLimited ? (
             <>
               <p className="caption-muted">{t("req.envMap.caption", { year })}</p>
-              <Chart ariaLabel={t("req.envMap")} height={230} deps={[res, lang]} build={(tk, _w, fm) => envOption(tk, prof, lang, t, fm)} />
+              <ChartOrTable
+                chart={<Chart ariaLabel={t("req.envMap")} height={230} deps={[res, lang]} build={(tk, _w, fm) => envOption(tk, prof, lang, t, fm)} />}
+                table={
+                  <div className="table-window">
+                    <table className="data">
+                      <thead><tr><th>{t("tbl.hour")}</th>{monthNames(lang).map((m) => <th key={m} className="r">{m}</th>)}</tr></thead>
+                      <tbody>{(prof.envelope_min_month_hour as number[][]).map((row, h) => (
+                        <tr key={h}><td>{String(h).padStart(2, "0")}</td>{row.map((v, m) => <td key={m} className="r">{f(v, 1)}</td>)}</tr>
+                      ))}</tbody>
+                    </table>
+                  </div>
+                }
+              />
             </>
           ) : (
             <Status kind="good">{t("req.fullCap", { year })}</Status>
@@ -712,7 +759,17 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {/* with no curtailment at all, every year falls in one bin centred on zero and the
               axis would show negative shares, so the answer is said instead of drawn */}
           {res.risk.cvar95_pct > 0 ? (
-            <Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk, _w, fm) => histOption(tk, res.risk.histogram, t, fm)} />
+            <ChartOrTable
+              chart={<Chart ariaLabel={t("req.risk")} height={170} deps={[res, lang]} build={(tk, _w, fm) => histOption(tk, res.risk.histogram, t, fm)} />}
+              table={
+                <table className="data">
+                  <thead><tr><th>{t("tbl.curtailment")}</th><th className="r">{t("req.tt.years")}</th></tr></thead>
+                  <tbody>{(res.risk.histogram.counts as number[]).map((c, i) => c > 0 && (
+                    <tr key={i}><td>{f(res.risk.histogram.edges[i], 2)}–{f(res.risk.histogram.edges[i + 1], 2)} %</td><td className="r">{f(c)}</td></tr>
+                  ))}</tbody>
+                </table>
+              }
+            />
           ) : (
             <Status kind="good">{t("req.risk.none", { n: f(resampled) })}</Status>
           )}

@@ -5,12 +5,13 @@
  */
 import { Dialog } from "./Dialog";
 import { useT } from "../lib/i18n";
-import { SCREENS } from "../lib/store";
+import { SCREENS, useStore } from "../lib/store";
 
 /** key hint, i18n key. The handler in App.tsx walks the same list. */
 export const KEYS: [string, string][] = [
   [`1 – ${SCREENS.length}`, "keys.screens"],
   ["Ctrl + ← →", "keys.step"],
+  ["PageUp / PageDown", "keys.page"],
   ["⌘ / Ctrl + K", "keys.palette"],
   ["/", "keys.search"],
   ["N", "keys.notes"],
@@ -21,6 +22,8 @@ export const KEYS: [string, string][] = [
 
 export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
+  const singleKeys = useStore((s) => s.singleKeys);
+  const setSingleKeys = useStore((s) => s.setSingleKeys);
   return (
     <Dialog open={open} onClose={onClose} title={t("keys.title")} width={460}>
       <div className="sheet">
@@ -43,6 +46,10 @@ export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => voi
             </div>
           ))}
         </dl>
+        <label className="keys-toggle">
+          <input type="checkbox" checked={singleKeys} onChange={(e) => setSingleKeys(e.target.checked)} />
+          <span>{t("keys.single")}<small>{t("keys.singleNote")}</small></span>
+        </label>
       </div>
     </Dialog>
   );

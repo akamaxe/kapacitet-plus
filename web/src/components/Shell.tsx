@@ -76,6 +76,10 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
 export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const t = useT();
   const screen = useStore((s) => s.screen);
+  const lang = useStore((s) => s.lang);
+  const setLang = useStore((s) => s.setLang);
+  const theme = useStore((s) => s.theme);
+  const setTheme = useStore((s) => s.setTheme);
   return (
     <Dialog open={open} onClose={onClose} title={t("shell.menu")} width={420}>
       <nav className="menu-sheet" aria-label={t("shell.navigation")}>
@@ -86,6 +90,17 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
           </a>
         ))}
       </nav>
+      <div className="menu-prefs">
+        <div className="seg" role="group" aria-label={t("shell.language")}>
+          <button aria-pressed={lang === "en"} onClick={() => setLang("en")}>{t("lang.en")}</button>
+          <button aria-pressed={lang === "es"} onClick={() => setLang("es")}>{t("lang.es")}</button>
+        </div>
+        <div className="seg" role="group" aria-label={t("ui.theme")}>
+          {(["light", "dark", "system"] as const).map((v) => (
+            <button key={v} aria-pressed={theme === v} onClick={() => setTheme(v)}>{t(`shell.theme.${v}`)}</button>
+          ))}
+        </div>
+      </div>
     </Dialog>
   );
 }

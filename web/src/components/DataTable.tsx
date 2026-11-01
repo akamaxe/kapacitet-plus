@@ -126,7 +126,7 @@ export function DataTable<T>({
               return (
                 <tr
                   key={k}
-                  aria-selected={selected != null && k === selected}
+                  aria-current={selected != null && k === selected ? "true" : undefined}
                   tabIndex={onSelect ? 0 : undefined}
                   onClick={onSelect ? () => onSelect(r) : undefined}
                   onKeyDown={

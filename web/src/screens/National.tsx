@@ -149,12 +149,30 @@ export default function National() {
         <section className="stack">
           <h3>{t("nat.mix")}</h3>
           <Legend items={TYPES.map((ty, i) => ({ color: slotColors(tk)[i], label: t(`type.${ty}`) }))} />
-          <Chart ariaLabel={t("nat.mix")} height={200} deps={[N]} build={(tk, _w, fm) => mixOption(tk, N, t, fm)} />
+          <ChartOrTable
+            chart={<Chart ariaLabel={t("nat.mix")} height={200} deps={[N]} build={(tk, _w, fm) => mixOption(tk, N, t, fm)} />}
+            table={
+              <table className="data">
+                <thead><tr><th>{t("nat.zone")}</th>{TYPES.map((ty) => <th key={ty} className="r">{t(`type.${ty}`)}</th>)}</tr></thead>
+                <tbody>{ZONES.map((z) => (
+                  <tr key={z}><td>{z}</td>{TYPES.map((ty) => <td key={ty} className="r">{f(mixValue(N, z, ty), 1)}</td>)}</tr>
+                ))}</tbody>
+              </table>
+            }
+          />
         </section>
 
         <section className="stack">
           <h3>{t("nat.neg")}</h3>
-          <Chart ariaLabel={t("nat.neg")} height={150} deps={[N]} build={(tk, _w, fm) => negOption(tk, N, fm)} />
+          <ChartOrTable
+            chart={<Chart ariaLabel={t("nat.neg")} height={150} deps={[N]} build={(tk, _w, fm) => negOption(tk, N, fm)} />}
+            table={
+              <table className="data">
+                <thead><tr><th>{t("nat.zone")}</th><th className="r">{t("nat.negHours")}</th></tr></thead>
+                <tbody>{ZONES.map((z) => <tr key={z}><td>{z}</td><td className="r">{f(N.zones[z].negative_price_hours)}</td></tr>)}</tbody>
+              </table>
+            }
+          />
         </section>
 
         <section className="stack">
@@ -228,14 +246,17 @@ function prodConsOption(tk: Tokens, N: any, t: (k: string) => string, f: (v: num
   };
 }
 
+/** A zone's production of one type, TWh, with offshore wind and storage folded in as the chart does. */
+function mixValue(N: any, z: string, ty: string): number {
+  const m = N.zones[z].mix_twh;
+  if (ty === "wind") return m.wind + (m.windOffshore ?? 0);
+  if (ty === "other") return (m.other ?? 0) + (m.energyStorage ?? 0);
+  return m[ty] ?? 0;
+}
+
 function mixOption(tk: Tokens, N: any, t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string) {
   const colors = slotColors(tk);
-  const val = (z: string, ty: string) => {
-    const m = N.zones[z].mix_twh;
-    if (ty === "wind") return m.wind + (m.windOffshore ?? 0);
-    if (ty === "other") return (m.other ?? 0) + (m.energyStorage ?? 0);
-    return m[ty] ?? 0;
-  };
+  const val = (z: string, ty: string) => mixValue(N, z, ty);
   return {
     grid: { left: 40, right: 16, top: 6, bottom: 24 },
     xAxis: { type: "value", ...axisStyle(tk), name: "TWh" },

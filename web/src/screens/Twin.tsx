@@ -259,6 +259,12 @@ export default function Twin() {
       point = null;
       tipRef.current(null);
     });
+    // a touch has no hover: a tap on a cable shows its card, a tap on empty ground hides it
+    map.on("click", (e: MapMouseEvent) => {
+      const ft = map.queryRenderedFeatures([e.point.x, e.point.y], { layers: ["houses", "cables"] })[0];
+      if (ft?.layer.id === "cables") tipRef.current({ x: e.point.x, y: e.point.y, kind: "cable", id: ft.properties.line as number });
+      else if (!ft) tipRef.current(null);
+    });
     paintRef.current(map);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [net.data]);

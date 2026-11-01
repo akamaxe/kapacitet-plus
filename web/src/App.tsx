@@ -99,6 +99,30 @@ export default function App() {
     }
   }, [selectedCid, net.data, t]);
 
+  // each screen names the document; a change of screen hands the focus to the new screen's
+  // heading, so a screen reader announces where it has arrived (not on the first load, and not
+  // while the tour holds the focus on its own card)
+  const firstScreen = useRef(true);
+  useEffect(() => {
+    document.title = `${t(`tab.${screen}`)} · Kapacitet+`;
+    if (firstScreen.current) {
+      firstScreen.current = false;
+      return;
+    }
+    if (useStore.getState().tour !== null) return;
+    let tries = 0;
+    let raf = 0;
+    const go = () => {
+      const h = document.querySelector<HTMLElement>("main h1");
+      if (h) {
+        if (!h.hasAttribute("tabindex")) h.setAttribute("tabindex", "-1");
+        h.focus({ preventScroll: true });
+      } else if (++tries < 60) raf = requestAnimationFrame(go);
+    };
+    go();
+    return () => cancelAnimationFrame(raf);
+  }, [screen, t]);
+
   // a first visit is offered the tour after a moment; it never starts by itself
   useEffect(() => {
     if (tourSeen()) return;
@@ -132,6 +156,9 @@ export default function App() {
       if (typing) return;
       const st = useStore.getState();
       const i = SCREENS.indexOf(st.screen);
+      // a one-character shortcut answers only while they are on (the key sheet turns them off)
+      const plain = !e.ctrlKey && !e.metaKey && e.key.length === 1;
+      if (plain && !st.singleKeys) return;
       const digit = Number(e.key);
       if (digit >= 1 && digit <= SCREENS.length && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         st.setScreen(SCREENS[digit - 1]);

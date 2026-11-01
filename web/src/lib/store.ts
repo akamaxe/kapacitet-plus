@@ -129,6 +129,9 @@ interface State {
   tourOffered: boolean;
   /** a link named a screen that does not exist; App says so once */
   notFound: string | null;
+  /** the shortcuts that are one character (1–7, N, F, /, ?), which a speech-input user may need off */
+  singleKeys: boolean;
+  setSingleKeys: (on: boolean) => void;
   setTour: (step: number | null, instant?: boolean) => void;
   setScreen: (s: Screen) => void;
   setLang: (l: "en" | "es") => void;
@@ -163,6 +166,11 @@ export const useStore = create<State>((set) => ({
   tourInstant: false,
   tourOffered: false,
   notFound: initial.notFound ?? null,
+  singleKeys: readLS("kap.keys", "on") !== "off",
+  setSingleKeys: (on) => {
+    writeLS("kap.keys", on ? "on" : "off");
+    set({ singleKeys: on });
+  },
   setTour: (tour, instant = false) => set((s) => ({ tour, tourInstant: tour === null ? false : s.tour === null ? instant : s.tourInstant, tourOffered: false })),
   setScreen: (screen) => {
     set({ screen });

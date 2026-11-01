@@ -789,6 +789,20 @@ const en: Dict = {
   "tour.text.5": "What the DSO files with the regulator each year: every curtailed hour and which part of the grid was full. Each customer can read and download their own record.",
   "tour.title.6": "Where it comes from",
   "tour.text.6": "Every source with its licence, every model input with its reason, the validation and the limitations. Real data and synthetic parts are marked everywhere.",
+  "tbl.yearRange": "Best–worst year",
+  "nat.negHours": "Hours with a negative price",
+  "tbl.shiftMin": "Shift, min",
+  "tbl.morning": "Morning fit",
+  "tbl.afternoon": "Afternoon fit",
+  "tbl.simulated": "Simulated",
+  "tbl.measured": "Measured",
+  "keys.page": "Previous or next screen",
+  "keys.single": "Single-key shortcuts",
+  "keys.singleNote": "1–7, N, F, / and ?. Turn them off if you use speech input or type into the page with an assistive tool.",
+  "lang.en": "English",
+  "lang.es": "Español",
+  "req.find": "Find a house",
+  "req.findPlaceholder": "Type an address…",
 };
 
 const es: Dict = {
@@ -1572,6 +1586,20 @@ const es: Dict = {
   "tour.text.5": "Lo que la distribuidora presenta cada año al regulador: cada hora recortada y qué parte de la red estaba llena. Cada cliente puede leer y descargar su propia ficha.",
   "tour.title.6": "De dónde sale",
   "tour.text.6": "Cada fuente con su licencia, cada dato de entrada con su razón, la validación y las limitaciones. Los datos reales y las partes sintéticas están marcados en todas partes.",
+  "tbl.yearRange": "Mejor–peor año",
+  "nat.negHours": "Horas con precio negativo",
+  "tbl.shiftMin": "Desplazamiento, min",
+  "tbl.morning": "Ajuste de mañana",
+  "tbl.afternoon": "Ajuste de tarde",
+  "tbl.simulated": "Simulado",
+  "tbl.measured": "Medido",
+  "keys.page": "Pantalla anterior o siguiente",
+  "keys.single": "Atajos de una tecla",
+  "keys.singleNote": "1–7, N, F, / y ?. Apágalos si usas entrada por voz o escribes en la página con una herramienta de apoyo.",
+  "lang.en": "English",
+  "lang.es": "Español",
+  "req.find": "Buscar una vivienda",
+  "req.findPlaceholder": "Escribe una dirección…",
 };
 
 export const DICTS: Record<string, Dict> = { en, es };

@@ -153,7 +153,19 @@ export default function Compare() {
           <section className="block">
             <div className="block-head"><h3>{t("cmp.curve")}</h3></div>
             <p className="caption">{t("cmp.curve.caption", { from: years[0], to: years[years.length - 1] })}</p>
-            <Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk, _w, fm) => curveOption(tk, H, t, zStar, fm)} />
+            <ChartOrTable
+              chart={<Chart ariaLabel={t("cmp.curve")} height={300} deps={[H]} build={(tk, _w, fm) => curveOption(tk, H, t, zStar, fm)} />}
+              table={
+                <table className="data">
+                  <thead><tr><th className="r">{t("tbl.kwAc")}</th><th className="r">{t("tbl.houses")}</th><th className="r">{t("cmp.curve.doe")}, %</th><th className="r">{t("tbl.yearRange")}, %</th><th className="r">{t("cmp.curve.fixed")}, %</th></tr></thead>
+                  <tbody>
+                    {(H.curve.points as any[]).map((p) => (
+                      <tr key={p.adopters}><td className="r">{f(p.kw_ac)}</td><td className="r">{f(p.adopters)}</td><td className="r">{f(p.z_doe_pct, 2)}</td><td className="r">{f(Math.min(...p.z_doe_by_year), 1)}–{f(Math.max(...p.z_doe_by_year), 1)}</td><td className="r">{f(p.z_fixed_pct, 1)}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              }
+            />
             {fixedZ.length > 0 && (
               <p className="caption">
                 {t("cmp.curve.fixedNote", { a: f(Math.min(...fixedZ)), b: f(Math.max(...fixedZ)) })}
@@ -195,7 +207,10 @@ export default function Compare() {
             </div>
             {/* the dense band of this screen: a year of hours, on its own ground */}
             <div className="well">
-              <Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk, _w, fm) => heatOption(tk, HM, heat, lang, t, fm)} />
+              <ChartOrTable
+                chart={<Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk, _w, fm) => heatOption(tk, HM, heat, lang, t, fm)} />}
+                table={<HeatTable HM={HM} which={heat} />}
+              />
             </div>
           </section>
         )}
@@ -236,7 +251,17 @@ export default function Compare() {
                 <Tile label={t("cmp.risk.worst")} value={f(R.stats.worst_z_pct, 1)} unit="%" />
                 <Tile label={<Term id="cvar">{t("cmp.risk.cvar")}</Term>} value={f(R.stats.cvar95_z_pct, 1)} unit="%" />
               </div>
-              <Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk, _w, fm) => riskOption(tk, R, zStar, fm)} />
+              <ChartOrTable
+                chart={<Chart ariaLabel={t("cmp.risk")} height={200} deps={[R]} build={(tk, _w, fm) => riskOption(tk, R, zStar, fm)} />}
+                table={
+                  <div className="table-window">
+                    <table className="data">
+                      <thead><tr><th>{t("tbl.year")}</th><th className="r">{t("tbl.curtailment")}</th></tr></thead>
+                      <tbody>{(R.cases as any[]).map((c, i) => <tr key={i}><td>{c.year}</td><td className="r">{f(c.z_pct, 2)}</td></tr>)}</tbody>
+                    </table>
+                  </div>
+                }
+              />
             </section>
           )}
         </section>
@@ -404,6 +429,31 @@ function valueOption(tk: Tokens, OV: any, t: (k: string, v?: any) => string, f: 
       },
     ],
   };
+}
+
+/** The heatmap's hours as a list: every hour in which someone was limited, or the transformer went past its rating. */
+function HeatTable({ HM, which }: { HM: any; which: "limited" | "unc" }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const src: number[][] = which === "limited" ? HM.limited_customers : HM.uncontrolled_trafo_loading;
+  const rows: { d: number; h: number; v: number }[] = [];
+  for (let d = 0; d < HM.days; d++) for (let h = 0; h < 24; h++) {
+    const v = src[h][d];
+    if (which === "limited" ? v > 0 : v > 100) rows.push({ d, h, v });
+  }
+  return (
+    <div className="table-window">
+      <table className="data">
+        <thead><tr><th>{t("tbl.hour")}</th><th className="r">{which === "limited" ? t("cmp.heat.limited") : `${t("twin.trafo")}, %`}</th></tr></thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={`${r.d}-${r.h}`}><td>{hourLabel(lang, HM.year, r.d * 24 + r.h)}</td><td className="r">{f(r.v)}</td></tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {

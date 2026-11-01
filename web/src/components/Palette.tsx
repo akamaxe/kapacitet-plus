@@ -191,22 +191,26 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
             onKeyDown={onKey}
             placeholder={t("pal.placeholder")}
             aria-label={t("pal.title")}
+            role="combobox"
+            aria-expanded="true"
+            aria-autocomplete="list"
             aria-controls="palette-list"
             aria-activedescendant={shown[active] ? `pal-${shown[active].id}` : undefined}
           />
           <kbd>Esc</kbd>
         </div>
         <ul className="palette-list" id="palette-list" role="listbox" ref={listRef} aria-label={t("pal.title")}>
-          {shown.length === 0 && <li className="palette-none">{t("pal.none", { q })}</li>}
+          {shown.length === 0 && <li role="presentation" className="palette-none">{t("pal.none", { q })}</li>}
           {shown.map((i, n) => {
             const head = i.group !== lastGroup ? ((lastGroup = i.group), i.group) : null;
             return (
-              <li key={i.id}>
-                {head && <div className="palette-group">{head}</div>}
+              <li key={i.id} role="presentation">
+                {head && <div className="palette-group" aria-hidden="true">{head}</div>}
                 <div
                   id={`pal-${i.id}`}
                   role="option"
                   aria-selected={n === active}
+                  aria-label={[i.label, ...(i.cols ?? []), i.group].join(", ")}
                   className="palette-item"
                   onMouseEnter={() => setActive(n)}
                   onMouseDown={(e) => {

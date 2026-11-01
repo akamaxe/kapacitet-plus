@@ -101,7 +101,7 @@ export default function Scenarios() {
                         <tr
                           key={`${c.pv}-${c.ev}`}
                           tabIndex={0}
-                          aria-selected={on}
+                          aria-current={on ? "true" : undefined}
                           className={on ? "picked" : undefined}
                           onClick={() => pick(c)}
                           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pick(c); } }}

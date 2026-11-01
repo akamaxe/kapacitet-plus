@@ -234,14 +234,30 @@ export default function Method() {
                   <h3>{t("met.strang")}</h3>
                   <p className="caption">{t("met.strang.caption")}</p>
                   <Legend items={[{ color: "var(--series-main)", label: t("met.strang.morning"), line: true }, { color: "var(--cat-1)", label: t("met.strang.afternoon"), line: true }]} />
-                  <Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk, _w, fm) => strangOption(tk, V.strang_timestamp.shifts, fm)} />
+                  <ChartOrTable
+                    chart={<Chart ariaLabel={t("met.strang")} height={220} deps={[V]} build={(tk, _w, fm) => strangOption(tk, V.strang_timestamp.shifts, fm)} />}
+                    table={
+                      <table className="data">
+                        <thead><tr><th className="r">{t("tbl.shiftMin")}</th><th className="r">{t("tbl.morning")}</th><th className="r">{t("tbl.afternoon")}</th></tr></thead>
+                        <tbody>{(V.strang_timestamp.shifts as any[]).map((s) => <tr key={s.shift_min}><td className="r">{f(s.shift_min)}</td><td className="r">{f(s.morning_k, 4)}</td><td className="r">{f(s.afternoon_k, 4)}</td></tr>)}</tbody>
+                      </table>
+                    }
+                  />
                 </div>
                 {V.household_shape && (
                   <div className="stack">
                     <h3>{t("met.shape")}</h3>
                     <p className="caption">{t("met.shape.caption", { year: V.household_shape.year, r: f(V.household_shape.corr_hour_of_day, 2) })}</p>
                     <Legend items={[{ color: "var(--series-main)", label: t("met.shape.sim"), line: true }, { color: "var(--cat-1)", label: t("met.shape.real"), line: true }]} />
-                    <Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk, _w, fm) => shapeOption(tk, V.household_shape, t, fm)} />
+                    <ChartOrTable
+                      chart={<Chart ariaLabel={t("met.shape")} height={220} deps={[V]} build={(tk, _w, fm) => shapeOption(tk, V.household_shape, t, fm)} />}
+                      table={
+                        <table className="data">
+                          <thead><tr><th>{t("tbl.hour")}</th><th className="r">{t("tbl.simulated")}</th><th className="r">{t("tbl.measured")}</th></tr></thead>
+                          <tbody>{(V.household_shape.hour_of_day_sim as number[]).map((v, h) => <tr key={h}><td>{String(h).padStart(2, "0")}:00</td><td className="r">{f(v, 2)}</td><td className="r">{f(V.household_shape.hour_of_day_real[h], 2)}</td></tr>)}</tbody>
+                        </table>
+                      }
+                    />
                   </div>
                 )}
               </div>
