@@ -39,7 +39,7 @@ def step(name: str):
 
 def cmd_fetch(args: argparse.Namespace) -> None:
     from .config import settings
-    from .ingest import esett, osm, prices, smhi, zones
+    from .ingest import esett, osm, prices, scb, smhi, zones
 
     cfg = settings()
     only = set(args.only.split(",")) if args.only else None
@@ -68,6 +68,10 @@ def cmd_fetch(args: argparse.Namespace) -> None:
                 esett.fetch_consumption(zone, cfg.national_year, refresh=refresh)
             esett.fetch_load_profile(cfg.site.bidding_zone, cfg.site.metering_grid_area, cfg.reference_year,
                                      refresh=refresh)
+    if want("scb"):
+        # the household-size mix the simulated households are drawn from (profiles/household.py)
+        with step("SCB household sizes (HushallT26)"):
+            scb.fetch_household_sizes(refresh=refresh)
     if want("prices"):
         with step("Spot prices (elprisetjustnu.se)"):
             for year in cfg.price_years:
@@ -230,7 +234,7 @@ def main(argv: list[str] | None = None) -> None:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("fetch", help="download external data")
-    p.add_argument("--only", default="", help="comma list: osm,zones,smhi,esett,prices")
+    p.add_argument("--only", default="", help="comma list: osm,zones,smhi,esett,scb,prices")
     p.add_argument("--refresh", action="store_true", help="ignore the cache")
     p.set_defaults(func=cmd_fetch)
 

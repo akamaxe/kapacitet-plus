@@ -1,5 +1,5 @@
 /**
- * Find anything from the keyboard: the six screens, the 120 houses by address, and the
+ * Find anything from the keyboard: the screens, the houses by address, and the
  * handful of actions the chrome offers.
  *
  * The houses are the reason this exists. Until now the only way to reach one was to spot

@@ -71,6 +71,7 @@ export default function Twin() {
   const lastColor = useRef(new Map<string, string>());
   const [colorBy, setColorBy] = useState<ColorBy>("voltage");
   const [openTable, setOpenTable] = useState(false);
+  const [openCables, setOpenCables] = useState(false);
   const colRef = useRef<HTMLDivElement>(null);
 
   // the open table is taller than what is left under the map on a laptop screen, so the
@@ -324,6 +325,14 @@ export default function Twin() {
             <HouseTable houses={houses} rows={rows} st={st} curtailed={curtailed} selectedCid={selectedCid} select={select} year={year} />
           )}
         </div>
+        <div className={`houses-region ${openCables ? "open" : ""}`}>
+          <button className="region-toggle" aria-expanded={openCables} onClick={() => setOpenCables(!openCables)}>
+            <Icon name={openCables ? "sort" : "next"} size={15} />
+            <span>{t("dt.cables", { n: cables.length })}</span>
+            <span className="caption-muted">{t("dt.cablesHint")}</span>
+          </button>
+          {openCables && <CableTable cables={cables} rows={rows} st={st} year={year} />}
+        </div>
       </div>
 
       <aside className="panel" data-playing={playing}>
@@ -528,6 +537,74 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
     </div>
   );
 }
+
+interface CableRow {
+  line: number;
+  feeder: number;
+  kind: string;
+  type: string;
+  length: number;
+  parallel: number;
+  downstream: number;
+  loading: number | null;
+}
+
+/**
+ * The cables with this hour's loading: what the map shows on hover, readable without a pointer
+ * and by a screen reader. Mounted only while open, like the houses.
+ */
+function CableTable({ cables, rows, st, year }: { cables: any[]; rows: Rows | null; st: GridState; year: number }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const hour = useStore((s) => s.hour);
+  const base = useMemo(
+    () => cables.map((c: any) => {
+      const p = c.properties;
+      return { line: p.line as number, feeder: p.feeder as number, kind: p.kind as string, type: (p.std_type as string) ?? "",
+        length: p.length_m as number, parallel: p.parallel as number, downstream: p.downstream as number };
+    }),
+    [cables],
+  );
+  const tableRows: CableRow[] = useMemo(
+    () => base.map((b) => {
+      const r = rows?.lineRow.get(b.line);
+      return { ...b, loading: st.data && r !== undefined ? st.data.loading(r, hour) : null };
+    }),
+    [base, rows, st.data, hour],
+  );
+  const cols: Col<CableRow>[] = useMemo(
+    () => [
+      { key: "feeder", label: t("dt.feeder"), value: (r) => r.feeder + 1, numeric: true },
+      { key: "kind", label: t("dt.kind"), value: (r) => t(r.kind === "main" ? "dt.kind.main" : "dt.kind.service") },
+      { key: "type", label: t("dt.type"), value: (r) => r.type },
+      { key: "length", label: t("dt.length"), unit: "m", value: (r) => r.length, cell: (r) => f(r.length, 0), numeric: true },
+      { key: "parallel", label: t("dt.parallel"), value: (r) => r.parallel, numeric: true },
+      { key: "downstream", label: t("dt.downstream"), value: (r) => r.downstream, numeric: true },
+      {
+        key: "loading",
+        label: t("dt.loading"),
+        unit: "%",
+        value: (r) => r.loading,
+        cell: (r) => (r.loading == null ? "–" : <span className="swatch-value"><i style={{ background: loadingColor(tokens(), r.loading) }} />{f(r.loading, 0)}</span>),
+        numeric: true,
+      },
+    ],
+    [t, f],
+  );
+  return (
+    <DataTable
+      rows={tableRows}
+      cols={cols}
+      rowKey={cableKey}
+      caption={t("dt.cableCaption", { n: cables.length, when: hourLabel(lang, year, hour) })}
+      searchLabel={t("dt.searchCables")}
+      initialSort="loading"
+    />
+  );
+}
+
+const cableKey = (r: CableRow) => r.line;
 
 /** The 120 houses with this hour's voltage and net power; mounted only while open. */
 function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: {

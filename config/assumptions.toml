@@ -222,6 +222,19 @@ note = "Fuse caps both import and export of each customer: 3 × 230 V × I (11.0
 note_es = "El fusible limita la importación y la exportación de cada cliente: 3 × 230 V × I (11,0 / 13,8 / 17,3 kVA)."
 note_sv = "Säkringen begränsar både import och export för varje kund: 3 × 230 V × I (11,0 / 13,8 / 17,3 kVA)."
 
+[main_fuse_sizes_a]
+value = [16, 20, 25, 35, 50, 63]
+unit = "A"
+tag = "sourced"
+label = "Main fuse subscriptions a house can move up to"
+label_es = "Fusibles principales que una casa puede contratar"
+label_sv = "Säkringsabonnemang som ett hus kan byta till"
+source = "Ellevio, Välj rätt säkring: 16, 20, 25, 35, 50 and 63 A (11, 14, 17, 24, 35 and 44 kW)"
+url = "https://www.ellevio.se/privat/om-din-el/elen-i-hemmet/valj-ratt-sakring/"
+note = "A connection request that would overload the house's main fuse names the smallest of these that carries it."
+note_es = "Una solicitud que sobrecargaría el fusible principal de la casa indica el menor de estos que la soporta."
+note_sv = "En ansökan som skulle överbelasta husets huvudsäkring anger den minsta av dessa som klarar den."
+
 [mv_short_circuit_mva]
 value = 150.0
 unit = "MVA"

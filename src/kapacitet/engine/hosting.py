@@ -20,7 +20,6 @@ from functools import lru_cache
 import numpy as np
 
 from ..config import A, settings
-from ..paths import processed
 from ..timeindex import local_standard, year_index
 from .netmodel import NetModel
 from .scenario import Scenario, customers, year_profiles
@@ -144,13 +143,6 @@ def static_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_
 
 # ------------------------------------------------------------------------------ time-series view
 
-def year_violations(model: NetModel, scn: Scenario) -> dict:
-    arr = scn.arrays()
-    res = model.solve(arr["p_net"], arr["q"])
-    v = model.violations(res)
-    return {"violations": v, "result": res, "arrays": arr}
-
-
 def uncontrolled_ok(model: NetModel, pv_mask: np.ndarray, hp_mask: np.ndarray, ev_mask: np.ndarray,
                     years, screen_v: float = 0.012, screen_pct: float = 6.0) -> bool:
     """True when the deployment has no export-side violation in any hour of `years`.
@@ -188,7 +180,3 @@ def ts_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_mask
             hi = mid
     return lo
 
-
-def save_json(name: str, obj) -> None:
-    import json
-    processed("results", name).write_text(json.dumps(obj, indent=1), encoding="utf-8")

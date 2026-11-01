@@ -9,7 +9,7 @@ const ACTIVATE = typeof navigator !== "undefined" && /Win/.test(navigator.userAg
   : "source .venv/bin/activate";
 
 /**
- * What a fresh clone shows instead of six empty screens: the interface reads what the pipeline
+ * What a fresh clone shows instead of empty screens: the interface reads what the pipeline
  * computed, and on this machine it has not run yet. The exact commands, in order, and what is
  * missing, from /health.
  */

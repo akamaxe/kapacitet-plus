@@ -199,7 +199,7 @@ export default function Method() {
         <section className="region" id="inputs">
           <div className="region-head">
             <div className="region-title"><h2>{t("met.assumptions")}</h2></div>
-            <div className="seg">
+            <div className="seg" role="group" aria-label={t("met.filterTag")}>
               <button aria-pressed={tag === "all"} onClick={() => setTag("all")}>{t("met.all")}</button>
               {TAGS.map((tg, i) => counts[i] > 0 && (
                 <button key={tg} aria-pressed={tag === tg} onClick={() => setTag(tg)}>{t(`met.tag.${tg}`)} ({counts[i]})</button>

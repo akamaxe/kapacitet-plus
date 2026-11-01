@@ -107,10 +107,6 @@ def context() -> rq.Context | None:
         return rq.Context(q["baseline"], overrides=_CACHE["overrides"], states=_CACHE["states"], label=label)
 
 
-def in_queue(cid: int) -> bool:
-    return any(it["cid"] == cid for it in approved(load()))
-
-
 def _check(q: dict, record: dict, decision: str) -> str:
     """Refuse a decision on an answer that no longer describes the grid; return the queue's baseline."""
     if decision not in DECISIONS:

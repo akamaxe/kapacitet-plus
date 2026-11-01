@@ -175,7 +175,9 @@ to navigate screens without affecting form fields.
    map, what it costs in curtailment, and the hour-by-hour verification.
 4. **Connection request** — click a house (or find it by address), ask for 15 kWp and an 11 kW
    charger, or add a heat pump or a battery, press *Evaluate*: the static study says no, the
-   envelope says yes with this limit, this risk and this value.
+   envelope says yes with this limit, this risk and this value. A charger or a heat pump is also
+   checked against the house's own main fuse (its peak hour plus the new load, a single-phase
+   charger on one phase), and the answer names the fuse subscription it would need.
    Approve it into the queue (*Connect with this envelope*), then ask for the house next door:
    it meets less headroom, because the approved house used it first. *Empty the queue* to start
    again. Every answer can be printed as a record or downloaded hour by hour.

@@ -166,7 +166,9 @@ export function QueueList({ queue }: { queue: QueueState }) {
       <ol>
         {queue.items.map((it) => (
           <li key={it.assessment}>
-            <span className="queue-house">{it.address || t("dt.unnamed", { id: it.cid })}</span>
+            <a className="queue-house" href={`#/request?cid=${it.cid}&job=${it.assessment}`} title={t("queue.open")}>
+              {it.address || t("dt.unnamed", { id: it.cid })}
+            </a>
             <span className={`queue-decision ${it.decision}`}>{t(`queue.item.${it.decision}`)}</span>
             <span className="queue-when">{dateTime(lang, it.decided)}</span>
             {it.note && <span className="queue-note">{it.note}</span>}

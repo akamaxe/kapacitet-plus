@@ -91,8 +91,3 @@ def read_metobs(station: int, param: int = 1) -> pd.Series:
     s = s[~s.index.duplicated(keep="first")].sort_index()
     return s.astype(float)
 
-
-def fetch_latest(station: int, param: int = 1, period: str = "latest-hour") -> dict:
-    """Most recent observation (used by the live 'now' strip; not cached)."""
-    url = METOBS_LATEST_URL.format(param=param, station=station, period=period)
-    return http("GET", url, timeout=20, retries=2, backoff=1).json()

@@ -8,6 +8,7 @@
 import { useEffect } from "react";
 import { create } from "zustand";
 import { Icon } from "./Icon";
+import { useT } from "../lib/i18n";
 
 export type ToastKind = "info" | "error";
 type Toast = { id: number; kind: ToastKind; text: string };
@@ -35,6 +36,7 @@ export const toast = {
 
 function Item({ t }: { t: Toast }) {
   const dismiss = useToasts((s) => s.dismiss);
+  const tr = useT();
   useEffect(() => {
     // an error waits to be read and dismissed; a confirmation does not
     if (t.kind === "error") return;
@@ -45,7 +47,7 @@ function Item({ t }: { t: Toast }) {
     <div className={`toast ${t.kind}`} role={t.kind === "error" ? "alert" : "status"}>
       <Icon name={t.kind === "error" ? "alert" : "check"} size={16} />
       <span>{t.text}</span>
-      <button className="toast-close" onClick={() => dismiss(t.id)} aria-label="Dismiss">
+      <button className="toast-close" onClick={() => dismiss(t.id)} aria-label={tr("ui.dismiss")}>
         <Icon name="close" size={14} />
       </button>
     </div>

@@ -11,7 +11,7 @@ import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
 import { copyText } from "../lib/clipboard";
-import { reasonText } from "../lib/reasons";
+import { fuseText, reasonText, staticNumbers } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
@@ -341,8 +341,8 @@ export default function Request() {
           <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
             <div className="map-legend fit">
               <Legend items={[
-                ...(shown.has("firm") ? [{ color: tokens().dynamic, label: t("twin.status.firm") }] : []),
-                ...(shown.has("nonfirm") ? [{ color: tokens().warningFill, label: t("twin.status.nonfirm") }] : []),
+                ...(shown.has("firm") ? [{ key: "firm", color: tokens().dynamic, label: <Term id="firm">{t("twin.status.firm")}</Term> }] : []),
+                ...(shown.has("nonfirm") ? [{ key: "nonfirm", color: tokens().warningFill, label: <Term id="nonfirm">{t("twin.status.nonfirm")}</Term> }] : []),
                 ...(shown.has("none") ? [{ color: tokens().borderStrong, label: t("twin.status.none") }] : []),
                 { color: tokens().accent, label: t("req.house") },
               ]} />
@@ -386,7 +386,7 @@ export default function Request() {
                 <dt><Term id="kwp">{t("req.roof")}</Term></dt><dd>{f(house.kwp, 1)} kWp</dd>
                 <dt>{t("req.orientation")}</dt><dd>{house.east_west ? t("req.eastWest") : `${f(house.azimuth)}°`}, {f(house.tilt)}°</dd>
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
-                <dt>{t("req.feeder")}</dt><dd>{house.feeder + 1}</dd>
+                <dt><Term id="feeder">{t("req.feeder")}</Term></dt><dd>{house.feeder + 1}</dd>
                 <dt>{t("req.distance")}</dt><dd>{f(house.dist_m)} m</dd>
               </dl>
               {status.get(house.cid) !== "none" && <p className="caption-muted">{t("req.hadpv")}</p>}
@@ -671,6 +671,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <span className="v-method"><Term id="static">{t("req.static")}</Term></span>
             {sum.pv_static_approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>}
             <span className="v-detail">{reasonText(t, f, res.static.pv)}</span>
+            <span className="caption-muted">{staticNumbers(t, f, res.static.pv)}</span>
           </div>
           <div className="verdict">
             <span className="v-method"><Term id="envelope">{t("req.doe")}</Term></span>
@@ -701,6 +702,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           {importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
         </div>
       )}
+      {evReq && <p className="caption-muted">{staticNumbers(t, f, res.static.ev)}</p>}
 
       {hpReq && (
         <section className="stack">
@@ -711,8 +713,20 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
             <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
             <Tile label={t("req.hp.energy")} value={f(sum.hp_kwh_mean)} unit="kWh" note={t("req.hp.energyNote", { kw: f(res.static.hp.design_kw, 1) })} />
           </div>
+          {!evReq && <p className="caption-muted">{staticNumbers(t, f, res.static.hp)}</p>}
           <p className="caption-muted">{t("req.hp.caption")}</p>
         </section>
+      )}
+
+      {res.fuse && (
+        <div className="verdicts">
+          <div className="verdict">
+            <span className="v-method">{t("req.fuse.title")}</span>
+            {res.fuse.ok ? <Status kind="good">{t("req.fuse.ok")}</Status> : <Status kind="warning">{t("req.fuse.over")}</Status>}
+            <span className="v-detail">{fuseText(t, f, res.fuse)}</span>
+            <span className="caption-muted">{t("req.fuse.caption", { year })}</span>
+          </div>
+        </div>
       )}
 
       {batReq && (

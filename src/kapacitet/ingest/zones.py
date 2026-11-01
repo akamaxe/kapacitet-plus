@@ -31,6 +31,3 @@ def fetch_zones(*, refresh: bool = False) -> Path:
     record("zones_se", source="zones", path=dest, url=URL.format(zone="SE_{1..4}"), rows=len(features))
     return dest
 
-
-def read_zones() -> dict:
-    return json.loads(zones_path().read_text(encoding="utf-8"))

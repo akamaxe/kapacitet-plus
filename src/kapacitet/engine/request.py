@@ -433,6 +433,10 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     # ---- 1) static method -------------------------------------------------------------------
     t0 = time.perf_counter()
     out["static"] = _static(model, req, base, hp, ev, ctx, hp_new)
+    # the main fuse is the house's own limit, apart from the grid's: a key of its own, so the
+    # queue's "firm only if every static study approves" keeps meaning the grid
+    if want_import:
+        out["fuse"] = _fuse_check(req, hp, ev, hp_new)
     emit("static", {"static": out["static"], "ms": 1000 * (time.perf_counter() - t0)})
 
     # ---- 2) dynamic envelopes, every weather year (closed form) ------------------------------
@@ -623,6 +627,36 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     return out, detail
 
 
+def fuse_verdict(house_peak_kva: float, three_phase_kw: float, single_phase_kw: float, fuse_a: float,
+                 sizes: list[float], volts: float = 230.0) -> dict:
+    """Whether a house's main fuse carries its own peak hour plus what a request adds.
+
+    Three-phase load shares the three phases evenly; a single-phase device puts its whole current
+    on one of them. The fuse holds when the busiest phase stays within its rating; when it does
+    not, the smallest subscription in `sizes` that does is named (None above the largest).
+    """
+    per_phase_kva = (house_peak_kva + three_phase_kw) / 3.0 + single_phase_kw
+    current = per_phase_kva * 1000.0 / volts
+    ok = current <= fuse_a + 1e-9
+    needed = None if ok else next((float(s) for s in sorted(sizes) if s + 1e-9 >= current), None)
+    return {"fuse_a": float(fuse_a), "fuse_kva": 3.0 * volts * fuse_a / 1000.0,
+            "house_peak_kva": float(house_peak_kva), "added_kw": float(three_phase_kw + single_phase_kw),
+            "single_phase_kw": float(single_phase_kw), "phase_current_a": float(current), "ok": bool(ok),
+            "fuse_needed_a": needed, "largest_a": float(max(sizes)) if len(sizes) else None}
+
+
+def _fuse_check(req: Request, hp: np.ndarray, ev: np.ndarray, hp_new: bool) -> dict:
+    """The import side of the main fuse: the house's peak hour in the reference year (its own use,
+    any heat pump or car it already has, and the new heat pump), plus the new charger at full power."""
+    cust = customers()
+    j = int(req.cid)
+    prof = _applicant_profiles(req, settings().reference_year, hp, ev, hp_new)
+    house = (prof["load"] + prof["hp"]) / A("load_power_factor")
+    single = req.ev_kw if 0 < req.ev_kw <= A("ev_charger_single_phase_kw") + 1e-9 else 0.0
+    return fuse_verdict(float(house.max()), float(req.ev_kw - single), float(single),
+                        float(cust.loc[j, "fuse_a"]), list(A("main_fuse_sizes_a")))
+
+
 def _static(model: NetModel, req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context,
             hp_new: bool) -> dict:
     cust = customers()
@@ -724,6 +758,8 @@ def _summary(out: dict, req: Request, hp_new: bool, battery: bool) -> dict:
         unmet = sum(e.get("ev_unmet_kwh", 0) for e in out["per_year"])
         s["ev_unmet_pct"] = 100 * unmet / max(req_kwh, 1e-9)
         s["ev_hours_limited_ref"] = e_ref.get("ev_hours_limited", 0)
+    if "fuse" in out:
+        s["fuse_ok"] = out["fuse"]["ok"]
     if hp_new:
         s["hp_static_approved"] = out["static"]["hp"]["approved"]
         hp_kwh = sum(e.get("hp_kwh", 0) for e in out["per_year"])

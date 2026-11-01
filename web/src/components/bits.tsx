@@ -128,7 +128,8 @@ export function Meter({ label, value, max = 100, limit = 100, unit = "%", digits
         <span>{label}</span>
         <strong>{f(value, digits)}<small>{unit}</small></strong>
       </div>
-      <div className="meter-track" role="meter" aria-valuenow={value} aria-valuemax={max} aria-label={label}>
+      <div className="meter-track" role="meter" aria-valuenow={value} aria-valuemin={0} aria-valuemax={max}
+        aria-valuetext={`${f(value, digits)} ${unit}`} aria-label={label}>
         {/* scaled rather than resized, so an hour step animates on the compositor */}
         <div className={`meter-fill${over ? " critical" : near ? " near" : ""}`} style={{ transform: `scaleX(${share})` }} />
         <span className="meter-tick" style={{ left: at(limit * 0.5) }} />
@@ -155,11 +156,11 @@ export function ChartOrTable({ chart, table }: { chart: ReactNode; table: ReactN
   );
 }
 
-export function Legend({ items }: { items: { color: string; label: string; line?: boolean }[] }) {
+export function Legend({ items }: { items: { color: string; label: ReactNode; key?: string; line?: boolean }[] }) {
   return (
     <div className="legend">
-      {items.map((it) => (
-        <span key={it.label}>
+      {items.map((it, i) => (
+        <span key={it.key ?? (typeof it.label === "string" ? it.label : i)}>
           <i className={it.line ? "line" : ""} style={{ background: it.color }} />
           {it.label}
         </span>

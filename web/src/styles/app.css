@@ -1184,7 +1184,7 @@ svg { flex-shrink: 0; }
 .theme-select.top-tool option { color: var(--text-primary); background: var(--bg-elevated); }
 .menu-btn { display: none; align-self: center; margin-left: calc(-1 * var(--space-2)); }
 
-/* the menu sheet: the six screens for a window too narrow to hold them */
+/* the menu sheet: the screens, for a window too narrow to hold them */
 .menu-sheet { display: grid; padding: var(--space-2); }
 .menu-sheet a { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--text-primary); text-decoration: none; font-weight: 500; }
 .menu-sheet a[aria-current="page"] { background: var(--accent-quiet); color: var(--accent); }
@@ -2138,7 +2138,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   padding: var(--space-2) 0; border-bottom: 1px solid var(--border); font-size: var(--text-small);
 }
 .queue-list li::before { content: counter(q); grid-row: 1 / span 3; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.queue-house { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.queue-house { display: block; min-width: 0; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .queue-when { grid-column: 3; grid-row: 1; color: var(--text-muted); font-size: var(--text-caption); font-variant-numeric: tabular-nums; }
 .queue-decision { grid-column: 2; font-size: var(--text-caption); color: var(--text-secondary); }
 .queue-decision.nonfirm { color: var(--warning); }

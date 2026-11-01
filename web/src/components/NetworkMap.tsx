@@ -6,6 +6,7 @@ import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { Mark } from "./bits";
 import { Icon } from "./Icon";
+import { Term } from "./Term";
 import { MapView, fitTo } from "./MapView";
 
 type Tip = { x: number; y: number; cid: number; address: string; status: string };
@@ -172,8 +173,8 @@ export function NetworkMap() {
         )}
       </div>
       <div className="net-key">
-        <span><i className="house-key firm" />{t("net.firm")}</span>
-        <span><i className="house-key nonfirm" />{t("net.nonfirm")}</span>
+        <span><i className="house-key firm" /><Term id="firm">{t("net.firm")}</Term></span>
+        <span><i className="house-key nonfirm" /><Term id="nonfirm">{t("net.nonfirm")}</Term></span>
         <span><i className="house-key" />{t("twin.status.none")}</span>
         <span className="net-src"><Mark kind="real" />{t("net.srcReal")}</span>
         <span className="net-src"><Mark kind="synthetic" />{t("net.srcSyn")}</span>

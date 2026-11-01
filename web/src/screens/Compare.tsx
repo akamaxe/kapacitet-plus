@@ -89,7 +89,7 @@ export default function Compare() {
     <div className="page">
       <SectionBar
         sections={sections}
-        basis={<span>{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</span>}
+        basis={<Term id="sample">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</Term>}
       />
       <div className="page-inner">
         {/* ---------------------------------------------------------------- the answer */}
@@ -137,7 +137,7 @@ export default function Compare() {
         <section className="region" id="capacity">
           <div className="region-head">
             <div className="region-title">
-              <h2>{t("cmp.bars")}</h2>
+              <h2><Term id="hosting">{t("cmp.bars")}</Term></h2>
               <p className="caption">{t("cmp.bars.caption")}</p>
             </div>
           </div>
@@ -205,7 +205,7 @@ export default function Compare() {
                 <h2>{t("cmp.heat", { year: HM.year })}</h2>
                 <p className="caption">{t("cmp.heat.caption")}</p>
               </div>
-              <div className="seg">
+              <div className="seg" role="group" aria-label={t("cmp.heat.view")}>
                 <button aria-pressed={heat === "limited"} onClick={() => setHeat("limited")}>{t("cmp.heat.limited")}</button>
                 <button aria-pressed={heat === "unc"} onClick={() => setHeat("unc")}>{t("scn.uncontrolled")}</button>
               </div>

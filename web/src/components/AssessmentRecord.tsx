@@ -2,7 +2,7 @@ import { createPortal } from "react-dom";
 import { Roundel } from "./Shell";
 import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
-import { reasonText } from "../lib/reasons";
+import { fuseText, reasonText, staticNumbers } from "../lib/reasons";
 import { useStore } from "../lib/store";
 
 /**
@@ -71,7 +71,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         <table className="pr-table">
           <tbody>
             {res.static?.pv && (
-              <tr><th>{t("rec.pvStatic")}</th><td>{yesNo(res.static.pv.approved)}</td><td>{reasonText(t, f, res.static.pv)}</td></tr>
+              <tr><th>{t("rec.pvStatic")}</th><td>{yesNo(res.static.pv.approved)}</td><td>{reasonText(t, f, res.static.pv)}<br />{staticNumbers(t, f, res.static.pv)}</td></tr>
             )}
             {rq.pv_kwp > 0 && (
               <tr>
@@ -90,19 +90,22 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
               </tr>
             )}
             {res.static?.ev && (
-              <tr><th>{t("rec.evStatic")}</th><td>{yesNo(res.static.ev.approved)}</td><td>{reasonText(t, f, res.static.ev)}</td></tr>
+              <tr><th>{t("rec.evStatic")}</th><td>{yesNo(res.static.ev.approved)}</td><td>{reasonText(t, f, res.static.ev)}<br />{staticNumbers(t, f, res.static.ev)}</td></tr>
             )}
             {rq.ev_kw > 0 && (
               <tr><th>{t("rec.evDoe")}</th><td>{pct1(f, sum.ev_unmet_pct)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
             )}
             {res.static?.hp && (
-              <tr><th>{t("rec.hpStatic")}</th><td>{yesNo(res.static.hp.approved)}</td><td>{reasonText(t, f, res.static.hp)}</td></tr>
+              <tr><th>{t("rec.hpStatic")}</th><td>{yesNo(res.static.hp.approved)}</td><td>{reasonText(t, f, res.static.hp)}<br />{staticNumbers(t, f, res.static.hp)}</td></tr>
             )}
             {res.static?.hp && (
               <tr><th>{t("rec.hpDoe")}</th><td>{pct1(f, sum.hp_unmet_pct)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
             )}
             {sum.bat_charged_ref_kwh !== undefined && (
               <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${pct1(f, sum.bat_captured_ref_pct)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
+            )}
+            {res.fuse && (
+              <tr><th>{t("req.fuse.title")}</th><td>{res.fuse.ok ? t("req.fuse.ok") : t("req.fuse.over")}</td><td>{fuseText(t, f, res.fuse)}</td></tr>
             )}
             {res.verification?.import && (
               <tr><th>{t("rec.importVerified")}</th><td>{f(res.verification.import.violations_after)} {t("rec.violations")}</td><td>{t("rec.importVerifiedDetail", { n: f(res.verification.import.hours_checked) })}</td></tr>
