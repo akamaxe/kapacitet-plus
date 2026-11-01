@@ -31,7 +31,8 @@ from .. import __version__
 from ..config import assumptions, settings
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
-from ..paths import PROCESSED, WEB_DIST, processed
+from ..paths import PROCESSED, WEB_DIST
+from ..paths import processed_ro as processed
 
 warnings.filterwarnings("ignore")
 log = logging.getLogger("kapacitet.api")
@@ -338,9 +339,18 @@ def series(year: int) -> dict:
     return with_prov(result(f"series_{year}.json"), "smhi_strang", "smhi_metobs", "elprisetjustnu")
 
 
+STATES = ("static", "uncontrolled", "doe")
+
+
+def _state_name(name: str) -> str:
+    if name not in STATES:
+        raise HTTPException(404, f"unknown state {name}")
+    return name
+
+
 @app.get(f"{API}/state/{{name}}", tags=["twin"])
 def state_header(name: str) -> dict:
-    path = processed("ui", f"state_{name}.json")
+    path = processed("ui", f"state_{_state_name(name)}.json")
     if not path.exists():
         raise HTTPException(404, f"unknown state {name}")
     return json.loads(path.read_text(encoding="utf-8"))
@@ -354,7 +364,7 @@ def _state_gz(name: str, stamp: float) -> bytes:
 
 @app.get(f"{API}/state/{{name}}/bin", tags=["twin"])
 def state_bin(name: str, request: Request) -> Response:
-    path = processed("ui", f"state_{name}.bin")
+    path = processed("ui", f"state_{_state_name(name)}.bin")
     if not path.exists():
         raise HTTPException(404, f"unknown state {name}")
     headers = {"Cache-Control": "max-age=600"}
@@ -463,14 +473,19 @@ def _run_job(job_id: str, body: RequestIn) -> None:
     from ..engine import request as rq
     job = _JOBS[job_id]
 
+    held: list[dict] = []
+
     def emit(stage: str, payload: dict) -> None:
-        job["events"].append({"stage": stage, "payload": payload, "t": time.time()})
+        ev = {"stage": stage, "payload": payload, "t": time.time()}
+        # `done` tells the browser to fetch the result, so it waits until the result is stored
+        (held if stage == "done" else job["events"]).append(ev)
 
     try:
         eng = _engine()
         req = rq.Request(cid=body.cid, pv_kwp=body.pv_kwp, ev_kw=body.ev_kw, baseline=body.baseline)
         job["result"] = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"], emit=emit)
         job["status"] = "done"
+        job["events"].extend(held)
     except Exception as exc:
         log.exception("request failed")
         job["status"] = "error"
@@ -478,14 +493,21 @@ def _run_job(job_id: str, body: RequestIn) -> None:
         # not "error": EventSource fires its own `error` event for transport trouble, and
         # a stage of the same name is indistinguishable from the stream simply dropping.
         job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
+    finally:
+        # the stream ends only once every event, the last included, has been queued
+        job["closed"] = True
+
+
+def _check_cid(cid: int) -> None:
+    from ..engine.scenario import customers
+    if cid >= len(customers()):
+        raise HTTPException(422, "unknown customer")
 
 
 @app.post(f"{API}/requests", tags=["requests"])
 def create_request(body: RequestIn) -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
-    from ..engine.scenario import customers
-    if body.cid >= len(customers()):
-        raise HTTPException(422, "unknown customer")
+    _check_cid(body.cid)
     job_id = uuid.uuid4().hex[:12]
     _JOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time(),
                      "request": body.model_dump()}
@@ -507,7 +529,7 @@ async def request_events(job_id: str) -> StreamingResponse:
                 ev = job["events"][sent]
                 sent += 1
                 yield f"event: {ev['stage']}\ndata: {json.dumps(ev['payload'], default=_json_default)}\n\n"
-            if job["status"] != "running" and sent >= len(job["events"]):
+            if job.get("closed") and sent >= len(job["events"]):
                 yield "event: end\ndata: {}\n\n"
                 return
             if time.time() - start > 120:
@@ -537,6 +559,7 @@ def request_result(job_id: str) -> JSONResponse:
 def evaluate_sync(body: RequestIn) -> JSONResponse:
     """Synchronous variant of /requests (returns the full result)."""
     from ..engine import request as rq
+    _check_cid(body.cid)
     eng = _engine()
     req = rq.Request(cid=body.cid, pv_kwp=body.pv_kwp, ev_kw=body.ev_kw, baseline=body.baseline)
     out = rq.evaluate(eng["model"], req, eng["hp"], eng["ev"])
@@ -566,8 +589,10 @@ if WEB_DIST.exists():
 def spa(path: str) -> Response:
     if path.startswith("api/"):
         raise HTTPException(404)
-    target = WEB_DIST / path
-    if path and target.is_file():
+    dist = WEB_DIST.resolve()
+    target = (WEB_DIST / path).resolve()
+    # only files inside web/dist: `..` segments (also percent-encoded) must not reach the project
+    if path and target.is_file() and target.is_relative_to(dist):
         return FileResponse(target)
     index = WEB_DIST / "index.html"
     if index.exists():

@@ -181,7 +181,18 @@ export default function Request() {
     STAGES.forEach((s) => es.addEventListener(s, mark(s) as any));
     es.addEventListener("done", async () => {
       es.close();
-      const res = await fetch(`${API}/requests/${id}`).then((x) => x.json());
+      // the server answers 202 while a job is still running; only a 200 carries the result
+      let res: any = null;
+      for (let i = 0; i < 20 && !res; i++) {
+        const r = await fetch(`${API}/requests/${id}`).catch(() => null);
+        if (r?.status === 200) res = await r.json();
+        else if (r && r.status !== 202) break;
+        else await new Promise((ok) => setTimeout(ok, 150));
+      }
+      if (!res) {
+        fail(t("req.ended"));
+        return;
+      }
       setJob((j) => (j ? { ...j, stages: { ...j.stages, done: 0 }, result: res } : j));
     });
     // The engine reports its own failure as a named event. Without this the stepper

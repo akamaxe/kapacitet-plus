@@ -19,6 +19,11 @@ def processed(*parts: str) -> Path:
     return path
 
 
+def processed_ro(*parts: str) -> Path:
+    """Path inside data/processed for reading only: unlike `processed`, it creates nothing."""
+    return PROCESSED.joinpath(*parts)
+
+
 def raw(*parts: str) -> Path:
     """Path inside data/raw, creating the parent folder."""
     path = RAW.joinpath(*parts)
