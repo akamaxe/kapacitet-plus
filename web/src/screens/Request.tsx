@@ -10,8 +10,9 @@ import { CommandLine, ChartOrTable, Legend, Missing, Status, Tile } from "../com
 import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
+import { ApplyBlock } from "../components/Inbox";
 import { copyText } from "../lib/clipboard";
-import { faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
+import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
@@ -520,7 +521,10 @@ export default function Request() {
             <AnswerActions id={res.id ?? job?.id ?? ""} seal={res.seal} />
             <Result res={res} year={year} lang={lang} />
             {!stale && res.id && queue && (
-              <DecisionBlock res={res} queue={queue} />
+              <>
+                <ApplyBlock res={res} queue={queue} />
+                <DecisionBlock res={res} queue={queue} />
+              </>
             )}
             <AssessmentRecord res={res} baselineLabel={
               res.request?.baseline === "queue"
@@ -587,15 +591,6 @@ function HouseSearch({ houses, onPick }: { houses: any[]; onPick: (cid: number) 
 }
 
 /** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
-function describeRequest(t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string, q: any): string {
-  return [
-    q.pv_kwp > 0 ? `${f(q.pv_kwp)} kWp` : null,
-    q.ev_kw > 0 ? `${f(q.ev_kw, q.ev_kw % 1 ? 1 : 0)} kW ${t("req.evShort")}` : null,
-    q.hp ? t("req.hpShort") : null,
-    q.bat_kwh > 0 ? `${f(q.bat_kwh)} kWh ${t("req.batShort")}` : null,
-  ].filter(Boolean).join(" · ");
-}
-
 /** Keep the answer: print or save it as a PDF, download its hours or its record, copy its link. */
 /** The answer's seal: its digest, and a check that the kept record still hashes to it. */
 function SealLine({ id, seal }: { id: string; seal: { digest: string; seq: number } }) {

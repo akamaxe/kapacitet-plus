@@ -101,6 +101,16 @@ export function pct1(f: (v: number | null | undefined, d?: number) => string, v:
   return v != null && v > 0 && v < 0.05 ? `< ${f(0.1, 1)}` : f(v, 1);
 }
 
+/** A wait in the largest unit that keeps it readable: "42 s", "12 min", "3.5 h", "2.0 d". */
+export function duration(lang: string, seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined || !Number.isFinite(seconds)) return "–";
+  const s = Math.max(0, seconds);
+  if (s < 90) return `${fmt(lang, s)} s`;
+  if (s < 90 * 60) return `${fmt(lang, s / 60)} min`;
+  if (s < 36 * 3600) return `${fmt(lang, s / 3600, 1)} h`;
+  return `${fmt(lang, s / 86400, 1)} d`;
+}
+
 /** A value rounded for a chart's data (not for display: that goes through `fmt`). */
 export function round(value: number, digits = 0): number {
   const k = 10 ** digits;

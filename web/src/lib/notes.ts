@@ -10,7 +10,7 @@ export const NOTE_COUNT: Record<Screen, number> = {
   twin: 3,
   compare: 4,
   request: 3,
-  operation: 2,
+  operation: 3,
   report: 2,
   scenarios: 3,
   method: 4,

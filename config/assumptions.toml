@@ -346,6 +346,17 @@ note = "The same trial found its limits kept in more than 99.97 % of 5-minute in
 note_es = "El mismo ensayo encontró sus límites respetados en más del 99,97 % de los intervalos de 5 minutos."
 note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
 
+[ev_unserved_limit_pct]
+value = 1.0
+unit = "% of requested charging energy"
+tag = "team-assumption"
+label = "Charging an envelope may leave unserved and still serve the charger"
+label_es = "Carga que una envolvente puede dejar sin servir y aun así servir al cargador"
+label_sv = "Laddning som en exportgräns får lämna oförsörjd och ändå räknas som att laddaren försörjs"
+source = "Team assumption, used by the 2030 scenarios and as the default threshold of automatic decisions"
+url = ""
+note = ""
+
 [shadow_season_months]
 value = [5, 8]
 unit = "month"

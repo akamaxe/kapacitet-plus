@@ -62,3 +62,31 @@ export function fuseText(t: T, f: F, fuse: any): string {
   if (fuse.fuse_needed_a != null) return t("req.fuse.needDetail", { fuse: f(fuse.fuse_a), a, need: f(fuse.fuse_needed_a) });
   return t("req.fuse.beyond", { a, max: f(fuse.largest_a) });
 }
+
+/** What a request asks for, in a line: "10 kWp · 11 kW charger · heat pump". */
+export function describeRequest(t: (k: string) => string, f: (v: number | null | undefined, d?: number) => string, q: any): string {
+  return [
+    q.pv_kwp > 0 ? `${f(q.pv_kwp)} kWp` : null,
+    q.ev_kw > 0 ? `${f(q.ev_kw, q.ev_kw % 1 ? 1 : 0)} kW ${t("req.evShort")}` : null,
+    q.hp ? t("req.hpShort") : null,
+    q.bat_kwh > 0 ? `${f(q.bat_kwh)} kWh ${t("req.batShort")}` : null,
+  ].filter(Boolean).join(" · ");
+}
+
+/** A reason the automatic rule gave for sending an application to a person (engine/rules.py). */
+export interface RuleReason {
+  code: string;
+  params: Record<string, number | string>;
+}
+
+/** A reason the rule gave, in the reader's language, its figures in the reader's format. */
+export function reasonLine(t: (k: string, v?: Record<string, string | number>) => string, f: (v: number | null | undefined, d?: number) => string, r: RuleReason): string {
+  const params: Record<string, string | number> = {};
+  for (const [k, v] of Object.entries(r.params ?? {})) {
+    // hours are whole; shares read to a tenth; a queue refusal arrives as its own code
+    if (typeof v === "number") params[k] = f(v, r.code === "violations" ? 0 : 1);
+    else if (r.code === "queue" && k === "detail" && t(`err.${v}`) !== `err.${v}`) params[k] = t(`err.${v}`);
+    else params[k] = v;
+  }
+  return t(`inbox.reason.${r.code}`, params);
+}

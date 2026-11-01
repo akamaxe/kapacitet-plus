@@ -2159,6 +2159,15 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .queue-decision.firm { color: var(--good); }
 .queue-note { grid-column: 2 / -1; font-size: var(--text-caption); color: var(--text-muted); }
 
+/* ---------------------------------------------------------------- applications (Inbox.tsx) */
+.apply-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; font-size: var(--text-small); }
+.apply-state > span:nth-child(2) { font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+.inbox-status { display: grid; gap: 2px; justify-items: start; }
+.inbox-status small { font-size: var(--text-caption); color: var(--text-muted); }
+.inbox-status .inbox-reason { color: var(--text-secondary); max-width: 38ch; }
+.inbox-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
+.inbox-reasons { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); font-size: var(--text-small); }
+
 /* ---------------------------------------------------------------- reinforce or connect: two sides */
 .reinf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
 .reinf-side { display: grid; gap: var(--space-2); align-content: start; padding-top: var(--space-3); border-top: 1px solid var(--border); }

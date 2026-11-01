@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, Tile } from "../components/bits";
+import { InboxSection } from "../components/Inbox";
 import { Term } from "../components/Term";
 import { API, ApiError, getJSON, useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
@@ -106,6 +107,7 @@ export default function Operation() {
   };
 
   const sections: Section[] = [
+    { id: "inbox", label: t("op.sec.inbox") },
     { id: "schedule", label: t("op.sec.schedule") },
     { id: "shadow", label: t("op.sec.shadow") },
     { id: "meter", label: t("op.sec.meter") },
@@ -134,6 +136,17 @@ export default function Operation() {
               <Tile label={t("op.violations")} value={f(DA.full_year_violation_hours)} unit="h" note={t("op.violationsNote")} />
             </div>
           </div>
+        </section>
+
+        {/* ---------------------------------------------------------------- applications */}
+        <section className="region" id="inbox">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("inbox.title")}</h2>
+              <p className="caption">{t("inbox.caption")}</p>
+            </div>
+          </div>
+          <InboxSection />
         </section>
 
         {/* ---------------------------------------------------------------- a day's schedule */}

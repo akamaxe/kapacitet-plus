@@ -29,13 +29,22 @@ class DsoSettings(BaseModel):
     allocation_policy: Literal["maxmin", "prorata", "propfair", "maxtotal"] = "maxmin"
     # the most curtailment an agreement promises, as a share of the house's solar energy in a year;
     # by default the budget the capacity search itself is held to (z_star_pct)
-    agreed_level_pct: float = Field(default_factory=lambda: float(_z_star()), ge=0, le=100)
+    agreed_level_pct: float = Field(default_factory=lambda: float(_assumption("z_star_pct")), ge=0, le=100)
+    # applications are decided by engine/rules.py unless this is off; the rule never declines
+    auto_decisions: bool = True
+    # the rule's thresholds: a house's curtailment on average and in one year in ten (none: the agreed
+    # level), and the EV charging an envelope may leave unserved
+    auto_curtailment_mean_pct: float | None = Field(None, ge=0, le=100)
+    auto_curtailment_p90_pct: float | None = Field(None, ge=0, le=100)
+    auto_ev_unserved_pct: float = Field(default_factory=lambda: float(_assumption("ev_unserved_limit_pct")), ge=0, le=100)
+    # the published grid an application is evaluated against while the queue is empty
+    inbox_baseline: Literal["static", "doe"] = "static"
 
 
-def _z_star() -> float:
+def _assumption(key: str) -> float:
     from .config import A
 
-    return A("z_star_pct")
+    return A(key)
 
 
 class DsoSettingsChange(BaseModel):
@@ -45,6 +54,11 @@ class DsoSettingsChange(BaseModel):
 
     allocation_policy: Literal["maxmin", "prorata", "propfair", "maxtotal"] | None = None
     agreed_level_pct: float | None = Field(None, ge=0, le=100)
+    auto_decisions: bool | None = None
+    auto_curtailment_mean_pct: float | None = Field(None, ge=0, le=100)
+    auto_curtailment_p90_pct: float | None = Field(None, ge=0, le=100)
+    auto_ev_unserved_pct: float | None = Field(None, ge=0, le=100)
+    inbox_baseline: Literal["static", "doe"] | None = None
 
 
 def path():
@@ -78,3 +92,15 @@ def update(change: DsoSettingsChange) -> DsoSettings:
         seals.seal("settings", stamp.strftime("%Y%m%dT%H%M%S%fZ"),
                    {"changed_at": stamp.isoformat(), "before": before.model_dump(), "after": after.model_dump()})
         return after
+
+
+def thresholds(s: DsoSettings | None = None):
+    """The automatic rule's thresholds as the settings resolve them."""
+    from .engine.rules import Thresholds
+
+    s = s or load()
+    return Thresholds(
+        curtailment_mean_pct=s.auto_curtailment_mean_pct if s.auto_curtailment_mean_pct is not None else s.agreed_level_pct,
+        curtailment_p90_pct=s.auto_curtailment_p90_pct if s.auto_curtailment_p90_pct is not None else s.agreed_level_pct,
+        ev_unserved_pct=s.auto_ev_unserved_pct,
+    )

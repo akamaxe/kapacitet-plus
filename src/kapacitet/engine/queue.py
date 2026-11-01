@@ -130,8 +130,11 @@ def _check(q: dict, record: dict, decision: str) -> str:
 
 
 def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, note: str = "",
-           emit=None) -> dict:
-    """Record a decision on a saved assessment; an approval re-verifies it and updates the grid."""
+           emit=None, by: str = "dso") -> dict:
+    """Record a decision on a saved assessment; an approval re-verifies it and updates the grid.
+    `by` says who decided: the DSO's planner, or its rule (api/inbox.py), which never declines."""
+    if by == "rule" and decision == "declined":
+        raise ValueError("the automatic rule never declines")
     emit = emit or (lambda *_: None)
     with _LOCK:
         q = load()
@@ -139,7 +142,7 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
         req, res = record["request"], record["result"]
         cid = int(req["cid"])
         item = {"assessment": record["id"], "cid": cid, "address": res.get("customer", {}).get("address"),
-                "decision": decision, "note": note.strip()[:500],
+                "decision": decision, "by": by, "note": note.strip()[:500],
                 "decided": datetime.now(timezone.utc).isoformat(), "request": req,
                 "summary": res.get("summary", {})}
         if decision == "declined":

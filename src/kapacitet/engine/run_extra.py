@@ -325,7 +325,7 @@ def _scenario_case(args) -> dict:
         firm_imp = imp_h
     z_star = A("z_star_pct")
     static_ok = static_pv_ok and static_imp_ok
-    doe_ok = (z <= z_star) and (unmet_pct <= 1.0) and firm_imp == 0 and residual == 0
+    doe_ok = (z <= z_star) and (unmet_pct <= A("ev_unserved_limit_pct")) and firm_imp == 0 and residual == 0
     return {"pv": pv_s, "ev": ev_s, "hp": hp_s, "n_pv": n_pv, "static_pv_ok": static_pv_ok,
             "static_import_ok": static_imp_ok, "static_ok": static_ok,
             "uncontrolled_export_hours": exp_h, "uncontrolled_import_hours": imp_h,
@@ -346,7 +346,7 @@ def scenarios_2030(o: int, ms_static: int, year: int, quick: bool, workers: int 
         rows = list(ex.map(_scenario_case, jobs))
     _write("scenarios.json", {"year": year, "order": o, "static_adopters": ms_static,
                               "pv_shares": list(pvs), "ev_shares": list(evs), "hp_shares": list(hps),
-                              "z_star_pct": A("z_star_pct"), "ev_unmet_limit_pct": 1.0, "cases": rows})
+                              "z_star_pct": A("z_star_pct"), "ev_unmet_limit_pct": A("ev_unserved_limit_pct"), "cases": rows})
 
 
 # ------------------------------------------------------------------------------ request baselines

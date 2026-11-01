@@ -388,6 +388,31 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
   Flexible Exports trial (`meter_breach_tolerance_w`). `GET /api/v1/operation/meter-example`
   writes a synthetic day to try it on, with one deliberate ten-minute breach.
 
+## Applications and the DSO's rule
+
+An assessment answers *what if*; an application asks for the connection. *Apply* under an answer
+on the request screen (or `POST /api/v1/applications {assessment}`) registers one, with a
+reference such as `KP-1A2B-3C4D`, and seals it. One worker takes the applications in the order they
+arrived. If the queue has moved since the assessment, it evaluates the request again against the
+grid as it now stands, then `engine/rules.py` gives its verdict:
+
+- **firm** when every part passes the static study and the house's own main fuse and phases take it;
+- **with an envelope** when the static study rejects a part but the verified envelope keeps the
+  house's curtailment within the DSO's thresholds on average and in one year in ten (by default the
+  agreed level, 3 % of its solar energy), leaves at most 1 % of its EV charging unserved
+  (`ev_unserved_limit_pct`), no heat unserved, and no hour above a grid limit;
+- **to a person** otherwise, with the reasons. The rule never declines.
+
+An approval by the rule goes through `queue.decide` like a person's, so it is verified on every
+weather year before the house enters the grid, under the queue's write lock (a manual decision
+waits for it, and it waits for a manual decision). The thresholds and the switch are the DSO's
+settings (`PUT /api/v1/settings`, sealed). Every step is an event in
+`data/requests/applications.jsonl`, appended and never rewritten. `GET /api/v1/inbox` folds them
+into each application's state, and `GET /api/v1/inbox/kpis` measures the inbox from the same
+events: the median and P90 time to a decision, the share the rule decided, and the kW connected
+firm and with an envelope. The **Operation** screen shows the inbox; an application waiting for a
+person is decided there with the queue's usual decision, or sent back to be evaluated again.
+
 ## What the forecast is worth
 
 Every figure above is computed with perfect foresight: the envelope for 11:00 is allocated

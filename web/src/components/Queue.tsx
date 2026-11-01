@@ -169,7 +169,9 @@ export function QueueList({ queue }: { queue: QueueState }) {
             <a className="queue-house" href={`#/request?cid=${it.cid}&job=${it.assessment}`} title={t("queue.open")}>
               {it.address || t("dt.unnamed", { id: it.cid })}
             </a>
-            <span className={`queue-decision ${it.decision}`}>{t(`queue.item.${it.decision}`)}</span>
+            <span className={`queue-decision ${it.decision}`}>
+              {t(`queue.item.${it.decision}`)}{it.by === "rule" ? ` · ${t("inbox.by.rule")}` : ""}
+            </span>
             <span className="queue-when">{dateTime(lang, it.decided)}</span>
             {it.note && <span className="queue-note">{it.note}</span>}
           </li>

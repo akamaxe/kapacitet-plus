@@ -59,6 +59,8 @@ CHECK_MAX_BYTES = 5_000_000
 async def lifespan(_app: FastAPI):
     # load the model and the request baselines in the background, so the first request is fast
     threading.Thread(target=_warm, daemon=True).start()
+    # applications left waiting when the server last stopped are taken up again, in order
+    inbox.start()
     yield
 
 
@@ -73,11 +75,13 @@ app = FastAPI(
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
+from . import inbox  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
 
 app.include_router(evidence_router)
 app.include_router(operation_router)
+app.include_router(inbox.router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -894,11 +898,27 @@ def _sweep_jobs() -> None:
 _REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
 
 
-def _record(job_id: str, job: dict, result: dict) -> dict:
+def make_record(job_id: str, created: float, request: dict, result: dict) -> dict:
     """What is kept of an assessment: the question, the full answer and what it was computed with."""
-    return {"id": job_id, "created": datetime.fromtimestamp(job["created"], timezone.utc).isoformat(),
-            "request": job["request"], "result": json.loads(json.dumps(result, default=_json_default)),
+    return {"id": job_id, "created": datetime.fromtimestamp(created, timezone.utc).isoformat(),
+            "request": request, "result": json.loads(json.dumps(result, default=_json_default)),
             "version": __version__, "provenance": provenance(*_REQUEST_SOURCES)}
+
+
+def _record(job_id: str, job: dict, result: dict) -> dict:
+    return make_record(job_id, job["created"], job["request"], result)
+
+
+def evaluate_record(request: dict) -> dict:
+    """Evaluate a request (a RequestIn as a dict) against the grid it names, for the inbox's worker,
+    which already holds the queue's lock: the queue's context is read directly."""
+    from ..engine import queue as qu
+    from ..engine import request as rq
+
+    body = RequestIn(**request)
+    ctx = qu.context() if body.baseline == "queue" else None
+    eng = _engine()
+    return rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
 
 
 def _job_id(job_id: str) -> str:
@@ -1047,6 +1067,8 @@ class DecisionIn(BaseModel):
                           description="firm: connect without an envelope (only if the static study approves); "
                                       "nonfirm: connect with the verified envelope; declined: record a refusal")
     note: str = Field("", max_length=500, description="the planner's reason, kept with the decision")
+    application: str | None = Field(None, pattern="^[0-9a-f]{12}$",
+                                    description="the application in review this decision answers (api/inbox.py)")
 
 
 _QJOBS: dict[str, dict] = {}
@@ -1054,7 +1076,8 @@ QUEUE_TIMEOUT_S = 600.0
 
 
 def _queue_busy() -> bool:
-    return any(j["status"] == "running" for j in _QJOBS.values())
+    """A decision is being written, by a person or by the inbox's rule: one at a time."""
+    return inbox.busy() or any(j["status"] == "running" for j in _QJOBS.values())
 
 
 @app.get(f"{API}/queue", tags=["queue"])
@@ -1076,6 +1099,8 @@ def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
     try:
         eng = _engine()
         item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, body.decision, body.note, emit=emit)
+        # the application this answers, if any, is decided with it
+        inbox.link_decision(rec["id"], body.decision, float(item.get("pv_kw", 0.0) or 0.0), body.application)
         job.update(result=item, status="done", finished=time.time())
         job["events"].append({"stage": "done", "payload": {"decision": body.decision}, "t": time.time()})
     except qu.QueueError as exc:
@@ -1101,6 +1126,12 @@ def post_decision(body: DecisionIn) -> dict:
     rec = records.load(body.assessment)
     if rec is None:
         raise HTTPException(404, "unknown assessment")
+    if body.application is not None:
+        app_ = inbox.applications().get(body.application)
+        if app_ is None:
+            raise inbox.refusal(404, "unknown_application")
+        if app_["status"] != "review" or app_["assessment"] != body.assessment:
+            raise inbox.refusal(409, "not_in_review")
     try:
         qu._check(qu.load(), rec, body.decision)
     except qu.QueueError as exc:

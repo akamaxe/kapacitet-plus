@@ -7,8 +7,12 @@ are skipped when `data/processed` is empty, so a fresh clone still gets a green 
 from __future__ import annotations
 
 import json
+import os
 
 import pytest
+
+# The inbox's worker decides applications in the real queue; tests drive `inbox.process` themselves.
+os.environ["KAPACITET_INBOX_WORKER"] = "0"
 
 from kapacitet.paths import processed
 
