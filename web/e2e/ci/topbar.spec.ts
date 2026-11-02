@@ -18,6 +18,9 @@ for (const lang of LANGS) {
 
       const nav = page.locator("nav.topnav");
       const menu = page.locator("button.menu-btn");
+      // the bar measures its labels, so it settles once the web font has loaded
+      await page.evaluate(() => document.fonts.ready.then(() => undefined));
+      await expect.poll(async () => (await nav.isVisible()) !== (await menu.isVisible()), { timeout: 3000 }).toBe(true);
       const navShown = await nav.isVisible();
       const menuShown = await menu.isVisible();
       expect(navShown !== menuShown, `nav ${navShown}, menu ${menuShown}`).toBe(true);
