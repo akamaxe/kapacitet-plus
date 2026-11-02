@@ -4,7 +4,15 @@ import { expect, test } from "@playwright/test";
 // read the answer, apply, and follow the application until the DSO's rule has decided it.
 test("a household applies and the rule decides", async ({ page, request }) => {
   const houses = (await (await request.get("/api/v1/apply/houses")).json()).items;
-  const house = houses.find((h: any) => h.address) ?? houses[0];
+  // a house the queue has not approved and that has no application waiting: the test can run again
+  const queue = (await (await request.get("/api/v1/queue")).json()).items;
+  const inbox = (await (await request.get("/api/v1/inbox")).json()).items;
+  const taken = new Set<number>([
+    ...queue.filter((it: any) => it.decision !== "declined").map((it: any) => it.cid),
+    ...inbox.filter((a: any) => a.status === "pending" || a.status === "review").map((a: any) => a.cid),
+  ]);
+  const house = houses.find((h: any) => h.address && !taken.has(h.cid));
+  expect(house, "a free house to apply for").toBeTruthy();
   await page.goto("/#/apply");
   await expect(page.getByRole("heading", { level: 1, name: "Apply for a connection" })).toBeVisible({ timeout: 60_000 });
   await page.getByLabel("Address").fill(house.address);
