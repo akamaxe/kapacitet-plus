@@ -388,6 +388,22 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
   Flexible Exports trial (`meter_breach_tolerance_w`). `GET /api/v1/operation/meter-example`
   writes a synthetic day to try it on, with one deliberate ten-minute breach.
 
+## The evidence for Ei
+
+Ei's position paper on conditional agreements (Ei2025:01, version 1.1, June 2026) sets the
+conditions a DSO must meet; `config/ei_conditions.toml` lists them with their sections (and the
+paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in three languages.
+`GET /api/v1/eipack?basis=&policy=` sets each one beside what this prototype can show for it:
+**shown by the model** (with its figures), **stated by the DSO** (three statements only the DSO
+can make, kept in its settings and sealed on change; an empty one never counts), **not met here**,
+or **does not apply**. On the day-ahead basis the model shows the capacity shortage, the terms and
+the annual report, and says plainly that limiting 1 146 hours where 148 needed it does not meet
+"only when the grid would otherwise be overloaded", nor "only once the market result shows an
+overload". `export=true` downloads the pack sealed with what it showed. The Annual report screen
+holds the section, the statements and a printable method description. It is evidence from a
+simulation, never a legal assessment; the regulation's rule on compensation for non-market
+redispatch is not assessed.
+
 ## Applications and the DSO's rule
 
 An assessment answers *what if*; an application asks for the connection. *Apply* under an answer

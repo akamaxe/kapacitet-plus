@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Missing, Protocol, Tile } from "../components/bits";
+import { EiSection } from "../components/EiPack";
 import { ReportRecord } from "../components/ReportRecord";
 import { toast } from "../components/Toast";
 import { Term } from "../components/Term";
@@ -98,6 +99,7 @@ export default function Report() {
   const sections: Section[] = [
     { id: "resort", label: t("rep.sec.resort") },
     { id: "agreements", label: t("rep.sec.agreements") },
+    ...(ops.data ? [{ id: "ei", label: t("rep.sec.ei") }] : []),
     { id: "house", label: t("rep.sec.house") },
   ];
 
@@ -201,6 +203,19 @@ export default function Report() {
             onSelect={(r) => select(r.customer_id)}
           />
         </section>
+
+        {/* ---------------------------------------------------------------- for Ei */}
+        {ops.data && (
+          <section className="region" id="ei">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("ei.title")}</h2>
+                <p className="caption">{t("ei.caption")}</p>
+              </div>
+            </div>
+            <EiSection basis={basis} policy={policy} />
+          </section>
+        )}
 
         {/* ---------------------------------------------------------------- one house */}
         <section className="region" id="house">

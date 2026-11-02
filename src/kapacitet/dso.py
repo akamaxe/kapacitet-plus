@@ -42,6 +42,10 @@ class DsoSettings(BaseModel):
     # how many years the envelopes defer the reinforcement, for the business case (by default one
     # regulatory period)
     deferral_years: int = Field(default_factory=lambda: int(_assumption("regulatory_period_years")), ge=1, le=40)
+    # what only the DSO can state for Ei (engine/eipack.py): empty means not stated, never met
+    market_alternative_statement: str = Field("", max_length=2000)
+    method_approval_reference: str = Field("", max_length=200)
+    review_statement: str = Field("", max_length=2000)
 
 
 def _assumption(key: str) -> float:
@@ -63,6 +67,9 @@ class DsoSettingsChange(BaseModel):
     auto_ev_unserved_pct: float | None = Field(None, ge=0, le=100)
     inbox_baseline: Literal["static", "doe"] | None = None
     deferral_years: int | None = Field(None, ge=1, le=40)
+    market_alternative_statement: str | None = Field(None, max_length=2000)
+    method_approval_reference: str | None = Field(None, max_length=200)
+    review_statement: str | None = Field(None, max_length=2000)
 
 
 def path():

@@ -50,6 +50,35 @@ def get_index() -> dict:
     return {**idx, "active_policy": dso.load().allocation_policy}
 
 
+# ---------------------------------------------------------------- the evidence pack for Ei
+
+@router.get("/eipack")
+def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
+           policy: str | None = Query(None, pattern=POLICY_PATTERN),
+           export: bool = Query(False, description="true: download the pack, sealed with what it showed")):
+    """Each of Ei's conditions for conditional agreements (Ei2025:01) beside what the prototype can
+    show for it: evidence of the model, a statement of the DSO, not met here, or not applicable."""
+    from ..engine.eipack import assess
+    from . import main
+
+    combo = resolve(basis, policy)
+    agreements = json.loads(processed_ro("results", "operation", "agreements.json").read_text(encoding="utf-8"))
+    report_path = combo.result("compliance.json")
+    report = json.loads(report_path.read_text(encoding="utf-8")) if report_path.exists() else None
+    try:
+        business = main.business(None)["data"]
+    except HTTPException:
+        business = None                      # the reinforcement case needs results the pack can do without
+    pack = assess(basis, combo.policy, dso.load(), operation_index(), agreements["agreements"], report, business)
+    if not export:
+        return pack
+    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    entry = seals.seal("eipack", f"{basis}-{combo.policy}-{stamp}", pack)
+    body = json.dumps({**pack, "seal": {k: entry[k] for k in ("digest", "seq", "at", "fingerprint")}}, indent=1)
+    return Response(body, media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-ei-evidence-{basis}-{combo.policy}.json"'})
+
+
 # ---------------------------------------------------------------- a day's schedule
 
 def _day_ahead(cid: int, date: str, policy: str | None):
