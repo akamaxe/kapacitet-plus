@@ -1,0 +1,46 @@
+# The codespace the README links to (.devcontainer/): it builds, Kapacitet+ starts in it as it does when
+# someone opens the codespace, and an empty copy offers the setup page's bundle upload. It runs
+# when what the codespace installs changes, or by hand; it is a separate workflow because a job in
+# ci.yml cannot filter by path.
+name: devcontainer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".devcontainer/**"
+      - ".github/workflows/devcontainer.yml"
+      - "constraints.txt"
+      - "pyproject.toml"
+      - "web/package.json"
+      - "web/package-lock.json"
+
+permissions:
+  contents: read
+
+jobs:
+  codespace:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      DEVCONTAINER: npx --yes @devcontainers/cli@0.89.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      # builds the image and runs onCreateCommand (install.sh), as GitHub does for a new codespace
+      - run: $DEVCONTAINER up --workspace-folder .
+      # postAttachCommand: what runs when someone opens the codespace
+      - run: $DEVCONTAINER exec --workspace-folder . bash -c 'setsid nohup bash .devcontainer/start.sh > /tmp/start.out 2>&1 < /dev/null &'
+      - name: the empty copy answers, serves the interface and takes a bundle from the browser
+        run: |
+          for i in $(seq 1 60); do
+            if out=$($DEVCONTAINER exec --workspace-folder . curl -fs http://127.0.0.1:8000/api/v1/health); then break; fi
+            sleep 3
+          done
+          echo "$out"
+          echo "$out" | grep -q '"setup_upload":true'
+          $DEVCONTAINER exec --workspace-folder . curl -fs http://127.0.0.1:8000/ | grep -q '<div id="root">'
+      - if: failure()
+        run: $DEVCONTAINER exec --workspace-folder . bash -c 'cat /tmp/start.out; tail -n 80 /tmp/kapacitet.log'

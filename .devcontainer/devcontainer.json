@@ -1,0 +1,30 @@
+{
+  "name": "Kapacitet+",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" }
+  },
+  "hostRequirements": { "cpus": 2, "memory": "8gb" },
+  "containerEnv": {
+    "KAPACITET_SETUP_UPLOAD": "1"
+  },
+  "onCreateCommand": "bash .devcontainer/install.sh",
+  "postAttachCommand": "bash .devcontainer/start.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": { "label": "Kapacitet+", "onAutoForward": "openBrowserOnce" }
+  },
+  "customizations": {
+    "codespaces": {
+      "openFiles": ["docs/codespaces.md"]
+    },
+    "vscode": {
+      "settings": {
+        "workbench.editorAssociations": { "**/docs/codespaces.md": "vscode.markdown.preview.editor" },
+        "workbench.startupEditor": "none",
+        "extensions.ignoreRecommendations": true,
+        "git.autofetch": false
+      }
+    }
+  }
+}

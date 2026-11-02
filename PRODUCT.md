@@ -66,7 +66,9 @@ non-firm offer.
 
 - The pipeline fetches, builds, profiles and computes. The API reads `data/processed/results/`, runs the live
   request evaluation and the inbox's rule, and writes only to `data/requests/` (assessments, the queue,
-  applications, settings and the seal chain) and `data/datasets/` (imported networks).
+  applications, settings and the seal chain) and `data/datasets/` (imported networks). The one
+  exception is an empty copy whose server allows it (a codespace): its setup page takes the
+  data bundle from the browser and unpacks it into `data/processed/` and `data/raw/`.
 - **Figures live in the data, never in the interface.** Every number on screen comes from the API. The code
   holds only units and labels.
 - **Real versus synthetic is labelled on every screen.**

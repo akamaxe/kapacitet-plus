@@ -84,9 +84,28 @@ A container runs the same thing with the data mounted (`docker build -t kapacite
 `docker run -p 8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
 Without data, the interface opens on a page that lists the commands to run.
 
+### In the browser, with nothing to install
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/akamaxe/kapacitet-plus?quickstart=1)
+
+Without Python or Node, you can run everything in a GitHub codespace: a cloud machine that
+opens in the browser, free for 60 hours a month on its two-core size. The link builds it
+(`.devcontainer/`) and opens Kapacitet+ in a new tab; the first time, the setup page asks for the
+data file, which goes up from the browser in chunks and is unpacked and checked on the server.
+[docs/codespaces.md](docs/codespaces.md) is the step-by-step guide to send them.
+
+The data still never go into the repository: make the file with
+`python -m kapacitet bundle --out ../kapacitet-data.zip` and share it privately. The upload is open
+only when the server allows it (`KAPACITET_SETUP_UPLOAD=1`, which the codespace sets), on the
+reference network and while the copy has no results, and a codespace's port is private to whoever
+created it. The container takes the file the same way:
+`docker run -p 127.0.0.1:8000:8000 -e KAPACITET_SETUP_UPLOAD=1 kapacitet`, then load it in the
+browser.
+
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
 `KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
-access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests).
+access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
+`KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page).
 
 The API documentation is at `/docs`; every JSON payload carries a `provenance` block with the
 sources and assumptions behind it.
@@ -325,6 +344,8 @@ while the server shows another network, it says so and switches nothing. An impo
 its own grid, and the reference network's weather, prices and households (`/meta` says so).
 
 The API writes to two places: `data/requests/` of the network in use, and `data/datasets/`.
+A third, only on a copy without results and only when `KAPACITET_SETUP_UPLOAD=1`: the data bundle
+uploaded from the setup page, unpacked into `data/processed/` and `data/raw/` and nowhere else.
 
 ## The paperwork the agreement leaves behind
 
