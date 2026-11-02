@@ -60,7 +60,8 @@ the two-core machine this one uses. Chrome or Edge work best.
    downloads from this repository's [data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data).
    You do not need to type anything.
 3. If the editor asks whether you trust the authors of the files in this folder, choose
-   **Trust Folder and Continue**. Kapacitet+ cannot start otherwise.
+   **Trust Folder and Continue**. Kapacitet+ runs either way, but only then does the editor show
+   what it is doing, and that is what keeps the codespace running while you use it.
 4. Kapacitet+ opens in a new browser tab. If no tab opens, click **Ports** at the bottom of the
    editor, then the globe next to **Kapacitet+ (8000)**, and allow pop-ups for github.dev.
 5. The next times, open the same link and click **Resume**: your codespace opens again in about a
@@ -74,7 +75,8 @@ login. [docs/codespaces.md](docs/codespaces.md) says what to do when something g
 
 For whoever maintains it: the codespace is defined in `.devcontainer/`. `install.sh` builds the
 engine and the interface when the codespace is created, `data.sh` downloads and unpacks the data
-release, and `start.sh` starts the server each time someone opens it and keeps its log in a
+release, and `start.sh` starts the server each time the codespace starts (outside the editor, so
+before the folder is trusted) and, each time someone opens it, keeps the server's log in a
 terminal, which is what GitHub counts as activity. If the download fails, the setup page takes the
 same file from the browser instead (`KAPACITET_SETUP_UPLOAD=1`, set in `devcontainer.json`).
 `.github/workflows/devcontainer.yml` builds the codespace in CI whenever what it installs changes.

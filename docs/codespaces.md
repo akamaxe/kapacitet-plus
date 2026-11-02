@@ -20,7 +20,8 @@ The data come by themselves: the codespace downloads them from the project's
 3. Wait. A page that looks like a code editor appears and sets itself up for a few minutes. You do
    not need to type anything in it.
 4. If it asks whether you trust the authors of the files in this folder, choose
-   **Trust Folder and Continue**. Kapacitet+ cannot start otherwise.
+   **Trust Folder and Continue**. Kapacitet+ runs either way, but only then does the editor show
+   what it is doing, which keeps the codespace running while you use it.
 5. Kapacitet+ opens in a new tab, with its screens.
 
 ## The next times
@@ -53,7 +54,8 @@ Open the same link and click **Resume**. Your copy opens again in about a minute
 
 - The codespace is defined in `.devcontainer/`. `install.sh` builds the engine and the interface
   when the codespace is created; `data.sh` downloads the data release and unpacks it; `start.sh`
-  starts the server each time someone opens the codespace and keeps the server's log in a terminal,
+  starts the server whenever the codespace starts (postStartCommand, outside the editor, so before
+  the folder is trusted) and, whenever someone opens it, keeps the server's log in a terminal,
   which is what counts as activity for GitHub's idle timeout.
 - The data are never committed. They are published as the asset of the release `data`, under ODbL
   (`DATA-LICENSE.md`). After a new compute:

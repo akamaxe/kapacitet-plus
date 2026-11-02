@@ -36,6 +36,8 @@ def test_the_codespace_allows_the_upload_and_runs_its_scripts():
     assert cfg["containerEnv"]["KAPACITET_SETUP_UPLOAD"] == "1"
     assert cfg["onCreateCommand"] == "bash .devcontainer/install.sh"
     assert cfg["postCreateCommand"] == "bash .devcontainer/data.sh"
+    # the server starts with the container, outside the editor: before the folder is trusted
+    assert cfg["postStartCommand"] == "bash .devcontainer/start.sh serve"
     assert cfg["postAttachCommand"] == "bash .devcontainer/start.sh"
     for name in ("install.sh", "data.sh", "start.sh"):
         body = (DC / name).read_bytes()

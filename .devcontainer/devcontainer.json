@@ -10,6 +10,7 @@
   },
   "onCreateCommand": "bash .devcontainer/install.sh",
   "postCreateCommand": "bash .devcontainer/data.sh",
+  "postStartCommand": "bash .devcontainer/start.sh serve",
   "postAttachCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000],
   "portsAttributes": {
