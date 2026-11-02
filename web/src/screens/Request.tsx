@@ -11,7 +11,8 @@ import { Term } from "../components/Term";
 import { AssessmentRecord } from "../components/AssessmentRecord";
 import { DecisionBlock, QueueList, type QueueState } from "../components/Queue";
 import { ApplyBlock } from "../components/Inbox";
-import { OwnerCase } from "../components/Business";
+import { OwnerCase } from "../components/OwnerCase";
+import { HouseSearch } from "../components/HouseSearch";
 import { copyText } from "../lib/clipboard";
 import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, useApi } from "../lib/api";
@@ -358,7 +359,7 @@ export default function Request() {
 
       <aside className="panel">
         <h1 className="panel-title">{t("req.title")}</h1>
-        <HouseSearch houses={houses} onPick={(c) => select(c)} />
+        <HouseSearch houses={houses.map((h: any) => ({ cid: h.properties.cid, address: h.properties.address }))} onPick={(c) => select(c)} />
 
         {!house ? (
           <div className="blank">
@@ -558,41 +559,6 @@ export default function Request() {
   );
 }
 
-/** Find a house by its address: the map is one way in, this is the one a keyboard or a screen reader can use. */
-function HouseSearch({ houses, onPick }: { houses: any[]; onPick: (cid: number) => void }) {
-  const t = useT();
-  const [q, setQ] = useState("");
-  const byLabel = useMemo(() => {
-    const m = new Map<string, number>();
-    houses.forEach((h: any) => m.set(h.properties.address || t("dt.unnamed", { id: h.properties.cid }), h.properties.cid));
-    return m;
-  }, [houses, t]);
-  return (
-    <div className="house-search">
-      <label htmlFor="house-search" className="field-label">{t("req.find")}</label>
-      <input
-        id="house-search"
-        list="house-list"
-        value={q}
-        placeholder={t("req.findPlaceholder")}
-        autoComplete="off"
-        onChange={(e) => {
-          setQ(e.target.value);
-          const cid = byLabel.get(e.target.value);
-          if (cid !== undefined) {
-            onPick(cid);
-            setQ("");
-          }
-        }}
-      />
-      <datalist id="house-list">
-        {[...byLabel.keys()].sort((a, b) => a.localeCompare(b)).map((label) => <option key={label} value={label} />)}
-      </datalist>
-    </div>
-  );
-}
-
-/** What a request asked for, in a few words: "10 kWp · 11 kW charger · heat pump · 5 kWh battery". */
 /** Keep the answer: print or save it as a PDF, download its hours or its record, copy its link. */
 /** The answer's seal: its digest, and a check that the kept record still hashes to it. */
 function SealLine({ id, seal }: { id: string; seal: { digest: string; seq: number } }) {

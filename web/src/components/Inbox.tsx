@@ -211,7 +211,7 @@ export function InboxSection() {
       ) : (
         <DataTable rows={I.items} cols={cols} rowKey={(a) => a.id} caption={t("inbox.table")} searchLabel={t("inbox.search")} />
       )}
-      <p className="caption-muted">{t("inbox.note")}</p>
+      <p className="caption-muted">{t("inbox.note")} <a href="#/apply" target="_blank" rel="noopener">{t("inbox.portal")}</a></p>
       <Dialog open={open !== null} onClose={() => setOpen(null)} title={open ? t("inbox.dialog", { ref: open.reference }) : ""} width={560}>
         {open && queue.data && <DecideOne app={open} queue={queue.data} />}
       </Dialog>

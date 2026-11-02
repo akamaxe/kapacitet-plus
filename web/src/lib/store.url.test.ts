@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hashFor, parseHash, useStore, type LinkedView } from "./store";
+import { hashFor, initUrlSync, parseHash, useStore, type LinkedView } from "./store";
 
 // The URL rule (CLAUDE.md): the address describes what is on screen, a missing parameter means
 // "unchanged", only a change of screen makes a history entry, and the hour is written at most
@@ -125,5 +125,25 @@ describe("writing the address", () => {
     useStore.getState().setPlaying(false);
     expect(replace).toHaveBeenCalledTimes(1);
     expect(replace.mock.calls[0][2]).toBe("#/twin?hour=501");
+  });
+});
+
+// the applicant's portal (#/apply) shares the store for its language; until the application starts
+// following the address, nothing may rewrite the portal's address into a screen
+describe("the portal's address", () => {
+  it("is left alone until the application asks to follow the address", () => {
+    useStore.setState({ screen: "operation" });
+    window.location.hash = "#/apply?ref=KP-1A2B-3C4D";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(window.location.hash).toBe("#/apply?ref=KP-1A2B-3C4D");
+    expect(useStore.getState().screen).toBe("operation");
+  });
+
+  it("is followed once the application starts", () => {
+    initUrlSync();
+    initUrlSync(); // once is enough, however often it is asked
+    window.location.hash = "#/twin";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(useStore.getState().screen).toBe("twin");
   });
 });

@@ -3,11 +3,10 @@
  *
  * `Deferral` is the DSO's side, on the comparison screen: what deferring the reinforcement is worth
  * at Ei's real rate, net of what the envelopes' curtailment costs the houses, for every horizon.
- * `OwnerCase` is the house's side, under an answer: connect now with the envelope, or wait for the
- * reinforcement, valued at retail prices.
+ * The house's side is in OwnerCase.tsx, which needs no chart.
  */
 import { Chart, axisStyle } from "./Chart";
-import { ChartOrTable, Legend, Tile } from "./bits";
+import { ChartOrTable, Legend } from "./bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -16,8 +15,6 @@ import { useStore } from "../lib/store";
 
 type F = (v: number | null | undefined, d?: number) => string;
 
-/** SEK to the nearest hundred: the inputs do not support more. */
-const sek = (f: F, v: number) => f(Math.round(v / 100) * 100);
 const ksek = (f: F, v: number) => f(v / 1000);
 
 export function Deferral() {
@@ -94,30 +91,4 @@ function deferralOption(tk: Tokens, B: any, t: TFn, f: F) {
       { name: t("biz.series.curtailment"), type: "line", data: cost, symbol: "none", lineStyle: { color: tk.warningFill, width: 2 } },
     ],
   };
-}
-
-/** Under an answer with solar: what connecting now is worth to the house against waiting. */
-export function OwnerCase({ id }: { id: string }) {
-  const t = useT();
-  const f = useFmt();
-  const q = useApi<any>(`/requests/${id}/owner-case`);
-  const O = q.data;
-  if (!O) return null;
-  const span = O.price_years.length ? `${O.price_years[0]}–${O.price_years[O.price_years.length - 1]}` : "";
-  const ore = (v: number) => f(v * 100, 1);
-  return (
-    <section className="block stack" aria-labelledby="owner-title">
-      <div className="block-head"><h3 id="owner-title">{t("own.title")}</h3></div>
-      <p className="lead-answer">{t("own.lead", { years: f(O.years), now: sek(f, O.connect_now_sek) })}</p>
-      <div className="tiles cols-3">
-        <Tile label={t("own.self")} value={sek(f, O.per_year.self_use_sek)} unit={t("unit.sekYr")}
-          note={t("own.selfNote", { kwh: f(O.kwh.self_use + O.kwh.battery), tax: ore(O.retail_sek_kwh.energy_tax), fee: ore(O.retail_sek_kwh.transfer_fee), vat: f(O.retail_sek_kwh.vat * 100) })} />
-        <Tile label={t("own.export")} value={sek(f, O.per_year.export_sek)} unit={t("unit.sekYr")}
-          note={t("own.exportNote", { kwh: f(O.kwh.export), rate: ore(O.feed_in_sek_kwh) })} />
-        <Tile label={t("own.curtailed")} value={sek(f, O.per_year.curtailed_sek)} unit={t("unit.sekYr")}
-          note={t("own.curtailedNote", { kwh: f(O.kwh.curtailed) })} />
-      </div>
-      <p className="caption-muted">{t("own.note", { rate: f(O.rate_pct, 1), undisc: sek(f, O.undiscounted_sek), last: O.tax_reduction.last_year, span })}</p>
-    </section>
-  );
 }

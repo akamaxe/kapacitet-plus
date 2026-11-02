@@ -76,12 +76,14 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
+from .apply import router as apply_router  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
 
 app.include_router(evidence_router)
 app.include_router(operation_router)
 app.include_router(inbox.router)
+app.include_router(apply_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]

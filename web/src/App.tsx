@@ -12,7 +12,9 @@ import { Setup } from "./components/Setup";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { NOTE_COUNT } from "./lib/notes";
 import { useApi } from "./lib/api";
-import { SCREENS, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
+import { SCREENS, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
+
+initUrlSync();
 
 const National = lazy(() => import("./screens/National"));
 const Twin = lazy(() => import("./screens/Twin"));

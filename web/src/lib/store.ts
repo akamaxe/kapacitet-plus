@@ -296,7 +296,20 @@ export function isDark(): boolean {
   return window.matchMedia?.("(prefers-color-scheme: dark)").matches ?? false;
 }
 
-window.addEventListener("hashchange", () => {
+let syncing = false;
+
+/**
+ * Follow the address bar: a link opened, the back button, a hand-edited hash. Only the application
+ * calls this (App.tsx); the applicant's portal shares the store for its language, and a listener
+ * registered on import would turn its `#/apply` into the opening screen.
+ */
+export function initUrlSync(): void {
+  if (syncing) return;
+  syncing = true;
+  window.addEventListener("hashchange", onHashChange);
+}
+
+function onHashChange() {
   if (window.location.hash === written) return; // our own write, echoed back
   const v = parseHash();
   written = window.location.hash;
@@ -316,7 +329,7 @@ window.addEventListener("hashchange", () => {
   // A tab link carries only the screen, but the view still has an hour and a selection.
   // Put them back in the address bar so what is on screen is always what the link says.
   writeHash(false);
-});
+}
 
 /** Each screen owns its own scroller above 1100 px, so there is no single position. */
 export const scrollPositions = new Map<Screen, number>();

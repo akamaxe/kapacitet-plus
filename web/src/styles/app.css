@@ -2159,6 +2159,39 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .queue-decision.firm { color: var(--good); }
 .queue-note { grid-column: 2 / -1; font-size: var(--text-caption); color: var(--text-muted); }
 
+/* ---------------------------------------------------------------- the applicant's portal (apply/Apply.tsx) */
+.portal { min-height: 100vh; background: var(--bg-base); color: var(--text-primary); }
+.portal-bar {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  min-height: 56px; padding: 0 var(--space-5); background: var(--chrome); color: var(--chrome-ink);
+}
+.portal-strip {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0;
+  padding: var(--space-2) var(--space-5); border-bottom: 1px solid var(--border);
+  font-size: var(--text-small); color: var(--text-secondary);
+}
+.portal-main { display: grid; gap: var(--space-6); max-width: 760px; margin: 0 auto; padding: var(--space-6) var(--space-5) var(--space-8); }
+.portal-main .headline { margin: 0; }
+.portal-step { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border); }
+.portal-step h2 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--text-h3); }
+.portal-n { color: var(--accent); font-variant-numeric: tabular-nums; }
+.portal-chosen { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 500; }
+.portal-chosen svg { color: var(--good); }
+.portal-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); margin: 0; }
+.portal-form input[type="number"] { width: 6em; }
+.field-inline input[type="checkbox"] { min-height: 0; width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
+.portal-answer { padding-top: var(--space-2); }
+.portal-points { display: grid; gap: var(--space-1); margin: 0; padding-left: var(--space-4); }
+.portal-apply { display: grid; gap: var(--space-2); justify-items: start; }
+.portal-status { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+.portal-status h2, .portal-status p { margin: 0; }
+.portal-status h2 { font-size: var(--text-h3); }
+.portal-ref { font-size: var(--text-h2); font-weight: 600; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
+@media (max-width: 600px) {
+  .portal-bar, .portal-strip { padding-inline: var(--space-4); }
+  .portal-main { padding: var(--space-5) var(--space-4) var(--space-7); }
+}
+
 /* ---------------------------------------------------------------- applications (Inbox.tsx) */
 .apply-state { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; font-size: var(--text-small); }
 .apply-state > span:nth-child(2) { font-variant-numeric: tabular-nums; color: var(--text-secondary); }

@@ -413,6 +413,19 @@ events: the median and P90 time to a decision, the share the rule decided, and t
 firm and with an envelope. The **Operation** screen shows the inbox; an application waiting for a
 person is decided there with the queue's usual decision, or sent back to be evaluated again.
 
+### The applicant's portal
+
+`http://127.0.0.1:8000/#/apply` is a page for the household, not the DSO: pick your address, say
+what you want to connect (solar, a charger, a heat pump, a battery), read the answer in plain
+words, with what connecting now is worth against waiting, and apply. The application gets a
+reference code such as `KP-1A2B-3C4D`, which is all the status form needs; the portal asks for no
+personal data and keeps none. Its API, `/api/v1/apply/*`, serves only the addresses, the answer for
+one house and the state behind one code. The grid the answer is computed against is decided on the
+server (the queue once it holds approvals, otherwise the DSO's published situation), and sending
+the same application twice returns the first (an idempotency key). `main.tsx` chooses the portal
+before it imports the application, so the page loads neither the map nor the chart library, and
+the application's address handling (`initUrlSync`) never sees `#/apply`.
+
 ## The business case
 
 Two sides, both from published results and sourced prices (`config/assumptions.toml`, shown on

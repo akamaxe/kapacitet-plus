@@ -1,0 +1,143 @@
+"""The applicant's portal: the addresses one can apply for, the answer for one's own house, and the
+state of one's own application. Nothing else of the DSO's view is served here.
+
+No personal data is asked for or kept: a household picks its address, asks, and applies; the
+application is then known by its reference code, which is all the status page needs. The grid the
+answer is computed against is the DSO's choice, decided here (the queue once it holds approvals,
+otherwise the DSO's published situation), never the household's.
+"""
+
+from __future__ import annotations
+
+import re
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
+
+from .. import dso
+from ..config import A
+from ..engine import rules
+from . import inbox
+
+router = APIRouter(prefix="/api/v1/apply", tags=["apply"])
+REFERENCE = re.compile(r"^KP-[0-9A-F]{4}-[0-9A-F]{4}$")
+
+
+class Ask(BaseModel):
+    cid: int = Field(..., ge=0, description="the house, from /apply/houses")
+    pv_kwp: float = Field(0.0, ge=0, le=40)
+    ev_kw: float = Field(0.0, ge=0, le=22)
+    hp: bool = False
+    bat_kwh: float = Field(0.0, ge=0, le=30)
+    ev_phases: int = Field(0, ge=0, le=3)
+
+
+class Submit(BaseModel):
+    assessment: str = Field(..., pattern="^[0-9a-f]{12}$")
+    key: str = Field(..., min_length=8, max_length=64, pattern="^[A-Za-z0-9_-]+$",
+                     description="idempotency key: sending the same application twice returns the first")
+
+
+def _baseline() -> str:
+    from ..engine import queue as qu
+
+    q = qu.load()
+    return "queue" if qu.approved(q) else (q["baseline"] or dso.load().inbox_baseline)
+
+
+@router.get("/houses")
+def houses() -> dict:
+    """The addresses a household can apply for, and the limits of the form; nothing else about them."""
+    from ..paths import processed_ro
+
+    # checked before the engine is imported: on a fresh server that import takes seconds
+    if not processed_ro("grid", "customers.parquet").exists():
+        raise HTTPException(404, {"code": "not_computed", "file": "grid/customers.parquet",
+                                  "command": "python -m kapacitet build", "message": "the network has not been built"})
+    from ..engine.scenario import customers
+
+    cust = customers()
+    items = [{"cid": int(r.cid), "address": (r.address or None) if isinstance(r.address, str) else None}
+             for r in cust[["cid", "address"]].itertuples()]
+    items.sort(key=lambda h: (h["address"] is None, h["address"] or "", h["cid"]))
+    return {"items": items,
+            "form": {"pv_min_kwp": A("pv_min_kwp"), "battery_max_kwh": A("battery_max_kwh"),
+                     "ev_kw": [A("ev_charger_single_phase_kw"), A("ev_charger_kw")]}}
+
+
+@router.post("/evaluate")
+def evaluate(body: Ask) -> dict:
+    """Start the answer for one house, against the grid as the DSO sees it now."""
+    from . import main
+
+    started = main.create_request(main.RequestIn(**body.model_dump(), baseline=_baseline()))
+    return {"id": started["id"], "events": f"/api/v1/apply/evaluate/{started['id']}/events"}
+
+
+@router.get("/evaluate/{job_id}/events")
+async def evaluate_events(job_id: str):
+    from . import main
+
+    return await main.request_events(job_id)
+
+
+@router.get("/evaluate/{job_id}")
+def answer(job_id: str) -> dict:
+    """The answer in the terms a household needs: firm or with a limit, what the limit costs, what the
+    DSO's rule would decide, and what connecting now is worth against waiting."""
+    from datetime import datetime, timezone
+
+    from ..engine.economics import owner_case
+    from . import main
+
+    try:
+        rec = main._finished(job_id)
+    except HTTPException as exc:
+        if exc.status_code == 202:
+            raise HTTPException(409, "still running") from exc
+        raise
+    res = rec["result"]
+    static = res.get("static") or {}
+    risk = res.get("risk") or {}
+    summary = res.get("summary") or {}
+    s = dso.load()
+    years = s.deferral_years
+    return {
+        "id": rec["id"], "address": (res.get("customer") or {}).get("address"),
+        "request": {k: rec["request"].get(k) for k in ("cid", "pv_kwp", "ev_kw", "hp", "bat_kwh", "ev_phases")},
+        "baseline": rec["request"].get("baseline"),
+        "firm": bool(static) and all(p.get("approved") for p in static.values()),
+        "static": {k: {"approved": bool(v.get("approved")), "reason_code": v.get("reason_code"),
+                       "reason_value": v.get("reason_value")} for k, v in static.items()},
+        "envelope": {"curtailment_mean_pct": risk.get("mean_pct"), "curtailment_p90_pct": risk.get("p90_pct"),
+                     "hours_limited_ref": summary.get("pv_hours_limited_ref"),
+                     "ev_unmet_pct": summary.get("ev_unmet_pct"), "hp_unmet_pct": summary.get("hp_unmet_pct")},
+        "fuse": res.get("fuse"), "phases_ok": (res.get("phases") or {}).get("ok", True),
+        "rule": {**rules.verdict(res, dso.thresholds(s)), "auto": s.auto_decisions},
+        "owner": owner_case(res, years, A("household_discount_rate_pct"), datetime.now(timezone.utc).year),
+        "provenance": rec.get("provenance"),
+    }
+
+
+def _status(app: dict) -> dict:
+    keep = ("reference", "status", "received", "decided", "by", "address", "request")
+    return {**{k: app.get(k) for k in keep},
+            "reasons": [{"code": r.get("code"), "params": r.get("params", {})} for r in app.get("reasons", [])]}
+
+
+@router.post("/submit")
+def submit(body: Submit) -> dict:
+    """Apply for the connection the answer describes. The reference code is the household's key."""
+    return _status(inbox.receive(body.assessment, "portal", body.key))
+
+
+@router.get("/status/{reference}")
+def status(reference: str) -> dict:
+    """One application's state, read with its reference code and nothing else."""
+    ref = reference.strip().upper()
+    if not REFERENCE.match(ref):
+        raise inbox.refusal(404, "unknown_application")
+    app = next((a for a in inbox.applications().values() if (a.get("reference") or "").upper() == ref), None)
+    if app is None:
+        raise inbox.refusal(404, "unknown_application")
+    return _status(app)
