@@ -48,30 +48,30 @@ export function CreateNetwork({ files }: { files: Record<string, string> }) {
     setError(null);
     const r = await fetch(`${API}/datasets`, {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() || t("net.create.default"), files, quick }),
+      body: JSON.stringify({ name: name.trim() || t("nets.create.default"), files, quick }),
     }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
     const body = await r.json();
     await client.invalidateQueries({ queryKey: ["/datasets"] });
-    toast.info(t("net.created", { name: body.name }));
+    toast.info(t("nets.created", { name: body.name }));
   };
   return (
     <div className="stack netcreate">
-      <h4>{t("net.create.title")}</h4>
+      <h4>{t("nets.create.title")}</h4>
       <div className="report-controls">
         <label className="field-inline">
-          <span>{t("net.create.name")}</span>
-          <input value={name} maxLength={80} placeholder={t("net.create.default")} onChange={(e) => setName(e.target.value)} />
+          <span>{t("nets.create.name")}</span>
+          <input value={name} maxLength={80} placeholder={t("nets.create.default")} onChange={(e) => setName(e.target.value)} />
         </label>
         <label className="field-inline">
           <input type="checkbox" checked={quick} onChange={(e) => setQuick(e.target.checked)} />
-          <span>{t("net.create.quick")}</span>
+          <span>{t("nets.create.quick")}</span>
         </label>
-        <button className="btn small" disabled={busy} onClick={create}>{t("net.create.go")}</button>
+        <button className="btn small" disabled={busy} onClick={create}>{t("nets.create.go")}</button>
       </div>
-      <p className="caption-muted">{t(quick ? "net.create.quickNote" : "net.create.fullNote")}</p>
+      <p className="caption-muted">{t(quick ? "nets.create.quickNote" : "nets.create.fullNote")}</p>
       {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
     </div>
   );
@@ -121,7 +121,7 @@ export function NetworksPanel() {
     const r = await fetch(`${API}/datasets/${n.id}`, { method: "DELETE" }).catch(() => null);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
     await client.invalidateQueries({ queryKey: ["/datasets"] });
-    toast.info(t("net.deleted", { name: n.name }));
+    toast.info(t("nets.deleted", { name: n.name }));
   };
   const rows: (Net & { reference?: boolean })[] = [
     { id: L.reference.id, name: L.reference.name, created: "", status: "ready", steps: [], reference: true },
@@ -130,8 +130,8 @@ export function NetworksPanel() {
 
   return (
     <section className="block stack" aria-labelledby="nets-title">
-      <div className="block-head"><h3 id="nets-title">{t("net.title")}</h3></div>
-      <p className="caption">{t("net.caption")}</p>
+      <div className="block-head"><h3 id="nets-title">{t("nets.title")}</h3></div>
+      <p className="caption">{t("nets.caption")}</p>
       <ul className="nets">
         {rows.map((n) => {
           const done = n.steps.filter((s) => s.status === "done").length;
@@ -142,44 +142,44 @@ export function NetworksPanel() {
             <li key={n.id} className={current ? "current" : undefined}>
               <div className="nets-name">
                 <strong>{n.name}</strong>
-                <small>{n.reference ? t("net.reference") : t("net.imported", { n: f(n.customers ?? 0), when: dateTime(lang, n.created, false) })}</small>
+                <small>{n.reference ? t("nets.reference") : t("nets.imported", { n: f(n.customers ?? 0), when: dateTime(lang, n.created, false) })}</small>
               </div>
               <div className="nets-state">
-                {current ? <Status kind="good">{t("net.inUse")}</Status>
-                  : n.status === "ready" ? <span className="status measured">{t("net.status.ready")}</span>
-                  : n.status === "failed" ? <Status kind="critical">{t("net.status.failed")}</Status>
-                  : <span className="status measured">{t(`net.status.${n.status}`)}</span>}
+                {current ? <Status kind="good">{t("nets.inUse")}</Status>
+                  : n.status === "ready" ? <span className="status measured">{t("nets.status.ready")}</span>
+                  : n.status === "failed" ? <Status kind="critical">{t("nets.status.failed")}</Status>
+                  : <span className="status measured">{t(`nets.status.${n.status}`)}</span>}
                 {n.status === "building" && (
-                  <small role="status">{t("net.steps", { done: f(done), of: f(n.steps.length), step: running ? t(`net.step.${running.name}`) : "" })}</small>
+                  <small role="status">{t("nets.steps", { done: f(done), of: f(n.steps.length), step: running ? t(`nets.step.${running.name}`) : "" })}</small>
                 )}
-                {failed && <small>{t("net.failedAt", { step: t(`net.step.${failed.name}`), error: failed.error ?? "" })}</small>}
+                {failed && <small>{t("nets.failedAt", { step: t(`nets.step.${failed.name}`), error: failed.error ?? "" })}</small>}
               </div>
               <div className="nets-actions">
                 {!current && n.status === "ready" && L.supervised && (
-                  <button className="btn small" disabled={switching} onClick={() => setTarget({ id: n.id, name: n.name })}>{t("net.use")}</button>
+                  <button className="btn small" disabled={switching} onClick={() => setTarget({ id: n.id, name: n.name })}>{t("nets.use")}</button>
                 )}
                 {!n.reference && n.status === "failed" && (
-                  <button className="btn ghost small" disabled={switching} onClick={() => void rebuild(n)}>{t("net.rebuild")}</button>
+                  <button className="btn ghost small" disabled={switching} onClick={() => void rebuild(n)}>{t("nets.rebuild")}</button>
                 )}
                 {!n.reference && !current && n.status !== "building" && (
-                  <button className="btn ghost small" disabled={switching} onClick={() => void remove(n)}>{t("net.delete")}</button>
+                  <button className="btn ghost small" disabled={switching} onClick={() => void remove(n)}>{t("nets.delete")}</button>
                 )}
               </div>
             </li>
           );
         })}
       </ul>
-      {!L.supervised && <p className="caption-muted">{t("net.unsupervised")}</p>}
-      {L.current !== L.reference.id && <p className="caption-muted">{t("net.shared")}</p>}
+      {!L.supervised && <p className="caption-muted">{t("nets.unsupervised")}</p>}
+      {L.current !== L.reference.id && <p className="caption-muted">{t("nets.shared")}</p>}
       <Dialog open={target !== null} onClose={() => { if (!switching) setTarget(null); }} labelledBy="net-switch-title" width={460}>
         {target && (
           <div className="sheet">
-            <h2 id="net-switch-title">{t("net.switch.title", { name: target.name })}</h2>
-            <p>{t("net.switch.body")}</p>
-            {switching ? <p role="status">{t("net.switching")}</p> : (
+            <h2 id="net-switch-title">{t("nets.switch.title", { name: target.name })}</h2>
+            <p>{t("nets.switch.body")}</p>
+            {switching ? <p role="status">{t("nets.switching")}</p> : (
               <div className="decision-actions">
                 <button className="btn ghost" onClick={() => setTarget(null)}>{t("ui.cancel")}</button>
-                <button className="btn" onClick={activate}>{t("net.switch.go")}</button>
+                <button className="btn" onClick={activate}>{t("nets.switch.go")}</button>
               </div>
             )}
             {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}

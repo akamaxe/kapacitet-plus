@@ -87,7 +87,7 @@ export default function App() {
     const st = useStore.getState();
     useStore.setState({ dataset: serverDataset });
     if (st.linkDataset && st.linkDataset !== serverDataset) {
-      toast.info(t("net.linkOther", { link: st.linkDataset, current: serverDataset }));
+      toast.info(t("nets.linkOther", { link: st.linkDataset, current: serverDataset }));
       useStore.setState({ linkDataset: null });
     }
     syncUrl();
