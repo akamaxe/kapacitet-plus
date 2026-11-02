@@ -1,4 +1,5 @@
 import { NetworkCheck } from "../components/NetworkCheck";
+import { NetworksPanel } from "../components/Networks";
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
@@ -404,6 +405,7 @@ export default function Method() {
             </div>
           </div>
           <NetworkCheck />
+          <NetworksPanel />
         </section>
 
         {/* ---------------------------------------------------------------- limits & refs */}

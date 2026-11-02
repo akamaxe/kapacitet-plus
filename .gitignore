@@ -16,6 +16,9 @@ web/*.tsbuildinfo
 .impeccable/live/
 .impeccable/config.local.json
 data/requests/
+# imported networks and which one is in use (datasets.py): data too, never published
+data/datasets/
+data/active.json
 .impeccable/review/
 # Playwright: the empty data folder of the CI project and the run reports
 web/e2e/.empty-data/

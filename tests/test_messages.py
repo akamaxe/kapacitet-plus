@@ -36,6 +36,7 @@ def _names(template: str) -> list[str]:
 
 def _codes() -> list[tuple[str, str]]:
     from kapacitet.api.inbox import ERRORS as INBOX
+    from kapacitet.datasets import ERRORS as DATASETS
     from kapacitet.api.main import API_ERRORS
     from kapacitet.engine.delivery import ERRORS as DELIVERY
     from kapacitet.engine.rules import REASONS as RULE_REASONS
@@ -44,7 +45,7 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.importer.validate import MESSAGES
 
     pairs = [(f"chk.msg.{c}", t) for c, t in MESSAGES.items()]
-    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX}.items()]
+    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS}.items()]
     pairs += [(f"req.reason.{c}", t) for c, t in _REASONS.items()]
     pairs += [(f"inbox.reason.{c}", t) for c, t in RULE_REASONS.items()]
     return pairs

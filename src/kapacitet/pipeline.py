@@ -10,7 +10,8 @@ Commands
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
-  serve     run the API and the web UI on one port
+  serve     run the API and the web UI on one port, restarted on another network when asked
+  dataset   build an imported network in its own folder (the app starts it)
   bundle    pack the computed data (and optionally web/dist) to run elsewhere
   unbundle  unpack such a bundle into data/ (and web/dist), checking every file
   all       fetch + build + profiles + compute
@@ -140,9 +141,92 @@ def cmd_unbundle(args: argparse.Namespace) -> None:
 
 
 def cmd_serve(args: argparse.Namespace) -> None:
+    """The server runs as a child of a small supervisor, which restarts it on another network when
+    it exits with code 75 (datasets.RESTART). KAPACITET_SUPERVISE=0 runs it directly."""
+    if args.child or os.environ.get("KAPACITET_SUPERVISE", "1") == "0":
+        _serve_child(args)
+        return
+    sys.exit(supervise(args))
+
+
+def _wait_for_port(host: str, port: int, seconds: float = 15.0) -> None:
+    """A restarted server can find its port still held for a moment by the one it replaces."""
+    import socket
+
+    deadline = time.monotonic() + seconds
+    while True:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            try:
+                s.bind((host, port))
+                return
+            except OSError:
+                if time.monotonic() > deadline:
+                    return          # let uvicorn report it
+        time.sleep(0.3)
+
+
+def _serve_child(args: argparse.Namespace) -> None:
     import uvicorn
 
+    _wait_for_port(args.host, args.port)
     uvicorn.run("kapacitet.api.main:app", host=args.host, port=args.port, reload=False, log_level="info")
+
+
+def supervise(args: argparse.Namespace, command=None) -> int:
+    """Run the server as a child and start it again, on the network active.json names, whenever it
+    exits with datasets.RESTART. Ctrl+C and SIGTERM stop the child and the supervisor together.
+    `command` builds the child's command line from its environment (a test's stand-in)."""
+    import signal
+    import subprocess
+
+    from .datasets import RESTART, active, child_env
+
+    state: dict = {"proc": None}
+
+    def stop(signum, frame):  # noqa: ARG001
+        proc = state["proc"]
+        if proc is not None and proc.poll() is None:
+            proc.terminate()
+        raise SystemExit(0)
+
+    for name in ("SIGTERM", "SIGBREAK"):
+        sig = getattr(signal, name, None)
+        if sig is not None:
+            try:
+                signal.signal(sig, stop)
+            except (ValueError, OSError):
+                pass
+    while True:
+        env = {**os.environ, "KAPACITET_SUPERVISED": "1", **child_env()}
+        if command is not None:
+            cmd = command(env)
+        else:
+            site = ["--site", args.site] if getattr(args, "site", None) else []
+            cmd = [sys.executable, "-m", "kapacitet", *site, "serve", "--child", "--host", args.host, "--port", str(args.port)]
+        proc = subprocess.Popen(cmd, env=env)
+        state["proc"] = proc
+        try:
+            code = proc.wait()
+        except KeyboardInterrupt:
+            proc.terminate()
+            proc.wait()
+            return 0
+        if code != RESTART:
+            return code
+        log.info("restarting the server on network %s", active())
+
+
+def cmd_dataset(args: argparse.Namespace) -> None:
+    """Build an imported network in this process (KAPACITET_DATA_DIR is its folder)."""
+    from .datasets import DatasetError, build
+
+    try:
+        rec = build(args.id, workers=args.workers, quick=args.quick)
+    except DatasetError as err:
+        print(err)
+        sys.exit(2)
+    log.info("network %s: %s", args.id, rec["status"])
+    sys.exit(0 if rec["status"] == "ready" else 1)
 
 
 def cmd_all(args: argparse.Namespace) -> None:
@@ -187,20 +271,13 @@ def cmd_compliance(args: argparse.Namespace) -> None:
 def cmd_forecast(args: argparse.Namespace) -> None:
     """What the published envelopes owe to perfect foresight."""
     from .engine import forecast
-    from .engine.netmodel import get_model
     from .paths import processed
 
-    show_path = processed("results", "showcase.json")
-    if not show_path.exists():
+    if not processed("results", "showcase.json").exists():
         print("No showcase yet. Run: python -m kapacitet compute")
         sys.exit(1)
-    show = json.loads(show_path.read_text(encoding="utf-8"))
-    cap_path = processed("results", "foresight.json")
-    capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
     with step("Issuing envelopes a day ahead"):
-        rows = forecast.ladder(get_model(), show)
-    processed("results", "forecast.json").write_text(
-        json.dumps(forecast.ladder_payload(rows, show["year"]), indent=1), encoding="utf-8")
+        rows, show, capacity = forecast.write()
     print(forecast.ladder_text(rows, show["year"], capacity))
     if capacity is None:
         print("\n(Capacity under each scheme needs: python -m kapacitet compute --stage extra)")
@@ -276,7 +353,15 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("serve", help="serve API + web UI")
     p.add_argument("--host", default=os.environ.get("KAPACITET_HOST", "127.0.0.1"))
     p.add_argument("--port", type=int, default=int(os.environ.get("KAPACITET_PORT", "8000")))
+    p.add_argument("--child", action="store_true", help=argparse.SUPPRESS)
     p.set_defaults(func=cmd_serve)
+
+    p = sub.add_parser("dataset", help="build an imported network (started by the app)")
+    p.add_argument("action", choices=["build"])
+    p.add_argument("id", help="the network's id (data/datasets/<id>)")
+    p.add_argument("--workers", type=int, default=2, help="worker processes for the parallel stages")
+    p.add_argument("--quick", action="store_true", help="one weather year and fewer adoption orders")
+    p.set_defaults(func=cmd_dataset)
 
     p = sub.add_parser("bundle", help="pack the computed data to run it elsewhere")
     p.add_argument("--out", default="kapacitet-data.zip", help="archive to write")

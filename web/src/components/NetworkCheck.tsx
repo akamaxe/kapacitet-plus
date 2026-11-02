@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { Status } from "./bits";
+import { CreateNetwork } from "./Networks";
 import { API, useApi } from "../lib/api";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -21,6 +22,8 @@ export function NetworkCheck() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ignored, setIgnored] = useState<string[]>([]);
+  // the files behind the report on screen, so a usable export can become a network
+  const [checked, setChecked] = useState<Record<string, string> | null>(null);
   const input = useRef<HTMLInputElement>(null);
   const tables: any[] = contract.data?.tables ?? [];
   const names = new Set(tables.map((tb) => tb.name));
@@ -50,7 +53,10 @@ export function NetworkCheck() {
       });
       const body = await r.json();
       if (!r.ok) setError(refusalText(t, refusalOf(body), String(r.status)));
-      else setReport(body);
+      else {
+        setReport(body);
+        setChecked(files);
+      }
     } catch {
       setError(t("ui.offline"));
     } finally {
@@ -137,6 +143,7 @@ export function NetworkCheck() {
                 ))}
               </ul>
             )}
+            {report.usable && checked && <CreateNetwork files={checked} />}
           </div>
         )}
       </section>

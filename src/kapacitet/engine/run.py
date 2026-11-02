@@ -186,7 +186,9 @@ def _versions() -> dict[str, str]:
             pass
     return out
 
-def compute_all(quick: bool = False) -> None:
+def compute_all(quick: bool = False, workers: int = 6) -> None:
+    """The whole computation. `workers` processes run the parallel stages: six for the reference
+    network on a 16 GB machine, two for a network built while the server is running."""
     warnings.filterwarnings("ignore")
     cfg = settings()
     years = cfg.weather_years if not quick else (cfg.reference_year,)
@@ -212,7 +214,7 @@ def compute_all(quick: bool = False) -> None:
 
     # 2) hosting capacity per adoption order (parallel)
     jobs = [(o, tuple(years), z_star) for o in range(n_orders)]
-    with ProcessPoolExecutor(max_workers=min(6, n_orders), initializer=_init_worker) as ex:
+    with ProcessPoolExecutor(max_workers=min(workers, n_orders), initializer=_init_worker) as ex:
         per_order = list(ex.map(analyze_order, jobs))
     log.info("orders done (%.0f s)", time.perf_counter() - t0)
 
@@ -240,7 +242,7 @@ def compute_all(quick: bool = False) -> None:
 
     # 4) curve of curtailment vs deployment for the showcase order
     ks = sorted(set(list(range(ms, C + 1, 4 if not quick else 12)) + [C, mts, k]))
-    with ProcessPoolExecutor(max_workers=6, initializer=_init_worker) as ex:
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
         pts = list(ex.map(_curve_point, [(o, ms, kk, tuple(years)) for kk in ks]))
     _write("zcurve.json", {"order": o, "static_adopters": ms, "timeseries_adopters": mts, "doe_adopters": k,
                            "z_star_pct": z_star, "years": list(years), "points": pts})
@@ -249,14 +251,14 @@ def compute_all(quick: bool = False) -> None:
     # 5) risk: every weather year × load seeds for the showcase deployment
     seeds = (0, 1, 2) if not quick else (0,)
     cases = [(o, ms, k, y, s) for y in years for s in seeds]
-    with ProcessPoolExecutor(max_workers=6, initializer=_init_worker) as ex:
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
         risk = list(ex.map(_risk_case, cases))
     write_risk(risk, o, ms, k)
     log.info("risk done (%.0f s)", time.perf_counter() - t0)
 
     write_series(cfg.reference_year)
 
-    compute_extra(quick, t0=t0)
+    compute_extra(quick, t0=t0, workers=min(workers, 4))
 
 
 EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "foresight", "overinstallation",

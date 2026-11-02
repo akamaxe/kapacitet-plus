@@ -304,6 +304,28 @@ stop the import rather than being guessed around, and every fallback that is app
 
 The import is faithful, not approximate. Writing the reference network out in the contract and reading it back gives a network that is electrically the same one: voltages at the 120 services agree to 1e-14 pu and the transformer loading to 1e-13 per cent, so every stage after it returns the same answer by construction.
 
+### Networks in the app
+
+The same import runs from the Method screen, without touching the reference network. Check an
+export (or the worked example), give it a name and *Create and build*: the four files are kept
+in `data/datasets/<id>/import/`, and a separate process builds the network in its own folder,
+`python -m kapacitet dataset build <id> --workers 2` with `KAPACITET_DATA_DIR` on that folder and
+`KAPACITET_RAW_DIR` on the reference network's downloads. It reads the export, copies the
+reference network's household profiles, builds the profiles for every weather year and computes
+everything the screens read; `dataset.json` records each step, and `build.log` keeps the output.
+A *quick* build (one weather year and fewer adoption orders in the computation) takes minutes.
+
+`python -m kapacitet serve` now runs the server as the child of a small supervisor. *Use this
+network* asks first, then writes `data/active.json` and has the server exit with code 75; the
+supervisor starts it again on the network's folder, so no cache survives the switch. Switching
+is refused without the supervisor (`KAPACITET_SUPERVISE=0` runs the server directly) and while an
+evaluation or a decision is running, and it never happens by itself. Assessments, the queue and
+applications belong to each network. A link made on an imported network carries `ds=<id>`; opened
+while the server shows another network, it says so and switches nothing. An imported network has
+its own grid, and the reference network's weather, prices and households (`/meta` says so).
+
+The API writes to two places: `data/requests/` of the network in use, and `data/datasets/`.
+
 ## The paperwork the agreement leaves behind
 
 Ei permits a conditional connection agreement only where scarcity is real, on approved

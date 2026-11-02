@@ -37,7 +37,12 @@ def roof_geometry(customers: pd.DataFrame) -> pd.DataFrame:
     for c in customers.itertuples():
         if not c.polygon:
             # An imported network has no roof outline, so the fallback the contract
-            # documents applies: one south-facing pitched face of half the footprint.
+            # documents applies: one south-facing pitched face of half the footprint, and no
+            # solar at all where the export gives no roof area.
+            if not (float(c.footprint_m2 or 0.0) > 0.0):
+                rows.append(dict(cid=c.cid, ridge_bearing=90.0, azimuth=180.0, tilt=float(tilt_default),
+                                 east_west=False, usable_area_m2=0.0, kwp=0.0, inverter_kw=0.0))
+                continue
             face = float(c.footprint_m2) / 2.0 / math.cos(math.radians(tilt_default))
             kwp = float(np.clip(face * A("pv_usable_roof_fraction") * A("pv_power_density_kwp_m2"),
                                 A("pv_min_kwp"), A("pv_max_kwp")))

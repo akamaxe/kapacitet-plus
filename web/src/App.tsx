@@ -80,6 +80,18 @@ export default function App() {
   // a fresh clone has no results: say how to make them instead of showing empty screens
   const health = useApi<any>("/health");
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
+  // the network the server is on goes into every link; a link made on another one says so once
+  const serverDataset: string | undefined = health.data?.dataset;
+  useEffect(() => {
+    if (!serverDataset) return;
+    const st = useStore.getState();
+    useStore.setState({ dataset: serverDataset });
+    if (st.linkDataset && st.linkDataset !== serverDataset) {
+      toast.info(t("net.linkOther", { link: st.linkDataset, current: serverDataset }));
+      useStore.setState({ linkDataset: null });
+    }
+    syncUrl();
+  }, [serverDataset, t]);
   // only once /health has said there is something to draw: before it answers, asking would be a
   // guaranteed failure on a fresh clone
   const net = useApi<any>(health.data && !setupNeeded ? "/network" : null);

@@ -61,4 +61,4 @@ Connection points. One row per metering point, not per building.
 | `fuse_a` | A | yes | Main fuse rating per phase. | - |
 | `phase` | - | no | a, b or c for a single-phase service, blank for three-phase. | three-phase, which understates voltage unbalance |
 | `footprint_m2` | m2 | no | Roof area available for PV. | no rooftop PV potential is estimated for this customer |
-| `annual_kwh` | kWh | no | Metered annual consumption. | the Velander estimate from the fuse rating |
+| `annual_kwh` | kWh | no | Metered annual consumption. | nothing to compare: the engine's household profiles are synthetic either way, and a given value is only compared with them and reported |

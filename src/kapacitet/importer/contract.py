@@ -105,7 +105,8 @@ CUSTOMERS = Table(
         Column("footprint_m2", "m2", "Roof area available for PV.", required=False,
                fallback="no rooftop PV potential is estimated for this customer"),
         Column("annual_kwh", "kWh", "Metered annual consumption.", required=False,
-               fallback="the Velander estimate from the fuse rating"),
+               fallback="nothing to compare: the engine's household profiles are synthetic either way, "
+                        "and a given value is only compared with them and reported"),
     ],
 )
 

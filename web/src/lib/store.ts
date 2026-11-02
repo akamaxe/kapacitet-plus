@@ -51,6 +51,8 @@ export interface UrlView {
   policy?: string;
   /** the day the operation screen shows, as YYYY-MM-DD */
   date?: string;
+  /** the network the link was made on (an imported one; the reference network writes none) */
+  ds?: string;
 }
 
 /** A saved assessment's id (data/requests/<id>.json.gz). */
@@ -88,6 +90,8 @@ export function parseHash(hash: string = window.location.hash): UrlView {
   if (policy && (POLICIES as readonly string[]).includes(policy)) out.policy = policy;
   const date = q.get("date");
   if (date && ISO_DATE.test(date) && !Number.isNaN(Date.parse(date))) out.date = date;
+  const ds = q.get("ds");
+  if (ds && /^[a-z0-9][a-z0-9-]{2,40}$/.test(ds)) out.ds = ds;
   return out;
 }
 
@@ -96,7 +100,7 @@ let written = "";
 
 /** The parts of the view a link carries. */
 export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
-  Partial<Pick<State, "basis" | "policy" | "opDate">>;
+  Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset">>;
 
 /** The address for what is on screen. Pure, like parseHash. */
 export function hashFor(st: LinkedView): string {
@@ -115,6 +119,8 @@ export function hashFor(st: LinkedView): string {
   const readsCombo = st.screen === "report";
   if (readsCombo && st.basis && st.basis !== "foresight") q.set("basis", st.basis);
   if (readsCombo && st.policy) q.set("policy", st.policy);
+  // a view of an imported network names it, so the link cannot be read on the reference network
+  if (st.dataset && st.dataset !== "reference") q.set("ds", st.dataset);
   const qs = q.toString();
   return `#/${st.screen}${qs ? `?${qs}` : ""}`;
 }
@@ -169,6 +175,9 @@ interface State {
   policy: string | null;
   /** the day the operation screen shows (null: the season's busiest day, which it works out) */
   opDate: string | null;
+  /** the network the server is on (from /health), and the one a link named, if any */
+  dataset: string | null;
+  linkDataset: string | null;
   /** the tour's step, or null when it is closed; `tourInstant` when opened from the keyboard */
   tour: number | null;
   tourInstant: boolean;
@@ -216,6 +225,8 @@ export const useStore = create<State>((set) => ({
   basis: initial.basis ?? "foresight",
   policy: initial.policy ?? null,
   opDate: initial.date ?? null,
+  dataset: null,
+  linkDataset: initial.ds ?? null,
   tour: null,
   tourInstant: false,
   tourOffered: false,

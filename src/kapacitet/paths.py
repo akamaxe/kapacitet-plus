@@ -1,4 +1,14 @@
-"""Filesystem layout of the project."""
+"""Filesystem layout of the project.
+
+Three roots, each one an environment variable away from its default:
+
+    HOME   KAPACITET_HOME      where the imported networks live (datasets/) and which one is in
+                               use (active.json); the project's data/ by default
+    DATA   KAPACITET_DATA_DIR  the data the engine reads and writes: processed/ and requests/;
+                               an unpacked bundle, a container volume, or one imported network
+    RAW    KAPACITET_RAW_DIR   downloaded sources (weather, prices, OSM); an imported network
+                               shares the reference network's, so nothing is fetched twice
+"""
 
 from __future__ import annotations
 
@@ -7,11 +17,20 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG = ROOT / "config"
-# KAPACITET_DATA_DIR points the whole project at another data folder, such as an unpacked bundle
-# (python -m kapacitet unbundle) or a volume mounted into a container.
-DATA = Path(os.environ["KAPACITET_DATA_DIR"]).resolve() if os.environ.get("KAPACITET_DATA_DIR") else ROOT / "data"
-RAW = DATA / "raw"
+
+
+def _env_dir(name: str, default: Path) -> Path:
+    value = os.environ.get(name)
+    return Path(value).resolve() if value else default
+
+
+DATA = _env_dir("KAPACITET_DATA_DIR", ROOT / "data")
+# the supervisor passes its own data folder down as HOME, so a network's server and its build
+# know where the reference network (its households, its downloads) lives
+HOME = _env_dir("KAPACITET_HOME", DATA)
+RAW = _env_dir("KAPACITET_RAW_DIR", DATA / "raw")
 PROCESSED = DATA / "processed"
+DATASETS = HOME / "datasets"
 WEB_DIST = ROOT / "web" / "dist"
 
 

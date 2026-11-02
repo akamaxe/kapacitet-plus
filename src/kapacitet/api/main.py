@@ -11,6 +11,7 @@ import csv
 import gzip
 import io
 import json
+import math
 import logging
 import os
 import threading
@@ -37,7 +38,7 @@ from . import records
 from .. import seals
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
-from ..paths import PROCESSED, WEB_DIST
+from ..paths import PROCESSED, RAW, WEB_DIST
 from ..paths import processed_ro as processed
 
 # The engine's libraries announce API changes on every call; the server log is for requests and
@@ -77,6 +78,7 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
 from .apply import router as apply_router  # noqa: E402
+from .datasets import router as datasets_router  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
 
@@ -84,6 +86,7 @@ app.include_router(evidence_router)
 app.include_router(operation_router)
 app.include_router(inbox.router)
 app.include_router(apply_router)
+app.include_router(datasets_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -206,8 +209,10 @@ def health() -> dict:
     for part, info in parts.items():
         if not info["ready"]:
             info["command"] = commands[part]
+    from .. import datasets as ds
+
     return {"status": "ok", "version": __version__, "time": datetime.now(timezone.utc).isoformat(),
-            "results_ready": parts["results"]["ready"], "parts": parts}
+            "results_ready": parts["results"]["ready"], "parts": parts, "dataset": ds.current()}
 
 
 @lru_cache(maxsize=2)
@@ -238,6 +243,18 @@ def meta() -> dict:
         out["substation"] = json.loads(s.read_text(encoding="utf-8"))
     u = processed("ui", "state_uncontrolled.json")
     out["showcase_hour"] = _showcase_hour(u.stat().st_mtime if u.exists() else 0.0)
+    # an imported network: its own grid, and the reference network's weather, prices and households
+    from .. import datasets as ds
+
+    current = ds.current()
+    out["dataset"] = {"id": current, "imported": current != ds.REFERENCE}
+    if current != ds.REFERENCE:
+        try:
+            out["dataset"]["name"] = ds.record(current)["name"]
+            out["site"] = out["dataset"]["name"]
+        except ds.DatasetError:
+            pass
+        out["dataset"]["shared_from_reference"] = ["weather", "prices", "households"]
     return out
 
 
@@ -448,6 +465,41 @@ def network() -> dict:
     return _network(stamp)
 
 
+def _num(v) -> float | None:
+    """A number JSON can carry: NaN and infinity become null."""
+    try:
+        f = float(v)
+    except (TypeError, ValueError):
+        return None
+    return f if math.isfinite(f) else None
+
+
+def _point(lon, lat) -> dict | None:
+    x, y = _num(lon), _num(lat)
+    return {"type": "Point", "coordinates": [x, y]} if x is not None and y is not None else None
+
+
+def _house_geometry(polygon, lon, lat) -> dict | None:
+    """The roof outline when there is one; an imported network may only have the service point."""
+    if isinstance(polygon, str) and polygon:
+        try:
+            return {"type": "Polygon", "coordinates": [json.loads(polygon)]}
+        except ValueError:
+            pass
+    return _point(lon, lat)
+
+
+def _line_geometry(coords) -> dict | None:
+    try:
+        pts = json.loads(coords) if isinstance(coords, str) else coords
+    except ValueError:
+        return None
+    pts = [[_num(p[0]), _num(p[1])] for p in (pts or []) if len(p) >= 2]
+    if len(pts) < 2 or any(c is None for p in pts for c in p):
+        return None
+    return {"type": "LineString", "coordinates": pts}
+
+
 @lru_cache(maxsize=2)
 def _network(stamp: tuple) -> dict:
     import pandas as pd
@@ -466,14 +518,14 @@ def _network(stamp: tuple) -> dict:
     nodal = result("nodal.json") if processed("results", "nodal.json").exists() else None
     feats = []
     for c in cust.itertuples():
-        feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [json.loads(c.polygon)]},
+        feats.append({"type": "Feature", "geometry": _house_geometry(c.polygon, c.lon, c.lat),
                       "properties": {
-                          "layer": "house", "cid": int(c.cid), "bus": int(c.bus), "address": c.address,
+                          "layer": "house", "cid": int(c.cid), "bus": int(c.bus), "address": c.address or None,
                           "osm_id": c.osm_id, "building": c.building, "fuse_a": int(c.fuse_a),
-                          "fuse_kva": float(c.fuse_kva), "floor_m2": float(c.floor_m2), "levels": float(c.levels),
-                          "kwp": float(c.kwp), "inverter_kw": float(c.inverter_kw), "azimuth": float(c.azimuth),
-                          "tilt": float(c.tilt), "east_west": bool(c.east_west), "feeder": int(c.feeder),
-                          "dist_m": float(c.dist_m), "lon": float(c.lon), "lat": float(c.lat),
+                          "fuse_kva": _num(c.fuse_kva), "floor_m2": _num(c.floor_m2), "levels": _num(c.levels),
+                          "kwp": _num(c.kwp), "inverter_kw": _num(c.inverter_kw), "azimuth": _num(c.azimuth),
+                          "tilt": _num(c.tilt), "east_west": bool(c.east_west), "feeder": int(c.feeder),
+                          "dist_m": _num(c.dist_m), "lon": _num(c.lon), "lat": _num(c.lat),
                           "pv_status": "firm" if c.cid in firm else ("nonfirm" if c.cid in nonfirm else "none"),
                           "nodal_pv_kw": float(nodal["pv_kw"][int(c.cid)]) if nodal else None,
                           "nodal_import_kw": float(nodal["import_kw"][int(c.cid)]) if nodal else None,
@@ -481,31 +533,35 @@ def _network(stamp: tuple) -> dict:
                           "has_hp": bool(has_hp[int(c.cid)]), "has_ev": bool(has_ev[int(c.cid)]),
                       }})
     for ln in lines.itertuples():
-        feats.append({"type": "Feature", "geometry": {"type": "LineString", "coordinates": json.loads(ln.coords)},
+        feats.append({"type": "Feature", "geometry": _line_geometry(getattr(ln, "coords", None)),
                       "properties": {"layer": "cable", "line": int(ln.line), "kind": ln.kind, "std_type": ln.std_type,
                                      "length_m": round(float(ln.length_m), 1), "parallel": int(ln.parallel),
                                      "feeder": int(ln.feeder), "downstream": int(ln.downstream),
                                      "from_bus": int(ln.from_bus), "to_bus": int(ln.to_bus)}})
     for b in buses.itertuples():
         if b.kind in ("cabinet", "junction"):
-            feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [b.lon, b.lat]},
+            feats.append({"type": "Feature", "geometry": _point(b.lon, b.lat),
                           "properties": {"layer": b.kind, "bus": int(b.bus), "feeder": int(b.feeder),
                                          "dist_m": round(float(b.dist_m), 1)}})
-    feats.append({"type": "Feature", "geometry": {"type": "Point", "coordinates": [sub["lon"], sub["lat"]]},
-                  "properties": {"layer": "substation", **{k: v for k, v in sub.items() if k not in ("polygon",)}}})
+    feats.append({"type": "Feature", "geometry": _point(sub.get("lon"), sub.get("lat")),
+                  "properties": {"layer": "substation", **{k: (_num(v) if isinstance(v, float) else v)
+                                                           for k, v in sub.items() if k not in ("polygon",)}}})
     for c in context:
         feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [c["polygon"]]},
                       "properties": {"layer": "context", "building": c["building"]}})
-    lons = cust["lon"].to_numpy()
-    lats = cust["lat"].to_numpy()
+    lons = cust["lon"].to_numpy(dtype=float)
+    lats = cust["lat"].to_numpy(dtype=float)
+    ok = np.isfinite(lons) & np.isfinite(lats)
+    # a network without coordinates has no box to frame: the map says so instead of guessing
+    bbox = [float(lons[ok].min()), float(lats[ok].min()), float(lons[ok].max()), float(lats[ok].max())] if ok.any() else None
     return {"type": "FeatureCollection", "features": feats,
-            "bbox": [float(lons.min()), float(lats.min()), float(lons.max()), float(lats.max())],
+            "bbox": bbox,
             "bus_order": buses["bus"].tolist(), "provenance": provenance("osm", "synthetic_grid")}
 
 
 @app.get(f"{API}/zones", tags=["national"])
 def zones() -> Response:
-    path = PROCESSED.parent / "raw" / "zones" / "se_bidding_zones.geojson"
+    path = RAW / "zones" / "se_bidding_zones.geojson"
     if not path.exists():
         raise HTTPException(404, "zones not fetched")
     return Response(path.read_bytes(), media_type="application/geo+json")

@@ -123,11 +123,19 @@ def pool_hourly(year: int) -> np.ndarray:
     return b[:, days, :].reshape(base.shape[0], -1)
 
 
-def assignment(n_customers: int, load_seed: int = 0) -> np.ndarray:
-    """Pool index of each customer for a given load seed (seed 0 = reference assignment)."""
-    n_pool = np.load(processed("households", f"pool_hourly_{POOL_YEAR}.npy"), mmap_mode="r").shape[0]
+def assignment(n_customers: int, load_seed: int = 0, n_pool: int | None = None) -> np.ndarray:
+    """Pool index of each customer for a given load seed (seed 0 = reference assignment).
+
+    A network with more houses than the pool takes one permutation of the pool after another;
+    up to the pool's size the assignment is the first permutation alone, as it always was.
+    """
+    if n_pool is None:
+        n_pool = np.load(processed("households", f"pool_hourly_{POOL_YEAR}.npy"), mmap_mode="r").shape[0]
     rng = np.random.default_rng(1000 + load_seed)
-    return rng.permutation(n_pool)[:n_customers]
+    order = rng.permutation(n_pool)
+    while len(order) < n_customers:
+        order = np.concatenate([order, rng.permutation(n_pool)])
+    return order[:n_customers]
 
 
 def customer_base_load(year: int, n_customers: int, load_seed: int = 0) -> np.ndarray:

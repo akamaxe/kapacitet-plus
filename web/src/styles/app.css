@@ -2196,6 +2196,20 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   .portal-main { padding: var(--space-5) var(--space-4) var(--space-7); }
 }
 
+/* ---------------------------------------------------------------- imported networks (Networks.tsx) */
+.netcreate { padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.netcreate h4 { margin: 0; font-size: var(--text-body); }
+.nets { display: grid; margin: 0; padding: 0; list-style: none; }
+.nets li {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto; gap: var(--space-2) var(--space-4); align-items: center;
+  padding: var(--space-3) 0; border-bottom: 1px solid var(--border); font-size: var(--text-small);
+}
+.nets li.current .nets-name strong { color: var(--accent); }
+.nets-name, .nets-state { display: grid; gap: 2px; min-width: 0; }
+.nets-name small, .nets-state small { color: var(--text-muted); font-size: var(--text-caption); overflow-wrap: anywhere; }
+.nets-actions { display: inline-flex; gap: var(--space-2); justify-content: flex-end; }
+@media (max-width: 700px) { .nets li { grid-template-columns: minmax(0, 1fr); } .nets-actions { justify-content: flex-start; } }
+
 /* ---------------------------------------------------------------- the evidence pack for Ei (EiPack.tsx) */
 .ei-source { display: block; margin-top: 2px; font-size: var(--text-caption); color: var(--text-muted); }
 

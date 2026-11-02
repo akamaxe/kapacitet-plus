@@ -63,7 +63,9 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
     vn_hv = float(trafo_in["vn_hv_kv"])
     pp.create_bus(net, vn_kv=vn_hv, name="MV")
     pp.create_ext_grid(net, 0, vm_pu=1.0, s_sc_max_mva=A("mv_short_circuit_mva"),
-                       rx_max=0.1, x0x_max=1.0, r0x0_max=0.1)
+                       rx_max=0.1, x0x_max=1.0, r0x0_max=0.1,
+                       s_sc_min_mva=A("mv_short_circuit_mva") * A("mv_short_circuit_min_factor"),
+                       rx_min=0.1, x0x_min=1.0, r0x0_min=0.1)
     by_id = buses_in.set_index(buses_in["bus_id"].astype(str))
     for b in ids:
         row = by_id.loc[b]
@@ -222,6 +224,10 @@ def _customer_table(net, cust_in, index, buses, feeder, depth, note) -> pd.DataF
             no_roof += 1
         fuse = int(r.fuse_a)
         b = by_bus.loc[bus]
+        phase = getattr(r, "phase", None)
+        phase = PHASE_ALIAS.get(str(phase).strip().lower(), str(phase).strip().lower()) if isinstance(phase, str) and phase.strip() else ""
+        annual = getattr(r, "annual_kwh", None)
+        annual = float(annual) if annual is not None and not (isinstance(annual, float) and math.isnan(annual)) else float("nan")
         rows.append(dict(
             cid=cid, bus=bus, osm_id=str(r.customer_id), building="imported", address="",
             unit=0, dwellings=1, footprint_m2=float(footprint), levels=float(levels),
@@ -229,7 +235,8 @@ def _customer_table(net, cust_in, index, buses, feeder, depth, note) -> pd.DataF
             fuse_kva=round(3 * 230 * fuse / 1000.0, 2), lon=float(b["lon"]), lat=float(b["lat"]),
             x=float(b["x"]), y=float(b["y"]), feeder=int(feeder.get(bus, 0)),
             dist_m=round(float(depth.get(bus, 0.0)), 1),
-            roof_shape="", roof_orientation="", polygon=None))
+            roof_shape="", roof_orientation="", polygon=None,
+            phase=phase if phase in ("a", "b", "c") else "", annual_kwh=annual))
     note("customer without a roof area", no_roof)
     return pd.DataFrame(rows)
 

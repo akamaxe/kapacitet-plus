@@ -485,3 +485,20 @@ def ladder_text(rows: list[Issued], year: int, capacity: dict | None = None) -> 
             "survives without one. A real day-ahead forecast lands between the two.",
         ]
     return "\n".join(lines)
+
+
+def write() -> tuple[list, dict, dict | None]:
+    """The ladder of day-ahead schemes for the published showcase, written to results/forecast.json.
+    Returns the rows, the showcase and the capacity under each scheme (foresight.json) if computed."""
+    import json
+
+    from ..paths import processed
+    from .netmodel import get_model
+
+    show = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
+    cap_path = processed("results", "foresight.json")
+    capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
+    rows = ladder(get_model(), show)
+    processed("results", "forecast.json").write_text(json.dumps(ladder_payload(rows, show["year"]), indent=1),
+                                                     encoding="utf-8")
+    return rows, show, capacity
