@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -20,6 +21,21 @@ from ..paths import RAW
 from .sources import SOURCES
 
 MANIFEST = RAW / "manifest.json"
+
+# Query parameters that carry a credential (ENTSO-E's securityToken is one). Their values never
+# reach an error message, which the terminal prints whole, nor the manifest, which travels with
+# the published data.
+_SECRET_NAME = r"[\w.-]*(?:token|api[_-]?key|secret|password)"
+_SECRET_PARAM = re.compile(rf"(?i)(?<![\w.-])({_SECRET_NAME})=[^&\s'\"<>]+")
+
+
+def redact(text: object) -> str:
+    """`text` with the value of every credential-like query parameter replaced by ***."""
+    return _SECRET_PARAM.sub(r"\1=***", str(text))
+
+
+def _is_secret(name: str) -> bool:
+    return re.fullmatch(rf"(?i){_SECRET_NAME}", name) is not None
 
 
 class FetchError(RuntimeError):
@@ -64,8 +80,8 @@ def record(entry_id: str, *, source: str, path: Path, url: str, params: dict | N
         "license": src.license,
         "attribution": src.attribution,
         "tag": src.tag,
-        "url": url,
-        "params": params or {},
+        "url": redact(url),
+        "params": {k: "***" if _is_secret(k) else v for k, v in (params or {}).items()},
         "path": path.relative_to(RAW).as_posix(),
         "bytes": path.stat().st_size,
         "sha256": sha256_file(path),
@@ -102,12 +118,14 @@ def http(method: str, url: str, *, params: dict | None = None, data: dict | None
             if resp.status_code < 400:
                 return resp
             if resp.status_code not in (429, 500, 502, 503, 504):
-                # Client errors (404, 400, ...) will not go away by retrying.
-                raise FetchError(f"HTTP {resp.status_code} from {resp.url}")
-            last = FetchError(f"HTTP {resp.status_code} from {url}")
+                # Client errors (404, 400, ...) will not go away by retrying. resp.url carries
+                # the query string, credentials included, hence redact().
+                raise FetchError(f"HTTP {resp.status_code} from {redact(resp.url)}")
+            last = FetchError(f"HTTP {resp.status_code} from {redact(url)}")
         if attempt < retries - 1:
             time.sleep(backoff * (attempt + 1))
-    raise FetchError(f"{method} {url} failed after {retries} attempts: {last}")
+    # a connection error names the URL it failed on, query string included
+    raise FetchError(f"{method} {redact(url)} failed after {retries} attempts: {redact(last)}")
 
 
 def cached(entry_id: str, dest: Path, *, refresh: bool = False) -> bool:
