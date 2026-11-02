@@ -21,7 +21,7 @@ permissions:
 jobs:
   codespace:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 25
     env:
       DEVCONTAINER: npx --yes @devcontainers/cli@0.89.0
     steps:
@@ -29,9 +29,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # builds the image and runs onCreateCommand (install.sh), as GitHub does for a new codespace
-      - run: $DEVCONTAINER up --workspace-folder .
-      # postAttachCommand: what runs when someone opens the codespace
+      # builds the image and runs onCreateCommand (install.sh), as GitHub does for a new codespace.
+      # Not postAttachCommand: start.sh ends by following the log, so `up` would never return
+      - run: $DEVCONTAINER up --workspace-folder . --skip-post-attach
+      # postAttachCommand, in the background: what runs when someone opens the codespace
       - run: $DEVCONTAINER exec --workspace-folder . bash -c 'setsid nohup bash .devcontainer/start.sh > /tmp/start.out 2>&1 < /dev/null &'
       - name: the empty copy answers, serves the interface and takes a bundle from the browser
         run: |
