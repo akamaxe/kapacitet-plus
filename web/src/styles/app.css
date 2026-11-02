@@ -2178,6 +2178,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .portal-step { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .portal-step h2 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--text-h3); }
 .portal-n { color: var(--accent); font-variant-numeric: tabular-nums; }
+.portal-step > .btn { justify-self: start; }
 .portal-chosen { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 500; }
 .portal-chosen svg { color: var(--good); }
 .portal-form { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-5); margin: 0; }

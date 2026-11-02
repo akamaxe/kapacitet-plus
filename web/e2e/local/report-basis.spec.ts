@@ -18,11 +18,20 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
   await expect(page.getByText(/You are reading the filing as it would be under/)).toBeVisible();
 
   await page.emulateMedia({ media: "print" });
-  const sheet = page.locator("article.print-record");
+  const sheet = page.locator("article.print-record.filing");
+  const method = page.locator("article.print-record.ei-method");
   await expect(sheet).toBeVisible();
+  await expect(method).toBeHidden();
   // the sheet is hidden from assistive tech on screen (it is print only), so it is read by tag
   await expect(sheet.locator("h1")).toContainText("Annual report on conditional connection agreements");
   await sheet.screenshot({ path: "test-results/shots/report-print.png" });
+  // asked for, the method description for Ei prints instead of the filing
+  await page.evaluate(() => { document.documentElement.dataset.print = "ei"; });
+  await expect(method).toBeVisible();
+  await expect(sheet).toBeHidden();
+  await expect(method.locator("h1")).toContainText("Method for conditional connection agreements");
+  await method.screenshot({ path: "test-results/shots/ei-method-print.png" });
+  await page.evaluate(() => { delete document.documentElement.dataset.print; });
   await page.emulateMedia({ media: "screen" });
 });
 

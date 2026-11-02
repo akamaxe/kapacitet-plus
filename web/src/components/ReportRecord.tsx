@@ -19,7 +19,7 @@ export function ReportRecord({ R, rows }: {
   const binding = Object.entries(R.binding_constraint_hours ?? {}) as [string, number][];
   const dayahead = R.basis === "dayahead";
   return createPortal(
-    <article className="print-record" lang={lang} aria-hidden="true">
+    <article className="print-record filing" lang={lang} aria-hidden="true">
       <header className="pr-head">
         <p className="pr-brand"><Roundel />Kapacitet+</p>
         <h1>{t("rec.reportTitle", { year: R.year })}</h1>

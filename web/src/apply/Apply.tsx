@@ -7,7 +7,7 @@
  * application's. It asks for no personal data. Everything it reads comes from /api/v1/apply.
  */
 import { useEffect, useRef, useState } from "react";
-import { Chip, Status } from "../components/bits";
+import { Mark, Status } from "../components/bits";
 import { HouseSearch, type HouseOption } from "../components/HouseSearch";
 import { Icon } from "../components/Icon";
 import { OwnerFigures } from "../components/OwnerCase";
@@ -164,7 +164,7 @@ export default function Apply() {
           ))}
         </div>
       </header>
-      <p className="portal-strip"><Chip kind="real" /> {t("apply.strip.real")} <Chip kind="synthetic" /> {t("apply.strip.synthetic")} {t("apply.strip.private")}</p>
+      <p className="portal-strip"><Mark kind="real" /> {t("apply.strip.real")} <Mark kind="synthetic" /> {t("apply.strip.synthetic")} {t("apply.strip.private")}</p>
 
       <main className="portal-main" id="main">
         <h1 className="headline">{t("apply.title")}</h1>
@@ -267,7 +267,7 @@ function Answer({ a }: { a: any }) {
         {a.fuse && <li>{fuseText(t, f, a.fuse)}</li>}
         <li>{t(`apply.rule.${a.rule.auto ? a.rule.outcome : "manual"}`)}</li>
       </ul>
-      {a.owner && <OwnerFigures O={a.owner} headingId="apply-owner" />}
+      {a.owner && !a.firm && <OwnerFigures O={a.owner} headingId="apply-owner" />}
       <p className="caption-muted">{t(`apply.base.${a.baseline === "queue" ? "queue" : "published"}`)}</p>
     </div>
   );

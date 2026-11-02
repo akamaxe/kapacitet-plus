@@ -20,4 +20,5 @@ data/requests/
 # Playwright: the empty data folder of the CI project and the run reports
 web/e2e/.empty-data/
 web/test-results/
+web/.shots/
 web/playwright-report/

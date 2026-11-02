@@ -522,7 +522,7 @@ export default function Request() {
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} seal={res.seal} />
             <Result res={res} year={year} lang={lang} />
-            {!stale && res.id && res.request?.pv_kwp > 0 && <OwnerCase id={res.id} />}
+            {!stale && res.id && res.request?.pv_kwp > 0 && !Object.values(res.static ?? {}).every((v: any) => v?.approved) && <OwnerCase id={res.id} />}
             {!stale && res.id && queue && (
               <>
                 <ApplyBlock res={res} queue={queue} />
