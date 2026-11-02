@@ -273,7 +273,7 @@ The interface has its own, in `web/`:
 npm run test:unit        # Vitest: formatting, dictionaries, the URL rule, the map's binary reader
 npm run test:e2e         # Playwright on a fresh clone's view: the API with an empty data folder
 npm run test:e2e:local   # Playwright on this machine's computed data (reuses a server on :8130)
-npm run perf             # what the opening screen costs a first visit (bytes, requests, LCP)
+npm run perf             # what the opening screen costs a first visit (bytes, requests, LCP; docs/perf.md)
 ```
 
 Playwright drives the Chrome already installed on the machine (`channel: "chrome"`), so nothing

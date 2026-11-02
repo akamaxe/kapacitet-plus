@@ -5,7 +5,8 @@
  * at Ei's real rate, net of what the envelopes' curtailment costs the houses, for every horizon.
  * The house's side is in OwnerCase.tsx, which needs no chart.
  */
-import { Chart, axisStyle } from "./Chart";
+import { Chart } from "./LazyChart";
+import { axisStyle } from "../lib/chartStyle";
 import { ChartOrTable, Legend } from "./bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";

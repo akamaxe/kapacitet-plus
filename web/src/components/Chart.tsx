@@ -46,20 +46,16 @@ function watchScheme(cb: () => void): () => void {
  * the chart is rebuilt when the theme, the language or its data change, and only resized when
  * its container does — unless the width crosses the compact layout's threshold.
  */
-export function Chart({
-  build,
-  height = 260,
-  deps = [],
-  onClick,
-  ariaLabel,
-}: {
+export interface ChartProps {
   /** `f` formats a number in the active language (thin-space thousands, its decimal mark), for tooltips and labels */
   build: (tk: Tokens, width: number, f: (value: number | null | undefined, digits?: number) => string) => echarts.EChartsCoreOption;
   height?: number;
   deps?: unknown[];
   onClick?: (params: any) => void;
   ariaLabel: string;
-}) {
+}
+
+export function Chart({ build, height = 260, deps = [], onClick, ariaLabel }: ChartProps) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<echarts.ECharts | null>(null);
   const drawn = useRef(false);
@@ -169,13 +165,4 @@ export function withBase(opt: echarts.EChartsCoreOption, tk: Tokens, animate = f
   };
 }
 
-/** Hairline axis, no ticks, tick labels at caption size in the text face. */
-export function axisStyle(tk: Tokens) {
-  return {
-    axisLine: { lineStyle: { color: tk.border } },
-    axisTick: { show: false },
-    axisLabel: { color: tk.muted, fontFamily: tk.font, fontSize: tk.size.caption },
-    splitLine: { show: false, lineStyle: { color: tk.border, width: 1, type: "solid" as const } },
-    nameTextStyle: { color: tk.muted, fontFamily: tk.font, fontSize: tk.size.caption },
-  };
-}
+export { axisStyle } from "../lib/chartStyle";

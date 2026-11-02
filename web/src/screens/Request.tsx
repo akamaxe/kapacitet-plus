@@ -51,7 +51,7 @@ export default function Request() {
   // the network's protection check, when it has been computed: one fact per house
   const prot = useApi<any>("/protection");
   const net = useApi<any>("/network");
-  const show = useApi<any>("/showcase");
+  const show = useApi<any>("/showcase?heatmaps=false");
   // the request form's limits and choices are model inputs, read like every other figure
   const asm = useApi<any>("/assumptions");
   const A = useMemo(() => {

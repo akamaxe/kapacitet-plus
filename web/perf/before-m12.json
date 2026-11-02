@@ -1,0 +1,21 @@
+{
+  "url": "http://127.0.0.1:8130/#/compare",
+  "measured_at": "2026-11-02T08:15:48.288Z",
+  "runs": 3,
+  "median": {
+    "requests": 41,
+    "total_kb": 1061,
+    "kb": {
+      "document": 1,
+      "script": 605,
+      "stylesheet": 23,
+      "api": 144,
+      "font": 19,
+      "fetch": 270
+    },
+    "lcp_ms": 712,
+    "dcl_ms": 58,
+    "long_tasks": 3,
+    "long_task_ms": 285
+  }
+}

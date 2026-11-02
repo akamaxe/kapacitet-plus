@@ -63,7 +63,7 @@ export default function Twin() {
   // the screen renders nothing that needs the year before /meta has answered (see below)
   const year: number = meta.data?.reference_year;
   const series = useApi<any>(meta.data ? `/series/${year}` : null);
-  const show = useApi<any>("/showcase");
+  const show = useApi<any>("/showcase?heatmaps=false");
   const st = useGridState(scenario);
   const mapRef = useRef<MLMap | null>(null);
   const tipRef = useRef<(tip: Tip | null) => void>(() => {});

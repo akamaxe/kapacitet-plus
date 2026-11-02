@@ -1,11 +1,13 @@
-import { useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Deferral } from "../components/Business";
-import { Chart, axisStyle } from "../components/Chart";
-import { PageSkeleton } from "../components/Skeleton";
+import { Chart } from "../components/LazyChart";
+import { axisStyle } from "../lib/chartStyle";
+import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { SectionMissing, ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
 import { Icon } from "../components/Icon";
-import { NetworkMap } from "../components/NetworkMap";
+// the map library is the heaviest thing on this screen: it loads beside the words, not before them
+const NetworkMap = lazy(() => import("../components/NetworkMap").then((m) => ({ default: m.NetworkMap })));
 import { Term } from "../components/Term";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
@@ -20,7 +22,11 @@ export default function Compare() {
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const hosting = useApi<any>("/hosting");
-  const show = useApi<any>("/showcase");
+  // the heatmaps are a third of the showcase and drawn far down: they load as their section nears
+  const show = useApi<any>("/showcase?heatmaps=false");
+  const whenRef = useRef<HTMLElement | null>(null);
+  const [whenNear, setWhenNear] = useState(false);
+  const heatmaps = useApi<any>(whenNear ? "/showcase/heatmaps" : null);
   const risk = useApi<any>("/risk");
   const val = useApi<any>("/validation");
   // the criteria the protocol holds the results against are model inputs, not constants here
@@ -38,12 +44,22 @@ export default function Compare() {
 
   const H = hosting.data?.data;
   const S = show.data?.data?.showcase;
-  const HM = show.data?.data?.heatmaps;
+  const HM = heatmaps.data?.data;
   const R = risk.data?.data;
   const PF = val.data?.data?.powerflow;
   const OV = over.data?.data;
   const RF = reinf.data?.data;
   const PH = phases.data?.data;
+
+  useEffect(() => {
+    const el = whenRef.current;
+    if (!el || whenNear) return;
+    if (typeof IntersectionObserver === "undefined") return setWhenNear(true);
+    const io = new IntersectionObserver((entries) => entries.some((e) => e.isIntersecting) && setWhenNear(true),
+      { rootMargin: "800px 0px" });
+    io.observe(el);
+    return () => io.disconnect();
+  });
 
   const zDoeMedian = useMemo(() => {
     if (!H) return null;
@@ -79,7 +95,7 @@ export default function Compare() {
   const sections: Section[] = [
     { id: "capacity", label: t("cmp.sec.capacity") },
     { id: "verify", label: t("cmp.sec.verify") },
-    ...(HM ? [{ id: "when", label: t("cmp.sec.when") }] : []),
+    ...(S ? [{ id: "when", label: t("cmp.sec.when") }] : []),
     { id: "fair", label: t("cmp.sec.fair") },
     ...(OV ? [{ id: "value", label: t("cmp.sec.value"), basis: valueBasis }] : []),
     ...(RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce"), basis: reinfBasis }] : []),
@@ -130,7 +146,9 @@ export default function Compare() {
                 <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
             </div>
-            <NetworkMap />
+            <Suspense fallback={<div className="net-figure" aria-hidden="true"><span /><div className="net-map" /></div>}>
+              <NetworkMap />
+            </Suspense>
           </div>
         </section>
 
@@ -199,11 +217,11 @@ export default function Compare() {
         </section>
 
         {/* ---------------------------------------------------------------- when it binds */}
-        {HM && (
-          <section className="region" id="when">
+        {S && (
+          <section className="region" id="when" ref={whenRef}>
             <div className="region-head">
               <div className="region-title">
-                <h2>{t("cmp.heat", { year: HM.year })}</h2>
+                <h2>{t("cmp.heat", { year: HM?.year ?? S.year })}</h2>
                 <p className="caption">{t("cmp.heat.caption")}</p>
               </div>
               <div className="seg" role="group" aria-label={t("cmp.heat.view")}>
@@ -213,10 +231,12 @@ export default function Compare() {
             </div>
             {/* the dense band of this screen: a year of hours, on its own ground */}
             <div className="well">
-              <ChartOrTable
-                chart={<Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk, _w, fm) => heatOption(tk, HM, heat, lang, t, fm)} />}
-                table={<HeatTable HM={HM} which={heat} />}
-              />
+              {HM ? (
+                <ChartOrTable
+                  chart={<Chart ariaLabel={t("cmp.heat", { year: HM.year })} height={260} deps={[HM, heat, lang]} build={(tk, _w, fm) => heatOption(tk, HM, heat, lang, t, fm)} />}
+                  table={<HeatTable HM={HM} which={heat} />}
+                />
+              ) : <ChartSkeleton height={260} />}
             </div>
           </section>
         )}

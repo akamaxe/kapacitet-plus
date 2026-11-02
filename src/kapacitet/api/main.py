@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import csv
 import gzip
+import hashlib
 import io
 import json
 import math
@@ -74,6 +75,23 @@ app = FastAPI(
                 "built on real OpenStreetMap geometry and driven by real SMHI weather and SE3 prices.",
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
+
+
+@app.middleware("http")
+async def etag(request, call_next):
+    """A weak ETag on the API's JSON, from its bytes: a browser that already holds an answer gets a
+    304 for it. Streams (events), binaries and writes pass untouched."""
+    response = await call_next(request)
+    if (request.method != "GET" or not request.url.path.startswith("/api/v1/") or response.status_code != 200
+            or not response.headers.get("content-type", "").startswith("application/json")):
+        return response
+    body = b"".join([chunk async for chunk in response.body_iterator])
+    tag = 'W/"' + hashlib.sha1(body).hexdigest()[:20] + '"'
+    headers = {k: v for k, v in response.headers.items() if k.lower() not in ("content-length", "etag")}
+    headers.update(ETag=tag, **{"Cache-Control": "no-cache"})
+    if tag in request.headers.get("if-none-match", ""):
+        return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "no-cache"})
+    return Response(content=body, status_code=200, headers=headers, media_type=response.media_type)
 
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
@@ -474,18 +492,28 @@ def _num(v) -> float | None:
     return f if math.isfinite(f) else None
 
 
+COORD_DECIMALS = 6        # about 0.1 m on the ground, finer than any drawing on the map
+
+
+def _xy(x, y) -> list | None:
+    x, y = _num(x), _num(y)
+    return [round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)] if x is not None and y is not None else None
+
+
 def _point(lon, lat) -> dict | None:
-    x, y = _num(lon), _num(lat)
-    return {"type": "Point", "coordinates": [x, y]} if x is not None and y is not None else None
+    xy = _xy(lon, lat)
+    return {"type": "Point", "coordinates": xy} if xy else None
 
 
 def _house_geometry(polygon, lon, lat) -> dict | None:
     """The roof outline when there is one; an imported network may only have the service point."""
     if isinstance(polygon, str) and polygon:
         try:
-            return {"type": "Polygon", "coordinates": [json.loads(polygon)]}
-        except ValueError:
-            pass
+            ring = [_xy(p[0], p[1]) for p in json.loads(polygon)]
+        except (ValueError, TypeError, IndexError):
+            ring = []
+        if ring and all(ring):
+            return {"type": "Polygon", "coordinates": [ring]}
     return _point(lon, lat)
 
 
@@ -494,8 +522,8 @@ def _line_geometry(coords) -> dict | None:
         pts = json.loads(coords) if isinstance(coords, str) else coords
     except ValueError:
         return None
-    pts = [[_num(p[0]), _num(p[1])] for p in (pts or []) if len(p) >= 2]
-    if len(pts) < 2 or any(c is None for p in pts for c in p):
+    pts = [_xy(p[0], p[1]) for p in (pts or []) if len(p) >= 2]
+    if len(pts) < 2 or not all(pts):
         return None
     return {"type": "LineString", "coordinates": pts}
 
@@ -547,8 +575,10 @@ def _network(stamp: tuple) -> dict:
                   "properties": {"layer": "substation", **{k: (_num(v) if isinstance(v, float) else v)
                                                            for k, v in sub.items() if k not in ("polygon",)}}})
     for c in context:
-        feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [c["polygon"]]},
-                      "properties": {"layer": "context", "building": c["building"]}})
+        ring = [_xy(p[0], p[1]) for p in c["polygon"]]
+        if ring and all(ring):
+            feats.append({"type": "Feature", "geometry": {"type": "Polygon", "coordinates": [ring]},
+                          "properties": {"layer": "context", "building": c["building"]}})
     lons = cust["lon"].to_numpy(dtype=float)
     lats = cust["lat"].to_numpy(dtype=float)
     ok = np.isfinite(lons) & np.isfinite(lats)
@@ -638,9 +668,17 @@ def hosting_summary() -> dict:
 
 
 @app.get(f"{API}/showcase", tags=["doe"])
-def showcase() -> dict:
-    return with_prov({"showcase": result("showcase.json"), "heatmaps": result("heatmaps.json")},
-                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
+def showcase(heatmaps: bool = Query(True, description="false: leave out the hour-by-month heatmaps (/showcase/heatmaps)")) -> dict:
+    body = {"showcase": result("showcase.json")}
+    if heatmaps:
+        body["heatmaps"] = result("heatmaps.json")
+    return with_prov(body, "smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
+
+
+@app.get(f"{API}/showcase/heatmaps", tags=["doe"])
+def showcase_heatmaps() -> dict:
+    """When the envelopes bind, hour by month: fetched by the section that draws it, when it nears."""
+    return with_prov(result("heatmaps.json"), "smhi_strang", "smhi_metobs", "synthetic_grid")
 
 
 @app.get(f"{API}/risk", tags=["doe"])
