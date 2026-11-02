@@ -22,8 +22,9 @@ import threading
 import time
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from starlette.concurrency import run_in_threadpool
+from starlette.requests import ClientDisconnect
 
 from .. import bundle
 from .. import datasets as ds
@@ -204,9 +205,9 @@ def _receive(body: bytes, offset: int, total: int, fp: str) -> dict:
         return _status()
 
 
-@router.put("/setup/upload")
+@router.put("/setup/upload", response_model=None)
 async def upload_chunk(request: Request, offset: int = Query(..., ge=0), total: int = Query(..., gt=0),
-                       fp: str = Query("", max_length=300)) -> dict:
+                       fp: str = Query("", max_length=300)) -> dict | Response:
     """One chunk of the bundle, as raw bytes at `offset` of a file of `total` bytes (`fp` names the
     file, so two tabs cannot interleave two files). Offset 0 starts again from the beginning."""
     why = closed_because()
@@ -216,7 +217,11 @@ async def upload_chunk(request: Request, offset: int = Query(..., ge=0), total: 
         raise refusal(413, "bundle_too_large", gb=TOTAL_MAX // 2**30)
     if int(request.headers.get("content-length") or 0) > CHUNK_MAX:
         raise refusal(413, "chunk_too_large", mb=CHUNK_MAX // 2**20)
-    body = await request.body()
+    try:
+        body = await request.body()
+    except ClientDisconnect:
+        # the page was reloaded or closed mid-chunk: nothing was written, and the next try resumes
+        return Response(status_code=400)
     if len(body) > CHUNK_MAX:
         raise refusal(413, "chunk_too_large", mb=CHUNK_MAX // 2**20)
     if not body:

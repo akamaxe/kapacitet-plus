@@ -183,3 +183,22 @@ def test_a_quiet_progress_stream_sends_keepalive_comments():
 
     chunks = asyncio.run(collect())
     assert chunks[0] == ": keepalive\n\n" and chunks[-1].startswith("event: end")
+
+
+def test_a_page_reloaded_mid_chunk_leaves_nothing_and_no_traceback(opened):
+    """The browser drops the request half-way: the server answers nothing useful and writes nothing."""
+    import asyncio
+
+    from starlette.requests import ClientDisconnect
+
+    from kapacitet.api import setup
+
+    class Gone:
+        headers = {"content-length": "8388608"}
+
+        async def body(self):
+            raise ClientDisconnect()
+
+    r = asyncio.run(setup.upload_chunk(Gone(), offset=0, total=100, fp="a.zip|1|1"))
+    assert r.status_code == 400
+    assert not setup._part().exists()

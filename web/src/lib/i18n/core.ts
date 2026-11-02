@@ -14,7 +14,7 @@ export function isLang(value: unknown): value is Lang {
 }
 
 /** A placeholder and the unit after it ("{mean} %", "{h} h"): the space between them never breaks. */
-const UNIT_AFTER_PLACEHOLDER = /\} (%|kWp|kWh|kW|kVA|MVA|MWh|kSEK|SEK|pu|h)(?=$|[\s.,;:)\/·–—])/g;
+const UNIT_AFTER_PLACEHOLDER = /\} (%|kWp|kWh|kW|kVA|MVA|MWh|kSEK|SEK|pu|h|MB|GB)(?=$|[\s.,;:)\/·–—])/g;
 
 /** The dictionary with every figure bound to its unit by a no-break space, so no line starts with "%". */
 function bindUnits(dict: Dict): Dict {

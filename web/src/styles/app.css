@@ -493,7 +493,9 @@ p {
   cursor: pointer;
 }
 
-.btn:disabled {
+/* a file chooser is a label, so it says it is off with aria-disabled */
+.btn:disabled,
+.btn[aria-disabled="true"] {
   opacity: 0.5;
   cursor: default;
 }
@@ -2291,6 +2293,21 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .setup { display: grid; gap: var(--space-5); max-width: 760px; }
 .setup-steps { display: grid; gap: var(--space-4); margin: 0; padding-left: var(--space-5); }
 .setup-steps p { margin: 0 0 var(--space-2); }
+/* the setup page's bundle upload: one file chooser, then how far it has gone */
+.setup-upload { display: grid; gap: var(--space-3); justify-items: start; }
+.setup-progress { display: grid; gap: var(--space-2); width: min(100%, 30rem); }
+.setup-progress p { margin: 0; font-variant-numeric: tabular-nums; }
+.setup-progress progress {
+  width: 100%; height: var(--space-2); border: 0; border-radius: var(--radius-sm);
+  background: var(--bg-inset); overflow: hidden; appearance: none;
+}
+.setup-progress progress::-webkit-progress-bar { background: var(--bg-inset); border-radius: var(--radius-sm); }
+.setup-progress progress::-webkit-progress-value { background: var(--accent); border-radius: var(--radius-sm); }
+.setup-progress progress::-moz-progress-bar { background: var(--accent); border-radius: var(--radius-sm); }
+.setup-terminal { border-top: 1px solid var(--border); padding-top: var(--space-3); }
+.setup-terminal summary { cursor: pointer; font-size: var(--text-small); font-weight: 500; color: var(--text-secondary); }
+.setup-terminal summary:hover { color: var(--text-primary); }
+.setup-terminal[open] > summary { margin-bottom: var(--space-4); }
 
 /* ---------------------------------------------------------------- the tour: a card beside the screen */
 .tour {

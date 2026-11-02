@@ -49,7 +49,7 @@ describe("translate", () => {
     expect(translate("en", "apply.ans.tiny", { min: "0.1" })).toContain("0.1 %");
     expect(translate("sv", "apply.ans.tiny", { min: "0,1" })).toContain("0,1 %");
     for (const [lang, dict] of Object.entries(DICTS)) {
-      const loose = Object.keys(dict).filter((k) => /\} (%|kW|kWh|kWp|SEK|kSEK|h)(?=$|[\s.,;:)])/.test(dict[k]));
+      const loose = Object.keys(dict).filter((k) => /\} (%|kW|kWh|kWp|SEK|kSEK|h|MB|GB)(?=$|[\s.,;:)])/.test(dict[k]));
       expect(loose, lang).toEqual([]);
     }
   });
