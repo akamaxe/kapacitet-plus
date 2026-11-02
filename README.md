@@ -392,8 +392,9 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
   beside the export it would make without them.
 - `GET /api/v1/operation/schedule.xml`: the same day as an IEEE 2030.5 `DERControlList` in the
   CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`. Downloading it
-  issues it, and the issue is sealed with the limits it sent (`issue=false` is a preview that
-  leaves no record). `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
+  issues it, and the issue is sealed with the limits it sent; the seal comes back in `X-Seal-Digest`,
+  `X-Seal-Seq` and `X-Seal-At`, and the screen keeps it as a receipt under the button
+  (`issue=false` is a preview that leaves no record). `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
   keeps when no schedule arrives: never above the lowest limit issued that year, so close to zero
   here. The format is modelled on the profile, not certified, and no device is connected.
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
@@ -417,11 +418,13 @@ conditions a DSO must meet; `config/ei_conditions.toml` lists them with their se
 paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in three languages.
 `GET /api/v1/eipack?basis=&policy=` sets each one beside what this prototype can show for it:
 **shown by the model** (with its figures), **stated by the DSO** (three statements only the DSO
-can make, kept in its settings and sealed on change; an empty one never counts), **not met here**,
-or **does not apply**. On the day-ahead basis the model shows the capacity shortage, the terms and
+can make, kept in its settings and sealed on change), **awaiting the DSO** (one of those statements
+not yet made: never met, but not shown as a failure of the model), **not met here**, or **does not
+apply**. On the day-ahead basis the model shows the capacity shortage, the terms and
 the annual report, and says plainly that limiting 1 146 hours where 148 needed it does not meet
 "only when the grid would otherwise be overloaded", nor "only once the market result shows an
-overload". `export=true` downloads the pack sealed with what it showed. The Annual report screen
+overload". `export=true` downloads the pack sealed with what it showed, with the same seal headers
+and receipt as an issued schedule. The Annual report screen
 holds the section, the statements and a printable method description. It is evidence from a
 simulation, never a legal assessment; the regulation's rule on compensation for non-market
 redispatch is not assessed.
