@@ -45,6 +45,15 @@ describe("translate", () => {
     expect(translate("sv", "no.such.key")).toBe("no.such.key");
   });
 
+  it("keeps a figure and its unit on one line, in every language", () => {
+    expect(translate("en", "apply.ans.tiny", { min: "0.1" })).toContain("0.1 %");
+    expect(translate("sv", "apply.ans.tiny", { min: "0,1" })).toContain("0,1 %");
+    for (const [lang, dict] of Object.entries(DICTS)) {
+      const loose = Object.keys(dict).filter((k) => /\} (%|kW|kWh|kWp|SEK|kSEK|h)(?=$|[\s.,;:)])/.test(dict[k]));
+      expect(loose, lang).toEqual([]);
+    }
+  });
+
   it("names each language's own locale", () => {
     expect(locale("en")).toBe("en-GB");
     expect(locale("es")).toBe("es-ES");

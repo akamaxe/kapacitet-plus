@@ -9,7 +9,7 @@ const t = tFor("en");
 describe("reasonLine", () => {
   it("says the rule's reason with its figures in the reader's format", () => {
     const line = reasonLine(t, f, { code: "curtailment_p90", params: { value: 4.237, limit: 3 } });
-    expect(line).toBe("Curtailment of 4.2 % in one year in ten, above the threshold of 3.0 %.");
+    expect(line).toBe("Curtailment of 4.2\u00a0% in one year in ten, above the threshold of 3.0\u00a0%.");
   });
 
   it("counts hours whole, and translates a refusal the queue gave as a code", () => {
@@ -22,10 +22,10 @@ describe("reasonLine", () => {
 
 describe("duration", () => {
   it("picks the largest unit that keeps a wait readable", () => {
-    expect(duration("en", 42)).toBe("42 s");
-    expect(duration("en", 12 * 60)).toBe("12 min");
-    expect(duration("en", 3.5 * 3600)).toBe("3.5 h");
-    expect(duration("sv", 2 * 86400)).toBe("2,0 d");
+    expect(duration("en", 42)).toBe("42\u00a0s");
+    expect(duration("en", 12 * 60)).toBe("12\u00a0min");
+    expect(duration("en", 3.5 * 3600)).toBe("3.5\u00a0h");
+    expect(duration("sv", 2 * 86400)).toBe("2,0\u00a0d");
     expect(duration("en", null)).toBe("–");
   });
 });

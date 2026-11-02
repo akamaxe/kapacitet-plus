@@ -14,7 +14,9 @@ Two users on either side of one connection, served equally:
   applications for solar, EV chargers, heat pumps and batteries. Their job is to decide whether a connection
   fits, on what terms, and to leave evidence behind for the decision.
 - **The applicant** — a household, a solar or battery developer, a large consumer — who is offered a non-firm
-  connection and has to judge it: how much of their energy would be curtailed, and what that costs them.
+  connection and has to judge it: how much of their energy would be curtailed, and what that costs them. A
+  household has its own small page, the applicant's portal (`#/apply`): pick the address, ask, read the answer
+  in plain words, apply, and follow the application by a reference code, without giving any personal data.
 
 ## Product Purpose
 
@@ -36,26 +38,35 @@ non-firm offer.
 
 ## Operating Context
 
-- Seven screens:
+- Eight screens:
   - Sweden: national production, consumption and prices.
   - Neighbourhood: the twin at any hour of the reference year, under three scenarios.
-  - Static vs DOE: the central comparison.
+  - Static vs DOE: the central comparison, what the extra solar is worth, and what deferring the
+    reinforcement is worth to the DSO.
   - Connection request: evaluate one house's request live (solar, EV charger, heat pump, battery), keep
-    the answer as a printable record, and decide on it in a queue of approvals.
-  - Annual report: the year's filing for conditional connection agreements, its hourly audit trail and each
-    house's own record.
+    the answer as a printable, sealed record, value connecting now against waiting, apply, and decide on it
+    in a queue of approvals.
+  - Operation: the applications the DSO's rule decides (it never declines), each day's limits issued the
+    day before and the file an inverter would receive, the summer replayed in the shadow against a pilot's
+    tests, and a meter checked against what it was sent.
+  - Annual report: the year's filing for conditional connection agreements on either basis and under any
+    sharing rule, its hourly audit trail, each house's own record, and the evidence for Ei (Ei2025:01).
   - 2030: adoption scenarios.
-  - Method & data: sources, inputs and validation.
-- URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`, plus `job=` for a saved assessment.
-- Keyboard shortcuts: 1–7 for the screens, Ctrl+K for search, ? for the key sheet, N for notes, F for full
+  - Method & data: sources, inputs, validation, protection, forecasts, and other networks imported and
+    switched to.
+- The applicant's portal (`#/apply`) is its own small page, without the application's chrome.
+- URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`, plus `job=` for a saved assessment,
+  `basis=`/`policy=` on the report, `date=` on the operation screen and `ds=` on an imported network.
+- Keyboard shortcuts: 1–8 for the screens, Ctrl+K for search, ? for the key sheet, N for notes, F for full
   screen.
 - Light and dark themes.
 - Used mostly on a laptop and on a projector. It must still work on a phone.
 
 ## Capabilities and Constraints
 
-- The pipeline fetches, builds, profiles and computes. The API only reads `data/processed/results/`, plus the
-  live request evaluation.
+- The pipeline fetches, builds, profiles and computes. The API reads `data/processed/results/`, runs the live
+  request evaluation and the inbox's rule, and writes only to `data/requests/` (assessments, the queue,
+  applications, settings and the seal chain) and `data/datasets/` (imported networks).
 - **Figures live in the data, never in the interface.** Every number on screen comes from the API. The code
   holds only units and labels.
 - **Real versus synthetic is labelled on every screen.**
@@ -93,7 +104,11 @@ non-firm offer.
   - the curtailment curve, verification, fairness, sensitivity, 2030 scenarios, forecast, validation and risk.
 - Real sources: OpenStreetMap, SMHI STRÅNG and metobs, elprisetjustnu.se (ENTSO-E when a token exists), eSett,
   SCB.
-- There are no customers, users, testimonials, pilots or press. None may be shown or implied.
+- There are no customers, users, testimonials, pilots or press. None may be shown or implied. The inverter's
+  file is modelled on CSIP-AUS v1.2 and is not certified; no device is connected.
+- Public figures the business case uses, each with its source in `config/assumptions.toml`: Ei's real
+  rate for 2024–2027 and its norm values, the energy tax from 2026, Ellevio's grid fee and compensation for
+  exported solar, and the end of the tax reduction for exported solar (Skatteverket).
 - No patented or proprietary capacity-sharing algorithm exists, and one must never
   appear.
 

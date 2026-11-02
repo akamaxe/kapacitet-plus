@@ -177,7 +177,8 @@ export function InboxSection() {
     { key: "act", label: t("inbox.col.act"), value: () => "",
       cell: (a) => a.status === "review" ? (
         <span className="inbox-actions">
-          <button className="btn small" onClick={() => setOpen(a)}>{t("inbox.decide")}</button>
+          {/* row actions stay secondary: the primary belongs to the decision dialog they open */}
+          <button className="btn ghost small" onClick={() => setOpen(a)}>{t("inbox.decide")}</button>
           <button className="btn ghost small" onClick={() => void requeue(a)}>{t("inbox.again")}</button>
         </span>
       ) : null },
@@ -209,11 +210,16 @@ export function InboxSection() {
       {I.items.length === 0 ? (
         <p className="caption">{t("inbox.empty")} <a href="#/request">{t("inbox.emptyGo")}</a></p>
       ) : (
-        <DataTable rows={I.items} cols={cols} rowKey={(a) => a.id} caption={t("inbox.table")} searchLabel={t("inbox.search")} />
+        <DataTable rows={I.items} cols={cols} rowKey={(a) => a.id} caption={t("inbox.table")} searchLabel={t("inbox.search")} className="inbox-dt" />
       )}
       <p className="caption-muted">{t("inbox.note")} <a href="#/apply" target="_blank" rel="noopener">{t("inbox.portal")}</a></p>
-      <Dialog open={open !== null} onClose={() => setOpen(null)} title={open ? t("inbox.dialog", { ref: open.reference }) : ""} width={560}>
-        {open && queue.data && <DecideOne app={open} queue={queue.data} />}
+      <Dialog open={open !== null} onClose={() => setOpen(null)} labelledBy="inbox-dialog-title" width={560}>
+        {open && queue.data && (
+          <div className="sheet">
+            <h2 id="inbox-dialog-title">{t("inbox.dialog", { ref: open.reference })}</h2>
+            <DecideOne app={open} queue={queue.data} />
+          </div>
+        )}
       </Dialog>
     </div>
   );

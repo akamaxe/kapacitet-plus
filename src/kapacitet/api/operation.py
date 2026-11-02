@@ -52,6 +52,12 @@ def get_index() -> dict:
 
 # ---------------------------------------------------------------- the evidence pack for Ei
 
+def _sealed_headers(entry: dict, filename: str) -> dict:
+    """A sealed file's headers: the attachment's name, and its seal, so the page can keep a receipt."""
+    return {"Content-Disposition": f'attachment; filename="{filename}"', "X-Seal-Digest": entry["digest"],
+            "X-Seal-Seq": str(entry["seq"]), "X-Seal-At": entry["at"]}
+
+
 @router.get("/eipack")
 def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
            policy: str | None = Query(None, pattern=POLICY_PATTERN),
@@ -76,7 +82,7 @@ def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
     entry = seals.seal("eipack", f"{basis}-{combo.policy}-{stamp}", pack)
     body = json.dumps({**pack, "seal": {k: entry[k] for k in ("digest", "seq", "at", "fingerprint")}}, indent=1)
     return Response(body, media_type="application/json",
-                    headers={"Content-Disposition": f'attachment; filename="kapacitet-ei-evidence-{basis}-{combo.policy}.json"'})
+                    headers=_sealed_headers(entry, f"kapacitet-ei-evidence-{basis}-{combo.policy}.json"))
 
 
 # ---------------------------------------------------------------- a day's schedule
@@ -141,11 +147,11 @@ def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^
     if not issue:
         return Response(body, media_type="application/sep+xml")
     fp = seals.fingerprint()["digest"][:8]
-    seals.seal("schedule", f"{cid}-{date}-{combo.policy}-{fp}",
-               {"cid": cid, "date": date, "policy": combo.policy, "basis": "dayahead",
-                "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows]})
+    entry = seals.seal("schedule", f"{cid}-{date}-{combo.policy}-{fp}",
+                       {"cid": cid, "date": date, "policy": combo.policy, "basis": "dayahead",
+                        "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows]})
     return Response(body, media_type="application/sep+xml",
-                    headers={"Content-Disposition": f'attachment; filename="kapacitet-dercontrols-{cid}-{date}.xml"'})
+                    headers=_sealed_headers(entry, f"kapacitet-dercontrols-{cid}-{date}.xml"))
 
 
 @router.get("/operation/default.xml")

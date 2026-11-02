@@ -7,12 +7,13 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
+import { SealReceipt, useSealedDownload } from "./SealedDownload";
 import { Roundel } from "./Shell";
 import { Status } from "./bits";
 import { toast } from "./Toast";
 import { API, useApi } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
-import { dateTime, useFmt } from "../lib/format";
+import { dateTime, listJoin, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -36,9 +37,19 @@ function factLine(t: TFn, f: F, fact: { code: string; params: Record<string, any
   return t(`ei.fact.${fact.code}`, p);
 }
 
+/** The verdict line: what the model shows, then every other state that has any condition. */
+function leadLine(t: TFn, f: F, lang: string, counts: Record<string, number>, n: number): string {
+  const rest = (["declared", "awaiting", "not_met", "not_applicable"] as const)
+    .filter((s) => counts[s] > 0)
+    .map((s) => t(counts[s] === 1 && s !== "declared" ? `ei.part.${s}.one` : `ei.part.${s}`, { n: f(counts[s]) }));
+  const head = { evidence: f(counts.evidence), n: f(n) };
+  return rest.length ? t("ei.lead.rest", { ...head, rest: listJoin(lang, rest) }) : t("ei.lead", head);
+}
+
 function StateOf({ state }: { state: string }) {
   const t = useT();
-  if (state === "declared" || state === "not_applicable") return <span className="status measured">{t(`ei.state.${state}`)}</span>;
+  // what the DSO has stated or has still to state, and what does not apply, are not verdicts of the model
+  if (state === "declared" || state === "awaiting" || state === "not_applicable") return <span className="status measured">{t(`ei.state.${state}`)}</span>;
   return <Status kind={KIND[state as keyof typeof KIND] ?? "warning"}>{t(`ei.state.${state}`)}</Status>;
 }
 
@@ -55,6 +66,7 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
   const [method, setMethod] = useState("");
   const [review, setReview] = useState("");
   const [saving, setSaving] = useState(false);
+  const sealed = useSealedDownload();
   useEffect(() => {
     if (!S) return;
     setMarket(S.market_alternative_statement ?? "");
@@ -91,7 +103,7 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
 
   return (
     <div className="stack">
-      <p className="lead-answer">{t("ei.lead", { evidence: f(P.counts.evidence), declared: f(P.counts.declared), notmet: f(P.counts.not_met), n: f(P.conditions.length) })}</p>
+      <p className="lead-answer">{leadLine(t, f, lang, P.counts, P.conditions.length)}</p>
       <table className="protocol ei-table">
         <caption className="sr-only">{t("ei.table", { basis: t(`rep.basis.${basis}`) })}</caption>
         <tbody>
@@ -120,12 +132,17 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
           <textarea id="ei-review" rows={2} maxLength={2000} value={review} onChange={(e) => setReview(e.target.value)} />
         </div>
         <div className="answer-actions">
-          <button className="btn small" disabled={!changed || saving} onClick={save}>{t("ei.save")}</button>
+          <button className="btn ghost small" disabled={!changed || saving} onClick={save}>{t("ei.save")}</button>
         </div>
       </section>
-      <div className="answer-actions">
-        <a className="btn" href={`${API}/eipack?${q}&export=true`} download><Icon name="download" size={15} />{t("ei.export")}</a>
-        <button className="btn ghost" onClick={printMethod}>{t("ei.print")}</button>
+      <div>
+        <div className="answer-actions">
+          <button className="btn" disabled={sealed.busy} onClick={() => sealed.download(`${API}/eipack?${q}&export=true`, `kapacitet-ei-evidence-${basis}.json`)}>
+            <Icon name="download" size={15} />{t("ei.export")}
+          </button>
+          <button className="btn ghost" onClick={printMethod}>{t("ei.print")}</button>
+        </div>
+        <SealReceipt receipt={sealed.receipt} />
       </div>
       <p className="caption-muted">{t("ei.note", { source: P.source.title })}</p>
       <EiMethodRecord P={P} S={S} />

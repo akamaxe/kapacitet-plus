@@ -404,6 +404,10 @@ p {
   .protocol th, .protocol td { padding: 0; }
   .protocol .p-mark { width: auto; }
   .protocol .p-criterion:not(:empty) { grid-column: 2 / -1; padding-top: var(--space-1); }
+  /* the evidence for Ei names its states in words ("Shown by the model"), longer than Pass or Fail:
+     on a phone the state takes a line of its own, above the condition and its facts */
+  .protocol.ei-table tr { grid-template-columns: minmax(0, 1fr); row-gap: var(--space-1); }
+  .protocol.ei-table .p-criterion:not(:empty) { grid-column: 1; padding-top: 0; }
 }
 
 .status {
@@ -1272,20 +1276,12 @@ main:focus { outline: none; }
 .timeline-tools { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
 .timeline-tools button, .timeline-tools select { font-size: var(--text-caption); }
 
-/* the frame narrows: the scope, then the search label give way; when the screens no longer fit
-   they fold into the menu sheet (measured, see .topnav-probe) */
-@media (max-width: 1440px) {
-  .brand-scope { display: none; }
-}
+/* the panels narrow before split screens stack (the top bar's own steps are with the eight screens, below) */
 @media (min-width: 1101px) and (max-width: 1350px) {
   :root { --panel-w: 390px; --panel-w-wide: 450px; }
   /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
   .panel .seg button { padding-inline: var(--space-2); }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
-}
-@media (max-width: 1280px) {
-  .top-search { min-width: 0; }
-  .top-search-label, .top-search kbd { display: none; }
 }
 @media (max-width: 1200px) {
   .page-inner { padding: var(--space-5); --gutter: var(--space-5); }
@@ -2133,12 +2129,13 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .decision { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .decision h3 { margin: 0; }
 .decision-note { grid-template-columns: 1fr; }
-.decision-note textarea {
+.decision-note textarea, .decision-note input {
   width: 100%; resize: vertical; min-height: 3.2em; padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border-strong); border-radius: var(--radius-sm); background: var(--bg-elevated);
   color: var(--text-primary); font: inherit; font-size: var(--text-small); line-height: var(--lh-small);
 }
-.decision-note textarea:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.decision-note input { min-height: 40px; }
+.decision-note textarea:focus-visible, .decision-note input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .decision-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .decision-done { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-size: var(--text-small); font-weight: 500; }
 .decision-done svg { color: var(--good); }
@@ -2166,7 +2163,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .portal { min-height: 100vh; background: var(--bg-base); color: var(--text-primary); }
 .portal-bar {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
-  min-height: 56px; padding: 0 var(--space-5); background: var(--chrome); color: var(--chrome-ink);
+  min-height: var(--topbar-h); padding: 0 var(--space-5); background: var(--chrome); color: var(--chrome-ink);
 }
 .portal-strip {
   display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); margin: 0;
@@ -2177,7 +2174,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .portal-main .headline { margin: 0; }
 .portal-step { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--border); }
 .portal-step h2 { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--text-h3); }
-.portal-n { color: var(--accent); font-variant-numeric: tabular-nums; }
+.portal-n { color: var(--text-muted); font-variant-numeric: tabular-nums; }
 .portal-step > .btn { justify-self: start; }
 .portal-chosen { display: flex; align-items: center; gap: var(--space-2); margin: 0; font-weight: 500; }
 .portal-chosen svg { color: var(--good); }
@@ -2187,7 +2184,8 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .portal-answer { padding-top: var(--space-2); }
 .portal-points { display: grid; gap: var(--space-1); margin: 0; padding-left: var(--space-4); }
 .portal-apply { display: grid; gap: var(--space-2); justify-items: start; }
-.portal-status { display: grid; gap: var(--space-2); padding: var(--space-4); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); }
+/* where an application stands: a filet and its heading like the portal's steps, never a boxed card */
+.portal-status { display: grid; gap: var(--space-2); padding-top: var(--space-4); border-top: 1px solid var(--border-strong); }
 .portal-status h2, .portal-status p { margin: 0; }
 .portal-status h2 { font-size: var(--text-h3); }
 .portal-ref { font-size: var(--text-h2); font-weight: 600; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
@@ -2221,6 +2219,20 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .inbox-status .inbox-reason { color: var(--text-secondary); max-width: 38ch; }
 .inbox-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
 .inbox-reasons { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); font-size: var(--text-small); }
+/* the inbox on a phone: each application reads as its reference, house and state, with its actions
+   beside them; what it asked, when it came and how long it waited are in the dialog and the answer */
+@media (max-width: 600px) {
+  .inbox-dt table.data thead { display: none; }
+  .inbox-dt table.data tbody tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: var(--space-3); row-gap: var(--space-1);
+    padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border); }
+  .inbox-dt.dt table.data td { padding: 0; border: 0; white-space: normal; }
+  .inbox-dt td.dt-c-ref { grid-column: 1; font-weight: 500; }
+  .inbox-dt td.dt-c-house, .inbox-dt td.dt-c-status { grid-column: 1; }
+  .inbox-dt td.dt-c-act { grid-column: 2; grid-row: 1 / span 3; align-self: start; }
+  .inbox-dt td.dt-c-act:empty { display: none; }
+  .inbox-dt td.dt-c-asked, .inbox-dt td.dt-c-received, .inbox-dt td.dt-c-wait { display: none; }
+  .inbox-dt .inbox-actions { flex-direction: column; align-items: stretch; }
+}
 
 /* ---------------------------------------------------------------- reinforce or connect: two sides */
 .reinf { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-5); }
@@ -2320,3 +2332,7 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .house-search input:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 /* the heading takes focus so a screen reader starts at the new screen; it is not a control, so no ring */
 main h1:focus, main h1:focus-visible { outline: none; }
+
+/* the receipt a sealed download leaves under its buttons; empty (and no height) until one is saved */
+.seal-receipt { margin: var(--space-2) 0 0; overflow-wrap: anywhere; }
+.seal-receipt:empty { margin: 0; }

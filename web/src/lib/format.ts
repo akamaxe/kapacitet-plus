@@ -168,3 +168,15 @@ export function clock(lang: string, value: string | number | Date): string {
   const d = value instanceof Date ? value : new Date(value);
   return Number.isNaN(d.getTime()) ? "–" : df.format(d);
 }
+
+const listFormatters = new Map<string, Intl.ListFormat>();
+
+/** Parts joined as the language joins a list: "a, b and c", "a, b y c", "a, b och c". */
+export function listJoin(lang: string, parts: string[]): string {
+  let lf = listFormatters.get(lang);
+  if (!lf) {
+    lf = new Intl.ListFormat(locale(lang), { type: "conjunction" });
+    listFormatters.set(lang, lf);
+  }
+  return lf.format(parts);
+}

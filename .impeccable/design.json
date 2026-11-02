@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-01T18:00:00+01:00",
+  "generatedAt": "2026-11-02T00:00:00Z",
   "title": "Design System: Kapacitet+",
   "extensions": {
     "colorMeta": {
@@ -400,12 +400,16 @@
     ],
     "breakpoints": [
       {
+        "name": "nav-gap-tightens",
+        "value": "1680px"
+      },
+      {
         "name": "scope-hides",
         "value": "1600px"
       },
       {
         "name": "search-label-hides",
-        "value": "1360px"
+        "value": "1440px"
       },
       {
         "name": "panel-narrows",
@@ -416,7 +420,7 @@
         "value": "1200px"
       },
       {
-        "name": "menu-sheet",
+        "name": "split-stacks",
         "value": "1100px"
       },
       {
@@ -430,6 +434,14 @@
       {
         "name": "phone",
         "value": "700px"
+      },
+      {
+        "name": "inbox-rows-stack",
+        "value": "600px"
+      },
+      {
+        "name": "menu-sheet",
+        "value": "measured: the bar folds when the eight labels (at 600, with the bar's gaps) no longer fit beside the brand, scope and tools; unfolds with 24px slack"
       }
     ],
     "layout": [
@@ -528,8 +540,8 @@
       "name": "Top Bar",
       "kind": "nav",
       "refersTo": "top-bar",
-      "description": "SL-blue chrome: roundel and name, the seven screens as text, the current one white and underlined.",
-      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a><a href=\"#\">Annual report</a><a href=\"#\">2030 scenarios</a><a href=\"#\">Method &amp; data</a></nav></header>",
+      "description": "SL-blue chrome: roundel and name, the eight screens as text, the current one white and underlined; folds into the menu sheet when the labels no longer fit (measured).",
+      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a><a href=\"#\">Operation</a><a href=\"#\">Annual report</a><a href=\"#\">2030 scenarios</a><a href=\"#\">Method &amp; data</a></nav></header>",
       "css": ".ds-top{display:flex;align-items:stretch;gap:24px;height:56px;padding:0 24px;background:var(--chrome,#123e7c);color:#fff;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-brand{display:inline-flex;align-items:center;gap:8px;font-size:1.0625rem;font-weight:700}.ds-top nav{display:flex;gap:24px;margin-left:auto}.ds-top a{position:relative;display:inline-flex;align-items:center;color:var(--chrome-ink-2,#c9d6ea);font-size:.8125rem;font-weight:500;text-decoration:none;transition:color 120ms cubic-bezier(.23,1,.32,1)}.ds-top a:hover{color:#fff}.ds-top a[aria-current=page]{color:#fff;font-weight:600}.ds-top a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff}.ds-top a:focus-visible{outline:2px solid #fff;outline-offset:-2px}"
     },
     {
@@ -575,7 +587,7 @@
   ],
   "narrative": {
     "northStar": "The Network on the Map, in Stockholm's Colours",
-    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the seven screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in a queue and files the year's report, and for the applicant on the other side of the same connection. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
+    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the eight screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in an inbox and a queue, issues each day's limits and files the year's report, and for the applicant on the other side of the same connection, who has a page of their own. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
     "keyCharacteristics": [
       "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
       "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",
@@ -613,7 +625,7 @@
       },
       {
         "name": "The SEK Rule",
-        "body": "Money is SEK, never \"kr\": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `i18n.ts`, \"SEK/año\" in Spanish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.",
+        "body": "Money is SEK, never \"kr\": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, \"SEK/año\" in Spanish, \"SEK/år\" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.",
         "section": "typography"
       },
       {
@@ -647,7 +659,7 @@
       "**Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.",
       "**Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.",
       "**Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.",
-      "**Do** write every string in `lib/i18n.ts`, in English and Spanish.",
+      "**Do** write every string in `lib/i18n/{en,es,sv}.ts`, in English, Spanish and Swedish, with the terms of `docs/glossary.md`.",
       "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such."
     ],
     "donts": [

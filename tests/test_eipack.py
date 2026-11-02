@@ -37,10 +37,12 @@ def test_every_condition_has_its_source_in_three_languages():
         assert c["source"] and all(c[f] for f in ("label", "label_es", "label_sv")), c["key"]
 
 
-def test_an_empty_statement_is_never_met():
+def test_an_empty_statement_is_never_met_and_waits_for_the_dso_instead_of_failing():
     blank = _pack(market_alternative_statement="   ", method_approval_reference="", review_statement="")
     for key in ("market_first", "method_approved", "review_when_changed"):
-        assert _state(blank, key)["state"] == "not_met"
+        assert _state(blank, key)["state"] == "awaiting"
+    assert blank["counts"]["declared"] == 0 and blank["counts"]["awaiting"] == 3
+    assert sum(blank["counts"].values()) == len(blank["conditions"])
     stated = _pack(market_alternative_statement="Sthlmflex was asked; no bids for this area.",
                    method_approval_reference="Ei 2026-100000")
     assert _state(stated, "market_first")["state"] == "declared"
@@ -77,4 +79,5 @@ def test_the_api_serves_the_pack_and_seals_what_it_exports(tmp_path, monkeypatch
         assert not seals.sealed_of_kind("eipack")                 # reading it leaves no record
         sent = c.get("/api/v1/eipack", params={"basis": "dayahead", "export": "true"})
         assert "attachment" in sent.headers["content-disposition"] and sent.json()["seal"]["digest"]
+        assert sent.headers["x-seal-digest"] == sent.json()["seal"]["digest"]   # for the page's receipt
         assert len(seals.sealed_of_kind("eipack")) == 1

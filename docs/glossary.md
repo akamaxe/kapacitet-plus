@@ -44,6 +44,16 @@ list, and a Swedish-speaking DSO engineer should check it before it is shown to 
 | real, synthetic | real, sintético | verklig, syntetisk | the label on every figure's data |
 | DSO | distribuidora | nätbolag | |
 | screen (of the interface) | pantalla | vy | as in "Gå till en vy" |
+| application (to connect) | solicitud | ansökan | an assessment answers "what if"; an application asks for the connection |
+| reference code | código de referencia | referenskod | how a household follows its application, without personal data |
+| decided by the rule | decidida por la regla | beslutad av regeln | the DSO's automatic rule, which never declines |
+| shadow operation | operación en sombra | skuggdrift | limits issued every day as if sent, judged without sending them |
+| schedule (of limits) | horario | schema | a house's 24 limits for one day |
+| issued the day before | emitida el día antes | utfärdad dagen före | the basis an operator can send |
+| default control (no schedule) | límite sin horario | gräns utan schema | DefaultDERControl in IEEE 2030.5 |
+| meter check | comprobación del contador | mätarkontroll | |
+| evidence (for Ei) | pruebas | underlag | evidence, never a legal assessment |
+| imported network | red importada | importerat nät | a network built from an operator's export |
 
 Money is always **SEK**, never "kr", in every language. Numbers use a narrow no-break space for
 thousands and each language's own decimal mark (a comma in Spanish and Swedish).

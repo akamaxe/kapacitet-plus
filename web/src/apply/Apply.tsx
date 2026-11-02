@@ -14,7 +14,7 @@ import { OwnerFigures } from "../components/OwnerCase";
 import { API, useApi } from "../lib/api";
 import { refusalOf, refusalText } from "../lib/errors";
 import { follow, type Failure } from "../lib/evaluate";
-import { dateTime, useFmt } from "../lib/format";
+import { dateTime, round, useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { describeRequest, fuseText, reasonLine } from "../lib/reasons";
 import { useStore } from "../lib/store";
@@ -214,7 +214,8 @@ export default function Apply() {
 
             <section className="portal-step" aria-labelledby="step-answer">
               <h2 id="step-answer"><span className="portal-n">3</span>{t("apply.step.answer")}</h2>
-              <button className="btn" disabled={busy || cid === null || nothing} onClick={check}>
+              {/* once there is an answer, applying is the page's one primary action */}
+              <button className={answer ? "btn ghost" : "btn"} disabled={busy || cid === null || nothing} onClick={check}>
                 {busy && !answer ? t("apply.checking") : t("apply.check")}
               </button>
               {busy && !answer && (
@@ -254,15 +255,21 @@ function Answer({ a }: { a: any }) {
   const t = useT();
   const f = useFmt();
   const e = a.envelope ?? {};
+  // a limit that never acted (no curtailment in any weather year, no limited hour) is said as such,
+  // and one that rounds to nothing is said as "less than", never as "about 0.0 %"
+  const never = !a.firm && e.curtailment_mean_pct === 0 && e.curtailment_p90_pct === 0 && e.hours_limited_ref === 0;
+  const tiny = !a.firm && !never && e.curtailment_mean_pct != null && e.curtailment_p90_pct != null
+    && round(e.curtailment_mean_pct, 1) === 0 && round(e.curtailment_p90_pct, 1) === 0;
   return (
     <div className="portal-answer stack" aria-live="polite">
       <p className="lead-answer">
-        {a.firm
-          ? t("apply.ans.firm")
+        {a.firm ? t("apply.ans.firm")
+          : never ? t("apply.ans.never")
+          : tiny ? t("apply.ans.tiny", { min: f(0.1, 1) })
           : t("apply.ans.envelope", { mean: f(e.curtailment_mean_pct, 1), p90: f(e.curtailment_p90_pct, 1) })}
       </p>
       <ul className="portal-points">
-        {!a.firm && e.hours_limited_ref != null && <li>{t("apply.ans.hours", { h: f(e.hours_limited_ref) })}</li>}
+        {!a.firm && !never && e.hours_limited_ref != null && <li>{t("apply.ans.hours", { h: f(e.hours_limited_ref) })}</li>}
         {e.ev_unmet_pct != null && e.ev_unmet_pct > 0 && <li>{t("apply.ans.ev", { pct: f(e.ev_unmet_pct, 1) })}</li>}
         {a.fuse && <li>{fuseText(t, f, a.fuse)}</li>}
         <li>{t(`apply.rule.${a.rule.auto ? a.rule.outcome : "manual"}`)}</li>

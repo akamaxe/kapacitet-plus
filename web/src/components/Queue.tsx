@@ -7,6 +7,7 @@ import { API } from "../lib/api";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { responseRefusal } from "../lib/errors";
+import { fuseText } from "../lib/reasons";
 import { useStore } from "../lib/store";
 
 export interface QueueState {
@@ -35,6 +36,7 @@ function decidable(res: any, q: QueueState): { ok: boolean; why?: string } {
  */
 export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   const t = useT();
+  const f = useFmt();
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
   const [note, setNote] = useState("");
@@ -57,6 +59,9 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   }
   const can = decidable(res, queue);
   const firmOk = Object.values(res.static ?? {}).every((v: any) => v?.approved);
+  // a limit on what the house exchanges with the grid cannot protect the house's own main fuse: when
+  // the fuse cannot carry the request, neither connection is offered and declining comes first
+  const fuseShort = res.fuse?.ok === false;
   const running = busy !== null;
 
   const decide = async (decision: Decision) => {
@@ -121,18 +126,27 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
               onChange={(e) => setNote(e.target.value)} />
           </div>
           <div className="decision-actions">
-            <button className="btn" disabled={running} onClick={() => decide("nonfirm")}>
+            {fuseShort && (
+              <button className="btn" disabled={running} onClick={() => decide("declined")}>
+                {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
+              </button>
+            )}
+            <button className={fuseShort ? "btn ghost" : "btn"} disabled={running || fuseShort}
+              aria-describedby={fuseShort ? "fuse-why" : undefined} onClick={() => decide("nonfirm")}>
               {busy === "nonfirm" ? t("req.decide.working") : t("req.decide.nonfirm")}
             </button>
-            <button className="btn ghost" disabled={running || !firmOk} aria-describedby={firmOk ? undefined : "firm-why"}
-              onClick={() => decide("firm")}>
+            <button className="btn ghost" disabled={running || !firmOk || fuseShort}
+              aria-describedby={fuseShort ? "fuse-why" : firmOk ? undefined : "firm-why"} onClick={() => decide("firm")}>
               {busy === "firm" ? t("req.decide.working") : t("req.decide.firm")}
             </button>
-            <button className="btn ghost" disabled={running} onClick={() => decide("declined")}>
-              {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
-            </button>
+            {!fuseShort && (
+              <button className="btn ghost" disabled={running} onClick={() => decide("declined")}>
+                {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
+              </button>
+            )}
           </div>
-          {!firmOk && <p className="caption-muted" id="firm-why">{t("req.decide.firmNo")}</p>}
+          {fuseShort && <p className="caption-muted" id="fuse-why">{fuseText(t, f, res.fuse)} {t("req.decide.fuseNo")}</p>}
+          {!firmOk && !fuseShort && <p className="caption-muted" id="firm-why">{t("req.decide.firmNo")}</p>}
           {progress && <p className="caption-muted" role="status">{progress}</p>}
         </>
       )}

@@ -144,6 +144,9 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         assert issued.status_code == 200 and "attachment" in issued.headers["content-disposition"]
         kept = seals.sealed_of_kind("schedule")
         assert len(kept) == 1 and kept[0]["record"]["cid"] == cid and len(kept[0]["record"]["limits"]) == 24
+        # the seal travels with the file, so the page can keep a receipt of what it issued
+        assert issued.headers["x-seal-digest"] == kept[0]["entry"]["digest"] and issued.headers["x-seal-seq"].isdigit()
+        assert "x-seal-digest" not in preview.headers
         assert ET.fromstring(issued.content).get("all") == "24"
 
         # the synthetic day carries one deliberate breach of ten minutes, in an hour its limit bound,

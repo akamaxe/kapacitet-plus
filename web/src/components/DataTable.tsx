@@ -31,6 +31,7 @@ export function DataTable<T>({
   selected,
   onSelect,
   initialSort,
+  className,
 }: {
   rows: T[];
   cols: Col<T>[];
@@ -41,6 +42,8 @@ export function DataTable<T>({
   selected?: string | number | null;
   onSelect?: (row: T) => void;
   initialSort?: string;
+  /** A class on the wrapper, for a table that reads differently on a phone (its cells carry `dt-c-<key>`). */
+  className?: string;
 }) {
   const t = useT();
   const id = useId();
@@ -78,7 +81,7 @@ export function DataTable<T>({
     setSort((s) => (s?.key !== key ? { key, dir: 1 } : s.dir === 1 ? { key, dir: -1 } : null));
 
   return (
-    <div className="dt">
+    <div className={className ? `dt ${className}` : "dt"}>
       <div className="dt-bar">
         <label className="dt-search">
           <Icon name="search" size={16} />
@@ -141,7 +144,7 @@ export function DataTable<T>({
                   }
                 >
                   {cols.map((c) => (
-                    <td key={c.key} className={c.numeric ? "r" : undefined}>
+                    <td key={c.key} className={c.numeric ? `r dt-c-${c.key}` : `dt-c-${c.key}`}>
                       {c.cell ? c.cell(r) : (c.value(r) ?? "–")}
                     </td>
                   ))}

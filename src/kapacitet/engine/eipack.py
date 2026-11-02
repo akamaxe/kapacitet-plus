@@ -6,6 +6,7 @@ pack gives a state and the facts behind it:
 
     evidence        the simulation shows it, with its figures
     declared        the DSO has stated it (its settings); the app never states it for the DSO
+    awaiting        only the DSO can state it and it has not yet: never met, but not shown as failed
     not_met         not met in this simulation, with the figures that say so
     not_applicable  does not apply to the basis being read
 
@@ -19,7 +20,7 @@ import tomllib
 
 from ..paths import CONFIG
 
-STATES = ("evidence", "declared", "not_met", "not_applicable")
+STATES = ("evidence", "declared", "awaiting", "not_met", "not_applicable")
 
 
 def conditions() -> dict:
@@ -32,7 +33,7 @@ def _declared(text: str, code: str) -> tuple[str, dict]:
     text = (text or "").strip()
     if text:
         return "declared", {"code": code, "params": {"text": text}}
-    return "not_met", {"code": "missing_declaration", "params": {}}
+    return "awaiting", {"code": "missing_declaration", "params": {}}
 
 
 def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict], report: dict | None,

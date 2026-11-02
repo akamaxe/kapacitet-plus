@@ -7,6 +7,7 @@ import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, Tile } from "../components/bits";
 import { InboxSection } from "../components/Inbox";
+import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
 import { Term } from "../components/Term";
 import { API, ApiError, getJSON, useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
@@ -215,6 +216,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   const q = `cid=${cid}&date=${date}`;
   const sch = useKept<any>(`/operation/schedule?${q}`);
   const xml = useText(`/operation/schedule.xml?${q}&issue=false`);
+  const sealed = useSealedDownload();
   if (sch.isLoading) return <ChartSkeleton height={240} />;
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
   const rows: any[] = sch.data.rows;
@@ -249,11 +251,16 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
           <h3 id="op-payload">{t("op.payload")}</h3>
         </div>
         <p className="caption">{t("op.payload.caption")}</p>
-        <div className="answer-actions">
-          <a className="btn small" href={`${API}/operation/schedule.xml?${q}`} download><Icon name="download" size={15} />{t("op.dl.xml")}</a>
-          <a className="btn ghost small" href={`${API}/operation/default.xml?cid=${cid}`} download><Icon name="download" size={15} />{t("op.dl.default")}</a>
-          <a className="btn ghost small" href={`${API}/operation/schedule?${q}&format=csv`} download><Icon name="download" size={15} />CSV</a>
-          <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
+        <div>
+          <div className="answer-actions">
+            <button className="btn small" disabled={sealed.busy} onClick={() => sealed.download(`${API}/operation/schedule.xml?${q}`, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
+              <Icon name="download" size={15} />{t("op.dl.xml")}
+            </button>
+            <a className="btn ghost small" href={`${API}/operation/default.xml?cid=${cid}`} download><Icon name="download" size={15} />{t("op.dl.default")}</a>
+            <a className="btn ghost small" href={`${API}/operation/schedule?${q}&format=csv`} download><Icon name="download" size={15} />CSV</a>
+            <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
+          </div>
+          <SealReceipt receipt={sealed.receipt} />
         </div>
         <pre className="payload" tabIndex={0} aria-label={t("op.payload")}>{typeof xml.data === "string" ? readable(xml.data) : xml.isError ? t("op.payload.missing") : " "}</pre>
         <p className="caption-muted">{t("op.notice")}</p>
@@ -352,7 +359,8 @@ function Shadow({ S, f, onDay }: { S: any; f: F; onDay: (day: number) => void })
           { ok: null, label: t("op.crit.foresight"), value: `${f(P.within_level)} / ${f(P.agreements)}`,
             criterion: t("op.crit.foresightNote", { worst: f(P.worst_year_share_pct, 1) }) },
           ...(S.persistence && typeof S.persistence.violation_hours === "number"
-            ? [{ ok: S.persistence.violation_hours === 0, label: t("op.crit.persistence"), value: f(S.persistence.violation_hours), unit: "h",
+            // a comparison, not one of the pilot's two tests: measured, never marked Fail beside them
+            ? [{ ok: null, label: t("op.crit.persistence"), value: f(S.persistence.violation_hours), unit: "h",
                 criterion: t("op.crit.persistenceNote") }]
             : []),
         ]}

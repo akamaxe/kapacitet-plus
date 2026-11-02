@@ -18,7 +18,7 @@ test("a charger request shows the main fuse verdict and the static study's numbe
   const fuse = page.getByRole("main").locator(".verdict").filter({ hasText: "Main fuse" });
   await expect(fuse).toBeVisible({ timeout: 90_000 });
   await expect(fuse).toContainText(/carries the busiest phase|needs a \d+ A fuse subscription|largest fuse subscription/);
-  await expect(page.getByRole("main").getByText(/At the winter peak: transformer \d+ %/)).toBeVisible();
+  await expect(page.getByRole("main").getByText(/At the winter peak: transformer \d+\s%/)).toBeVisible();
 
   // the answer is sealed, and its seal checks out
   const seal = page.getByRole("main").locator(".seal-line");

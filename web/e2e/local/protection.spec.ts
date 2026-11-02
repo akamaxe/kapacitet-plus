@@ -25,6 +25,7 @@ test("a single-phase charger is tried on each phase", async ({ page }) => {
   await page.getByRole("button", { name: "Evaluate connection" }).click();
   const phase = page.getByRole("main").locator(".verdict").filter({ hasText: "Phase balance" });
   await expect(phase).toBeVisible({ timeout: 90_000 });
-  await expect(phase).toContainText(/unbalance [\d.]+ % on L\d to [\d.]+ % on L\d \(limit 2 %\)/);
+  // a figure and its unit are held together by a no-break space (i18n/core.ts), hence \s
+  await expect(phase).toContainText(/unbalance [\d.]+\s% on L\d to [\d.]+\s% on L\d \(limit 2\s%\)/);
   await page.getByRole("main").locator(".result").screenshot({ path: "test-results/shots/request-phases.png" });
 });
