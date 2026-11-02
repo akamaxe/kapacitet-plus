@@ -38,6 +38,7 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.api.inbox import ERRORS as INBOX
     from kapacitet.datasets import ERRORS as DATASETS
     from kapacitet.api.main import API_ERRORS
+    from kapacitet.api.setup import ERRORS as SETUP
     from kapacitet.engine.delivery import ERRORS as DELIVERY
     from kapacitet.engine.rules import REASONS as RULE_REASONS
     from kapacitet.engine.queue import ERRORS
@@ -45,7 +46,7 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.importer.validate import MESSAGES
 
     pairs = [(f"chk.msg.{c}", t) for c, t in MESSAGES.items()]
-    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS}.items()]
+    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS, **SETUP}.items()]
     pairs += [(f"req.reason.{c}", t) for c, t in _REASONS.items()]
     pairs += [(f"inbox.reason.{c}", t) for c, t in RULE_REASONS.items()]
     return pairs
@@ -71,3 +72,23 @@ def test_queue_and_api_codes_do_not_collide_with_different_words():
 
     shared = set(API_ERRORS) & set(ERRORS)
     assert all(API_ERRORS[c] == ERRORS[c] for c in shared), f"same code, different sentence: {shared}"
+
+
+def test_no_code_means_two_different_sentences():
+    """The interface looks every refusal up as err.<code>: two sources with one code and two
+    sentences would show one of them the other's words."""
+    from kapacitet.api.inbox import ERRORS as INBOX
+    from kapacitet.api.main import API_ERRORS
+    from kapacitet.api.setup import ERRORS as SETUP
+    from kapacitet.datasets import ERRORS as DATASETS
+    from kapacitet.engine.delivery import ERRORS as DELIVERY
+    from kapacitet.engine.queue import ERRORS
+
+    seen: dict[str, str] = {}
+    clashes = []
+    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP):
+        for code, text in source.items():
+            if code in seen and seen[code] != text:
+                clashes.append(code)
+            seen.setdefault(code, text)
+    assert not clashes, f"same code, different sentences: {clashes}"

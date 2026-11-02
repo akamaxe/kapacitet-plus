@@ -25,6 +25,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -135,6 +136,12 @@ def child_env(ds_id: str | None = None) -> dict[str, str]:
 def current() -> str:
     """The network this process runs on."""
     return os.environ.get("KAPACITET_DATASET", REFERENCE)
+
+
+def restart_soon(delay: float = 0.5) -> None:
+    """Hand the server back to its supervisor in a moment (after the answer has gone out), which
+    starts it again: on another network after a switch, on new data after a bundle was loaded."""
+    threading.Timer(delay, lambda: os._exit(RESTART)).start()
 
 
 # ---------------------------------------------------------------- creating one

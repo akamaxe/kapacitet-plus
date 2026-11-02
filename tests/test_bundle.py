@@ -82,3 +82,128 @@ def test_nothing_to_bundle_and_damaged_or_hostile_archives_are_refused(tmp_path)
                                          "files": {"data/processed/x.json": hashlib.sha256(b"original").hexdigest()}}))
     with pytest.raises(BundleError, match="checksum"):
         unpack_bundle(bad, data_dir=tmp_path / "d2", web_dir=tmp_path / "w2")
+
+
+# ---------------------------------------------------------------- what an uploaded archive may do
+# The setup page unpacks bundles uploaded from a browser (api/setup.py), so unpacking trusts nothing.
+
+def _rezip(src, out, rename=lambda n: n, change=None, extra=()):
+    """Copy an archive entry by entry, renaming, altering one member's bytes, or adding entries."""
+    with zipfile.ZipFile(src) as zin, zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zout:
+        for info in zin.infolist():
+            body = zin.read(info)
+            if change and info.filename == change[0]:
+                body = change[1]
+            zout.writestr(rename(info.filename), body)
+        for name, body in extra:
+            zout.writestr(name, body)
+    return out
+
+
+def _codes(fn):
+    with pytest.raises(BundleError) as err:
+        fn()
+    return err.value.code
+
+
+def _manifest(entries: dict[str, bytes]) -> bytes:
+    return json.dumps({"kapacitet": "x", "created": "", "level": "full", "web": False,
+                       "files": {k: hashlib.sha256(v).hexdigest() for k, v in entries.items()}}).encode()
+
+
+def test_what_is_not_a_bundle_says_so(tmp_path):
+    junk = tmp_path / "notes.zip"
+    junk.write_bytes(b"%PDF-1.7 not a zip at all")
+    assert _codes(lambda: unpack_bundle(junk, data_dir=tmp_path / "d")) == "not_a_bundle"
+    plain = tmp_path / "plain.zip"
+    with zipfile.ZipFile(plain, "w") as z:
+        z.writestr("data/processed/x.json", b"{}")
+    assert _codes(lambda: unpack_bundle(plain, data_dir=tmp_path / "d")) == "not_a_bundle"
+    broken = tmp_path / "broken.zip"
+    with zipfile.ZipFile(broken, "w") as z:
+        z.writestr(MANIFEST, b"{not json")
+    assert _codes(lambda: unpack_bundle(broken, data_dir=tmp_path / "d")) == "not_a_bundle"
+
+
+def test_a_damaged_member_leaves_no_partial_file_and_no_results(data, tmp_path):
+    root, _ = data
+    good = tmp_path / "good.zip"
+    make_bundle(good, data_dir=root)
+    bad = _rezip(good, tmp_path / "bad.zip", change=("data/processed/ui/state_doe.bin", b"tampered"))
+    target = tmp_path / "t"
+    err = pytest.raises(BundleError, unpack_bundle, bad, data_dir=target)
+    assert err.value.code == "damaged" and err.value.params == {"entry": "data/processed/ui/state_doe.bin"}
+    assert not list(target.rglob("*.part"))
+    assert not (target / "processed" / "ui" / "state_doe.bin").exists()
+    # the results only count once showcase.json is there, and it is written last
+    assert not (target / "processed" / "results" / "showcase.json").exists()
+    missing = tmp_path / "missing.zip"
+    with zipfile.ZipFile(good) as zin, zipfile.ZipFile(missing, "w") as zout:
+        for info in zin.infolist():
+            if info.filename != "data/raw/manifest.json":
+                zout.writestr(info, zin.read(info))
+    assert _codes(lambda: unpack_bundle(missing, data_dir=tmp_path / "t2")) == "damaged"
+
+
+@pytest.mark.parametrize("entry", ["data/requests/settings.json", "data/active.json", "data/datasets/x/dataset.json",
+                                   "web/index.html", "README.md", "data/processed/../../evil.py",
+                                   "data/processed/C:/x.json"])
+def test_an_archive_writes_only_the_data_folders_and_the_web_build(tmp_path, entry):
+    body = b"{}"
+    z_path = tmp_path / "x.zip"
+    with zipfile.ZipFile(z_path, "w") as z:
+        z.writestr(entry, body)
+        z.writestr(MANIFEST, _manifest({entry: body}))
+    err = pytest.raises(BundleError, unpack_bundle, z_path, data_dir=tmp_path / "d", web_dir=tmp_path / "w")
+    assert err.value.code == "unexpected_entry"
+    assert not any((tmp_path / "d").rglob("*")) if (tmp_path / "d").exists() else True
+
+
+def test_a_bundle_recompressed_inside_one_folder_still_unpacks(data, tmp_path):
+    root, files = data
+    good = tmp_path / "good.zip"
+    make_bundle(good, data_dir=root)
+    wrapped = _rezip(good, tmp_path / "wrapped.zip", rename=lambda n: "kapacitet-data/" + n,
+                     extra=[("__MACOSX/kapacitet-data/._bundle-manifest.json", b"junk")])
+    target = tmp_path / "t"
+    r = unpack_bundle(wrapped, data_dir=target)
+    assert r["written"] == len(files)
+    assert all((target / rel).read_bytes() == body for rel, body in files.items())
+
+
+def test_showcase_is_written_last_and_progress_counts_every_file(data, tmp_path, monkeypatch):
+    import kapacitet.bundle as b
+
+    root, files = data
+    out = tmp_path / "b.zip"
+    make_bundle(out, data_dir=root)
+    order, seen = [], []
+    real = b._extract
+    monkeypatch.setattr(b, "_extract", lambda z, info, name, digest, dest: (order.append(name), real(z, info, name, digest, dest)))
+    unpack_bundle(out, data_dir=tmp_path / "t", progress=lambda done, total: seen.append((done, total)))
+    assert order[-1] == b.LAST
+    assert seen[-1] == (len(files), len(files)) and len(seen) == len(files)
+
+
+def test_only_data_leaves_the_archives_web_build_out(tmp_path):
+    entries = {"data/processed/results/showcase.json": b"{}", "web/dist/index.html": b"<html>"}
+    z_path = tmp_path / "x.zip"
+    with zipfile.ZipFile(z_path, "w") as z:
+        for name, body in entries.items():
+            z.writestr(name, body)
+        z.writestr(MANIFEST, _manifest(entries))
+    r = unpack_bundle(z_path, data_dir=tmp_path / "d", web_dir=tmp_path / "w", only_data=True)
+    assert r["written"] == 1 and not (tmp_path / "w" / "index.html").exists()
+    r = unpack_bundle(z_path, data_dir=tmp_path / "d2", web_dir=tmp_path / "w2")
+    assert r["written"] == 2 and (tmp_path / "w2" / "index.html").read_bytes() == b"<html>"
+
+
+def test_an_archive_that_unpacks_to_too_much_is_refused_before_writing(data, tmp_path, monkeypatch):
+    import kapacitet.bundle as b
+
+    root, _ = data
+    out = tmp_path / "b.zip"
+    make_bundle(out, data_dir=root)
+    monkeypatch.setattr(b, "MAX_TOTAL", 100)
+    assert _codes(lambda: unpack_bundle(out, data_dir=tmp_path / "t")) == "bundle_too_large"
+    assert not (tmp_path / "t").exists() or not any((tmp_path / "t").rglob("*"))

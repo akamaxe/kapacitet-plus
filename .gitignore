@@ -25,3 +25,8 @@ web/e2e/.empty-data/
 web/test-results/
 web/.shots/
 web/playwright-report/
+
+# data bundles are shared separately and never committed
+*.zip
+# Playwright: the data folder of the upload server, emptied at every run
+web/e2e/.upload-data/

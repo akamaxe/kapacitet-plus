@@ -136,7 +136,7 @@ def cmd_unbundle(args: argparse.Namespace) -> None:
         print(err)
         sys.exit(2)
     print(f"Unpacked {r['written']} files from a {r['level']} bundle made by Kapacitet+ {r['kapacitet']} "
-          f"on {r['created'][:10]}" + (f"; kept {r['skipped']} existing files (use --force to replace them)" if r["skipped"] else "") + ".")
+          f"on {(r['created'] or '?')[:10]}" + (f"; kept {r['skipped']} existing files (use --force to replace them)" if r["skipped"] else "") + ".")
     print("Start the interface with: python -m kapacitet serve")
 
 

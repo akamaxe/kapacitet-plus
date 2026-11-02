@@ -53,6 +53,11 @@ log = logging.getLogger("kapacitet.api")
 MAX_JOBS = int(os.environ.get("KAPACITET_MAX_JOBS", "4"))
 JOB_TIMEOUT_S = float(os.environ.get("KAPACITET_JOB_TIMEOUT_S", "120"))
 JOB_TTL_S = 15 * 60
+# A stream of progress events sends a comment line when it has been quiet this long, so a proxy in
+# between (the codespace's port forwarding) does not take a long stage for a dead connection.
+KEEPALIVE_S = 15.0
+# Which start of the server this is: the setup page waits for a new one after loading a bundle.
+BOOT = uuid.uuid4().hex[:12]
 # Largest CSV accepted per table by the network-import check.
 CHECK_MAX_BYTES = 5_000_000
 
@@ -99,12 +104,15 @@ from .apply import router as apply_router  # noqa: E402
 from .datasets import router as datasets_router  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
+from .setup import closed_because as setup_closed_because  # noqa: E402
+from .setup import router as setup_router  # noqa: E402
 
 app.include_router(evidence_router)
 app.include_router(operation_router)
 app.include_router(inbox.router)
 app.include_router(apply_router)
 app.include_router(datasets_router)
+app.include_router(setup_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -214,6 +222,11 @@ _NEEDS = {
 }
 
 
+def results_ready() -> bool:
+    """The results the screens need are on disk: the same test as /health's `results` part."""
+    return all(processed(*f).exists() for f in _NEEDS["results"])
+
+
 @app.get(f"{API}/health", tags=["system"])
 def health() -> dict:
     """Liveness, the version, and which parts have their data (with the command for what is missing)."""
@@ -230,7 +243,9 @@ def health() -> dict:
     from .. import datasets as ds
 
     return {"status": "ok", "version": __version__, "time": datetime.now(timezone.utc).isoformat(),
-            "results_ready": parts["results"]["ready"], "parts": parts, "dataset": ds.current()}
+            "results_ready": parts["results"]["ready"], "parts": parts, "dataset": ds.current(), "boot": BOOT,
+            # the setup page may take a data bundle from the browser (api/setup.py)
+            "setup_upload": setup_closed_because() is None}
 
 
 @lru_cache(maxsize=2)
@@ -1064,17 +1079,20 @@ async def request_events(job_id: str) -> StreamingResponse:
     return _stream(_JOBS, job_id, JOB_TIMEOUT_S)
 
 
-def _stream(jobs: dict, job_id: str, timeout_s: float) -> StreamingResponse:
-    """Server-sent events for a background job: every stage as it finishes, then `end`."""
+def _stream(jobs: dict, job_id: str, timeout_s: float, keepalive_s: float | None = None) -> StreamingResponse:
+    """Server-sent events for a background job: every stage as it finishes, then `end`. A quiet
+    stretch gets a comment line every `keepalive_s` (EventSource ignores it)."""
+    keepalive_s = KEEPALIVE_S if keepalive_s is None else keepalive_s
 
     async def stream():
         sent = 0
-        start = time.time()
+        start = last = time.time()
         while True:
             job = jobs[job_id]
             while sent < len(job["events"]):
                 ev = job["events"][sent]
                 sent += 1
+                last = time.time()
                 yield f"event: {ev['stage']}\ndata: {json.dumps(ev['payload'], default=_json_default)}\n\n"
             if job.get("closed") and sent >= len(job["events"]):
                 yield "event: end\ndata: {}\n\n"
@@ -1082,6 +1100,9 @@ def _stream(jobs: dict, job_id: str, timeout_s: float) -> StreamingResponse:
             if time.time() - start > timeout_s:
                 yield "event: timeout\ndata: {}\n\n"
                 return
+            if time.time() - last >= keepalive_s:
+                last = time.time()
+                yield ": keepalive\n\n"
             await asyncio.sleep(0.05)
 
     return StreamingResponse(stream(), media_type="text/event-stream",

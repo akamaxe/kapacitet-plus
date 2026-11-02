@@ -4,13 +4,13 @@ the server to one. A switch restarts the server under its supervisor, so it is r
 server runs without one, and while an evaluation or a decision is running. Nothing ever switches
 by itself.
 
-This router and its builds are the API's second place to write: data/datasets/.
+This router and its builds are the API's second place to write: data/datasets/. (The first is
+data/requests/, the third the setup page's bundle upload, api/setup.py.)
 """
 
 from __future__ import annotations
 
 import os
-import threading
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -108,5 +108,5 @@ def activate(ds_id: str) -> dict:
     except ds.DatasetError as err:
         raise refusal(err, 404 if err.code == "unknown_dataset" else 409) from err
     # answer first, then hand back to the supervisor, which starts the server on the new folder
-    threading.Timer(0.5, lambda: os._exit(ds.RESTART)).start()
+    ds.restart_soon()
     return {"switching": True, "to": ds_id}

@@ -3,7 +3,9 @@
 A DSO decision has to be traceable later, so each answer the engine gives is written to
 `data/requests/<id>.json.gz` with the request, the full result, the engine version and the run
 it was computed against, and a one-line summary is appended to `data/requests/index.jsonl`.
-This folder is the only place the API writes; everything it reads lives in data/processed.
+This folder is where the API keeps what it writes; everything it reads lives in data/processed.
+The two other places it writes are data/datasets/ (imported networks, api/datasets.py) and, only
+on a copy that has no results yet, the bundle uploaded from the setup page (api/setup.py).
 """
 
 from __future__ import annotations
