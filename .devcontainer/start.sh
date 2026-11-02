@@ -16,6 +16,11 @@ if [ ! -x .venv/bin/python ] || [ ! -f web/dist/index.html ]; then
   echo "Setting Kapacitet+ up (a few minutes, only this once)..."
   bash .devcontainer/install.sh >> "$LOG" 2>&1 || echo "The setup failed; the lines below say why."
 fi
+# the data come with the codespace (data.sh, postCreateCommand); one still without them tries again,
+# but never under a server that is already running on the empty copy
+if ! curl -fs "http://127.0.0.1:$PORT/api/v1/health" > /dev/null 2>&1; then
+  bash .devcontainer/data.sh
+fi
 
 # One server for the whole codespace, however many editor windows attach: the loop holds the lock
 # for as long as it runs, and starts the server again if it stops (five quick stops in a row and

@@ -7,7 +7,8 @@
 
 The archive holds data/... (and web/dist/... with --web) plus bundle-manifest.json, which records
 the version, the level and a sha256 for every file; unbundle checks each one. The data are derived
-from OpenStreetMap (ODbL) and are not published with the MIT code: share a bundle privately.
+from OpenStreetMap (ODbL), so a bundle is never committed with the MIT code: it is published as the
+asset of the release `data`, under ODbL (DATA-LICENSE.md).
 
 Unpacking is also what the setup page does with a bundle uploaded from the browser
 (api/setup.py), so it trusts nothing in the archive: it writes only under data/processed,

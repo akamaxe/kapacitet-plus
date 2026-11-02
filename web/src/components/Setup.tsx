@@ -13,6 +13,8 @@ const ACTIVATE = typeof navigator !== "undefined" && /Win/.test(navigator.userAg
   : "source .venv/bin/activate";
 
 const MB = 2 ** 20;
+/** The published data (the repository's release `data`, ODbL): what the setup page asks for. */
+const DATA_ZIP = "https://github.com/akamaxe/kapacitet-plus/releases/download/data/kapacitet-data.zip";
 
 /**
  * What a fresh clone shows instead of empty screens: the interface reads what the pipeline
@@ -171,15 +173,18 @@ function BundleUpload({ boot }: { boot?: string }) {
       <h1 className="headline">{t("setup.upload.title")}</h1>
       <p className="headline-sub">{t("setup.upload.lead")}</p>
       <div className="setup-upload">
-        <label className="btn" aria-disabled={busy || undefined}>
-          <Icon name="upload" size={16} />{t("setup.upload.choose")}
-          <input type="file" accept=".zip,application/zip" className="sr-only" disabled={busy}
-            onChange={(e) => {
-              const file = e.currentTarget.files?.[0];
-              e.currentTarget.value = "";
-              if (file) void start(file);
-            }} />
-        </label>
+        <div className="answer-actions">
+          <label className="btn" aria-disabled={busy || undefined}>
+            <Icon name="upload" size={16} />{t("setup.upload.choose")}
+            <input type="file" accept=".zip,application/zip" className="sr-only" disabled={busy}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                e.currentTarget.value = "";
+                if (file) void start(file);
+              }} />
+          </label>
+          <a className="btn ghost" href={DATA_ZIP} download><Icon name="download" size={16} />{t("setup.upload.download")}</a>
+        </div>
         {stopped && !busy && (
           <p className="caption-muted">{t("setup.upload.resume", { sent: f(stopped[0] / MB), total: f(stopped[1] / MB) })}</p>
         )}

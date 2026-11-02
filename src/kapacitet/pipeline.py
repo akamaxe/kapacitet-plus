@@ -124,7 +124,8 @@ def cmd_bundle(args: argparse.Namespace) -> None:
         sys.exit(2)
     size = os.path.getsize(args.out) / 1e6
     print(f"{args.out}: {len(m['files'])} files, {size:.0f} MB ({args.level}{', with web/dist' if args.web else ''}).")
-    print("The data derive from OpenStreetMap (ODbL): share this file privately, not with the code.")
+    print("The data derive from OpenStreetMap (ODbL): never commit this file. Publish it on the data release:")
+    print(f"  gh release upload data {args.out} --clobber")
 
 
 def cmd_unbundle(args: argparse.Namespace) -> None:

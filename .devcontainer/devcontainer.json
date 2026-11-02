@@ -9,6 +9,7 @@
     "KAPACITET_SETUP_UPLOAD": "1"
   },
   "onCreateCommand": "bash .devcontainer/install.sh",
+  "postCreateCommand": "bash .devcontainer/data.sh",
   "postAttachCommand": "bash .devcontainer/start.sh",
   "forwardPorts": [8000],
   "portsAttributes": {
@@ -20,7 +21,6 @@
     },
     "vscode": {
       "settings": {
-        "workbench.editorAssociations": { "**/docs/codespaces.md": "vscode.markdown.preview.editor" },
         "workbench.startupEditor": "none",
         "extensions.ignoreRecommendations": true,
         "git.autofetch": false

@@ -44,6 +44,41 @@ Three findings worth a sentence each:
 
 Every number above is computed by this repository — nothing in the interface is typed in by hand.
 
+## Run it in the browser (GitHub Codespaces)
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/akamaxe/kapacitet-plus?quickstart=1)
+
+Nothing to install: Kapacitet+ runs in a *codespace*, a computer in GitHub's cloud that opens in
+the browser and that only you can reach. A free GitHub account includes 60 hours a month of it on
+the two-core machine this one uses. Chrome or Edge work best.
+
+1. Sign in to GitHub (a free account is enough) and open
+   **<https://codespaces.new/akamaxe/kapacitet-plus?quickstart=1>**. Keep it as a bookmark: the same
+   link reopens your codespace later.
+2. Click **Create new codespace**. A code editor opens in the browser and sets everything up by
+   itself, about five minutes the first time: the engine, the interface and the data, which it
+   downloads from this repository's [data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data).
+   You do not need to type anything.
+3. If the editor asks whether you trust the authors of the files in this folder, choose
+   **Trust Folder and Continue**. Kapacitet+ cannot start otherwise.
+4. Kapacitet+ opens in a new browser tab. If no tab opens, click **Ports** at the bottom of the
+   editor, then the globe next to **Kapacitet+ (8000)**, and allow pop-ups for github.dev.
+5. The next times, open the same link and click **Resume**: your codespace opens again in about a
+   minute, with its data and the decisions you made in it.
+
+While you use Kapacitet+, keep the editor tab open, even in the background: it shows what the app
+is doing, and that is what keeps the codespace running. Once both tabs are closed it stops by
+itself after 30 minutes and stops using your hours; <https://github.com/codespaces> lists it, to
+stop or delete it. Its port is private to you: do not make it public, because Kapacitet+ has no
+login. [docs/codespaces.md](docs/codespaces.md) says what to do when something goes wrong.
+
+For whoever maintains it: the codespace is defined in `.devcontainer/`. `install.sh` builds the
+engine and the interface when the codespace is created, `data.sh` downloads and unpacks the data
+release, and `start.sh` starts the server each time someone opens it and keeps its log in a
+terminal, which is what GitHub counts as activity. If the download fails, the setup page takes the
+same file from the browser instead (`KAPACITET_SETUP_UPLOAD=1`, set in `devcontainer.json`).
+`.github/workflows/devcontainer.yml` builds the codespace in CI whenever what it installs changes.
+
 ## Quickstart
 
 Requires Python 3.12 and Node 20+ for the interface. The engine needs a combination of numpy,
@@ -66,41 +101,36 @@ few minutes, for a first look or for CI.
 
 ### Without the pipeline
 
-Whoever has computed the data can pack it for another machine, which then needs only Python (and no
-Node with `--web`):
+The computed data are published as the [data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data):
+download `kapacitet-data.zip` and unpack it instead of running the 15-minute pipeline.
 
 ```bash
-.venv/Scripts/python -m kapacitet bundle --web              # full: every screen and live requests
-.venv/Scripts/python -m kapacitet bundle --level lite --web # the published results only (~7 MB)
-.venv/Scripts/python -m kapacitet unbundle kapacitet-data.zip   # on the other machine, then: serve
+curl -LO https://github.com/akamaxe/kapacitet-plus/releases/download/data/kapacitet-data.zip
+.venv/Scripts/python -m kapacitet unbundle kapacitet-data.zip   # then: serve
+```
+
+Whoever computes new results packs them and replaces the release's file (someone who only
+wants to look needs no Node with `--web`):
+
+```bash
+.venv/Scripts/python -m kapacitet bundle --out ../kapacitet-data.zip   # full: every screen and live requests
+gh release upload data ../kapacitet-data.zip --clobber                   # publish it on the data release
+.venv/Scripts/python -m kapacitet bundle --level lite --web            # the published results only (~7 MB)
 ```
 
 The bundle records a checksum for every file and `unbundle` checks them; it never overwrites
-existing files unless asked with `--force`. The data derive from OpenStreetMap (ODbL), so a
-bundle is shared privately, never published with the code. A lite bundle shows every result but
-cannot evaluate new requests, and the request screen says so.
+existing files unless asked with `--force`. It is never committed: the code is MIT, and the data,
+derived from OpenStreetMap, are published separately under ODbL ([DATA-LICENSE.md](DATA-LICENSE.md)).
+A lite bundle shows every result but cannot evaluate new requests, and the request screen says so.
 
 A container runs the same thing with the data mounted (`docker build -t kapacitet .`, then
 `docker run -p 8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
 Without data, the interface opens on a page that lists the commands to run.
 
-### In the browser, with nothing to install
-
-[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/akamaxe/kapacitet-plus?quickstart=1)
-
-Without Python or Node, you can run everything in a GitHub codespace: a cloud machine that
-opens in the browser, free for 60 hours a month on its two-core size. The link builds it
-(`.devcontainer/`) and opens Kapacitet+ in a new tab; the first time, the setup page asks for the
-data file, which goes up from the browser in chunks and is unpacked and checked on the server.
-[docs/codespaces.md](docs/codespaces.md) is the step-by-step guide to send them.
-
-The data still never go into the repository: make the file with
-`python -m kapacitet bundle --out ../kapacitet-data.zip` and share it privately. The upload is open
-only when the server allows it (`KAPACITET_SETUP_UPLOAD=1`, which the codespace sets), on the
-reference network and while the copy has no results, and a codespace's port is private to whoever
-created it. The container takes the file the same way:
-`docker run -p 127.0.0.1:8000:8000 -e KAPACITET_SETUP_UPLOAD=1 kapacitet`, then load it in the
-browser.
+A copy without results can also take the data file from its setup page, in the browser, when
+its server allows it (`KAPACITET_SETUP_UPLOAD=1`): only on the reference network and while the copy
+has no results. The container takes it that way with
+`docker run -p 127.0.0.1:8000:8000 -e KAPACITET_SETUP_UPLOAD=1 kapacitet`.
 
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
 `KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
@@ -623,6 +653,8 @@ taken from one adoption order of the sensitivity run.
 ## Licence
 
 MIT — see [LICENSE](LICENSE). Two things the licence does not cover: the household profile generator
-(`richardsonpy`) is GPL-3.0 and is used only offline to produce the profiles, which stay out of this
-repository; and data derived from OpenStreetMap is subject to ODbL share-alike, which is why `data/`
-is not published here but regenerated from the sources.
+(`richardsonpy`) is GPL-3.0 and is used only offline to produce the profiles; and the data, derived
+from OpenStreetMap, are subject to ODbL share-alike. That is why `data/` is never committed here:
+the computed data are published separately, as the asset of the
+[data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data), under ODbL
+([DATA-LICENSE.md](DATA-LICENSE.md)).

@@ -77,7 +77,8 @@ non-firm offer.
 - **Attribution is mandatory:** OpenStreetMap (ODbL), SMHI (CC BY), and "Elpriser tillhandahålls av Elpriset
   just nu.se".
 - Every interface string goes through `web/src/lib/i18n/` in English, Spanish and Swedish, with the terms of `docs/glossary.md`; nobody on the team reviews the Swedish, and the glossary says so.
-- MIT licence. The data is not published.
+- MIT licence for the code. The computed data are never committed; they are published separately as the
+  `data` release's archive, under ODbL (`DATA-LICENSE.md`).
 - Stack: React 19, Vite, TypeScript, zustand, react-query, ECharts (modular), MapLibre GL, plain CSS. FastAPI
   backend.
 - Terminology:

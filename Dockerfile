@@ -1,8 +1,8 @@
 # Kapacitet+ in one container: the API and the built interface on one port.
 #
-# The data are not in the image: they derive from OpenStreetMap (ODbL) and are not published with
-# the MIT code. Mount a data folder computed with `python -m kapacitet all`, or one filled by
-# `python -m kapacitet unbundle <bundle.zip>`, at /app/data:
+# The data are not in the image: they derive from OpenStreetMap (ODbL) and the code is MIT. Mount a
+# data folder computed with `python -m kapacitet all`, or one filled by `python -m kapacitet unbundle`
+# with the data release's kapacitet-data.zip, at /app/data:
 #
 #   docker build -t kapacitet .
 #   docker run -p 8000:8000 -v "$PWD/data:/app/data" kapacitet

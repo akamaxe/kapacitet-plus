@@ -1,7 +1,7 @@
-# The codespace the README links to (.devcontainer/): it builds, Kapacitet+ starts in it as it does when
-# someone opens the codespace, and an empty copy offers the setup page's bundle upload. It runs
-# when what the codespace installs changes, or by hand; it is a separate workflow because a job in
-# ci.yml cannot filter by path.
+# The codespace the README links to (.devcontainer/): it builds, downloads the published data (the
+# release `data`) and unpacks it, and Kapacitet+ starts in it with its results, as it does when
+# someone opens the codespace. It runs when what the codespace installs changes, or by hand; it is a
+# separate workflow because a job in ci.yml cannot filter by path.
 name: devcontainer
 
 on:
@@ -29,19 +29,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      # builds the image and runs onCreateCommand (install.sh), as GitHub does for a new codespace.
+      # builds the image and runs onCreateCommand (install.sh) and postCreateCommand (data.sh), as
+      # GitHub does for a new codespace.
       # Not postAttachCommand: start.sh ends by following the log, so `up` would never return
       - run: $DEVCONTAINER up --workspace-folder . --skip-post-attach
       # postAttachCommand, in the background: what runs when someone opens the codespace
       - run: $DEVCONTAINER exec --workspace-folder . bash -c 'setsid nohup bash .devcontainer/start.sh > /tmp/start.out 2>&1 < /dev/null &'
-      - name: the empty copy answers, serves the interface and takes a bundle from the browser
+      - name: Kapacitet+ answers with the published results and serves the interface
         run: |
           for i in $(seq 1 60); do
             if out=$($DEVCONTAINER exec --workspace-folder . curl -fs http://127.0.0.1:8000/api/v1/health); then break; fi
             sleep 3
           done
           echo "$out"
-          echo "$out" | grep -q '"setup_upload":true'
+          echo "$out" | grep -q '"results_ready":true'
           $DEVCONTAINER exec --workspace-folder . curl -fs http://127.0.0.1:8000/ | grep -q '<div id="root">'
       - if: failure()
         run: $DEVCONTAINER exec --workspace-folder . bash -c 'cat /tmp/start.out; tail -n 80 /tmp/kapacitet.log'
