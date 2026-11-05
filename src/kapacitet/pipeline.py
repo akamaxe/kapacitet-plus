@@ -153,7 +153,7 @@ def cmd_compute(args: argparse.Namespace) -> None:
 
 
 def cmd_bundle(args: argparse.Namespace) -> None:
-    from .bundle import BundleError, make_bundle
+    from .bundle import RELEASE, BundleError, make_bundle, pin_release
 
     try:
         m = make_bundle(args.out, level=args.level, web=args.web)
@@ -164,15 +164,30 @@ def cmd_bundle(args: argparse.Namespace) -> None:
     print(f"{args.out}: {len(m['files'])} files, {size:.0f} MB ({args.level}{', with web/dist' if args.web else ''}).")
     print("The data derive from OpenStreetMap (ODbL): never commit this file. Publish it on the data release:")
     print(f"  gh release upload data {args.out} --clobber")
+    if args.pin:
+        rel = pin_release(args.out, m)
+        print(f"Pinned it in {RELEASE.relative_to(RELEASE.parents[1]).as_posix()} (sha256 {rel['sha256']}, "
+              f"{rel['size']} bytes). Commit that file and upload the archive together: the codespace, "
+              "`unbundle --sha256` and the setup page take only the pinned file.")
 
 
 def cmd_unbundle(args: argparse.Namespace) -> None:
-    from .bundle import BundleError, unpack_bundle
+    from .bundle import RELEASE, BundleError, pinned_release, unpack_bundle
 
+    expected = args.sha256
+    if expected == "pinned":
+        pin = pinned_release()
+        if pin is None:
+            print(f"no pinned data release in {RELEASE}: pass the digest itself, --sha256 <hex>")
+            sys.exit(2)
+        expected = pin["sha256"]
     try:
-        r = unpack_bundle(args.file, force=args.force)
+        r = unpack_bundle(args.file, force=args.force, expected_sha256=expected)
     except BundleError as err:
         print(err)
+        if err.code == "not_pinned":
+            print(f"  expected  {err.params['expected']}")
+            print(f"  this file {err.params['sha256']}")
         sys.exit(2)
     print(f"Unpacked {r['written']} files from a {r['level']} bundle made by Kapacitet+ {r['kapacitet']} "
           f"on {(r['created'] or '?')[:10]}" + (f"; kept {r['skipped']} existing files (use --force to replace them)" if r["skipped"] else "") + ".")
@@ -405,11 +420,16 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--level", choices=["lite", "full"], default="full",
                    help="lite: the published results only; full: also what live requests need")
     p.add_argument("--web", action="store_true", help="include web/dist, so the receiver needs no Node")
+    p.add_argument("--pin", action="store_true",
+                   help="record the archive's sha256 and size in config/data-release.json, as the published release")
     p.set_defaults(func=cmd_bundle)
 
     p = sub.add_parser("unbundle", help="unpack a data bundle into data/ (and web/dist)")
     p.add_argument("file", help="the bundle (a .zip made by `kapacitet bundle`)")
     p.add_argument("--force", action="store_true", help="replace files that already exist")
+    p.add_argument("--sha256", nargs="?", const="pinned", default=None, metavar="HEX",
+                   help="refuse the file unless its sha256 is HEX or, given alone, the pinned release's "
+                        "(config/data-release.json)")
     p.set_defaults(func=cmd_unbundle)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")

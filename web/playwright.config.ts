@@ -8,7 +8,8 @@ import { resolve } from "node:path";
 // project's Python: KAPACITET_PY, or kapacitet/.venv by default. Playwright drives the system's
 // Chrome (channel "chrome"), so nothing is downloaded. The data flows are in
 // playwright.local.config.ts. A second server allows the setup page's bundle upload
-// (KAPACITET_SETUP_UPLOAD, as in a codespace) on a folder emptied at every run.
+// (KAPACITET_SETUP_UPLOAD, as in a codespace) on a folder emptied at every run; it takes any
+// well-formed bundle (KAPACITET_SETUP_ANY_BUNDLE), since the tests' files are not the pinned release.
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(HERE, "..");
 const EMPTY = resolve(HERE, "e2e/.empty-data");
@@ -41,7 +42,10 @@ export default defineConfig({
       command: `"${PY}" -m kapacitet serve --port ${UPLOAD_PORT}`,
       cwd: ROOT,
       url: `http://127.0.0.1:${UPLOAD_PORT}/api/v1/health`,
-      env: { ...(process.env as Record<string, string>), KAPACITET_DATA_DIR: UPLOAD, KAPACITET_SETUP_UPLOAD: "1" },
+      env: {
+        ...(process.env as Record<string, string>),
+        KAPACITET_DATA_DIR: UPLOAD, KAPACITET_SETUP_UPLOAD: "1", KAPACITET_SETUP_ANY_BUNDLE: "1",
+      },
       reuseExistingServer: false,
       timeout: 120_000,
     },

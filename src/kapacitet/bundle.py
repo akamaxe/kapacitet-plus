@@ -12,6 +12,13 @@ was computed (the API's provenance reads those times), not by when it was unpack
 derived from OpenStreetMap (ODbL), so a bundle is never committed with the MIT code: it is
 published as the asset of the release `data`, under ODbL (DATA-LICENSE.md).
 
+The published bundle is pinned: config/data-release.json, committed with the code, records the
+release asset's url, sha256 and size (`bundle --pin` writes it). The codespace checks the download
+against it before unpacking (.devcontainer/data.sh), `unbundle --sha256` does the same, and the
+setup page refuses any other file unless its server allows one (KAPACITET_SETUP_ANY_BUNDLE=1).
+The per-file sums inside an archive only say it arrived whole; the pinned digest says it is the
+one published.
+
 Unpacking is also what the setup page does with a bundle uploaded from the browser
 (api/setup.py), so it trusts nothing in the archive: it writes only under data/processed,
 data/raw and web/dist, caps how much an archive may unpack to, streams every file through its
@@ -25,6 +32,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import time
 import zipfile
 import zlib
@@ -33,7 +41,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 from . import __version__
-from .paths import DATA, WEB_DIST
+from .atomic import write_text_atomic
+from .paths import CONFIG, DATA, WEB_DIST
 
 # What the API reads to show the screens, without the live connection request.
 LITE = (
@@ -55,6 +64,10 @@ MAX_FILE = 2 * 2**30
 MAX_TOTAL = 8 * 2**30
 MAX_MANIFEST = 32 * 2**20
 _CHUNK = 1 << 20
+# The published data release this version of the code expects (committed; `bundle --pin` writes it).
+RELEASE = CONFIG / "data-release.json"
+RELEASE_URL = "https://github.com/akamaxe/kapacitet-plus/releases/download/data/kapacitet-data.zip"
+_SHA256 = re.compile(r"[0-9a-f]{64}")
 
 
 ERRORS = {
@@ -65,7 +78,11 @@ ERRORS = {
     "damaged": "{entry} is missing or does not match its checksum: the bundle is damaged",
     "unexpected_entry": "the bundle holds {entry}, outside the folders a bundle may write",
     "bundle_too_large": "the bundle unpacks to more than {gb} GB",
+    "not_pinned": "this file is not the pinned data release: its sha256 is not the one expected",
 }
+# What unpacking can refuse a bundle for: the setup page shows these, so each has its words in the
+# interface (err.<code>, tests/test_messages.py).
+UNPACK_ERRORS = ("not_a_bundle", "damaged", "unexpected_entry", "bundle_too_large", "not_pinned")
 
 
 class BundleError(ValueError):
@@ -83,6 +100,36 @@ def _sha256(path: Path) -> str:
         for chunk in iter(lambda: fh.read(_CHUNK), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def file_sha256(path: str | Path) -> str:
+    """The sha256 of a whole file, as `sha256sum` prints it."""
+    return _sha256(Path(path))
+
+
+def pinned_release(path: str | Path | None = None) -> dict | None:
+    """The data release this code expects ({url, sha256, size, created, ...}), or None when the
+    file is missing or holds no valid digest."""
+    try:
+        rel = json.loads(Path(path or RELEASE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(rel, dict) or not isinstance(rel.get("sha256"), str) or not _SHA256.fullmatch(rel["sha256"]):
+        return None
+    return rel
+
+
+def pin_release(archive: str | Path, manifest: dict, url: str | None = None, path: str | Path | None = None) -> dict:
+    """Record an archive as the published data release: its digest and size, and when and by which
+    version it was made. The url stays the one already pinned unless another is given."""
+    archive = Path(archive)
+    current = pinned_release(path) or {}
+    rel = {"url": url or current.get("url") or RELEASE_URL, "sha256": _sha256(archive),
+           "size": archive.stat().st_size, "created": manifest.get("created"),
+           "kapacitet": manifest.get("kapacitet"), "level": manifest.get("level")}
+    # a committed file: it ends with a newline
+    write_text_atomic(Path(path or RELEASE), json.dumps(rel, indent=1) + "\n")
+    return rel
 
 
 def _files(data_dir: Path, level: str):
@@ -220,15 +267,24 @@ def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, 
 
 def unpack_bundle(path: str | Path, data_dir: Path | None = None, web_dir: Path | None = None,
                   force: bool = False, *, only_data: bool = False,
-                  progress: Callable[[int, int], None] | None = None) -> dict:
+                  progress: Callable[[int, int], None] | None = None,
+                  expected_sha256: str | None = None) -> dict:
     """Extract a bundle into the data folder (and web/dist), checking every file's sha256.
 
     Existing files are kept unless `force`, so unpacking never overwrites someone's own results
     by accident. `only_data` leaves out the archive's web/dist (a server that builds its own
-    interface). `progress(done, total)` is called after each file.
+    interface). `progress(done, total)` is called after each file. With `expected_sha256`, the
+    whole archive must have that digest (the pinned release's) before anything is read from it.
     """
     data_dir = Path(data_dir or DATA).resolve()
     web_dir = Path(web_dir or WEB_DIST).resolve()
+    if expected_sha256 is not None:
+        try:
+            actual = _sha256(Path(path))
+        except OSError as err:
+            raise BundleError("not_a_bundle") from err
+        if actual != expected_sha256.strip().lower():
+            raise BundleError("not_pinned", sha256=actual, expected=expected_sha256.strip().lower())
     try:
         z = zipfile.ZipFile(path)
     except (zipfile.BadZipFile, OSError) as err:

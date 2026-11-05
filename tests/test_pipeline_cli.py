@@ -88,3 +88,30 @@ def test_a_command_that_needs_no_stage_list_does_not_import_the_engine():
             "print('kapacitet.engine.run' in sys.modules)")
     out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True).stdout
     assert out.strip().splitlines()[-1] == "False"
+
+
+def test_bundle_pin_and_unbundle_sha256_check_the_same_digest(tmp_path, monkeypatch, capsys):
+    """`bundle --pin` records the archive; `unbundle --sha256` takes it and refuses any other file."""
+    import json
+
+    from kapacitet import bundle
+
+    data = tmp_path / "data"
+    (data / "processed" / "results").mkdir(parents=True)
+    (data / "processed" / "results" / "showcase.json").write_text('{"year": 2025}', encoding="utf-8")
+    monkeypatch.setattr(bundle, "DATA", data)
+    monkeypatch.setattr(bundle, "RELEASE", tmp_path / "config" / "data-release.json")
+    out = tmp_path / "kapacitet-data.zip"
+    pipeline.main(["bundle", "--out", str(out), "--pin"])
+    rel = json.loads(bundle.RELEASE.read_text(encoding="utf-8"))
+    assert rel["sha256"] == bundle.file_sha256(out) and rel["size"] == out.stat().st_size
+
+    monkeypatch.setattr(bundle, "DATA", tmp_path / "elsewhere")
+    pipeline.main(["unbundle", str(out), "--sha256"])
+    assert (tmp_path / "elsewhere" / "processed" / "results" / "showcase.json").exists()
+    capsys.readouterr()
+    assert _exit_code(["unbundle", str(out), "--force", "--sha256", "0" * 64]) == 2
+    said = capsys.readouterr().out
+    assert "not the pinned data release" in said and rel["sha256"] in said
+    bundle.RELEASE.unlink()
+    assert _exit_code(["unbundle", str(out), "--sha256"]) == 2

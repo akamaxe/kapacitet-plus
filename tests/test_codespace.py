@@ -54,10 +54,24 @@ def test_the_guide_and_the_readme_link_to_this_repositorys_codespace():
 
 
 def test_the_codespace_and_the_setup_page_fetch_the_published_data_under_its_licence():
-    # one address for the archive, in the script that downloads it and on the page that asks for it
-    assert DATA_ZIP in (DC / "data.sh").read_text(encoding="utf-8")
+    # one address for the archive: the pin the script downloads from, and the page that asks for it
+    assert json.loads((ROOT / "config" / "data-release.json").read_text(encoding="utf-8"))["url"] == DATA_ZIP
     assert DATA_ZIP in (ROOT / "web" / "src" / "components" / "Setup.tsx").read_text(encoding="utf-8")
     assert DATA_ZIP in (ROOT / "README.md").read_text(encoding="utf-8")
     licence = (ROOT / "DATA-LICENSE.md").read_text(encoding="utf-8")
     assert "Open Database License" in licence and "© OpenStreetMap contributors" in licence
     assert "Elpriser tillhandahålls av Elpriset just nu.se" in licence
+
+
+def test_the_codespace_unpacks_only_the_pinned_release():
+    """The release's file can be replaced by anyone who may publish: the download is checked
+    against the digest committed with the code before anything is unpacked."""
+    import re
+
+    pin = json.loads((ROOT / "config" / "data-release.json").read_text(encoding="utf-8"))
+    assert re.fullmatch(r"[0-9a-f]{64}", pin["sha256"]) and pin["size"] > 0
+    script = (DC / "data.sh").read_text(encoding="utf-8")
+    assert "config/data-release.json" in script
+    check, unpack = script.index("sha256sum -c"), script.index("kapacitet unbundle")
+    assert check < unpack, "the digest is checked before the bundle is unpacked"
+    assert "--sha256" in script[unpack:unpack + 200]

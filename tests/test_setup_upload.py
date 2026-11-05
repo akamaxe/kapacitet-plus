@@ -1,11 +1,15 @@
 """The setup page's bundle upload (api/setup.py): closed unless allowed and empty, resumable, checked.
 
 It runs on a fresh clone: the bundle is a tiny one made here, and every folder it touches is a
-temporary one, so nothing in data/ is read or written.
+temporary one, so nothing in data/ is read or written. A server takes only the pinned release
+unless it allows any bundle (KAPACITET_SETUP_ANY_BUNDLE=1): most tests allow any, as the interface's
+own tests do, and the last ones pin the tiny bundle or leave it unpinned.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import time
 import zipfile
 
@@ -50,6 +54,7 @@ def opened(monkeypatch, tmp_path):
 
     restarts: list[float] = []
     monkeypatch.setenv("KAPACITET_SETUP_UPLOAD", "1")
+    monkeypatch.setenv("KAPACITET_SETUP_ANY_BUNDLE", "1")
     monkeypatch.setenv("KAPACITET_SUPERVISED", "1")
     monkeypatch.setattr(records, "folder", lambda: tmp_path / "requests")
     monkeypatch.setattr(setup, "target", lambda: tmp_path / "data")
@@ -202,3 +207,54 @@ def test_a_page_reloaded_mid_chunk_leaves_nothing_and_no_traceback(opened):
     r = asyncio.run(setup.upload_chunk(Gone(), offset=0, total=100, fp="a.zip|1|1"))
     assert r.status_code == 400
     assert not setup._part().exists()
+
+
+# ---------------------------------------------------------------- only the pinned release
+
+@pytest.fixture()
+def pin(monkeypatch, tmp_path):
+    """Pinned mode (no KAPACITET_SETUP_ANY_BUNDLE), with config/data-release.json in a temporary file."""
+    from kapacitet import bundle
+
+    monkeypatch.delenv("KAPACITET_SETUP_ANY_BUNDLE", raising=False)
+    path = tmp_path / "data-release.json"
+    monkeypatch.setattr(bundle, "RELEASE", path)
+
+    def write(body: bytes | None) -> None:
+        if body is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.write_text(json.dumps({"url": "https://example.org/kapacitet-data.zip",
+                                        "sha256": hashlib.sha256(body).hexdigest(), "size": len(body)}),
+                            encoding="utf-8")
+    return write
+
+
+def test_the_pinned_release_is_taken(client, opened, bundle_bytes, pin):
+    pin(bundle_bytes)
+    assert _put(client, bundle_bytes, 0, len(bundle_bytes)).status_code == 200
+    assert _wait(client)["state"] == "done"
+
+
+def test_a_file_of_another_size_than_the_pinned_one_is_refused_at_the_first_chunk(client, opened, bundle_bytes, pin):
+    pin(bundle_bytes + b"!")
+    r = _put(client, bundle_bytes[:1000], 0, len(bundle_bytes))
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "not_pinned"
+    assert client.get(API).json()["received"] == 0
+
+
+def test_a_file_of_the_pinned_size_but_other_bytes_is_not_unpacked(client, opened, bundle_bytes, pin):
+    tmp_path, restarts = opened
+    pin(bundle_bytes)
+    other = bundle_bytes[:-1] + bytes([bundle_bytes[-1] ^ 1])
+    assert _put(client, other, 0, len(other)).status_code == 200
+    st = _wait(client)
+    assert st["state"] == "failed" and st["error"]["code"] == "not_pinned"
+    assert not (tmp_path / "data").exists() or not any((tmp_path / "data").rglob("*"))
+    assert not restarts
+
+
+def test_without_a_pinned_release_no_file_is_taken(client, opened, bundle_bytes, pin):
+    pin(None)
+    r = _put(client, bundle_bytes, 0, len(bundle_bytes))
+    assert r.status_code == 422 and r.json()["detail"]["code"] == "not_pinned"

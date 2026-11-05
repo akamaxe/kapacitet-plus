@@ -9,6 +9,11 @@ bundle.unpack_bundle writes the data into data/processed and data/raw, checking 
 sha256 and refusing anything else, and the server restarts under its supervisor so that no cache
 outlives the empty copy.
 
+Only the published data release is taken: the whole file must have the size and the sha256 pinned
+in config/data-release.json (`not_pinned` otherwise; a wrong size is refused at the first chunk).
+KAPACITET_SETUP_ANY_BUNDLE=1 lets a server take any well-formed bundle instead, for someone who
+loads data they computed themselves (and for the interface's tests, with their tiny bundle).
+
 This is the API's third place to write, after data/requests/ and data/datasets/.
 """
 
@@ -48,7 +53,7 @@ ERRORS = {
     "chunk_too_large": "a chunk is larger than {mb} MB",
     "no_space": "not enough free disk space: {need_mb} MB needed, {free_mb} MB free",
     "unpack_failed": "the bundle could not be unpacked: {detail}",
-    **{c: bundle.ERRORS[c] for c in ("not_a_bundle", "damaged", "unexpected_entry", "bundle_too_large")},
+    **{c: bundle.ERRORS[c] for c in bundle.UNPACK_ERRORS},
 }
 
 _LOCK = threading.Lock()
@@ -59,6 +64,19 @@ _STATE: dict = {"state": "idle", "files_done": 0, "files_total": 0, "error": Non
 def target() -> Path:
     """The data folder a bundle is unpacked into (a test points it elsewhere)."""
     return DATA
+
+
+def any_bundle() -> bool:
+    """The server takes any well-formed bundle, not only the pinned release."""
+    return os.environ.get("KAPACITET_SETUP_ANY_BUNDLE") == "1"
+
+
+def pinned() -> dict:
+    """The release an upload must be; without a valid config/data-release.json, nothing is."""
+    pin = bundle.pinned_release()
+    if pin is None:
+        raise bundle.BundleError("not_pinned")
+    return pin
 
 
 def _folder() -> Path:
@@ -139,7 +157,9 @@ def _unpack(path: Path) -> None:
             _STATE.update(files_done=done, files_total=total)
 
     try:
-        r = bundle.unpack_bundle(path, data_dir=target(), force=True, only_data=True, progress=progress)
+        expected = None if any_bundle() else pinned()["sha256"]
+        r = bundle.unpack_bundle(path, data_dir=target(), force=True, only_data=True, progress=progress,
+                                 expected_sha256=expected)
     except bundle.BundleError as err:
         with _LOCK:
             _STATE.update(state="failed", error={"code": err.code, "params": err.params})
@@ -175,6 +195,14 @@ def _receive(body: bytes, offset: int, total: int, fp: str) -> dict:
                 raise refusal(409, "upload_busy")
             if not body.startswith(ZIP_MAGIC):
                 raise refusal(422, "not_a_bundle")
+            if not any_bundle():
+                # the pinned release has one size: another file is refused before it is sent
+                try:
+                    size = pinned().get("size")
+                except bundle.BundleError:
+                    raise refusal(422, "not_pinned") from None
+                if isinstance(size, int) and total != size:
+                    raise refusal(422, "not_pinned")
             _folder().mkdir(parents=True, exist_ok=True)
             free = shutil.disk_usage(_folder()).free
             if free < 3 * total:

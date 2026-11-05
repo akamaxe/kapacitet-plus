@@ -10,7 +10,8 @@ import zipfile
 
 import pytest
 
-from kapacitet.bundle import MANIFEST, BundleError, make_bundle, unpack_bundle
+from kapacitet.bundle import (MANIFEST, BundleError, file_sha256, make_bundle, pin_release, pinned_release,
+                              unpack_bundle)
 
 
 @pytest.fixture()
@@ -257,3 +258,48 @@ def test_a_time_that_makes_no_sense_is_not_believed(tmp_path, bad):
     unpack_bundle(z_path, data_dir=tmp_path / "d")
     got = (tmp_path / "d" / "processed" / "results" / "showcase.json").stat().st_mtime
     assert abs(got - time.mktime(when + (0, 0, -1))) < 2
+
+
+# ---------------------------------------------------------------- the pinned release
+
+def test_a_bundle_with_the_wrong_digest_is_refused_before_anything_is_written(data, tmp_path):
+    root, files = data
+    out = tmp_path / "b.zip"
+    make_bundle(out, data_dir=root)
+    target = tmp_path / "t"
+    err = pytest.raises(BundleError, unpack_bundle, out, data_dir=target, expected_sha256="0" * 64)
+    assert err.value.code == "not_pinned"
+    assert err.value.params == {"sha256": file_sha256(out), "expected": "0" * 64}
+    assert not target.exists() or not any(target.rglob("*"))
+    # the right digest, as sha256sum prints it or in capitals, unpacks
+    r = unpack_bundle(out, data_dir=target, expected_sha256=f" {file_sha256(out).upper()}\n")
+    assert r["written"] == len(files)
+
+
+def test_pinning_records_the_archives_digest_and_size_and_keeps_the_url(data, tmp_path):
+    root, _ = data
+    out = tmp_path / "b.zip"
+    manifest = make_bundle(out, data_dir=root)
+    pin = tmp_path / "data-release.json"
+    pin.write_text(json.dumps({"url": "https://example.org/data.zip", "sha256": "a" * 64}), encoding="utf-8")
+    rel = pin_release(out, manifest, path=pin)
+    assert rel == {"url": "https://example.org/data.zip", "sha256": hashlib.sha256(out.read_bytes()).hexdigest(),
+                   "size": out.stat().st_size, "created": manifest["created"], "kapacitet": manifest["kapacitet"],
+                   "level": "full"}
+    assert pinned_release(pin) == rel and pin.read_text(encoding="utf-8").endswith("}\n")
+
+
+@pytest.mark.parametrize("body", ["", "{", '{"sha256": "abc"}', '{"sha256": "' + "A" * 64 + '"}', "[]"])
+def test_a_missing_or_broken_pin_pins_nothing(tmp_path, body):
+    pin = tmp_path / "data-release.json"
+    if body:
+        pin.write_text(body, encoding="utf-8")
+    assert pinned_release(pin) is None
+
+
+def test_the_committed_pin_names_the_published_release():
+    from kapacitet.bundle import RELEASE, RELEASE_URL
+
+    rel = pinned_release()
+    assert rel is not None, f"{RELEASE} must hold the published data release's sha256"
+    assert rel["url"] == RELEASE_URL and isinstance(rel["size"], int) and rel["size"] > 0

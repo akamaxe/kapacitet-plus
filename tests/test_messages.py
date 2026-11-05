@@ -34,6 +34,13 @@ def _names(template: str) -> list[str]:
     return sorted(re.findall(r"\{(\w+)(?:[:!][^}]*)?\}", template))
 
 
+def _unpack_errors() -> dict[str, str]:
+    """What unpacking a bundle can refuse it for: the setup page shows each of these."""
+    from kapacitet import bundle
+
+    return {c: bundle.ERRORS[c] for c in bundle.UNPACK_ERRORS}
+
+
 def _codes() -> list[tuple[str, str]]:
     from kapacitet.api.inbox import ERRORS as INBOX
     from kapacitet.datasets import ERRORS as DATASETS
@@ -46,7 +53,8 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.importer.validate import MESSAGES
 
     pairs = [(f"chk.msg.{c}", t) for c, t in MESSAGES.items()]
-    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS, **SETUP}.items()]
+    pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS, **SETUP,
+                                            **_unpack_errors()}.items()]
     pairs += [(f"req.reason.{c}", t) for c, t in _REASONS.items()]
     pairs += [(f"inbox.reason.{c}", t) for c, t in RULE_REASONS.items()]
     return pairs
@@ -86,9 +94,19 @@ def test_no_code_means_two_different_sentences():
 
     seen: dict[str, str] = {}
     clashes = []
-    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP):
+    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP, _unpack_errors()):
         for code, text in source.items():
             if code in seen and seen[code] != text:
                 clashes.append(code)
             seen.setdefault(code, text)
     assert not clashes, f"same code, different sentences: {clashes}"
+
+
+def test_the_setup_page_can_say_every_reason_a_bundle_is_refused():
+    """A refusal from unpacking reaches the browser as its code (api/setup.py): each one is among
+    the setup page's codes, and so has its words above (err.not_pinned among them)."""
+    from kapacitet.api.setup import ERRORS as SETUP
+
+    missing = set(_unpack_errors()) - set(SETUP)
+    assert not missing, f"the setup page cannot say {missing}"
+    assert "not_pinned" in SETUP

@@ -108,20 +108,29 @@ download `kapacitet-data.zip` and unpack it instead of running the 15-minute pip
 
 ```bash
 curl -LO https://github.com/akamaxe/kapacitet-plus/releases/download/data/kapacitet-data.zip
-.venv/Scripts/python -m kapacitet unbundle kapacitet-data.zip   # then: serve
+.venv/Scripts/python -m kapacitet unbundle kapacitet-data.zip --sha256   # then: serve
 ```
 
 Whoever computes new results packs them and replaces the release's file (someone who only
 wants to look needs no Node with `--web`):
 
 ```bash
-.venv/Scripts/python -m kapacitet bundle --out ../kapacitet-data.zip   # full: every screen and live requests
-gh release upload data ../kapacitet-data.zip --clobber                   # publish it on the data release
-.venv/Scripts/python -m kapacitet bundle --level lite --web            # the published results only (~7 MB)
+.venv/Scripts/python -m kapacitet bundle --pin --out ../kapacitet-data.zip   # full: every screen and live requests
+gh release upload data ../kapacitet-data.zip --clobber                         # publish it on the data release
+.venv/Scripts/python -m kapacitet bundle --level lite --web                  # the published results only (~7 MB)
 ```
 
-The bundle records a checksum for every file and `unbundle` checks them; it never overwrites
-existing files unless asked with `--force`. It is never committed: the code is MIT, and the data,
+The bundle records a checksum and the modification time of every file, and `unbundle` checks
+the sums and restores the times (the API dates each result by its files); it never overwrites
+existing files unless asked with `--force`.
+
+The release's file is pinned: `config/data-release.json`, committed with the code, holds its
+sha256 and size. `bundle --pin` rewrites it, so commit that file in the same push as the upload.
+`unbundle --sha256` refuses any other file (or give it a digest, `--sha256 <hex>`), the codespace
+checks its download the same way, and the setup page takes only the pinned file unless its server
+sets `KAPACITET_SETUP_ANY_BUNDLE=1` (for a bundle you made yourself).
+
+A bundle is never committed: the code is MIT, and the data,
 derived from OpenStreetMap, are published separately under ODbL ([DATA-LICENSE.md](DATA-LICENSE.md)).
 A lite bundle shows every result but cannot evaluate new requests, and the request screen says so.
 
@@ -137,10 +146,12 @@ has no results. The container takes it that way with
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
 `KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
 access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
-`KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page).
+`KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
+`KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release).
 
 The API documentation is at `/docs`; every JSON payload carries a `provenance` block with the
-sources and assumptions behind it.
+sources behind it, when its own files were computed (`computed_at`, next to the last full run,
+`full_run_at`) and which of its inputs are real and which synthetic.
 
 ### Commands
 

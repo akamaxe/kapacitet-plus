@@ -1253,6 +1253,7 @@ const en: Dict = {
   "err.damaged": "The file is damaged ({entry}). Download it again and load it again.",
   "err.unexpected_entry": "The file holds {entry}, which a data file never contains. Download kapacitet-data.zip again from the data release.",
   "err.bundle_too_large": "The file unpacks to more than {gb} GB, more than a data file ever holds.",
+  "err.not_pinned": "This is not the published data file: its checksum differs from the one this version of Kapacitet+ expects. Download kapacitet-data.zip again from the data release.",
   "setup.upload.sendingShort": "Uploading…",
   "setup.upload.resume": "An upload stopped at {sent} of {total} MB. Choose the same file and it carries on.",
   "setup.upload.download": "Download kapacitet-data.zip",

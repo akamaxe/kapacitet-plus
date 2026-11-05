@@ -46,6 +46,7 @@ Open the same link and click **Resume**. Your copy opens again in about a minute
 | Kapacitet+ asks you to **Load the data** | The download did not work. Download `kapacitet-data.zip` from the [data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data), click **Choose kapacitet-data.zip** and pick it. It uploads and unpacks in a few minutes, then Kapacitet+ restarts by itself. |
 | A folder instead of a `.zip` file (Safari on a Mac unpacks what it downloads) | Right-click the folder and choose **Compress**, then load the `.zip` it makes. Or download the file again with Chrome. |
 | "The upload stopped" | Choose the same file again: the upload carries on where it stopped. |
+| "This is not the published data file" | The file is not the one this version of Kapacitet+ expects. Download it again from the data release; if the message stays, the data were updated after your codespace was made: delete the codespace and open the link again. |
 | The codespace stops while you are still reading | Raise the idle limit, up to 4 hours: your picture on GitHub, **Settings**, **Codespaces**, **Default idle timeout**. |
 | Your codespace is gone | GitHub deletes a codespace that has been stopped for 30 days. Open the link and create a new one. |
 | A newer version of Kapacitet+ or of the data | Delete the codespace at <https://github.com/codespaces>, then open the link again. |
@@ -59,8 +60,13 @@ Open the same link and click **Resume**. Your copy opens again in about a minute
   which is what counts as activity for GitHub's idle timeout.
 - The data are never committed. They are published as the asset of the release `data`, under ODbL
   (`DATA-LICENSE.md`). After a new compute:
-  `python -m kapacitet bundle --out ../kapacitet-data.zip`, then
-  `gh release upload data ../kapacitet-data.zip --clobber`.
+  `python -m kapacitet bundle --pin --out ../kapacitet-data.zip`, then
+  `gh release upload data ../kapacitet-data.zip --clobber`, and commit `config/data-release.json`
+  in the same push.
+- `config/data-release.json` pins the release's file: its address, sha256 and size. `data.sh`
+  checks the download with `sha256sum -c` and does not unpack a file whose digest differs, and the
+  setup page refuses it too. Until the new digest is on `main`, new codespaces open on the setup
+  page, so upload the file and push the pin together.
 - The setup page's upload (`api/setup.py`) is open only when the server allows it
   (`KAPACITET_SETUP_UPLOAD=1`, set in `devcontainer.json`), on the reference network, and while the
   copy has no results. A codespace's port is private to whoever created it.
