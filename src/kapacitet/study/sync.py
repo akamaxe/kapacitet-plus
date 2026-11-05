@@ -106,7 +106,11 @@ def station_sync(study: Study, sid: str, batch: str) -> dict:
     by_end = {}
     for e in sctx["ends"]:
         where = qu.band_folder(e)
-        q = qu.rebuild(rq.model_at(e), hp, sctx["ev"], rq.band_name("existing", e), items, pending, where=where)
+        # the check runs the band's high end generation-only (request.check), so its queue holds the
+        # generation side of each approved item; the low end holds all of it
+        mine = items if e == min(sctx["ends"]) else [
+            {**it, "request": {**it["request"], "ev_kw": 0.0, "hp": False, "ev_phases": 0}} for it in items]
+        q = qu.rebuild(rq.model_at(e), hp, sctx["ev"], rq.band_name("existing", e), mine, pending, where=where)
         digest = seals.digest(q)
         seals.seal("sync", f"{batch}.{where.name}.{digest[:12]}", q)
         by_end[f"{e:.2f}"] = {it["assessment"]: it for it in q["items"]}

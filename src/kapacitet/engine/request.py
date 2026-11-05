@@ -618,7 +618,33 @@ def _combine(runs: dict[float, dict], low: float, gen_ends: list[float]) -> tupl
             prof.update({k: v for k, v in (g.get("profiles") or {}).items() if k in _PV_PROFILES})
             out["profiles"] = prof
     out["summary"] = summary
+    _keep_every_end_safe(out, runs, gen_ends)
     return out, binding
+
+
+def _keep_every_end_safe(out: dict, runs: dict[float, dict], gen_ends: list[float]) -> None:
+    """Whichever end's figures were taken, a violation left at any end still reaches the rule: the
+    verification keeps the worst `violations_after` (and the battery's) over every end, and the
+    single-phase PV check is the worst over the generation ends (ok only if every end is)."""
+    ver = dict(out.get("verification") or {})
+    for e, r in runs.items():
+        rv = r.get("verification") or {}
+        ver["violations_after"] = max(int(ver.get("violations_after", 0) or 0), int(rv.get("violations_after", 0) or 0))
+        bat = rv.get("battery")
+        if bat is not None:
+            mine = dict(ver.get("battery") or bat)
+            mine["violations_after"] = max(int(mine.get("violations_after", 0) or 0), int(bat.get("violations_after", 0) or 0))
+            ver["battery"] = mine
+    if ver:
+        out["verification"] = ver
+    ph = [(e, runs[e]["phases"]) for e in sorted(runs) if runs[e].get("phases") is not None and (e in gen_ends or e == min(runs))]
+    if len(ph) > 1:
+        merged = dict(ph[0][1])
+        merged["ok"] = all(p.get("ok", True) for _, p in ph)
+        merged["devices"] = list(merged.get("devices") or [])
+        for e, p in ph[1:]:
+            merged["devices"] += [{**d, "mv_pu": e} for d in p.get("devices", []) if d.get("device") == "pv"]
+        out["phases"] = merged
 
 
 def check(req: Request, hp: np.ndarray, ev: np.ndarray, band: tuple[float, float], *,

@@ -92,10 +92,36 @@ def test_generation_counts_the_lower_end_and_consumption_the_low_end(station):
         assert res["static"]["pv"]["approved"] == all(r["static"]["pv"]["approved"] for r in ends.values())
         assert res["static"]["ev"] == ends["0.98"]["static"]["ev"]
         assert res["binding_mv_pu"]["consumption"] == 0.98
-        # at the high end a full grid's voltage binds: its envelope curtails at least as much as at 1.00 pu
-        alone = rq.evaluate(rq.model_at(1.06), rq.Request(cid=j, pv_kwp=15.0), hp, ev,
-                            ctx=rq.Context(rq.band_name("existing", 1.06)))
-        assert alone["risk"]["mean_pct"] == pytest.approx(ends["1.06"]["risk"]["mean_pct"])
+        # at the high end a full grid's voltage binds: it curtails at least as much as the low end
+        # does for the same generation (the baselines are precomputed at the band's ends only)
+        low_gen = rq.evaluate(rq.model_at(0.98), rq.Request(cid=j, pv_kwp=15.0), hp, ev,
+                              ctx=rq.Context(rq.band_name("existing", 0.98)))
+        assert ends["1.06"]["risk"]["mean_pct"] >= low_gen["risk"]["mean_pct"] - 1e-9
+
+
+def _fake(mean, p90=0.0, violations=0, approved=True, phases_ok=None):
+    r = {"risk": {"mean_pct": mean, "p90_pct": p90}, "economics": {}, "per_year": [], "summary": {},
+         "static": {"pv": {"approved": approved}},
+         "verification": {"hours_checked": 1, "hours_tightened": 0, "violations_after": violations,
+                          "baseline_limited_hours": 0}}
+    if phases_ok is not None:
+        r["phases"] = {"ok": phases_ok, "devices": [{"device": "pv"}]}
+    return r
+
+
+def test_the_ends_safety_reaches_the_rule_even_when_the_low_end_binds_curtailment():
+    from kapacitet.engine import request as rq
+    from kapacitet.engine import rules
+
+    runs = {0.98: _fake(5.0), 1.06: _fake(2.0, violations=3, phases_ok=False)}
+    runs[0.98]["phases"] = {"ok": True, "devices": [{"device": "pv"}]}
+    out, binding = rq._combine(runs, 0.98, [0.98, 1.06])
+    assert binding["envelope"] == 0.98                                   # the low end curtails more
+    assert out["verification"]["violations_after"] == 3                   # the high end's still counts
+    assert out["phases"]["ok"] is False
+    th = rules.Thresholds(curtailment_mean_pct=100.0, curtailment_p90_pct=100.0, ev_unserved_pct=100.0)
+    assert rules._violations_left(out["verification"]) == 3
+    assert rules.verdict(out, th)["outcome"] == "review"
 
 
 def test_a_batch_gives_a_row_per_case_and_an_unknown_point_is_a_row_error(station, tmp_path):
@@ -138,7 +164,7 @@ def test_the_same_case_id_gives_the_same_assessment_and_never_declined(station, 
     from kapacitet.api import records
     from kapacitet.study import cases
 
-    path = _csv(tmp_path / "again.csv", "A1;2026-10-01;C15;12;;;;;;8;", "A2;2026-10-02;C14;;;;22;3;1;;")
+    path = _csv(tmp_path / "again.csv", "C-001;2026-10-01;C15;12;;;;;;8;", "C-002;2026-10-02;C14;;;;22;3;1;;")
     first = _verdicts(cases.run(station, path, runner=runner))
     with tiny_grid(station.station_dir("tiny") / "processed"):
         index = (records.folder() / "index.jsonl").read_text(encoding="utf-8").splitlines()
@@ -208,6 +234,9 @@ def test_sync_rebuilds_the_queues_and_a_removed_case_leaves_the_context(station,
             q = qu.load(qu.band_folder(e))
             assert [it["case_id"] for it in q["items"]] == ["Y1", "Y2"] and q["pending"][0]["case_id"] == "P1"
             assert q["baseline"] == f"existing_mv{int(round(e * 100)):03d}"
+            ev_kw = {it["case_id"]: it["ev_kw"] for it in q["items"]}
+            # the high end's queue holds the generation side only (the check runs it generation-only)
+            assert (ev_kw["Y2"] == 0.0) == (e == 1.06)
         before = {p.relative_to(folder).as_posix(): p.read_bytes() for p in folder.glob("queue_mv*/*")}
         cids = set(qu.context(qu.band_folder(0.98)).overrides)
 
