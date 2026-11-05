@@ -202,9 +202,14 @@ def append_line(path: str | Path, line: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     data = (line + "\n").encode("utf-8")
     with _thread_lock(path):
-        fd = os.open(path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666)
+        fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666)
         try:
             with _process_lock(fd):
+                size = os.lseek(fd, 0, os.SEEK_END)
+                if size:              # a torn tail (power cut mid-append): keep it on its own line
+                    os.lseek(fd, size - 1, os.SEEK_SET)
+                    if os.read(fd, 1) != b"\n":
+                        data = b"\n" + data
                 view = memoryview(data)
                 while view:
                     written = os.write(fd, view)

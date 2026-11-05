@@ -142,3 +142,21 @@ def test_a_crash_while_the_states_are_written_leaves_the_queue_as_it_was(engine,
     qu.recover()                                    # the next start removes what never committed
     assert not list(qu.folder().glob(f"state_*.v{before['version'] + 1}.npz"))
     assert len(list(qu.folder().glob(f"state_*.v{before['version']}.npz"))) == len(loading)
+
+
+def test_a_seal_that_failed_in_process_is_sealed_by_the_next_decision(engine, queue_dir, monkeypatch):
+    from kapacitet import seals
+
+    qu = queue_dir
+    m, hp, ev = engine
+    first = _record(engine, "d00000000011", cid=84, pv_kwp=20.0, baseline="doe")
+    real = seals.seal
+    monkeypatch.setattr(seals, "seal", lambda *a, **k: (_ for _ in ()).throw(OSError("disk full")))
+    with pytest.raises(OSError):
+        qu.decide(m, hp, ev, first, "nonfirm")
+    monkeypatch.setattr(seals, "seal", real)
+    assert seals.entry_for("decision", first["id"]) is None
+    second = _record(engine, "d00000000012", ctx=qu.context(), cid=76, pv_kwp=15.0, baseline="queue")
+    qu.decide(m, hp, ev, second, "nonfirm")
+    assert seals.entry_for("decision", first["id"]) is not None
+    assert seals.entry_for("decision", second["id"]) is not None

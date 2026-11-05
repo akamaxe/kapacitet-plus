@@ -248,6 +248,7 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
 def _commit(q: dict, assessment: str) -> None:
     """Commit a decision: say which seal is owed, write queue.json, seal the decision, clear the marker.
     A crash at any point leaves either the old queue or the new one with its seal owed (recover())."""
+    _seal_owed(q)                     # an earlier decision whose seal failed in-process: seal it first, loudly
     write_json_atomic(folder() / PENDING, {"kind": "decision", "id": assessment})
     _save(q)
     _seal_owed(q)

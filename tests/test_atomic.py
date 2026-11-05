@@ -183,3 +183,13 @@ def test_an_index_line_cut_short_is_skipped(tmp_path, monkeypatch):
     assert not _strays(tmp_path)
     kept = gzip.decompress((tmp_path / "a00000000001.json.gz").read_bytes())
     assert b"Gatan" not in kept and json.loads(kept)["result"]["customer"] == {"cid": 1}
+
+
+def test_append_after_a_torn_tail_keeps_the_new_line_whole(tmp_path):
+    log = tmp_path / "log.jsonl"
+    atomic.append_line(log, json.dumps({"i": 1}))
+    with open(log, "ab") as fh:
+        fh.write(b'{"i": 2, "tor')           # a power cut mid-append
+    atomic.append_line(log, json.dumps({"i": 3}))
+    lines = log.read_text(encoding="utf-8").splitlines()
+    assert json.loads(lines[-1]) == {"i": 3} and json.loads(lines[0]) == {"i": 1}
