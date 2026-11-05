@@ -85,7 +85,7 @@ def test_an_order_is_searched_on_both_bases(setup):
     zi = r["z_doe_installation"]
     assert zi["customer_max_pct"] <= z_star + 1e-9
     assert zi["customer_year_max_pct"] >= zi["customer_max_pct"] - 1e-9     # only reported
-    assert zi["full_year_violations"] == 0 and r["doe_full_year_violations"] == 0
+    assert zi["full_year_violations"] == 0 and r["doe_full_year_violations_beyond_firm"] == 0
     assert r["z_doe_pct"] <= z_star + 1e-9
     assert r["z_doe_customer_max_pct"] >= r["z_doe_pct"] - 1e-6
     assert 0.0 <= r["customers_within_pct"] <= 100.0
@@ -113,11 +113,18 @@ def test_the_day_ahead_search_reports_both_bases(setup):
     assert inst["adopters"] <= f["adopters"] and inst["adopters"] <= r["doe_installation"]["adopters"]
     assert inst["z_customer_max_pct"] <= z_star + 1e-9 and f["z_pct"] <= z_star + 1e-9
     assert inst["violation_hours"] == 0 == f["violation_hours"]
-    # asked directly, on its own memo, the installation search lands on the same count
-    k, det = forecast.adopters(model, adoption_order(0, model.C), ms, mts, synthetic_profiles.YEARS, hp, ev,
-                               "climatological", z_star, hi=min(f["adopters"], r["doe_installation"]["adopters"]),
-                               budget="installation")
-    assert k == inst["adopters"] and det["z_customer_max_pct"] == pytest.approx(inst["z_customer_max_pct"])
+    assert f["planning_full_year_violations"] == 0 == inst["planning_full_year_violations"]
+    assert f["timeseries_adopters"] == mts and f["at_floor"] == (f["adopters"] <= mts)
+    # the count it settled on is the boundary, measured apart from the search: one more
+    # installation breaks the per-installation budget
+    order, k_i = adoption_order(0, model.C), inst["adopters"]
+    hi = min(f["adopters"], r["doe_installation"]["adopters"])
+    here = forecast.multiyear(model, order, ms, k_i, synthetic_profiles.YEARS, hp, ev, "climatological")
+    assert here["z_customer_max_pct"] <= z_star + 1e-9
+    assert here["z_customer_max_pct"] == pytest.approx(inst["z_customer_max_pct"])
+    if k_i < hi:
+        more = forecast.multiyear(model, order, ms, k_i + 1, synthetic_profiles.YEARS, hp, ev, "climatological")
+        assert more["z_customer_max_pct"] > z_star
 
 
 # ------------------------------------------------------------------ consumption, hour by hour
@@ -154,6 +161,9 @@ def test_a_grid_that_already_breaks_a_limit_takes_nothing(setup, monkeypatch):
     model, hp, ev = setup
     monkeypatch.setattr(model, "import_critical_hours", lambda p, q, vm_slack=None: np.array([0]))
     assert (hosting.nodal_import_hc_ts(model, hp, ev, synthetic_profiles.YEARS) == 0).all()
+    # and the zero is not a measured capacity: the output can say why
+    assert hosting.import_baseline_violations(model, hp, ev, synthetic_profiles.YEARS) == \
+        {int(y): 1 for y in synthetic_profiles.YEARS}
     assert hosting.ts_import_adopters(model, adoption_order(0, model.C), "ev", hp, ev, synthetic_profiles.YEARS) == 0
 
 

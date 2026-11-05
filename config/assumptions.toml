@@ -832,8 +832,8 @@ label = "Solar output in the static summer snapshot, as a share of each inverter
 label_sv = "Solcellernas effekt i den statiska ögonblicksbilden för sommaren, som andel av växelriktarens AC-märkeffekt"
 source = "Base case 1.0: every system at its rating at the same time, the conservative convention of a static connection study; varied to 0.8 and 0.9 in the tornado chart"
 url = ""
-note = "Below 1 the static study allows for the systems not all peaking together (orientation, shading, clipping), as some DSOs do. It moves the static reference only, never the envelopes."
-note_sv = "Under 1 tar den statiska studien hänsyn till att alla anläggningar inte når sin topp samtidigt (riktning, skuggning, begränsning i växelriktaren), som vissa nätbolag gör. Det flyttar bara den statiska referensen, aldrig exportgränserna."
+note = "Below 1 the static study allows for the systems not all peaking together (orientation, shading, clipping), as some DSOs do. It moves the static reference only (the static capacity, the fixed-cap rung and a request's static and phase checks), never the envelopes."
+note_sv = "Under 1 tar den statiska studien hänsyn till att alla anläggningar inte når sin topp samtidigt (riktning, skuggning, begränsning i växelriktaren), som vissa nätbolag gör. Det flyttar bara den statiska referensen (den statiska kapaciteten, steget med fast tak och en ansökans statiska kontroll och faskontroll), aldrig exportgränserna."
 
 [static_load_rule]
 value = "min_daytime_summer"

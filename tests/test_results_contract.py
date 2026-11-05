@@ -33,6 +33,15 @@ def _field(d: dict, key: str):
     return d[key]
 
 
+def test_the_showcase_says_which_basis_its_violation_count_uses(results):
+    """`doe_full_year_violations` counts every export-side hour, the firm customers' own ones too;
+    `_beyond_firm` (DoeResult.full_year_violations' basis) leaves those out."""
+    ver = results("showcase")["verification"]
+    beyond, firm = _field(ver, "doe_full_year_violations_beyond_firm"), ver["doe_firm_violation_hours"]
+    assert beyond == 0
+    assert beyond + firm <= ver["doe_full_year_violations"]
+
+
 def test_every_published_power_flow_converged(results):
     ver = results("showcase")["verification"]
     assert _field(ver, "pf_nonconverged_hours") == 0
@@ -44,7 +53,8 @@ def test_every_published_envelope_point_is_verified_in_every_hour(results):
     the interface shows (each sharing rule, each adoption order, the curve, the risk cases)."""
     show = results("showcase")["policies"]
     assert all(_field(p, "full_year_violations") == 0 for p in show.values())
-    assert all(_field(o, "doe_full_year_violations") == 0 for o in results("hosting_summary")["per_order"])
+    assert all(_field(o, "doe_full_year_violations_beyond_firm") == 0
+               for o in results("hosting_summary")["per_order"])
     assert all(_field(p, "full_year_violations") == 0 for p in results("zcurve")["points"])
     risk = results("risk")
     assert _field(risk["stats"], "full_year_violations") == 0
@@ -291,6 +301,11 @@ def test_the_published_envelopes_have_no_violation_at_the_demos_mv_level(results
     band = _mv_band(results)
     at = _at_level(band, band["base_pu"])
     assert at["published"]["violation_hours"] == 0 and at["published"]["nonconverged_hours"] == 0
+    # at its own level every hour of the band's check is the showcase's own full-year check
+    if "any_violation_hours" in at["published"] and "doe_firm_violation_hours" in results("showcase")["verification"]:
+        ver = results("showcase")["verification"]
+        assert at["published"]["firm_violation_hours"] == ver["doe_firm_violation_hours"]
+        assert at["published"]["export_violation_hours"] == ver["doe_full_year_violations"]
     # the envelopes checked are the showcase's: at its own level they curtail what it publishes
     show = results("showcase")["policies"][band["policy"]]
     assert at["recomputed"]["critical_hours"] == show["critical_hours"]
@@ -300,3 +315,26 @@ def test_the_published_envelopes_have_no_violation_at_the_demos_mv_level(results
     assert all(r["recomputed"]["full_year_violations"] == 0 for r in band["levels"])
     vm = [r["vm_pu"] for r in band["levels"]]
     assert vm == sorted(vm) and [vm[0], vm[-1]] == band["band_pu"] == A("mv_voltage_band_pu")
+
+
+# ---------------------------------------------------------------- consumption, hour by hour
+
+CONSUMPTION = "run: python -m kapacitet compute --stage extra --only consumption"
+
+
+def test_a_zero_consumption_capacity_says_whether_todays_grid_already_breaks_a_limit(results):
+    """0 kW from the hourly search is either a measured capacity or a grid that already breaks an
+    import limit before anyone adds load: consumption.json has to say which."""
+    if not processed("results", "consumption.json").exists():
+        pytest.skip(f"consumption.json not published yet; {CONSUMPTION}")
+    c = results("consumption")
+    if "baseline_violation_hours" not in c:
+        pytest.skip(f"consumption.json predates baseline_violation_hours; {CONSUMPTION}")
+    base = c["baseline_violation_hours"]
+    assert set(base) == {str(y) for y in c["years"]}
+    assert c["baseline_violates"] == any(base.values())
+    if c["baseline_violates"]:
+        assert max(c["nodal"]["timeseries_kw"]) == 0
+        assert all(d["adopters"]["max"] == 0 for d in c["devices"].values())
+    elif c["nodal_kw"]["timeseries"]["median"] > 0:
+        assert not any(base.values())

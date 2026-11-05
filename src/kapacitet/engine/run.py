@@ -208,6 +208,8 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     z_at_yd = curtailment(order, ms, yd, years, hp, ev)
     z_at_ydi = z_at_yd if yd_i == yd else curtailment(order, ms, yd_i, years, hp, ev)
     z_at_yf = curtailment(order, ms, yf, years, hp, ev, method="fixed")
+    doe.require_verified(z_at_yd["full_year_violations"], f"order {o}, {yd} adopters (aggregate budget)")
+    doe.require_verified(z_at_ydi["full_year_violations"], f"order {o}, {yd_i} adopters (per-installation budget)")
 
     def kw(k):
         return {"adopters": int(k), "kw_ac": float(cap[order[:k]].sum()), "kwp": float(kwp[order[:k]].sum())}
@@ -221,7 +223,9 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
             "z_doe_installation": {"z_pct": z_at_ydi["z_pct"], "customer_max_pct": z_at_ydi["z_customer_max_pct"],
                                    "customer_year_max_pct": z_at_ydi["z_customer_year_max_pct"],
                                    "full_year_violations": z_at_ydi["full_year_violations"]},
-            "doe_full_year_violations": z_at_yd["full_year_violations"],
+            # beyond the firm state (DoeResult.full_year_violations), unlike the showcase's
+            # verification.doe_full_year_violations, which counts every export-side hour
+            "doe_full_year_violations_beyond_firm": z_at_yd["full_year_violations"],
             "seconds": time.perf_counter() - t0}
 
 
@@ -231,6 +235,7 @@ def _curve_point(args) -> dict:
     hp, ev = background_masks(m.C)
     order = adoption_order(o, m.C)
     d = curtailment(order, ms, k, years, hp, ev)
+    doe.require_verified(d["full_year_violations"], f"curve point of order {o}, {k} adopters")
     f = curtailment(order, ms, k, years, hp, ev, method="fixed")
     cap = doe.customer_caps()
     return {"adopters": k, "kw_ac": float(cap[order[:k]].sum()), "z_doe_pct": d["z_pct"],
@@ -249,6 +254,7 @@ def _risk_case(args) -> dict:
     nf = order[ms:k]
     arr = Scenario(year=year, pv=pv_mask(order, k, m.C), hp=hp, ev=ev, load_seed=seed).arrays()
     r = doe.compute(m, arr, nf, policy=REF_POLICY)
+    doe.require_verified(r.full_year_violations, f"risk case of {year}, seed {seed}")
     pot = arr["pv"][nf].sum(axis=1)
     return {"year": year, "seed": seed, "curtailed_kwh": r.curtailed.sum(axis=1).astype(float).tolist(),
             "potential_kwh": pot.astype(float).tolist(), "critical_hours": r.info.get("critical_hours", 0),
@@ -451,6 +457,7 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
     for pol in ("maxmin", "prorata", "propfair", "maxtotal"):
         t0 = time.perf_counter()
         r = doe.compute(m, arr, nf, policy=pol)
+        doe.require_verified(r.full_year_violations, f"showcase, policy {pol}, {y}")
         results[pol] = r
         pot = arr["pv"][nf].sum(axis=1)
         curt = r.curtailed.sum(axis=1)
@@ -482,6 +489,8 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
     r = results[REF_POLICY]
     # Full-year nonlinear verification with the envelopes applied, kept for the map.
     full = doe.verify_full_year(m, arr, r, keep_state=True)
+    doe.require_verified(full["violation_hours"], f"showcase state, policy {REF_POLICY}, {y}",
+                         nonconverged_hours=full["nonconverged_hours"])
     p_doe, res_doe, v_doe = full["p"], full["result"], full["violations"]
     res_unc = m.solve(arr["p_net"], arr["q"])
     v_unc = m.violations(res_unc, arr["p_net"])
@@ -517,7 +526,12 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
         "kw_ac_firm": float(doe.customer_caps()[firm].sum()), "kw_ac_total": float(doe.customer_caps()[order[:k]].sum()),
         "policies": {pol: {kk: vv for kk, vv in d.items()} for pol, d in policies.items()},
         "verification": {
+            # every export-side violation hour of the year with the envelopes held, the hours the
+            # firm customers alone break included; `_beyond_firm` leaves those out, as every
+            # DoeResult.full_year_violations does, and `doe_firm_violation_hours` counts them
             "doe_full_year_violations": full["export_violation_hours"],
+            "doe_full_year_violations_beyond_firm": full["violation_hours"],
+            "doe_firm_violation_hours": full["firm_violation_hours"],
             "doe_max_voltage_pu": float(v_doe.vmax.max()), "doe_max_trafo_loading_pct": float(v_doe.trafo_loading.max()),
             "doe_max_line_loading_pct": float(v_doe.max_line_loading.max()),
             "uncontrolled_violation_hours": int(v_unc.export_side.sum()),
@@ -588,6 +602,8 @@ def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:
                      "full_year_violations": r.get("full_year_violations")})
     z = np.array([row["z_pct"] for row in rows])
     full = [row["full_year_violations"] for row in rows]
+    for row in rows:
+        doe.require_verified(row["full_year_violations"], f"risk case of {row['year']}, seed {row['seed']}")
     tail = np.sort(z)[-max(1, int(np.ceil(0.05 * len(z)))):]
     # per-customer annual curtailment share across all cases
     cust_z = np.array([np.divide(np.array(r["curtailed_kwh"]), np.array(r["potential_kwh"]),
@@ -602,7 +618,7 @@ def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:
         "stats": {"mean_z_pct": float(z.mean()), "p90_z_pct": float(np.percentile(z, 90)),
                   "worst_z_pct": float(z.max()), "cvar95_z_pct": float(tail.mean()), "n_cases": int(len(z)),
                   # every case verified in every hour with the envelopes held (doe.verify_full_year)
-                  "full_year_violations": int(sum(full)) if None not in full else None},
+                  "full_year_violations": int(sum(full))},
         "customer_z_pct": {"mean": np.round(cust_z.mean(axis=0), 3), "p90": np.round(np.percentile(cust_z, 90, axis=0), 3),
                            "max": np.round(cust_z.max(axis=0), 3)},
         "ghi_kwh_m2": ghi,

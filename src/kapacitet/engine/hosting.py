@@ -298,6 +298,16 @@ def _bisect_nodal(model: NetModel, P0: np.ndarray, Q0: np.ndarray, rows: np.ndar
     return lo
 
 
+def import_baseline_violations(model: NetModel, hp_mask: np.ndarray, ev_mask: np.ndarray,
+                               years=None) -> dict[int, int]:
+    """Hours of each year of `years` in which today's grid (no solar, today's heat pumps and EVs)
+    already breaks an import-side limit, before anyone adds load: the case in which
+    `nodal_import_hc_ts` and `ts_import_adopters` return zero, which is then no measured capacity."""
+    years = tuple(settings().weather_years if years is None else years)
+    return {int(y): int(len(model.import_critical_hours(*consumption_state(y, hp_mask, ev_mask))))
+            for y in years}
+
+
 def nodal_import_hc_ts(model: NetModel, hp_mask: np.ndarray, ev_mask: np.ndarray, years=None,
                        max_kw: float = 250.0, top: int = CANDIDATES_PER_YEAR, max_rounds: int = 20) -> np.ndarray:
     """Largest extra load (kW, constant in every hour) at each house alone that every hour of
@@ -310,7 +320,8 @@ def nodal_import_hc_ts(model: NetModel, hp_mask: np.ndarray, ev_mask: np.ndarray
     then confirmed on every hour of every year (`import_critical_hours`: the linear screen and
     the nonlinear flow); an hour its candidates missed joins them and that house is searched
     again, until every house is confirmed. If today's grid already breaks an import limit in
-    some hour, no house can add anything and the result is zero.
+    some hour, no house can add anything and the result is zero (`import_baseline_violations`
+    counts those hours, for the output to say so).
     """
     years = tuple(settings().weather_years if years is None else years)
     C = model.C

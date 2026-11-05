@@ -132,6 +132,11 @@ def test_the_published_envelopes_hold_at_the_demos_level_only(band):
         assert r["published"]["nonconverged_hours"] == 0, r["vm_pu"]
         # what the firm customers alone break is the same whichever envelopes the others hold
         assert rc["firm_violation_hours"] == r["published"]["firm_violation_hours"], r["vm_pu"]
+        # every hour of the year is solved, and every violating one counted, on either side
+        pub = r["published"]
+        assert pub["hours_checked"] == at["published"]["hours_checked"] >= 8760, r["vm_pu"]
+        assert pub["violation_hours"] + pub["firm_violation_hours"] <= pub["export_violation_hours"], r["vm_pu"]
+        assert pub["any_violation_hours"] >= max(pub["export_violation_hours"], pub["import_violation_hours"])
         assert rc["potential_kwh"] == pytest.approx(at["recomputed"]["potential_kwh"])
         assert 0.0 <= rc["z_pct"] <= rc["max_customer_z_pct"] + 1e-9 <= 100.0 + 1e-9
     assert top["recomputed"]["z_pct"] > at["recomputed"]["z_pct"]

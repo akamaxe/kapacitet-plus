@@ -16,6 +16,7 @@ import numpy as np
 import pytest
 from conftest import on_tiny, stress_instance, violations_beyond_firm
 
+from kapacitet.dso import POLICIES
 from kapacitet.engine import doe
 from kapacitet.engine.compliance import CONSTRAINT
 
@@ -29,7 +30,7 @@ def instance(grid_model):
     return stress_instance(grid_model)
 
 
-@pytest.mark.parametrize("policy", ["maxmin", "prorata"])
+@pytest.mark.parametrize("policy", POLICIES)
 def test_envelopes_verify_with_the_nonlinear_power_flow(grid_model, instance, policy, request):
     arrays, nonfirm, cap = instance
     r = doe.compute(grid_model, arrays, nonfirm, policy=policy)
@@ -42,7 +43,7 @@ def test_envelopes_verify_with_the_nonlinear_power_flow(grid_model, instance, po
     assert bound[CODE["transformer"]] > 0
     if on_tiny(request):
         assert bound[CODE["voltage"]] > 0, f"the stress must bind the voltage too: {bound.tolist()}"
-    # the full-year check doe.compute ran, and the same check run apart from it
+    # the full-year check doe.compute ran, and the same check written out from scratch
     assert r.verification == "full" and r.full_year_violations == 0
     assert r.info["full_year"]["hours_checked"] > r.info["critical_hours"]
     assert violations_beyond_firm(grid_model, arrays, nonfirm, r) == 0
@@ -81,17 +82,8 @@ def test_more_customers_means_more_curtailment(grid_model, instance):
 # ------------------------------------------------------------------ the full-year check
 
 def _by_hand(model, arrays: dict, r, vm_slack=None) -> int:
-    """`doe.verify_full_year` written out again from scratch: every hour solved with the envelope
-    held, then again with the non-firm customers exporting nothing, and the hours the first
-    breaks and the second does not are counted."""
-    nf = np.asarray(r.nonfirm)
-    p = np.array(arrays["p_net"], dtype=float)
-    p[nf] = np.minimum(p[nf], r.envelope(p.shape[1]))
-    held = model.violations(model.solve(p, arrays["q"], vm_slack), p).export_side
-    p_firm = np.array(arrays["p_net"], dtype=float)
-    p_firm[nf] = np.minimum(p_firm[nf], 0.0)
-    firm = model.violations(model.solve(p_firm, arrays["q"], vm_slack), p_firm).export_side
-    return int((held & ~firm).sum())
+    """`doe.verify_full_year` written out again from scratch (conftest.violations_beyond_firm)."""
+    return violations_beyond_firm(model, arrays, r.nonfirm, r, vm_slack)
 
 
 def _losing_candidates(model):

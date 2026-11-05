@@ -279,13 +279,17 @@ def stress_instance(model, seed: int = 42, hours: int = 150):
 
 
 def violations_beyond_firm(model, arrays: dict, nonfirm: np.ndarray, r, vm_slack=None) -> int:
-    """The re-check of a `DoeResult` over the whole year: the published envelope held in every
-    hour, solved again with the nonlinear power flow, counting the hours with an export violation
-    that the firm state alone does not have (envelopes cannot fix those).
-
-    This is `doe.verify_full_year`, called apart from `doe.compute`; test_doe_safety.py checks
-    that function against a reimplementation of its own."""
-    from kapacitet.engine import doe
-
-    assert set(np.asarray(r.nonfirm).tolist()) == set(np.asarray(nonfirm).tolist())
-    return doe.verify_full_year(model, arrays, r, vm_slack)["violation_hours"]
+    """The re-check of a `DoeResult` over the whole year, written out from scratch so it does not
+    go through `doe.verify_full_year`, which `doe.compute` already ran: every hour solved with the
+    published envelope held, then again with the non-firm customers exporting nothing, counting the
+    hours the first breaks and the second does not (envelopes cannot fix those). A firm state
+    without a converged answer excuses nothing."""
+    nf = np.asarray(r.nonfirm, dtype=int)
+    assert set(nf.tolist()) == set(np.asarray(nonfirm).tolist())
+    p = np.array(arrays["p_net"], dtype=float)
+    p[nf] = np.minimum(p[nf], r.envelope(p.shape[1]))
+    held = model.violations(model.solve(p, arrays["q"], vm_slack), p).export_side
+    p_firm = np.array(arrays["p_net"], dtype=float)
+    p_firm[nf] = np.minimum(p_firm[nf], 0.0)
+    vf = model.violations(model.solve(p_firm, arrays["q"], vm_slack), p_firm)
+    return int((held & ~(vf.export_side & ~vf.nonconverged)).sum())

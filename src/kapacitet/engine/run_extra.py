@@ -125,7 +125,8 @@ MV_BAND_STEP_PU = 0.02
 # check of the published envelopes there (doe.verify_full_year).
 _MV_CAPACITY = ("static_kw", "timeseries_kw", "doe_kw", "static_adopters", "timeseries_adopters", "doe_adopters")
 _MV_HELD = ("hours_checked", "violation_hours", "firm_violation_hours", "export_violation_hours",
-            "nonconverged_hours", "max_voltage_pu", "max_trafo_loading_pct", "max_line_loading_pct")
+            "import_violation_hours", "any_violation_hours", "nonconverged_hours", "max_voltage_pu",
+            "max_trafo_loading_pct", "max_line_loading_pct")
 
 
 def mv_band_levels(step: float = MV_BAND_STEP_PU) -> list[float]:
@@ -144,9 +145,12 @@ def mv_band_envelopes(o: int, ms: int, k: int, levels) -> list[dict]:
     envelopes) at each MV level of `levels`, in two ways:
 
     - `published`: the envelopes the demo publishes, computed at its own level (mv_voltage_pu),
-      held in every hour and solved again with the MV at this level (doe.verify_full_year).
-      `violation_hours` are the hours they no longer keep within a limit there, and
-      `firm_violation_hours` those the firm customers alone break, which no envelope can fix.
+      held in every hour and solved again with the MV at this level (doe.verify_full_year, every
+      hour solved). `violation_hours` are the hours with a non-firm export they no longer keep
+      within an export limit there, and `firm_violation_hours` those hours the firm customers
+      alone break, which no envelope can fix. `export_violation_hours`, `import_violation_hours`
+      and `any_violation_hours` count every hour of the year that breaks a limit on that side
+      (or either), the hours with nobody on an envelope exporting included.
     - `recomputed`: envelopes computed afresh with the MV at this level, verified the same way,
       and the curtailment they impose on the same customers (the showcase's measures).
     """
@@ -162,7 +166,10 @@ def mv_band_envelopes(o: int, ms: int, k: int, levels) -> list[dict]:
     pot = arr["pv"][nf].astype(float).sum(axis=1)
     rows = []
     for v in levels:
-        held = doe.verify_full_year(m, arr, published, vm_slack=v)
+        # every hour of the year, not only those with a non-firm export: the hours the firm
+        # customers alone break at this level are counted too (export_violation_hours, and the
+        # import side for the low end of the band)
+        held = doe.verify_full_year(m, arr, published, vm_slack=v, every_hour=True)
         r = published if abs(v - m.vm_slack) < 1e-9 else doe.compute(m, arr, nf, policy=REF_POLICY, vm_slack=v)
         curt = r.curtailed.astype(float).sum(axis=1)
         rows.append({
@@ -190,6 +197,10 @@ def mv_band(o: int, ms: int, k: int, years, z_star: float, workers: int = 4) -> 
     envelopes and the curtailment of envelopes recomputed at that level (mv_band_envelopes).
     With `workers` > 1 the searches run in that many processes while this one checks the
     envelopes; with one, everything runs here. Returns what it writes.
+
+    It costs one capacity search and one envelope computation per level (five on the default
+    band). A quick run searches the reference year only, while the showcase deployment it checks
+    was found over every weather year, so a quick mv_band.json is not comparable with a full one.
     """
     from .run import REF_POLICY
 
@@ -242,14 +253,17 @@ def _foresight_case(args) -> dict:
                                        window_days=window, hi=min(k, yd_i), budget="installation", memo=runs)
     return {"order": o, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum()),
             "z_pct": det["z_pct"], "violation_hours": det["violation_hours"],
+            "planning_full_year_violations": det["planning_full_year_violations"],
             "z_customer_max_pct": det["z_customer_max_pct"],
-            "at_floor": bool(k <= mts),
+            "timeseries_adopters": int(mts), "at_floor": bool(k <= mts),
             "exceedance": det["exceedance"],
             "exceedance_per_year": [{"year": p["year"], **p["exceedance"]} for p in det["per_year"] if p["exceedance"]],
             "installation": {"adopters": int(k_i), "kw_ac": float(cap[order[:k_i]].sum()),
                              "z_pct": det_i["z_pct"], "z_customer_max_pct": det_i["z_customer_max_pct"],
                              "z_customer_year_max_pct": det_i["z_customer_year_max_pct"],
-                             "violation_hours": det_i["violation_hours"], "at_floor": bool(k_i <= mts),
+                             "violation_hours": det_i["violation_hours"],
+                             "planning_full_year_violations": det_i["planning_full_year_violations"],
+                             "at_floor": bool(k_i <= mts),
                              "exceedance": det_i["exceedance"]},
             "seconds": time.perf_counter() - t0}
 
@@ -272,6 +286,13 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
     Both bases of the budget are searched, from one memo per order: the top level holds the
     aggregate share to it (the headline's basis), `installation` each installation's own share
     over the years, against the published `doe_installation`.
+
+    Two audits sit side by side. `exceedance` (`forecast.exceedance_audit`) compares the
+    reference year's solar per kWp with the per-kWp bound, before any inverter cap, and the load
+    with its floor; `plan_exceedance` (`forecast.plan_exceedance`, summed) compares what each
+    issue met, inverter-capped kW per customer, with the planning state it was issued against.
+    `planning_full_year_violations` is the full-year check of the issued envelopes against
+    those planning states (0 when they were verified in every hour).
     """
     from concurrent.futures import ProcessPoolExecutor
 
@@ -322,6 +343,7 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
             "foresight_premium_kw": (published["doe_installation"] - inst_kw
                                      if "doe_installation" in published else None),
             "violation_hours": int(sum(r["violation_hours"] for r in inst)),
+            "planning_full_year_violations": int(sum(r["planning_full_year_violations"] for r in inst)),
             "within_budget_orders": int(sum(r["z_customer_max_pct"] <= z_star + 1e-9 for r in inst)),
             "at_floor_orders": int(sum(r["at_floor"] for r in inst)),
             "plan_exceedance": forecast.total_exceedance([r["exceedance"] for r in inst]),
@@ -338,6 +360,7 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
                             "static": med([r["static"]["adopters"] for r in summary["per_order"]])},
         "foresight_premium_kw": published["doe"] - climatological_kw,
         "violation_hours": int(sum(r["violation_hours"] for r in rows)),
+        "planning_full_year_violations": int(sum(r["planning_full_year_violations"] for r in rows)),
         "within_budget_orders": int(sum(r["z_pct"] <= z_star + 1e-9 for r in rows)),
         "at_floor_orders": int(sum(r["at_floor"] for r in rows)),
         "per_order": per_order,
@@ -432,7 +455,9 @@ def _consumption_nodal(args) -> dict:
     hp, ev = background_masks(m.C)
     t0 = time.perf_counter()
     return {"timeseries_kw": hosting.nodal_import_hc_ts(m, hp, ev, years),
-            "static_kw": hosting.nodal_import_hc(m, hp, ev), "seconds": time.perf_counter() - t0}
+            "static_kw": hosting.nodal_import_hc(m, hp, ev),
+            "baseline_violation_hours": hosting.import_baseline_violations(m, hp, ev, years),
+            "seconds": time.perf_counter() - t0}
 
 
 def consumption(years, n_orders: int, workers: int = 4) -> None:
@@ -445,6 +470,10 @@ def consumption(years, n_orders: int, workers: int = 4) -> None:
     flat loads of the charger rating the street takes, house after house, before an hour of
     the record breaks a limit (`hosting.ts_import_adopters`). Nobody's solar is counted: it
     only relieves the import side.
+
+    `baseline_violation_hours` (per year) counts the hours today's grid already breaks an
+    import-side limit in. Any above zero leaves every hourly capacity at 0 kW and 0 devices,
+    and `baseline_violates` says so, so that zero is not read as a measured capacity.
     """
     from concurrent.futures import ProcessPoolExecutor
 
@@ -469,10 +498,15 @@ def consumption(years, n_orders: int, workers: int = 4) -> None:
                       "adopters": spread([r["adopters"] for r in mine]),
                       "per_order": [{"order": r["order"], "adopters": r["adopters"]} for r in mine]}
     winter = hosting.winter_design_load()
+    baseline = {str(y): int(n) for y, n in nodal["baseline_violation_hours"].items()}
+    if any(baseline.values()):
+        log.warning("consumption: today's grid already breaks an import limit (%s hours by year); "
+                    "every hourly capacity is 0", baseline)
     _write("consumption.json", {
         "years": list(years), "n_orders": n_orders, "customers": C,
         "basis": "every hour of every weather year, today's heat pumps and EVs, no solar; import side "
                  "(undervoltage and forward overloads of cables and the transformer)",
+        "baseline_violation_hours": baseline, "baseline_violates": any(baseline.values()),
         "devices_text": {"ev": "the house's own uncontrolled home charging",
                          "hp": "the house's own heat pump", "flat": "a constant load of the charger rating"},
         "nodal": {"customers": cust["cid"].tolist(),

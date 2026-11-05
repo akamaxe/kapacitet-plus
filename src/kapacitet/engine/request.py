@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from ..atomic import savez_atomic
+from ..atomic import savez_atomic, write_text_atomic
 from ..cache import memo, on_clear
 from ..config import A, settings
 from ..paths import DATA, processed
@@ -66,7 +66,9 @@ def base_injection(model: NetModel, base: dict, year: int, hp: np.ndarray, ev: n
     nonfirm = np.array(base["nonfirm_cids"], dtype=int)
     if len(nonfirm):
         # verified in every hour (doe.compute's default), since every hour of it is a baseline
-        p = doe.held_injection(arr, doe.compute(model, arr, nonfirm, policy="maxmin"))
+        r = doe.compute(model, arr, nonfirm, policy="maxmin")
+        doe.require_verified(r.full_year_violations, f"request baseline {base['name']}, {year}")
+        p = doe.held_injection(arr, r)
     return p, arr["q"].astype(float)
 
 
@@ -84,8 +86,8 @@ def precompute(model: NetModel, name: str, years, hp: np.ndarray, ev: np.ndarray
     base = baseline_definition(name)
     for y in years:
         p, q = base_injection(model, base, y, hp, ev)
-        np.savez(processed("request", f"{name}_{y}.npz"), **build_state(model, p, q))
-    processed("request", f"{name}.json").write_text(json.dumps(base), encoding="utf-8")
+        savez_atomic(processed("request", f"{name}_{y}.npz"), **build_state(model, p, q))
+    write_text_atomic(processed("request", f"{name}.json"), json.dumps(base))
 
 
 @memo(maxsize=32)
@@ -772,7 +774,7 @@ def _phase_check(req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: 
         if kind == "pv":
             # the summer snapshot without the applicant's panels; they go on one phase
             p, q = hosting.summer_snapshot(firm_mask, pv_kw)
-            device = kw
+            device = kw * A("static_pv_factor")     # the snapshot's share of the rating, as for the others
             season = "summer"
         else:
             p, q = hosting.winter_snapshot(hm, ev, extra)

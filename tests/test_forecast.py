@@ -64,7 +64,7 @@ def test_the_exceedances_are_counted_on_both_sides(case):
     bare = forecast.exceedance_audit(show["year"], hp, ev, pv_margin=0.0, load_margin=0.0)
     assert bare["pv_margin_pct"] == 0 and audit["pv_margin_pct"] == A("dayahead_pv_margin_pct")
     assert audit["pv_aggregate_hours_over"] <= bare["pv_aggregate_hours_over"]
-    assert audit["pv_customer_hours_over"] <= bare["pv_customer_hours_over"]
+    assert audit["pv_customer_hours_over_per_kwp"] <= bare["pv_customer_hours_over_per_kwp"]
     assert audit["load_customer_hours_under"] <= bare["load_customer_hours_under"]
     assert audit["pv_worst_aggregate_ratio_unmargined"] == pytest.approx(bare["pv_worst_aggregate_ratio"])
 
@@ -219,7 +219,10 @@ def test_the_day_ahead_capacity_sits_between_static_and_foresight(results):
     for r in f["per_order"]:
         assert r["static_kw"] - 1e-9 <= r["kw_ac"] <= r["doe_kw"] + 1e-9, r["order"]
         assert r["kw_minus_timeseries"] == pytest.approx(r["kw_ac"] - r["timeseries_kw"], abs=1e-9)
-        assert r["at_floor"] == (r["kw_ac"] <= r["timeseries_kw"] + 1e-9), r["order"]
+        if "timeseries_adopters" in r:          # the quantity run_extra sets it from
+            assert r["at_floor"] == (r["adopters"] <= r["timeseries_adopters"]), r["order"]
+        else:
+            assert r["at_floor"] == (r["kw_ac"] <= r["timeseries_kw"] + 1e-9), r["order"]
     stats = f["kw_ac_stats"]["climatological"]
     assert stats["median"] == pytest.approx(f["median_kw"]["climatological"])
     assert stats["min"] <= stats["p10"] <= stats["median"] <= stats["p90"] <= stats["max"]
@@ -284,7 +287,9 @@ def test_the_installation_budget_reuses_the_counts_already_measured(searched):
     assert (k, k_i) == (72, 65), "1.4 × z(k) <= 3 % up to 65 adopters"
     assert det["adopters"] == 65 and searched[-1] == (65, True)
     assert len(trial) == len(set(trial)), "a count the first search measured is not run again"
-    assert len(trial) > len(first) and set(first) <= set(runs)
+    assert len(trial) > len(first) and set(first) <= {k for *_, k in runs}
+    # the memo is keyed by the configuration too: another window never reuses these runs
+    assert {key[:3] for key in runs} == {("climatological", forecast.WINDOW_DAYS, "maxmin")}
     with pytest.raises(ValueError):
         _search(60, 96, budget="per_house")
 

@@ -191,36 +191,58 @@ def held_injection(arrays: dict[str, np.ndarray], r: DoeResult) -> np.ndarray:
     return p
 
 
+class EnvelopesNotVerified(RuntimeError):
+    """Envelopes about to be published, or used as a baseline, that did not pass the full-year check."""
+
+
+def require_verified(full_year_violations: int | None, where: str, *, nonconverged_hours: int = 0) -> None:
+    """Refuse to go on with envelopes that break a limit in some hour of the year with them held.
+
+    `full_year_violations` is `DoeResult.full_year_violations` (or a sum of them): None means the
+    full-year check never ran, which is not a verification either. `where` names the policy, year
+    or point, for the message. Hours without a converged power flow refuse as well.
+    """
+    if full_year_violations is None:
+        raise EnvelopesNotVerified(f"{where}: the envelopes were not verified over the full year")
+    if full_year_violations > 0 or nonconverged_hours > 0:
+        raise EnvelopesNotVerified(
+            f"{where}: {full_year_violations} hours break a limit with the envelopes held and "
+            f"{nonconverged_hours} hours have no converged power flow; refusing to publish or use them")
+
+
 # the scalar part of verify_full_year's answer, which a DoeResult keeps in info["full_year"]
 FULL_YEAR_SUMMARY = ("hours_checked", "violation_hours", "export_violation_hours", "firm_violation_hours",
                      "nonconverged_hours", "pf_iterations", "pf_max_mismatch")
 
 
 def verify_full_year(model: NetModel, arrays: dict[str, np.ndarray], r: DoeResult, vm_slack=None, *,
-                     keep_state: bool = False) -> dict:
+                     keep_state: bool = False, every_hour: bool = False) -> dict:
     """Solve the year again with the nonlinear power flow, every non-firm customer of `r` held to
     its published envelope, and count what still breaks an export-side limit.
 
     `r` may have been computed against another state than `arrays` (a day-ahead planning state
     checked against what happened). Only the hours in which some non-firm customer wants to
-    export can differ from the firm state, so only those are solved; `keep_state` solves every
-    hour instead and returns the state too ("p", "result", "violations"), for the callers that
+    export can differ from the firm state, so only those are solved; `every_hour` solves every
+    hour instead, for the callers that count every violation of the year, and `keep_state` does
+    the same and returns the state too ("p", "result", "violations"), for the callers that
     publish it.
 
     `violation_hours` counts the solved hours with a non-firm export that break a limit the firm
     state alone (non-firm customers exporting nothing) does not break, since no envelope can fix
     those; an hour without a converged, finite answer is never excused. It must be 0.
     `export_violation_hours` counts every export-side violation of the hours solved, the firm
-    ones included: with `keep_state` that is the whole year.
+    ones included: with `every_hour` or `keep_state` that is the whole year, and
+    `import_violation_hours` and `any_violation_hours` count the import side and either side.
     """
     p_net = np.asarray(arrays["p_net"], dtype=float)
     q = np.asarray(arrays["q"], dtype=float)
     H = p_net.shape[1]
     nf = np.asarray(r.nonfirm, dtype=int)
     exporting = (p_net[nf] > 0).any(axis=0) if len(nf) else np.zeros(H, dtype=bool)
-    hrs = np.arange(H) if keep_state else np.flatnonzero(exporting)
+    hrs = np.arange(H) if keep_state or every_hour else np.flatnonzero(exporting)
     out = dict.fromkeys(FULL_YEAR_SUMMARY, 0)
-    out.update(hours_checked=int(len(hrs)), pf_max_mismatch=0.0, max_voltage_pu=None,
+    out.update(hours_checked=int(len(hrs)), import_violation_hours=0, any_violation_hours=0,
+               pf_max_mismatch=0.0, max_voltage_pu=None,
                max_trafo_loading_pct=None, max_line_loading_pct=None)
     if len(hrs) == 0:
         return out
@@ -237,6 +259,7 @@ def verify_full_year(model: NetModel, arrays: dict[str, np.ndarray], r: DoeResul
         excused[ask] = vf.export_side & ~vf.nonconverged
     out.update(violation_hours=int((bad & ~excused).sum()), export_violation_hours=int(v.export_side.sum()),
                firm_violation_hours=int(excused.sum()), nonconverged_hours=int(v.nonconverged.sum()),
+               import_violation_hours=int(v.import_side.sum()), any_violation_hours=int(v.any.sum()),
                pf_iterations=int(res.iterations), pf_max_mismatch=float(res.max_mismatch),
                max_voltage_pu=float(np.max(v.vmax)), max_trafo_loading_pct=float(np.max(v.trafo_loading)),
                max_line_loading_pct=float(np.max(v.max_line_loading)))

@@ -233,7 +233,12 @@ planning band of that voltage (`mv_voltage_band_pu`, until it is measured) in st
 At each level: the static, hourly and envelope capacity, searched as the tornado searches them;
 the published envelopes, held in every hour of the reference year and solved again there; and
 the curtailment of envelopes computed afresh at that level for the same customers. The tornado's
-MV case takes the two ends of the same band.
+MV case takes the two ends of the same band. Of the published envelopes' counts,
+`violation_hours` is the envelopes' own failure (hours with a non-firm export that break an
+export limit the firm customers alone do not), while `export_violation_hours`,
+`import_violation_hours` and `any_violation_hours` count every hour of the year that breaks a limit,
+the ones the firm customers break by themselves included. A `--quick` run searches the reference
+year only, so its `mv_band.json` is not comparable with a full one.
 
 ### Optional: ENTSO-E token
 
