@@ -260,6 +260,38 @@ def test_a_time_that_makes_no_sense_is_not_believed(tmp_path, bad):
     assert abs(got - time.mktime(when + (0, 0, -1))) < 2
 
 
+def _bundle_with_network(path, net: bytes):
+    entries = {"data/processed/results/risk.json": b"{}", "data/processed/grid/net.json": net,
+               "data/processed/results/showcase.json": b"{}"}
+    with zipfile.ZipFile(path, "w") as z:
+        for name, body in entries.items():
+            z.writestr(name, body)
+        z.writestr(MANIFEST, _manifest(entries))
+    return path
+
+
+def test_a_network_file_that_loading_would_refuse_is_refused_before_anything_is_written(tmp_path):
+    """pandapower builds whatever a net.json names: a bundle checks it while it can still say so,
+    instead of a copy that opens without its network once the setup page has closed."""
+    hostile = {"_module": "pandapower.auxiliary", "_class": "pandapowerNet",
+               "_object": {"evil": {"_module": "os", "_class": "system", "_object": "echo owned"}}}
+    z_path = _bundle_with_network(tmp_path / "x.zip", json.dumps(hostile).encode())
+    target = tmp_path / "d"
+    err = pytest.raises(BundleError, unpack_bundle, z_path, data_dir=target)
+    assert err.value.code == "bad_network" and err.value.params == {"entry": "data/processed/grid/net.json"}
+    assert not target.exists() or not [f for f in target.rglob("*") if f.is_file()]
+
+
+def test_a_network_file_pandapower_wrote_unpacks(tmp_path):
+    import pandapower as pp
+
+    net = pp.create_empty_network()
+    pp.create_ext_grid(net, pp.create_bus(net, vn_kv=0.4))
+    z_path = _bundle_with_network(tmp_path / "x.zip", pp.to_json(net).encode())
+    r = unpack_bundle(z_path, data_dir=tmp_path / "d")
+    assert r["written"] == 3 and (tmp_path / "d" / "processed" / "grid" / "net.json").exists()
+
+
 # ---------------------------------------------------------------- the pinned release
 
 def test_a_bundle_with_the_wrong_digest_is_refused_before_anything_is_written(data, tmp_path):

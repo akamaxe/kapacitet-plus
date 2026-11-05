@@ -56,6 +56,15 @@ def test_compute_takes_its_workers_with_or_without_the_extra_stage(calls):
                      ("extra", False, None, 4)]
 
 
+@pytest.mark.parametrize("argv", [["compute", "--workers", "0"], ["compute", "--stage", "extra", "--workers", "-2"],
+                                  ["all", "--workers", "0"], ["all", "--workers", "many"]])
+def test_a_number_of_workers_below_one_is_refused_before_anything_runs(calls, capsys, argv):
+    """Not quietly six (0 was falsy), nor a traceback from the process pool after fetch and build."""
+    assert _exit_code(argv) == 2
+    assert calls == []
+    assert "worker processes" in capsys.readouterr().err
+
+
 def test_only_without_the_extra_stage_is_refused_instead_of_running_everything(calls, capsys):
     assert _exit_code(["compute", "--only", "foresight"]) == 2
     assert calls == []
@@ -106,12 +115,40 @@ def test_bundle_pin_and_unbundle_sha256_check_the_same_digest(tmp_path, monkeypa
     rel = json.loads(bundle.RELEASE.read_text(encoding="utf-8"))
     assert rel["sha256"] == bundle.file_sha256(out) and rel["size"] == out.stat().st_size
 
+    said = capsys.readouterr().out
+    assert "gh release upload data" in said and "config/data-release.json" in said
+
     monkeypatch.setattr(bundle, "DATA", tmp_path / "elsewhere")
     pipeline.main(["unbundle", str(out), "--sha256"])
     assert (tmp_path / "elsewhere" / "processed" / "results" / "showcase.json").exists()
+    # the flag before the file reads the same: --sha256 takes no value
+    pipeline.main(["unbundle", "--sha256", "--force", str(out)])
+    pipeline.main(["unbundle", "--expect-sha256", rel["sha256"].upper(), "--force", str(out)])
     capsys.readouterr()
-    assert _exit_code(["unbundle", str(out), "--force", "--sha256", "0" * 64]) == 2
+    assert _exit_code(["unbundle", str(out), "--force", "--expect-sha256", "0" * 64]) == 2
     said = capsys.readouterr().out
     assert "not the pinned data release" in said and rel["sha256"] in said
     bundle.RELEASE.unlink()
     assert _exit_code(["unbundle", str(out), "--sha256"]) == 2
+
+
+@pytest.mark.parametrize("argv", [["--expect-sha256", "kapacitet-data.zip"], ["--expect-sha256", "ab" * 31],
+                                  ["--sha256", "--expect-sha256", "0" * 64]], ids=["file", "short", "both"])
+def test_unbundle_refuses_a_digest_that_is_not_one(tmp_path, capsys, argv):
+    assert _exit_code(["unbundle", str(tmp_path / "kapacitet-data.zip"), *argv]) == 2
+    assert "usage:" in capsys.readouterr().err
+
+
+def test_a_bundle_that_is_not_pinned_is_not_offered_for_publishing(tmp_path, monkeypatch, capsys):
+    """The codespace and the setup page take only the pinned file: uploading this one would break them."""
+    from kapacitet import bundle
+
+    data = tmp_path / "data"
+    (data / "processed" / "results").mkdir(parents=True)
+    (data / "processed" / "results" / "showcase.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(bundle, "DATA", data)
+    monkeypatch.setattr(bundle, "RELEASE", tmp_path / "config" / "data-release.json")
+    pipeline.main(["bundle", "--out", str(tmp_path / "mine.zip")])
+    said = capsys.readouterr().out
+    assert "gh release upload" not in said and "--pin" in said
+    assert not bundle.RELEASE.exists()

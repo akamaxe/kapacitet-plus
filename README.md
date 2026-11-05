@@ -126,7 +126,7 @@ existing files unless asked with `--force`.
 
 The release's file is pinned: `config/data-release.json`, committed with the code, holds its
 sha256 and size. `bundle --pin` rewrites it, so commit that file in the same push as the upload.
-`unbundle --sha256` refuses any other file (or give it a digest, `--sha256 <hex>`), the codespace
+`unbundle --sha256` refuses any other file (or give it a digest, `--expect-sha256 <hex>`), the codespace
 checks its download the same way, and the setup page takes only the pinned file unless its server
 sets `KAPACITET_SETUP_ANY_BUNDLE=1` (for a bundle you made yourself).
 
@@ -149,9 +149,10 @@ access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (l
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
 `KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release).
 
-The API documentation is at `/docs`; every JSON payload carries a `provenance` block with the
-sources behind it, when its own files were computed (`computed_at`, next to the last full run,
-`full_run_at`) and which of its inputs are real and which synthetic.
+The API documentation is at `/docs`. Every response that carries results has a `provenance`
+block: the sources behind it, when its own files were computed (`computed_at`), when
+`results/meta.json` was last written (`full_run_at`: by any compute without `--only`, the extra
+stage alone included) and which of its inputs are real and which synthetic.
 
 ### Commands
 
@@ -168,9 +169,8 @@ sources behind it, when its own files were computed (`computed_at`, next to the 
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
 `--quick` shortens a compute run, `compute --stage extra` recomputes only the stages that build
-on the showcase (scenarios, tornado, foresight, over-installation, phases, validation, protection
-and operation), `--only foresight,phases` narrows that to a comma list (it needs `--stage extra`,
-and `compute --help` lists the stages), and `--workers 2` runs the parallel stages on fewer
+on the showcase (`compute --help` lists them), `--only foresight,phases` narrows that to a comma
+list (it needs `--stage extra`), and `--workers 2` runs the parallel stages on fewer
 processes when memory is short (six by default, four with `--stage extra`; `all` takes it too).
 In `all`, `--only` names download sources (`all --only prices`): the build, the profiles and the
 compute that follow still run whole.

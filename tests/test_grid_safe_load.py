@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import re
 
 import pandapower as pp
 import pytest
@@ -83,6 +84,78 @@ def test_an_object_hidden_in_a_tables_json_text_is_found(tmp_path, no_imports):
 
     with pytest.raises(GridFileError, match="builtins.eval"):
         safe_load_net(_net_with(tmp_path, hide))
+
+
+def _hide_in_controller(cell: dict):
+    """A change that puts one row, `cell`, in the object column of the controller table."""
+    def hide(tree):
+        table = tree["_object"]["controller"]
+        rows = json.loads(table["_object"])
+        rows["columns"] = ["object"]
+        rows["index"] = [0]
+        rows["data"] = [[cell]]
+        table["_object"] = json.dumps(rows)
+    return hide
+
+
+SURROGATE = "\ud800"
+SURROGATE_CELL = {"_module" + SURROGATE: "builtins", "_class" + SURROGATE: "print",
+                  "_object" + SURROGATE: "the loader ran builtins.print"}
+
+
+def test_a_key_that_only_pandas_reads_as_module_is_refused(tmp_path, no_imports, capsys):
+    """Python's json keeps a lone surrogate escape ("_module\\ud800"); pandas, which parses a
+    table's rows, drops it and finds exactly "_module", and pandapower then builds the object."""
+    with pytest.raises(GridFileError):
+        safe_load_net(_net_with(tmp_path, _hide_in_controller(SURROGATE_CELL)))
+    assert "the loader ran" not in capsys.readouterr().out
+
+
+def test_the_tables_are_checked_as_pandas_reads_them(tmp_path, no_imports, monkeypatch):
+    """Without the surrogate and look-alike rules, walking pandas' own parse still finds the object."""
+    from kapacitet.grid import netcheck
+
+    monkeypatch.setattr(netcheck, "_SURROGATE", re.compile("(?!)"))
+    monkeypatch.setattr(netcheck, "_INVISIBLE", re.compile("(?!)"))
+    with pytest.raises(GridFileError, match="builtins.print"):
+        safe_load_net(_net_with(tmp_path, _hide_in_controller(SURROGATE_CELL)))
+
+
+@pytest.mark.parametrize("key", ["_module\x00", "​_module", "_mod﻿ule", "_module "], ids=["nul", "zwsp", "bom", "space"])
+def test_a_key_disguised_as_a_reserved_one_is_refused(tmp_path, no_imports, key):
+    with pytest.raises(GridFileError, match="disguised"):
+        safe_load_net(_net_with(tmp_path, _hide_in_controller({key: "builtins", "_class": "print", "_object": "x"})))
+
+
+@pytest.mark.parametrize("value", [["os"], {"m": "os"}, 3, None])
+def test_a_module_named_by_anything_but_text_is_a_grid_file_error(value):
+    """Not a TypeError from the allowlist lookup: callers catch GridFileError (a ValueError)."""
+    tree = {"_module": "pandapower.auxiliary", "_class": "pandapowerNet",
+            "_object": {"x": {"_module": value, "_class": "system"}}}
+    with pytest.raises(GridFileError, match="module and a class"):
+        check_net_json(tree)
+
+
+@pytest.mark.parametrize("extra", [{"engine": "pyarrow", "lines": True}, {"compression": "gzip"}, {"typ": "series"}],
+                         ids=["engine", "compression", "typ"])
+def test_a_table_cannot_choose_how_pandas_reads_it(tmp_path, no_imports, extra):
+    """pandapower passes a table's other keys to pd.read_json: `engine` would pick another parser."""
+    with pytest.raises(GridFileError, match="never writes"):
+        safe_load_net(_net_with(tmp_path, lambda t: t["_object"]["bus"].update(extra)))
+
+
+def test_a_file_from_an_older_pandapower_is_still_converted(net_file, monkeypatch):
+    """pp.from_json converted an older format by default; the checked load does the same."""
+    seen = {}
+    real = pp.from_json_string
+
+    def spy(text, **kwargs):
+        seen.update(kwargs)
+        return real(text, **kwargs)
+
+    monkeypatch.setattr(pp, "from_json_string", spy)
+    safe_load_net(net_file)
+    assert seen.get("convert") is True
 
 
 def test_a_table_that_points_at_a_file_instead_of_holding_rows_is_refused(tmp_path):

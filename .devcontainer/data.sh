@@ -7,7 +7,8 @@
 #
 # The release's file can be replaced by anyone who may publish on the repository, so the address
 # and the sha256 come from config/data-release.json, committed with the code (`kapacitet bundle
-# --pin` writes it). A download whose digest differs is not unpacked.
+# --pin` writes it). A download whose digest differs is not unpacked. KAPACITET_DATA_URL points it
+# at another file; that file's digest then has to come with it, in KAPACITET_DATA_SHA256.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PIN=config/data-release.json
@@ -35,8 +36,11 @@ if ! curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/kapacitet-data.zip" "$URL"; t
 elif ! echo "$SHA  $tmp/kapacitet-data.zip" | sha256sum -c --status -; then
   echo "The downloaded file is not the data release this version expects (its sha256 differs from"
   echo "$PIN), so it was not unpacked; the setup page will ask for kapacitet-data.zip."
+  if [ -n "${KAPACITET_DATA_URL:-}" ] && [ -z "${KAPACITET_DATA_SHA256:-}" ]; then
+    echo "KAPACITET_DATA_URL names another file: give its sha256 in KAPACITET_DATA_SHA256 as well."
+  fi
 else
-  .venv/bin/python -m kapacitet unbundle "$tmp/kapacitet-data.zip" --sha256 "$SHA" \
+  .venv/bin/python -m kapacitet unbundle "$tmp/kapacitet-data.zip" --expect-sha256 "$SHA" \
     || echo "The data could not be unpacked; the setup page will ask for kapacitet-data.zip."
 fi
 rm -rf "$tmp"

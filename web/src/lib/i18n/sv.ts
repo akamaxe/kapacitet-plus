@@ -1255,6 +1255,7 @@ const sv: Dict = {
   "err.unexpected_entry": "Filen innehåller {entry}, något som en datafil aldrig innehåller. Ladda ner kapacitet-data.zip igen från datareleasen.",
   "err.bundle_too_large": "Filen blir större än {gb} GB uppackad, mer än en datafil någonsin innehåller.",
   "err.not_pinned": "Det här är inte den publicerade datafilen: dess kontrollsumma skiljer sig från den som den här versionen av Kapacitet+ väntar sig. Ladda ner kapacitet-data.zip igen från datareleasen.",
+  "err.bad_network": "Nätet i filen ({entry}) innehåller något som en nätfil aldrig innehåller, så ingenting packades upp. Ladda ner kapacitet-data.zip igen från datareleasen.",
   "setup.upload.sendingShort": "Laddar upp…",
   "setup.upload.resume": "En uppladdning stannade vid {sent} av {total} MB. Välj samma fil så fortsätter den.",
   "setup.upload.download": "Ladda ner kapacitet-data.zip",

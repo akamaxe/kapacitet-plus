@@ -18,6 +18,7 @@ import gzip
 import json
 import os
 import secrets
+import stat
 import threading
 import time
 from collections.abc import Iterator
@@ -58,13 +59,24 @@ def _sync_dir(folder: Path) -> None:
         os.close(fd)
 
 
+def _keep_mode(path: Path, tmp: Path) -> None:
+    """Give the replacement the permission bits of the file it replaces (POSIX; Windows has no
+    such bits to lose)."""
+    if os.name == "nt":
+        return
+    try:
+        os.chmod(tmp, stat.S_IMODE(path.stat().st_mode))
+    except OSError:
+        pass        # no file yet, or one we may not inspect: the new file keeps the umask's bits
+
+
 @contextmanager
 def atomic_file(path: str | Path) -> Iterator[IO[bytes]]:
     """A binary file handle whose content replaces `path` only if the block finishes.
 
-    The temporary file is created with the process's usual permissions (the umask applies, as
-    for any new file), flushed and fsynced before the rename. On any exception it is removed and
-    `path` is left as it was.
+    The temporary file is flushed and fsynced before the rename. It takes the permissions of the
+    file it replaces, so a record kept private (0600) stays so; a new file gets the process's usual
+    ones (the umask applies). On any exception it is removed and `path` is left as it was.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -81,6 +93,7 @@ def atomic_file(path: str | Path) -> Iterator[IO[bytes]]:
             yield fh
             fh.flush()
             os.fsync(fh.fileno())
+        _keep_mode(path, tmp)
         _replace(tmp, path)
     except BaseException:
         try:

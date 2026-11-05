@@ -79,8 +79,8 @@ app = FastAPI(
     title="Kapacitet+ API",
     version=__version__,
     description="Digital twin of a Swedish LV neighbourhood: static hosting capacity vs Dynamic Operating "
-                "Envelopes. All results are simulations on a synthetic network "
-                "built on real OpenStreetMap geometry and driven by real SMHI weather and SE3 prices.",
+                "Envelopes. Every result is a simulation; the provenance block of each response says "
+                "which of its inputs are real and which synthetic.",
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
@@ -275,9 +275,11 @@ def provenance(*sources: str, files: Iterable[Path] = ()) -> dict:
 
     `computed_at` is the newest modification time among the response's own `files`, so a stage
     rerun alone (`compute --stage extra --only ...`) dates what it wrote; `run_id` is the same
-    value under the name the interface already prints. Without files, both fall back to the last
-    full run, `full_run_at`: results/meta.json, which only a whole compute writes. `files` lists
-    each file's own time, `sources` the attributions and `real`/`synthetic` the inputs.
+    value under the name the interface already prints. Without files, both fall back to
+    `full_run_at`: results/meta.json, which a compute without `--only` writes (`compute --stage
+    extra` too, though it leaves capacity and the showcase as they were). `files` lists each file's
+    own time, relative to the processed folder (or to the data folder, for the queue's), `sources`
+    the attributions and `real`/`synthetic` the inputs.
     """
     full = _small_json(processed("results", "meta.json")).get("computed_at")
     root = processed()
@@ -288,9 +290,13 @@ def provenance(*sources: str, files: Iterable[Path] = ()) -> dict:
             stamp = f.stat().st_mtime
         except OSError:
             continue
-        try:
-            rel = f.relative_to(root).as_posix()
-        except ValueError:
+        for base in (root, root.parent):
+            try:
+                rel = f.relative_to(base).as_posix()
+                break
+            except ValueError:
+                continue
+        else:
             rel = f.name
         stamps[rel] = stamp
     computed = _iso(max(stamps.values())) if stamps else full
@@ -610,7 +616,10 @@ def network() -> dict:
         raise not_computed("grid/customers.parquet")
     stamp = tuple(p.stat().st_mtime for p in (processed("grid", "customers.parquet"), processed("results", "showcase.json"),
                                                processed("results", "nodal.json")) if p.exists())
-    return _network(stamp)
+    # the provenance is dated afresh on every call: it reads files the cache's stamp does not cover
+    return {**_network(stamp), "provenance": provenance("osm", "synthetic_grid", files=[
+        *(processed("grid", n) for n in ("customers.parquet", "lines.parquet", "buses.parquet", "substation.json")),
+        result_path("showcase.json"), result_path("nodal.json")])}
 
 
 def _num(v) -> float | None:
@@ -716,10 +725,7 @@ def _network(stamp: tuple) -> dict:
     bbox = [float(lons[ok].min()), float(lats[ok].min()), float(lons[ok].max()), float(lats[ok].max())] if ok.any() else None
     return {"type": "FeatureCollection", "features": feats,
             "bbox": bbox,
-            "bus_order": buses["bus"].tolist(),
-            "provenance": provenance("osm", "synthetic_grid", files=[
-                *(processed("grid", n) for n in ("customers.parquet", "lines.parquet", "buses.parquet", "substation.json")),
-                result_path("showcase.json"), result_path("nodal.json")])}
+            "bus_order": buses["bus"].tolist()}
 
 
 @app.get(f"{API}/zones", tags=["national"])
@@ -998,12 +1004,13 @@ def envelope(cid: int, basis: str | None = Query(None, pattern=BASIS_PATTERN),
              policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     combo = resolve(basis, policy)
     cids = combo.nonfirm_cids()
+    prov = provenance("smhi_strang", "smhi_metobs", "synthetic_grid", files=[combo.envelopes])
     if cid not in cids:
-        return {"cid": cid, "nonfirm": False, "basis": combo.basis, "policy": combo.policy}
+        return {"cid": cid, "nonfirm": False, "basis": combo.basis, "policy": combo.policy, "provenance": prov}
     env = np.load(combo.envelopes, mmap_mode="r")
     row = np.asarray(env[cids.index(cid)], dtype=float)
     return {"cid": cid, "nonfirm": True, "basis": combo.basis, "policy": combo.policy,
-            "envelope_kw": np.round(row, 2).tolist()}
+            "envelope_kw": np.round(row, 2).tolist(), "provenance": prov}
 
 
 # ------------------------------------------------------------------------------ live requests
@@ -1163,16 +1170,24 @@ def _sweep_jobs() -> None:
 _REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
 
 
-def _request_files() -> list[Path]:
-    """What a live assessment is computed against: the request baselines and the showcase."""
-    return [processed("request", "static.json"), processed("request", "doe.json"), result_path("showcase.json")]
+def _request_files(baseline: str | None = None) -> list[Path]:
+    """What a live assessment is computed against: the request baselines and the showcase, and,
+    against the queue, the queue's decisions and the grid states its approvals left."""
+    files = [processed("request", "static.json"), processed("request", "doe.json"), result_path("showcase.json")]
+    if baseline == "queue":
+        from ..engine import queue as qu
+
+        folder = qu.folder()
+        files += [folder / "queue.json", *sorted(folder.glob("state_*.npz"))]
+    return files
 
 
 def make_record(job_id: str, created: float, request: dict, result: dict) -> dict:
     """What is kept of an assessment: the question, the full answer and what it was computed with."""
     return {"id": job_id, "created": datetime.fromtimestamp(created, timezone.utc).isoformat(),
             "request": request, "result": json.loads(json.dumps(result, default=_json_default)),
-            "version": __version__, "provenance": provenance(*_REQUEST_SOURCES, files=_request_files())}
+            "version": __version__,
+            "provenance": provenance(*_REQUEST_SOURCES, files=_request_files(request.get("baseline")))}
 
 
 def _record(job_id: str, job: dict, result: dict) -> dict:
@@ -1352,7 +1367,7 @@ def evaluate_sync(body: RequestIn) -> JSONResponse:
     ctx = _context_for(body)
     eng = _engine()
     out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
-    out["provenance"] = provenance(*_REQUEST_SOURCES, files=_request_files())
+    out["provenance"] = provenance(*_REQUEST_SOURCES, files=_request_files(body.baseline))
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
 
 

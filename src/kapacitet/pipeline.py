@@ -48,6 +48,24 @@ class _Parser(argparse.ArgumentParser):
         return super().format_help()
 
 
+def _workers(text: str) -> int:
+    """--workers: a whole number of processes, at least one, refused before anything runs."""
+    try:
+        n = int(text)
+    except ValueError:
+        n = 0
+    if n < 1:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number of worker processes (1 or more)")
+    return n
+
+
+def _digest(text: str) -> str:
+    """--expect-sha256: 64 hexadecimal digits, as sha256sum prints them."""
+    if len(text.strip()) != 64 or any(c not in "0123456789abcdefABCDEF" for c in text.strip()):
+        raise argparse.ArgumentTypeError(f"{text!r} is not a sha256 (64 hexadecimal digits)")
+    return text.strip().lower()
+
+
 def _names(text: str) -> set[str]:
     return {s.strip() for s in (text or "").split(",") if s.strip()}
 
@@ -147,9 +165,9 @@ def cmd_compute(args: argparse.Namespace) -> None:
     workers = getattr(args, "workers", None)
     with step("Engine"):
         if extra:
-            run.compute_extra(quick=args.quick, only=only, workers=workers or 4)
+            run.compute_extra(quick=args.quick, only=only, workers=4 if workers is None else workers)
         else:
-            run.compute_all(quick=args.quick, workers=workers or 6)
+            run.compute_all(quick=args.quick, workers=6 if workers is None else workers)
 
 
 def cmd_bundle(args: argparse.Namespace) -> None:
@@ -162,23 +180,27 @@ def cmd_bundle(args: argparse.Namespace) -> None:
         sys.exit(2)
     size = os.path.getsize(args.out) / 1e6
     print(f"{args.out}: {len(m['files'])} files, {size:.0f} MB ({args.level}{', with web/dist' if args.web else ''}).")
-    print("The data derive from OpenStreetMap (ODbL): never commit this file. Publish it on the data release:")
-    print(f"  gh release upload data {args.out} --clobber")
+    print("The data derive from OpenStreetMap (ODbL): never commit this file.")
+    pin = RELEASE.relative_to(RELEASE.parents[1]).as_posix()
     if args.pin:
         rel = pin_release(args.out, m)
-        print(f"Pinned it in {RELEASE.relative_to(RELEASE.parents[1]).as_posix()} (sha256 {rel['sha256']}, "
-              f"{rel['size']} bytes). Commit that file and upload the archive together: the codespace, "
-              "`unbundle --sha256` and the setup page take only the pinned file.")
+        print(f"Pinned it in {pin} (sha256 {rel['sha256']}, {rel['size']} bytes). Publish it on the data release:")
+        print(f"  gh release upload data {args.out} --clobber")
+        print(f"and commit {pin} in the same push: the codespace, `unbundle --sha256` and the setup page "
+              "take only the pinned file.")
+    else:
+        print(f"Not pinned: the codespace, `unbundle --sha256` and the setup page refuse this file, so it is "
+              f"not one to publish. To publish it, run again with --pin (it rewrites {pin}).")
 
 
 def cmd_unbundle(args: argparse.Namespace) -> None:
     from .bundle import RELEASE, BundleError, pinned_release, unpack_bundle
 
-    expected = args.sha256
-    if expected == "pinned":
+    expected = args.expect_sha256
+    if args.sha256:
         pin = pinned_release()
         if pin is None:
-            print(f"no pinned data release in {RELEASE}: pass the digest itself, --sha256 <hex>")
+            print(f"no pinned data release in {RELEASE}: pass the digest itself, --expect-sha256 <hex>")
             sys.exit(2)
         expected = pin["sha256"]
     try:
@@ -380,7 +402,7 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--stage", choices=["all", "extra"], default="all",
                            help=f"extra: only the stages that build on the showcase ({_STAGES})")
             p.add_argument("--only", default="", help=f"with --stage extra: comma list of {_STAGES}")
-            p.add_argument("--workers", type=int, default=None,
+            p.add_argument("--workers", type=_workers, default=None,
                            help="worker processes for the parallel stages (default 6, or 4 with --stage extra)")
         p.set_defaults(func=func)
 
@@ -411,7 +433,7 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("dataset", help="build an imported network (started by the app)")
     p.add_argument("action", choices=["build"])
     p.add_argument("id", help="the network's id (data/datasets/<id>)")
-    p.add_argument("--workers", type=int, default=2, help="worker processes for the parallel stages")
+    p.add_argument("--workers", type=_workers, default=2, help="worker processes for the parallel stages")
     p.add_argument("--quick", action="store_true", help="one weather year and fewer adoption orders")
     p.set_defaults(func=cmd_dataset)
 
@@ -427,9 +449,11 @@ def main(argv: list[str] | None = None) -> None:
     p = sub.add_parser("unbundle", help="unpack a data bundle into data/ (and web/dist)")
     p.add_argument("file", help="the bundle (a .zip made by `kapacitet bundle`)")
     p.add_argument("--force", action="store_true", help="replace files that already exist")
-    p.add_argument("--sha256", nargs="?", const="pinned", default=None, metavar="HEX",
-                   help="refuse the file unless its sha256 is HEX or, given alone, the pinned release's "
-                        "(config/data-release.json)")
+    pin = p.add_mutually_exclusive_group()
+    pin.add_argument("--sha256", action="store_true",
+                     help="refuse the file unless it is the pinned data release (config/data-release.json)")
+    pin.add_argument("--expect-sha256", default=None, metavar="HEX", type=_digest,
+                     help="refuse the file unless its sha256 is HEX")
     p.set_defaults(func=cmd_unbundle)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")
@@ -437,7 +461,7 @@ def main(argv: list[str] | None = None) -> None:
                    help=f"fetch only these sources (comma list of {','.join(FETCH_SOURCES)}); the rest still runs whole")
     p.add_argument("--refresh", action="store_true", help="ignore the download cache")
     p.add_argument("--quick", action="store_true", help="fewer years/orders for a fast run")
-    p.add_argument("--workers", type=int, default=None, help="worker processes for the parallel stages (default 6)")
+    p.add_argument("--workers", type=_workers, default=None, help="worker processes for the parallel stages (default 6)")
     p.set_defaults(func=cmd_all)
 
     args = parser.parse_args(argv)

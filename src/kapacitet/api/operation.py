@@ -23,6 +23,17 @@ router = APIRouter(prefix="/api/v1", tags=["operation"])
 METER_MAX_BYTES = 5_000_000
 
 
+# What the operation stage's answers rest on (api/main.SOURCES).
+_SOURCES = ("smhi_strang", "smhi_metobs", "osm", "synthetic_grid")
+
+
+def _provenance(*files) -> dict:
+    """main.provenance, dated by the operation stage's own files."""
+    from .main import provenance
+
+    return provenance(*_SOURCES, files=files)
+
+
 def _refusal(status: int, code: str, **params) -> HTTPException:
     from ..engine.delivery import ERRORS
 
@@ -47,7 +58,8 @@ def get_index() -> dict:
     if idx is None:
         raise HTTPException(404, {"code": "not_computed", "file": "operation/index.json", "command": COMMAND,
                                   "message": "the operation stage has not been run"})
-    return {**idx, "active_policy": dso.load().allocation_policy}
+    return {**idx, "active_policy": dso.load().allocation_policy,
+            "provenance": _provenance(processed_ro("results", "operation", "index.json"))}
 
 
 # ---------------------------------------------------------------- the evidence pack for Ei
@@ -76,6 +88,8 @@ def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
     except HTTPException:
         business = None                      # the reinforcement case needs results the pack can do without
     pack = assess(basis, combo.policy, dso.load(), operation_index(), agreements["agreements"], report, business)
+    pack["provenance"] = _provenance(processed_ro("results", "operation", "index.json"),
+                                     processed_ro("results", "operation", "agreements.json"), report_path)
     if not export:
         return pack
     stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -128,7 +142,8 @@ def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^\d{4
         return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="kapacitet-schedule-{cid}-{date}.csv"'})
     return {"cid": cid, "date": date, "year": year, "basis": "dayahead", "policy": combo.policy, "rows": rows,
-            "default_kw": default_kw, "kappa": kappa}
+            "default_kw": default_kw, "kappa": kappa,
+            "provenance": _provenance(combo.envelopes, combo.result("issued.json"))}
 
 
 @router.get("/operation/schedule.xml")
@@ -180,8 +195,10 @@ def shadow(policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     settings = dso.load()
     out: dict = {"policy": None, "agreed_level_pct": settings.agreed_level_pct, "bases": {}}
     year = None
+    files = []
     for basis in ("dayahead", "foresight"):
         combo = resolve(basis, policy)
+        files += [combo.result("days.json"), combo.result("days.npz")]
         out["policy"] = combo.policy
         days = json.loads(combo.result("days.json").read_text(encoding="utf-8"))
         year = int(days["year"])
@@ -201,6 +218,8 @@ def shadow(policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     if fc.exists():
         rows = json.loads(fc.read_text(encoding="utf-8")).get("rows", [])
         out["persistence"] = next((r for r in rows if r.get("scheme") == "persistence"), None)
+        files.append(fc)
+    out["provenance"] = _provenance(*files)
     return out
 
 

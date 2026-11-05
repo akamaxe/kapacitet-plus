@@ -68,7 +68,7 @@ function SetupSteps({ health, primary }: { health: any; primary: boolean }) {
         </li>
         <li>
           <p>{t("setup.bundle")}</p>
-          <CommandLine command="python -m kapacitet unbundle kapacitet-data.zip" />
+          <CommandLine command="python -m kapacitet unbundle kapacitet-data.zip --sha256" />
         </li>
         <li>
           <p>{t("setup.serve")}</p>

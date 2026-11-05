@@ -3,7 +3,7 @@
     python -m kapacitet bundle                 # full: every screen and live requests (~400 MB of data)
     python -m kapacitet bundle --level lite    # the published results only, no live requests (~20 MB)
     python -m kapacitet bundle --web           # also web/dist, so the receiver needs no Node
-    python -m kapacitet unbundle kapacitet-data.zip
+    python -m kapacitet unbundle kapacitet-data.zip --sha256   # only the pinned release (below)
 
 The archive holds data/... (and web/dist/... with --web) plus bundle-manifest.json, which records
 the version, the level, a sha256 for every file and its modification time; unbundle checks each
@@ -22,8 +22,10 @@ one published.
 Unpacking is also what the setup page does with a bundle uploaded from the browser
 (api/setup.py), so it trusts nothing in the archive: it writes only under data/processed,
 data/raw and web/dist, caps how much an archive may unpack to, streams every file through its
-checksum into a temporary name and renames it only when the sum matches, and writes
-showcase.json last, because the results count as present only once it is there.
+checksum into a temporary name and renames it only when the sum matches, checks a network file
+(net.json) the way loading it would before it is in place (grid/netcheck.py: pandapower builds
+whatever objects such a file names), and writes showcase.json last, because the results count as
+present only once it is there.
 """
 
 from __future__ import annotations
@@ -79,10 +81,11 @@ ERRORS = {
     "unexpected_entry": "the bundle holds {entry}, outside the folders a bundle may write",
     "bundle_too_large": "the bundle unpacks to more than {gb} GB",
     "not_pinned": "this file is not the pinned data release: its sha256 is not the one expected",
+    "bad_network": "{entry} is not a network file this version can load safely",
 }
 # What unpacking can refuse a bundle for: the setup page shows these, so each has its words in the
 # interface (err.<code>, tests/test_messages.py).
-UNPACK_ERRORS = ("not_a_bundle", "damaged", "unexpected_entry", "bundle_too_large", "not_pinned")
+UNPACK_ERRORS = ("not_a_bundle", "damaged", "unexpected_entry", "bundle_too_large", "not_pinned", "bad_network")
 
 
 class BundleError(ValueError):
@@ -94,17 +97,13 @@ class BundleError(ValueError):
         self.params = params
 
 
-def _sha256(path: Path) -> str:
+def file_sha256(path: str | Path) -> str:
+    """The sha256 of a whole file, as `sha256sum` prints it."""
     h = hashlib.sha256()
-    with path.open("rb") as fh:
+    with Path(path).open("rb") as fh:
         for chunk in iter(lambda: fh.read(_CHUNK), b""):
             h.update(chunk)
     return h.hexdigest()
-
-
-def file_sha256(path: str | Path) -> str:
-    """The sha256 of a whole file, as `sha256sum` prints it."""
-    return _sha256(Path(path))
 
 
 def pinned_release(path: str | Path | None = None) -> dict | None:
@@ -124,7 +123,7 @@ def pin_release(archive: str | Path, manifest: dict, url: str | None = None, pat
     version it was made. The url stays the one already pinned unless another is given."""
     archive = Path(archive)
     current = pinned_release(path) or {}
-    rel = {"url": url or current.get("url") or RELEASE_URL, "sha256": _sha256(archive),
+    rel = {"url": url or current.get("url") or RELEASE_URL, "sha256": file_sha256(archive),
            "size": archive.stat().st_size, "created": manifest.get("created"),
            "kapacitet": manifest.get("kapacitet"), "level": manifest.get("level")}
     # a committed file: it ends with a newline
@@ -154,7 +153,7 @@ def make_bundle(out: str | Path, level: str = "full", web: bool = False, data_di
                       "level": level, "web": web, "files": {}, "mtimes": {}}
 
     def add(z: zipfile.ZipFile, f: Path, rel: str) -> None:
-        manifest["files"][rel] = _sha256(f)
+        manifest["files"][rel] = file_sha256(f)
         manifest["mtimes"][rel] = round(f.stat().st_mtime, 3)
         z.write(f, rel)
 
@@ -234,6 +233,25 @@ def _mtime(manifest: dict, name: str, info: zipfile.ZipInfo) -> float | None:
         return None
 
 
+# A pandapower network: loading one builds whatever objects it names, so it is checked on the way in.
+NET_FILE = "net.json"
+
+
+def _is_network(name: str) -> bool:
+    return name.startswith("data/") and PurePosixPath(name).name == NET_FILE
+
+
+def _check_network(path: Path, name: str) -> None:
+    """Refuse a net.json that loading would refuse, while the bundle can still say so: a copy that
+    takes it would open without a network, and its setup page would already be closed."""
+    from .grid.netcheck import GridFileError, check_net_file
+
+    try:
+        check_net_file(path)
+    except (GridFileError, OSError) as err:
+        raise BundleError("bad_network", entry=name) from err
+
+
 def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, dest: Path,
              mtime: float | None = None) -> None:
     """Stream one entry through its checksum into a temporary file, give it its modification time,
@@ -252,6 +270,8 @@ def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, 
                 out.write(chunk)
         if h.hexdigest() != digest.lower():
             raise BundleError("damaged", entry=name)
+        if _is_network(name):
+            _check_network(tmp, name)
         if mtime is not None:
             try:
                 os.utime(tmp, (mtime, mtime))
@@ -280,7 +300,7 @@ def unpack_bundle(path: str | Path, data_dir: Path | None = None, web_dir: Path 
     web_dir = Path(web_dir or WEB_DIST).resolve()
     if expected_sha256 is not None:
         try:
-            actual = _sha256(Path(path))
+            actual = file_sha256(path)
         except OSError as err:
             raise BundleError("not_a_bundle") from err
         if actual != expected_sha256.strip().lower():
@@ -306,7 +326,8 @@ def unpack_bundle(path: str | Path, data_dir: Path | None = None, web_dir: Path 
             if info.file_size > MAX_FILE or total > MAX_TOTAL:
                 raise BundleError("bundle_too_large", gb=MAX_TOTAL // 2**30)
             plan.append((name, digest, info, dest))
-        plan.sort(key=lambda item: item[0] == LAST)
+        # a network file first, so a refused one leaves nothing written; showcase.json last
+        plan.sort(key=lambda item: (item[0] == LAST, not _is_network(item[0])))
         written = skipped = 0
         for done, (name, digest, info, dest) in enumerate(plan, start=1):
             if dest.exists() and not force:

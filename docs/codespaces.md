@@ -67,6 +67,9 @@ Open the same link and click **Resume**. Your copy opens again in about a minute
   checks the download with `sha256sum -c` and does not unpack a file whose digest differs, and the
   setup page refuses it too. Until the new digest is on `main`, new codespaces open on the setup
   page, so upload the file and push the pin together.
+- To try another data file in a codespace, set `KAPACITET_DATA_URL` to its address and
+  `KAPACITET_DATA_SHA256` to its sha256 (as `sha256sum` prints it) before `data.sh` runs. A URL
+  without its digest is checked against the pinned one, so its file is refused.
 - The setup page's upload (`api/setup.py`) is open only when the server allows it
   (`KAPACITET_SETUP_UPLOAD=1`, set in `devcontainer.json`), on the reference network, and while the
   copy has no results. A codespace's port is private to whoever created it.

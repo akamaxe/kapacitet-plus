@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import gzip
 import json
+import os
+import stat
 import threading
 
 import numpy as np
@@ -62,24 +64,46 @@ def test_a_replace_never_shows_a_reader_a_partial_file(tmp_path):
     target = tmp_path / "big.json"
     versions = [{"v": i, "pad": "x" * 200_000} for i in range(2)]
     atomic.write_json_atomic(target, versions[0])
-    seen, stop = set(), threading.Event()
+    seen, bad, stop = set(), [], threading.Event()
+    reads = 0
 
     def read():
+        nonlocal reads
         while not stop.is_set():
             try:
                 seen.add(json.loads(target.read_text(encoding="utf-8"))["v"])
+                reads += 1
             except PermissionError:     # Windows: the file was being replaced at that instant
                 continue
+            except (ValueError, OSError) as err:   # a partial or missing file: what must never happen
+                bad.append(repr(err))
 
     reader = threading.Thread(target=read)
     reader.start()
     try:
         for i in range(30):
             atomic.write_json_atomic(target, versions[i % 2])
+        # the reader must have read while the writer ran, not only before or after it
+        for _ in range(200):
+            if reads >= 5:
+                break
+            atomic.write_json_atomic(target, versions[1])
     finally:
         stop.set()
         reader.join()
-    assert seen <= {0, 1} and seen
+    assert not bad, bad[:3]
+    assert seen <= {0, 1} and reads >= 5
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Windows files have no permission bits to keep")
+def test_a_replaced_file_keeps_its_permissions(tmp_path):
+    """A record kept private (0600) stays private after the rename puts a new file in its place."""
+    target = tmp_path / "settings.json"
+    target.write_text("{}", encoding="utf-8")
+    os.chmod(target, 0o600)
+    atomic.write_json_atomic(target, {"v": 2})
+    assert stat.S_IMODE(target.stat().st_mode) == 0o600
+    assert json.loads(target.read_text(encoding="utf-8")) == {"v": 2}
 
 
 def test_appended_lines_from_many_writers_stay_whole(tmp_path):
@@ -102,7 +126,6 @@ def test_appended_lines_from_many_writers_stay_whole(tmp_path):
 
 def test_appended_lines_from_several_processes_stay_whole(tmp_path):
     """Windows emulates O_APPEND with a seek and a write: without the lock, two processes lose lines."""
-    import os
     import subprocess
     import sys
     from pathlib import Path

@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "../lib/api";
 import { Icon } from "./Icon";
@@ -169,12 +169,17 @@ export function Legend({ items }: { items: { color: string; label: ReactNode; ke
   );
 }
 
-/** A shell command to copy, said as it must be typed. */
+/**
+ * A shell command to copy, said as it must be typed. Each word wraps as a whole, so a narrow
+ * screen never splits a flag after its first hyphen ("-" over "-sha256").
+ */
 export function CommandLine({ command }: { command: string }) {
   const t = useT();
   return (
     <p className="command-line">
-      <code>{command}</code>
+      <code>{command.split(" ").map((word, i) => (
+        <Fragment key={i}>{i > 0 && " "}<span className="command-word">{word}</span></Fragment>
+      ))}</code>
       <button className="icon-btn" aria-label={t("ui.copyCommand")} title={t("ui.copyCommand")}
         onClick={() => void navigator.clipboard?.writeText(command).catch(() => undefined)}>
         <Icon name="copy" size={15} />

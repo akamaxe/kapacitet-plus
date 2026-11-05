@@ -367,3 +367,50 @@ def test_real_and_synthetic_follow_what_the_data_folder_holds(data_folder):
     assert any("inventory" in s for s in prov["real"])
     # what is modelled whatever the inputs
     assert any("EV charging" in s for s in prov["synthetic"])
+
+
+def test_the_network_is_dated_afresh_though_its_geometry_is_cached(data_folder, monkeypatch):
+    """The map's GeoJSON is cached by its own files; its provenance also reads meta.json and the
+    grid tables, so it is not kept with it."""
+    from functools import lru_cache
+
+    from kapacitet.api import main
+
+    built = []
+
+    @lru_cache(maxsize=2)
+    def geometry(stamp):
+        built.append(stamp)
+        return {"type": "FeatureCollection", "features": []}
+
+    monkeypatch.setattr(main, "_network", geometry)
+    _write(data_folder / "grid" / "customers.parquet", "", 1_760_000_000)
+    _write(data_folder / "results" / "meta.json", '{"computed_at": "2026-09-19T12:03:00+00:00"}', 1_760_000_000)
+    assert main.network()["provenance"]["full_run_at"] == "2026-09-19T12:03:00+00:00"
+    _write(data_folder / "results" / "meta.json", '{"computed_at": "2026-11-01T08:00:00+00:00"}', 1_762_000_000)
+    _write(data_folder / "grid" / "lines.parquet", "", 1_762_100_000)
+    body = main.network()
+    assert len(built) == 1, "the geometry itself is still cached"
+    assert body["provenance"]["full_run_at"] == "2026-11-01T08:00:00+00:00"
+    assert "grid/lines.parquet" in body["provenance"]["files"]
+
+
+def test_an_assessment_against_the_queue_is_dated_by_the_queue_as_well(data_folder, monkeypatch):
+    from datetime import datetime, timezone
+
+    from kapacitet.api import main
+    from kapacitet.engine import queue as qu
+
+    def iso(stamp):
+        return datetime.fromtimestamp(stamp, timezone.utc).isoformat()
+
+    folder = data_folder / "requests" / "queue"
+    monkeypatch.setattr(qu, "folder", lambda: folder)
+    _write(data_folder / "results" / "showcase.json", "{}", 1_760_000_000)
+    _write(folder / "queue.json", "{}", 1_762_000_000)
+    _write(folder / "state_2025.npz", "", 1_761_000_000)
+    queued = main.make_record("abc", 0.0, {"baseline": "queue"}, {})["provenance"]
+    assert queued["computed_at"] == iso(1_762_000_000)
+    assert {"requests/queue/queue.json", "requests/queue/state_2025.npz"} <= set(queued["files"])
+    plain = main.make_record("abc", 0.0, {"baseline": "static"}, {})["provenance"]
+    assert plain["computed_at"] == iso(1_760_000_000) and not any("queue" in f for f in plain["files"])

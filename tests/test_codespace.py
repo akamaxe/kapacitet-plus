@@ -74,4 +74,4 @@ def test_the_codespace_unpacks_only_the_pinned_release():
     assert "config/data-release.json" in script
     check, unpack = script.index("sha256sum -c"), script.index("kapacitet unbundle")
     assert check < unpack, "the digest is checked before the bundle is unpacked"
-    assert "--sha256" in script[unpack:unpack + 200]
+    assert "--expect-sha256 \"$SHA\"" in script[unpack:unpack + 200], "the CLI checks the same digest again"
