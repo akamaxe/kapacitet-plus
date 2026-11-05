@@ -23,14 +23,17 @@ def design_temperature(years) -> float:
     return float(min(load_weather(y)["t_air"].min() for y in years))
 
 
-def build_all(quick: bool = False) -> None:
+def build_all(quick: bool = False, weather: bool = True) -> None:
+    """`weather=False` keeps the weather files already in processed/weather (a study station that
+    reuses the reference network's years) instead of building them from data/raw."""
     cfg = settings()
     years = cfg.weather_years if not quick else (cfg.reference_year,)
     _, _, customers = load_tables()
     C = len(customers)
 
-    log.info("weather %s", years)
-    build_weather(years)
+    if weather:
+        log.info("weather %s", years)
+        build_weather(years)
 
     roofs = pv.roof_geometry(customers)
     roofs.to_parquet(processed("pv", "roofs.parquet"), index=False)

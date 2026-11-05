@@ -165,6 +165,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
+| `kapacitet study …` | A DSO's study of many secondary substations, each built in its own process (below) |
 | `kapacitet all` | The four build steps in order |
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
@@ -396,6 +397,36 @@ its own grid, and the reference network's weather, prices and households (`/meta
 The API writes to two places: `data/requests/` of the network in use, and `data/datasets/`.
 A third, only on a copy without results and only when `KAPACITET_SETUP_UPLOAD=1`: the data bundle
 uploaded from the setup page, unpacked into `data/processed/` and `data/raw/` and nowhere else.
+
+### A study of many stations
+
+A DSO's network is hundreds of secondary substations, not one. A *study* is a folder of its own
+that holds them, kept outside the code and outside any git work tree (by default
+`%USERPROFILE%\kapacitet-studies\<id>`, or `KAPACITET_STUDY_DIR`), because it holds the DSO's data:
+
+```bash
+.venv/Scripts/python -m kapacitet study demo  demo        # three synthetic stations, from pandapower's LV benchmarks
+.venv/Scripts/python -m kapacitet study init  nb-2026     # an empty study with a study.toml of defaults
+.venv/Scripts/python -m kapacitet study import nb-2026 --contract <folder> --station <id>
+.venv/Scripts/python -m kapacitet study fetch nb-2026     # SMHI weather and spot prices for the study's site
+.venv/Scripts/python -m kapacitet study check nb-2026     # the contract's report, per station
+.venv/Scripts/python -m kapacitet study build nb-2026 --quick
+.venv/Scripts/python -m kapacitet study status nb-2026
+```
+
+`study.toml` says where the weather comes from, the method's choices (percentile, curtailment
+basis, the consumption device), the MV band, what may be disclosed and how the CSV files are
+written, and overrides of `config/assumptions.toml`; an override must name an existing input, its
+unit and its source. Each station is one contract folder in `inputs/network/contract/<id>/`, split
+into `stations/<id>/`, and is built by `kapacitet station build <id> --study <dir>`, a process of
+its own with `KAPACITET_DATA_DIR` on the station's folder: a failing station marks only its own
+`station.json`, and a station whose inputs, method and mode are unchanged is not built again.
+`station.json` records each step, the digests of the inputs, the code's version and commit, and
+what is real, synthetic or assumed. A study that has fetched no weather reuses the reference
+network's weather years, and says so; the household load is the synthetic profile pool until
+meter data are read. The demo's networks are built by pandapower at run time and written through
+`importer/from_pandapower.py`, which turns the LV island behind any pandapower transformer into
+the contract.
 
 ## The paperwork the agreement leaves behind
 

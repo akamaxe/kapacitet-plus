@@ -8,6 +8,14 @@ Three roots, each one an environment variable away from its default:
                                an unpacked bundle, a container volume, or one imported network
     RAW    KAPACITET_RAW_DIR   downloaded sources (weather, prices, OSM); an imported network
                                shares the reference network's, so nothing is fetched twice
+
+Two more for a study's station (study/), whose build runs with DATA on the station's folder, HOME
+on the study and RAW on the study's own downloads:
+
+    REFERENCE  KAPACITET_REFERENCE_DIR  the reference network's data, whose weather years and
+                                        household pool a station reuses when its study has none
+                                        (and says so); HOME by default
+    (study)    KAPACITET_STUDY          the study folder whose study.toml config.py merges in
 """
 
 from __future__ import annotations
@@ -30,6 +38,7 @@ DATA = _env_dir("KAPACITET_DATA_DIR", ROOT / "data")
 HOME = _env_dir("KAPACITET_HOME", DATA)
 RAW = _env_dir("KAPACITET_RAW_DIR", DATA / "raw")
 PROCESSED = DATA / "processed"
+REFERENCE = _env_dir("KAPACITET_REFERENCE_DIR", HOME)
 DATASETS = HOME / "datasets"
 WEB_DIST = ROOT / "web" / "dist"
 

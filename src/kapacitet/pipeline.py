@@ -14,6 +14,7 @@ Commands
   dataset   build an imported network in its own folder (the app starts it)
   bundle    pack the computed data (and optionally web/dist) to run elsewhere
   unbundle  unpack such a bundle into data/ (and web/dist), checking every file
+  study     a DSO's study of many secondary substations: init, demo, fetch, import, check, build, status
   all       fetch + build + profiles + compute
 """
 
@@ -455,6 +456,9 @@ def main(argv: list[str] | None = None) -> None:
     pin.add_argument("--expect-sha256", default=None, metavar="HEX", type=_digest,
                      help="refuse the file unless its sha256 is HEX")
     p.set_defaults(func=cmd_unbundle)
+
+    from .study.cli import register as register_study    # `study ...` and the hidden `station build`
+    register_study(sub)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")
     p.add_argument("--only", default="",
