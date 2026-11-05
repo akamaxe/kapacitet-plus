@@ -242,9 +242,40 @@ def _wait_for_port(host: str, port: int, seconds: float = 15.0) -> None:
         time.sleep(0.3)
 
 
+def data_in_checkout_warning() -> str | None:
+    """What to say when an imported network is in use with its data inside the git working tree.
+
+    An imported network is an operator's own data: inside the checkout only .gitignore keeps it
+    out of a commit (a `git add -A` once committed one). Imported means served as a network of the
+    app (datasets.current()) or written over the reference network by `kapacitet import`
+    (grid/summary.json says `imported`). Without a git checkout (the container) there is nothing
+    to commit it to, so nothing is said."""
+    from . import datasets
+    from .paths import DATA, ROOT, processed_ro
+
+    if not (ROOT / ".git").exists():
+        return None
+    imported = datasets.current() != datasets.REFERENCE
+    if not imported:
+        try:
+            summary = json.loads(processed_ro("grid", "summary.json").read_text(encoding="utf-8"))
+            imported = isinstance(summary, dict) and summary.get("imported") is True
+        except (OSError, ValueError):
+            pass
+    if not imported or not DATA.resolve().is_relative_to(ROOT.resolve()):
+        return None
+    return (f"an imported network is in use and its data are inside the git working tree ({DATA}): "
+            "set KAPACITET_HOME and KAPACITET_DATA_DIR to a folder outside it, so that an "
+            "operator's network cannot end up in a commit")
+
+
 def _serve_child(args: argparse.Namespace) -> None:
     import uvicorn
 
+    # here, not in the supervisor: the child runs on the network's own folder, once per switch
+    warning = data_in_checkout_warning()
+    if warning:
+        log.warning(warning)
     _wait_for_port(args.host, args.port)
     uvicorn.run("kapacitet.api.main:app", host=args.host, port=args.port, reload=False, log_level="info")
 

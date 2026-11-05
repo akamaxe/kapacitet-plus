@@ -401,6 +401,13 @@ applications belong to each network. A link made on an imported network carries 
 while the server shows another network, it says so and switches nothing. An imported network has
 its own grid, and the reference network's weather, prices and households (`/meta` says so).
 
+An operator's network is the operator's data, and `data/` sits inside the git working tree, where
+only `.gitignore` keeps it out of a commit. For a real network, point `KAPACITET_HOME` (where
+`datasets/` and `active.json` live) and `KAPACITET_DATA_DIR` at a folder outside the checkout:
+`serve` warns when an imported network is in use with its data inside the checkout, and
+`tests/test_no_data_committed.py` fails when anything under `data/`, or a data file outside
+`tests/fixtures/`, is tracked.
+
 The API writes to two places: `data/requests/` of the network in use, and `data/datasets/`.
 A third, only on a copy without results and only when `KAPACITET_SETUP_UPLOAD=1`: the data bundle
 uploaded from the setup page, unpacked into `data/processed/` and `data/raw/` and nowhere else.

@@ -152,3 +152,74 @@ def test_a_bundle_that_is_not_pinned_is_not_offered_for_publishing(tmp_path, mon
     said = capsys.readouterr().out
     assert "gh release upload" not in said and "--pin" in said
     assert not bundle.RELEASE.exists()
+
+
+@pytest.fixture()
+def checkout(tmp_path, monkeypatch):
+    """A git checkout with its data folder inside, as a fresh clone has it, on the reference network."""
+    from kapacitet import paths
+
+    root = tmp_path / "repo"
+    root.mkdir()
+    (root / ".git").write_text("gitdir: elsewhere\n", encoding="utf-8")  # a worktree's .git is a file
+
+    def use(data):
+        monkeypatch.setattr(paths, "DATA", data)
+        monkeypatch.setattr(paths, "PROCESSED", data / "processed")
+        return data
+
+    monkeypatch.setattr(paths, "ROOT", root)
+    monkeypatch.delenv("KAPACITET_DATASET", raising=False)
+    use(root / "data")
+    return root, use
+
+
+def _imported_by_the_cli(data) -> None:
+    grid = data / "processed" / "grid"
+    grid.mkdir(parents=True)
+    (grid / "summary.json").write_text('{"imported": true}', encoding="utf-8")
+
+
+def test_the_reference_network_in_the_checkout_is_not_warned_about(checkout):
+    assert pipeline.data_in_checkout_warning() is None
+
+
+def test_an_operators_network_inside_the_checkout_is_warned_about(checkout, monkeypatch):
+    """Served as a network of the app (its folder under data/datasets/), or written over the
+    reference network by `kapacitet import`: either way only .gitignore keeps it out of a commit."""
+    root, use = checkout
+    monkeypatch.setenv("KAPACITET_DATASET", "abc123")
+    use(root / "data" / "datasets" / "abc123")
+    said = pipeline.data_in_checkout_warning()
+    assert said and "KAPACITET_HOME" in said and "KAPACITET_DATA_DIR" in said
+
+    monkeypatch.delenv("KAPACITET_DATASET")
+    _imported_by_the_cli(use(root / "data"))
+    assert pipeline.data_in_checkout_warning()
+
+
+def test_an_operators_network_outside_the_checkout_or_in_a_container_is_not(checkout, monkeypatch, tmp_path):
+    root, use = checkout
+    monkeypatch.setenv("KAPACITET_DATASET", "abc123")
+    _imported_by_the_cli(use(tmp_path / "pilot" / "datasets" / "abc123"))
+    assert pipeline.data_in_checkout_warning() is None
+    # the image has no .git: nothing to commit the data to
+    use(root / "data" / "datasets" / "abc123")
+    (root / ".git").unlink()
+    assert pipeline.data_in_checkout_warning() is None
+
+
+def test_the_server_says_it_when_it_starts(checkout, monkeypatch, caplog):
+    import argparse
+    import logging
+
+    import uvicorn
+
+    started = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: started.append(k["port"]))
+    monkeypatch.setattr(pipeline, "_wait_for_port", lambda host, port: None)
+    monkeypatch.setenv("KAPACITET_DATASET", "abc123")
+    with caplog.at_level(logging.WARNING, logger="kapacitet"):
+        pipeline._serve_child(argparse.Namespace(host="127.0.0.1", port=8123))
+    assert started == [8123]
+    assert any("git working tree" in r.getMessage() for r in caplog.records)
