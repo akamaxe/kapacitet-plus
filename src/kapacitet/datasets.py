@@ -14,6 +14,8 @@ KAPACITET_DATA_DIR on the network's folder and KAPACITET_RAW_DIR on the referenc
 downloads (weather and prices are the same), and the reference network's household profiles
 copied in. The server uses one network at a time and switches only when it runs under the
 supervisor (`kapacitet serve`), which restarts it on the new folder: no cache survives a switch.
+
+The record, the lock, the log and the step runner are procs.py's, shared with a study's stations.
 """
 
 from __future__ import annotations
@@ -26,10 +28,9 @@ import shutil
 import subprocess
 import sys
 import threading
-import time
-from datetime import datetime, timezone
 from pathlib import Path
 
+from . import procs
 from .paths import DATASETS, HOME, RAW, ROOT
 
 REFERENCE = "reference"
@@ -58,21 +59,15 @@ ERRORS = {
 }
 
 
-def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+_now = procs.now
+_write_json = procs.write_json
+_alive = procs.alive
 
 
 def folder(ds_id: str) -> Path:
     if not _ID.match(ds_id or ""):
         raise DatasetError("unknown_dataset", id=ds_id)
     return DATASETS / ds_id
-
-
-def _write_json(path: Path, obj: dict) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(json.dumps(obj, indent=1), encoding="utf-8")
-    os.replace(tmp, path)
 
 
 def record(ds_id: str) -> dict:
@@ -126,11 +121,9 @@ def set_active(ds_id: str) -> None:
 def child_env(ds_id: str | None = None) -> dict[str, str]:
     """The environment the server runs with for a network: its data folder and the shared downloads."""
     ds_id = ds_id or active()
-    env = {"KAPACITET_HOME": str(HOME), "KAPACITET_DATASET": ds_id}
-    if ds_id != REFERENCE:
-        env["KAPACITET_DATA_DIR"] = str(folder(ds_id))
-        env["KAPACITET_RAW_DIR"] = str(RAW)
-    return env
+    if ds_id == REFERENCE:
+        return procs.child_env(home=HOME, dataset=ds_id)
+    return procs.child_env(folder(ds_id), home=HOME, raw=RAW, dataset=ds_id)
 
 
 def current() -> str:
@@ -183,38 +176,12 @@ def delete(ds_id: str) -> None:
 # ---------------------------------------------------------------- building one
 
 def _lock(ds_id: str) -> Path:
-    return folder(ds_id) / "build.lock"
-
-
-def _alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    if sys.platform == "win32":
-        import ctypes
-
-        handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)   # PROCESS_QUERY_LIMITED_INFORMATION
-        if not handle:
-            return False
-        code = ctypes.c_ulong()
-        ctypes.windll.kernel32.GetExitCodeProcess(handle, ctypes.byref(code))
-        ctypes.windll.kernel32.CloseHandle(handle)
-        return code.value == 259                                          # STILL_ACTIVE
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
+    return procs.lock_path(folder(ds_id))
 
 
 def building(ds_id: str) -> bool:
     """A build holds the lock and its process is alive (a stale lock does not count)."""
-    path = _lock(ds_id)
-    if not path.exists():
-        return False
-    try:
-        return _alive(int(path.read_text().strip() or 0))
-    except ValueError:
-        return False
+    return procs.building(folder(ds_id))
 
 
 def launch(ds_id: str, workers: int = 2) -> int:
@@ -233,22 +200,13 @@ def launch(ds_id: str, workers: int = 2) -> int:
         kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
     else:
         kwargs["start_new_session"] = True
-    log = open(root / "build.log", "ab")
+    log = open(root / procs.LOG, "ab")
     proc = subprocess.Popen(cmd, cwd=str(ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
                             stdin=subprocess.DEVNULL, **kwargs)
     log.close()
     rec.update(status="building", launched=_now(), pid=proc.pid)
     _save(rec)
     return proc.pid
-
-
-def _step(rec: dict, name: str, status: str, **extra) -> None:
-    for s in rec["steps"]:
-        if s["name"] == name:
-            s["status"] = status
-            s["started" if status == "running" else "finished"] = _now()
-            s.update(extra)
-    _save(rec)
 
 
 def _copy_households(dest_processed: Path) -> int:
@@ -297,33 +255,11 @@ def build(ds_id: str, workers: int = 2, quick: bool = True, steps: dict | None =
     """Run every step of a network's build in this process, recording each one. `steps` replaces
     the real steps (a test's fakes); the order and the record are the same."""
     rec = record(ds_id)
-    lock = _lock(ds_id)
     if building(ds_id):
         raise DatasetError("building", id=ds_id)
-    lock.write_text(str(os.getpid()))
-    rec.update(status="building", started=_now(), workers=workers, quick=quick)
-    rec["steps"] = [{"name": s, "status": "waiting"} for s in STEPS]
-    _save(rec)
+    rec.update(workers=workers, quick=quick)
     steps = steps or _real_steps(ds_id, workers, quick)
-    try:
-        for name in STEPS:
-            _step(rec, name, "running")
-            t0 = time.perf_counter()
-            extra = steps[name]() or {}
-            _step(rec, name, "done", seconds=round(time.perf_counter() - t0, 1), **extra)
-        rec.update(status="ready", finished=_now())
-    except Exception as exc:  # the record says where it stopped and why; the log keeps the traceback
-        import logging
-
-        logging.getLogger("kapacitet.datasets").exception("build of %s failed", ds_id)
-        for s in rec["steps"]:
-            if s["status"] == "running":
-                s.update(status="failed", error=str(exc)[:400], finished=_now())
-        rec.update(status="failed", finished=_now(), error=str(exc)[:400])
-    finally:
-        _save(rec)
-        lock.unlink(missing_ok=True)
-    return rec
+    return procs.run_steps(rec, STEPS, steps, _save, _lock(ds_id), logger="kapacitet.datasets")
 
 
 def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
@@ -363,8 +299,4 @@ def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
 
 
 def log_tail(ds_id: str, lines: int = 40) -> list[str]:
-    path = folder(ds_id) / "build.log"
-    if not path.exists():
-        return []
-    text = path.read_bytes()[-20000:].decode("utf-8", errors="replace")
-    return text.splitlines()[-lines:]
+    return procs.log_tail(folder(ds_id), lines)
