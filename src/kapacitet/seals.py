@@ -23,6 +23,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 import threading
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,7 +37,8 @@ GENESIS = "0" * 64
 KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack")
 
 # What an answer depends on, besides the engine's code: the network, the profiles behind it, the
-# published results and the inputs. A change to any of these changes the fingerprint.
+# published results and the inputs. A change to any of these changes the fingerprint. The "study"
+# root is the study folder (KAPACITET_STUDY) of a station's process, and is absent elsewhere.
 FINGERPRINT_FILES = (
     ("processed", "grid/net.json"),
     ("processed", "grid/customers.parquet"),
@@ -48,6 +50,10 @@ FINGERPRINT_FILES = (
     ("raw", "manifest.json"),
     ("config", "assumptions.toml"),
     ("config", "site.toml"),
+    ("study", "study.toml"),
+    ("study", "inputs/stations.csv"),
+    ("study", "inputs/equipment.csv"),
+    ("study", "inputs/upstream.csv"),
 )
 
 
@@ -94,8 +100,12 @@ _FILE_CACHE: dict[str, tuple[int, int, str]] = {}
 def fingerprint() -> dict:
     """The engine version and a hash of each input file there is, cached by size and mtime."""
     roots = {"processed": PROCESSED, "raw": RAW, "config": CONFIG}
+    if os.environ.get("KAPACITET_STUDY"):
+        roots["study"] = Path(os.environ["KAPACITET_STUDY"])
     files: dict[str, str] = {}
     for root, rel in FINGERPRINT_FILES:
+        if root not in roots:
+            continue
         path = roots[root] / rel
         if not path.exists():
             continue

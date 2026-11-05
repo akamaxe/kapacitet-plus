@@ -40,7 +40,8 @@ def fetch_strang(param: int, year: int, *, refresh: bool = False) -> Path:
     entry = f"smhi_strang_{site.key}_p{param}_{year}"
     if cached(entry, dest, refresh=refresh):
         return dest
-    url = STRANG_URL.format(lon=round(site.center_lon, 4), lat=round(site.center_lat, 4), param=param)
+    lat, lon = site.strang_point          # the centre, unless a study sets its own STRÅNG point
+    url = STRANG_URL.format(lon=round(lon, 4), lat=round(lat, 4), param=param)
     params = {"from": f"{year - 1}-12-31", "to": f"{year + 1}-01-01", "interval": "hourly"}
     resp = http("GET", url, params=params)
     data = resp.json()
