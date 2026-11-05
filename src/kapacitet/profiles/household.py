@@ -23,7 +23,7 @@ import pandas as pd
 
 from ..config import A, settings
 from ..ingest import scb
-from ..paths import processed
+from ..paths import processed, processed_ro
 
 log = logging.getLogger(__name__)
 POOL_YEAR = 2025
@@ -138,9 +138,29 @@ def assignment(n_customers: int, load_seed: int = 0, n_pool: int | None = None) 
     return order[:n_customers]
 
 
+def metered_path(year: int):
+    """Where profiles/metered.py writes the metered customers' load of a weather year."""
+    return processed_ro("households", f"metered_{year}.npy")
+
+
 def customer_base_load(year: int, n_customers: int, load_seed: int = 0) -> np.ndarray:
-    """Hourly household base load (kW), shape (n_customers, H)."""
-    return pool_hourly(year)[assignment(n_customers, load_seed)]
+    """Hourly household base load (kW), shape (n_customers, H): the one switch between synthetic and
+    metered load. Where metered_<year>.npy exists, its rows are the metered customers' load (a row
+    of NaN is a customer without readings, who keeps a CREST profile of the pool); the load seed
+    varies only the synthetic ones."""
+    path = metered_path(year)
+    if not path.is_file():
+        return pool_hourly(year)[assignment(n_customers, load_seed)]
+    metered = np.load(path)
+    if metered.shape[0] != n_customers:
+        raise ValueError(f"{path.name} has {metered.shape[0]} customers and the network {n_customers}: "
+                         "build the station's load again")
+    rows = np.isfinite(metered).all(axis=1)
+    if rows.all():
+        return metered
+    out = pool_hourly(year)[assignment(n_customers, load_seed)].astype(metered.dtype)
+    out[rows] = metered[rows]
+    return out
 
 
 def ensure_pool(n: int = 160, workers: int = 10) -> None:

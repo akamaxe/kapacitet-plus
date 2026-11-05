@@ -249,3 +249,120 @@ def test_the_published_contract_document_matches_the_code():
         "docs/network-export-contract.md is out of date; regenerate it from "
         "kapacitet.importer.as_markdown()"
     )
+
+
+# ---------------------------------------------------------------- equipment.csv, the optional table
+
+def equipment(**changes) -> pd.DataFrame:
+    """C1 (three-phase service) with a full set, C2 (single-phase on a) with a small inverter on a."""
+    eq = pd.DataFrame({
+        "customer_id": ["C1", "C2"],
+        "pv_kwp": [9.6, 3.0], "pv_kw_ac": [8.0, 2.5], "pv_phase": ["abc", "a"],
+        "battery_kwh": [10.0, None], "battery_kw": [5.0, None],
+        "ev_charger_kw": [11.0, None], "ev_phases": [3, None],
+        "heat_pump": ["yes", "nej"], "heat_pump_kw": [3.0, None],
+        "source": ["installer notification", "survey"], "connected_on": ["2024-05-01", "2023-11-20"],
+    })
+    for col, (row, value) in changes.items():
+        eq[col] = eq[col].astype(object)
+        eq.loc[row, col] = value
+    return eq
+
+
+def with_equipment(eq) -> dict[str, pd.DataFrame]:
+    data = good()
+    data["equipment"] = eq
+    return data
+
+
+def test_a_complete_equipment_table_passes_with_a_summary():
+    report = validate(with_equipment(equipment()))
+    assert report.usable and report.score == 100, report.text()
+    summary = next(f for f in report.findings if f.code == "equipment_summary")
+    assert summary.params == {"pv": "2", "kw": "10.5", "batteries": "1", "chargers": "1", "heat_pumps": "1"}
+    assert report.tables["equipment"] == 2
+    # absent, it is not asked for
+    assert not [f for f in validate(good()).findings if f.code.startswith("equipment")]
+
+
+@pytest.mark.parametrize("col, value, code", [
+    ("pv_kwp", -1.0, "equipment_value"),
+    ("battery_kw", "lots", "equipment_value"),
+    ("pv_phase", "x", "equipment_phase"),
+    ("ev_phases", 2, "equipment_ev_phases"),
+    ("heat_pump", "maybe", "equipment_heat_pump"),
+    ("connected_on", "1 May", "equipment_date"),
+])
+def test_a_value_the_engine_cannot_read_is_an_error(col, value, code):
+    report = validate(with_equipment(equipment(**{col: (0, value)})))
+    assert not report.usable
+    f = next(f for f in report.findings if f.code == code)
+    assert f.severity == ERROR and f.count == 1
+
+
+def test_equipment_on_another_phase_than_its_single_phase_service_is_an_error():
+    report = validate(with_equipment(equipment(pv_phase=(1, "b"))))
+    f = next(f for f in report.findings if f.code == "equipment_phase_conflict")
+    assert f.severity == ERROR and f.params["customer"] == "C2"
+    report = validate(with_equipment(equipment(ev_charger_kw=(1, 3.7), ev_phases=(1, 3))))
+    assert any(f.code == "equipment_phase_conflict" for f in report.errors)
+
+
+def test_equipment_fallbacks_and_doubts_are_warnings():
+    eq = pd.concat([equipment(pv_kw_ac=(0, None), battery_kw=(0, None), source=(1, None)),
+                    pd.DataFrame({"customer_id": ["C7"], "pv_kwp": [4.0]})], ignore_index=True)
+    data = with_equipment(eq)
+    report = validate(data)
+    assert report.usable, report.text()
+    by = {f.code: f for f in report.findings}
+    assert by["equipment_unknown_customer"].params["customer"] == "C7"
+    assert by["equipment_pv_ac"].count == 1 and by["equipment_pv_ac"].params["ratio"] == "1.2"
+    assert by["equipment_battery"].count == 1
+    assert by["equipment_source"].severity == "note"
+    # a single-phase service's inverter above what one phase of its fuse carries
+    over = with_equipment(equipment(pv_kw_ac=(1, 4.6), pv_kwp=(1, 5.0)))
+    over["customers"].loc[1, "fuse_a"] = 16                                  # 230 V x 16 A = 3.7 kW
+    assert any(f.code == "equipment_over_fuse" for f in validate(over).warnings)
+
+
+def test_equipment_is_merged_into_the_customers_with_its_fallbacks_counted():
+    from kapacitet.importer.build import EXISTING, build_from_export
+
+    network, applied = build_from_export(with_equipment(equipment(pv_kw_ac=(1, None), ev_phases=(0, None))))
+    cust = network.customers.set_index("osm_id")
+    assert set(EXISTING) <= set(cust.columns)
+    assert cust.loc["C1", "existing_pv_kw_ac"] == 8.0 and cust.loc["C2", "existing_pv_kw_ac"] == pytest.approx(2.5)
+    assert cust.loc["C1", "existing_ev_phases"] == 3 and cust.loc["C2", "existing_ev_phases"] == 0
+    assert cust.loc["C1", "existing_pv_phase"] == "abc" and cust.loc["C2", "existing_pv_phase"] == "a"
+    assert bool(cust.loc["C1", "existing_heat_pump"]) is True and bool(cust.loc["C2", "existing_heat_pump"]) is False
+    assert cust.loc["C1", "existing_battery_kwh"] == 10.0 and cust.loc["C1", "existing_connected_on"] == "2024-05-01"
+    assert applied == {"PV AC rating taken from its kWp": 1, "EV charger phases taken as three": 1}
+    assert network.summary["existing_pv_kw"] == 10.5
+
+    # a customer without a row has nothing on record, and its heat pump is not known
+    network, _ = build_from_export(with_equipment(equipment().iloc[[0]]))
+    c2 = network.customers.set_index("osm_id").loc["C2"]
+    assert c2["existing_pv_kwp"] == 0.0 and c2["existing_pv_phase"] == "" and pd.isna(c2["existing_heat_pump"])
+    # without the table the customers are what they always were
+    network, _ = build_from_export(good())
+    assert not [c for c in network.customers.columns if c.startswith("existing_")]
+
+
+def test_equipment_csv_is_read_from_the_export_folder(tmp_path):
+    data = with_equipment(equipment(pv_phase=(0, "q")))
+    for name, df in data.items():
+        df.to_csv(tmp_path / f"{name}.csv", index=False)
+    report = check_directory(tmp_path)
+    assert any(f.code == "equipment_phase" for f in report.errors)
+    assert "`equipment.csv` (optional)" in as_markdown()
+
+
+def test_identifiers_are_read_as_text(tmp_path):
+    """A leading zero is part of an identifier: it has to match the meter or equipment record."""
+    data = good()
+    data["customers"]["customer_id"] = ["007", "08"]
+    for name, df in data.items():
+        df.to_csv(tmp_path / f"{name}.csv", index=False)
+    from kapacitet.importer.validate import read_export
+
+    assert list(read_export(tmp_path)["customers"]["customer_id"]) == ["007", "08"]

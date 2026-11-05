@@ -127,7 +127,8 @@ def test_the_contract_is_published(client):
     body = client.get(f"{API}/contract").json()
     assert "buses.csv" in body["markdown"]
     names = [t["name"] for t in body["tables"]]
-    assert names == ["buses", "lines", "transformer", "customers"]
+    assert names == ["buses", "lines", "transformer", "customers", "equipment"]
+    assert [t["name"] for t in body["tables"] if t["optional"]] == ["equipment"]
     buses = next(t for t in body["tables"] if t["name"] == "buses")
     assert any(c["name"] == "bus_id" and c["required"] for c in buses["columns"])
 

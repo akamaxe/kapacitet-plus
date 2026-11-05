@@ -112,6 +112,9 @@ def cmd_fetch(args: argparse.Namespace) -> None:
             smhi.fetch_strang(cfg.strang["dhi"], cfg.reference_year, refresh=refresh)
         with step(f"SMHI temperature, station {cfg.temperature_station}"):
             smhi.fetch_metobs(cfg.temperature_station, refresh=refresh)
+            # a study's meter readings are recent, and the corrected archive lags them by months
+            if os.environ.get("KAPACITET_STUDY"):
+                smhi.fetch_metobs_latest(cfg.temperature_station, refresh=refresh)
     if want("esett"):
         with step("eSett production/consumption per bidding zone"):
             for zone in cfg.price_zones:

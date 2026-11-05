@@ -107,6 +107,65 @@ def fetch_metobs(station: int, param: int = 1, *, refresh: bool = False) -> Path
     return dest
 
 
+def metobs_latest_name(station: int, param: int = 1) -> str:
+    return f"metobs_s{station}_p{param}_latest.json"
+
+
+def metobs_latest_entry(station: int, param: int = 1) -> str:
+    return f"smhi_metobs_s{station}_p{param}_latest"
+
+
+def metobs_latest_path(station: int, param: int = 1) -> Path:
+    return raw("smhi", metobs_latest_name(station, param))
+
+
+def fetch_metobs_latest(station: int, param: int = 1, *, refresh: bool = False) -> Path:
+    """The last four months of a station's observations, which the corrected archive does not have
+    yet: metered consumption is recent, and its temperature correction needs the same hours. Not
+    quality-controlled; read_metobs_all prefers the archive wherever both have an hour."""
+    dest = metobs_latest_path(station, param)
+    entry = metobs_latest_entry(station, param)
+    if cached(entry, dest, refresh=refresh):
+        return dest
+    url = METOBS_LATEST_URL.format(param=param, station=station, period="latest-months")
+    resp = http("GET", url, timeout=120)
+    data = resp.json()
+    if not isinstance(data, dict) or not isinstance(data.get("value"), list):
+        raise ValueError(f"Unexpected metobs response for station {station}")
+    dest.write_text(json.dumps(data), encoding="utf-8")
+    record(entry, source="smhi_metobs", path=dest, url=url, rows=len(data["value"]),
+           notes="Latest months (not yet quality-controlled). Air temperature, instantaneous value once per hour, UTC.")
+    return dest
+
+
+def read_metobs_latest(station: int, param: int = 1) -> pd.Series:
+    """The latest-months JSON as a UTC-indexed float series."""
+    data = json.loads(metobs_latest_path(station, param).read_text(encoding="utf-8"))
+    rows = data.get("value") or []
+    ts = pd.to_datetime([r.get("date") for r in rows], unit="ms", utc=True)
+    vals = pd.to_numeric(pd.Series([r.get("value") for r in rows], index=ts), errors="coerce").dropna()
+    vals = vals[~vals.index.duplicated(keep="first")].sort_index()
+    return vals.astype(float)
+
+
+def read_metobs_all(station: int, param: int = 1) -> pd.Series:
+    """The corrected archive, continued by the latest months where the archive ends: whichever of the
+    two files is there (an empty series when neither is)."""
+    from .. import paths
+
+    parts = []
+    if (paths.RAW / "smhi" / metobs_name(station, param)).is_file():      # a read creates no folder
+        parts.append(read_metobs(station, param))
+    if (paths.RAW / "smhi" / metobs_latest_name(station, param)).is_file():
+        latest = read_metobs_latest(station, param)
+        if parts and len(parts[0]):
+            latest = latest[latest.index > parts[0].index.max()]
+        parts.append(latest)
+    if not parts:
+        return pd.Series(dtype=float)
+    return pd.concat(parts).sort_index()
+
+
 def read_metobs(station: int, param: int = 1) -> pd.Series:
     """Parse the semicolon CSV (Swedish headers). Returns a UTC-indexed float series."""
     text = metobs_path(station, param).read_text(encoding="utf-8-sig")

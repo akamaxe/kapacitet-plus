@@ -32,11 +32,11 @@ import tempfile
 from pathlib import Path
 
 from .. import procs
-from ..importer.contract import TABLES
+from ..importer.contract import ALL_TABLES
 from ..importer.validate import Report, read_export, validate
 from . import Study, StudyError, dir_digest, file_digest, valid_id
 
-CONTRACT_FILES = tuple(f"{t.name}.csv" for t in TABLES)
+CONTRACT_FILES = tuple(f"{t.name}.csv" for t in ALL_TABLES)      # the optional equipment.csv too
 CGMES_MARK = ".cgmes.json"
 CGMES_SCHEMA = "kapacitet.cgmes-import/1"
 
@@ -256,13 +256,58 @@ def split(study: Study) -> list[str]:
     return out
 
 
+def read_table(path: Path):
+    """A CSV file a DSO hands over: comma or semicolon separated (with a decimal comma), UTF-8 with
+    or without a BOM."""
+    import pandas as pd
+
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        sample = fh.read(4096)
+    try:
+        sep = csv.Sniffer().sniff(sample, delimiters=",;").delimiter if sample else ","
+    except csv.Error:
+        sep = ","
+    return pd.read_csv(path, sep=sep, decimal="," if sep == ";" else ".", encoding="utf-8-sig",
+                       dtype={"customer_id": str})
+
+
+def equipment_file(study: Study) -> Path:
+    return study.inputs / "equipment.csv"
+
+
+def station_equipment(study: Study, sid: str, customers=None):
+    """The equipment records of a station and where they come from: the rows of the study's
+    inputs/equipment.csv that name the station's customers, or else the equipment.csv of the
+    station's own contract folder; (None, "") when there is neither."""
+    imp = study.station_dir(sid) / "import"
+    path = equipment_file(study)
+    if path.is_file():
+        if customers is None:
+            customers = read_export(imp).get("customers")
+        eq = read_table(path)
+        if customers is None or "customer_id" not in eq.columns or "customer_id" not in customers.columns:
+            return eq, "inputs/equipment.csv"
+        ids = set(customers["customer_id"].astype(str).str.strip())
+        return eq[eq["customer_id"].astype(str).str.strip().isin(ids)].reset_index(drop=True), "inputs/equipment.csv"
+    if (imp / "equipment.csv").is_file():
+        return read_table(imp / "equipment.csv"), "the station's equipment.csv"
+    return None, ""
+
+
 def check(study: Study, stations: list[str] | None = None) -> dict[str, Report]:
-    """The contract's data-quality report for every station, kept in its record. A station being
-    built keeps its record as its build writes it (the build's import step makes the same report)."""
+    """The contract's data-quality report for every station, its equipment records included (the
+    study's or its own), kept in its record. A station being built keeps its record as its build
+    writes it (the build's import and equipment steps make the same findings)."""
     out = {}
     for sid in stations or study.station_ids():
         study.record(sid)                                    # an unknown station is an error
-        report = validate(read_export(study.station_dir(sid) / "import"))
+        data = read_export(study.station_dir(sid) / "import")
+        data.pop("equipment", None)
+        if "customers" in data:
+            eq, _ = station_equipment(study, sid, data["customers"])
+            if eq is not None:
+                data["equipment"] = eq
+        report = validate(data)
         out[sid] = report
         if study.building(sid):
             continue

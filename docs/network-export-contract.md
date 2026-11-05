@@ -3,7 +3,7 @@
 
 # Network export contract
 
-Four CSV files in one directory, UTF-8, comma separated, with a header row.
+Four CSV files in one directory, UTF-8, comma separated, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there.
 Run `python -m kapacitet check <directory>` to get a data-quality report before sending anything.
 
 ## `buses.csv`
@@ -62,3 +62,22 @@ Connection points. One row per metering point, not per building.
 | `phase` | - | no | a, b or c for a single-phase service, blank for three-phase. | three-phase, which understates voltage unbalance |
 | `footprint_m2` | m2 | no | Roof area available for PV. | no rooftop PV potential is estimated for this customer |
 | `annual_kwh` | kWh | no | Metered annual consumption. | nothing to compare: the engine's household profiles are synthetic either way, and a given value is only compared with them and reported |
+
+## `equipment.csv` (optional)
+
+Optional. What is already connected behind each meter: solar PV, batteries, EV chargers and heat pumps, one row per customer that has any. A customer without a row has none of them on record.
+
+| column | unit | required | meaning | if missing |
+| --- | --- | --- | --- | --- |
+| `customer_id` | - | yes | customer_id in customers.csv. | - |
+| `pv_kwp` | kWp | no | Installed PV, DC peak. | no PV is counted for this customer |
+| `pv_kw_ac` | kW | no | PV inverter AC rating. | pv_kwp divided by the site's DC/AC ratio |
+| `pv_phase` | - | no | a, b or c for a single-phase inverter, abc for a three-phase one. | the phase allocation rule of config/assumptions.toml |
+| `battery_kwh` | kWh | no | Usable battery capacity. | no battery is counted |
+| `battery_kw` | kW | no | Battery power rating. | no battery is counted |
+| `ev_charger_kw` | kW | no | EV charger rating. | no charger is counted |
+| `ev_phases` | - | no | 1 or 3: the phases the charger uses. | 3, which is what a wallbox at a Swedish villa normally is |
+| `heat_pump` | - | no | yes or no. | not known, so the study's share of heat pumps applies |
+| `heat_pump_kw` | kW | no | Heat pump electrical rating. | the heat pump model's own sizing |
+| `source` | - | no | Where the record comes from, for example the installer's notification. | the record's source is reported as not stated |
+| `connected_on` | date | no | When it was connected, YYYY-MM-DD. | taken as connected before the study |

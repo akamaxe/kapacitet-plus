@@ -25,6 +25,43 @@ def test_metobs_csv(monkeypatch):
     assert s.index.is_monotonic_increasing and not s.index.duplicated().any()
 
 
+def test_metobs_latest_months_continue_the_archive(monkeypatch, tmp_path):
+    """The latest months (JSON, epoch milliseconds) where the corrected archive ends."""
+    import shutil
+
+    from kapacitet import paths
+
+    monkeypatch.setattr(paths, "RAW", tmp_path)
+    assert smhi.read_metobs_all(97200).empty                        # neither file: nothing, and no folder
+    assert not (tmp_path / "smhi").exists()
+    hour = 3_600_000
+    start = 1735689600000                                           # 2025-01-01 00:00 UTC
+    data = {"value": [{"date": start + 3 * hour, "value": "7.0", "quality": "Y"},
+                      {"date": start + 5 * hour, "value": "-4.5", "quality": "Y"},
+                      {"date": start + 6 * hour, "value": "", "quality": "Y"},
+                      {"date": start + 5 * hour, "value": "-4.5", "quality": "Y"}]}
+    calls = []
+
+    class Response:
+        def json(self):
+            return data
+
+    monkeypatch.setattr(smhi, "http", lambda method, url, **kw: calls.append(url) or Response())
+    monkeypatch.setattr(smhi, "record", lambda *a, **kw: None)
+    path = smhi.fetch_metobs_latest(97200, refresh=True)
+    assert "period/latest-months/data.json" in calls[0] and path.name == smhi.metobs_latest_name(97200)
+    latest = smhi.read_metobs_latest(97200)
+    assert list(latest) == [7.0, -4.5] and str(latest.index[0]) == "2025-01-01 03:00:00+00:00"
+
+    shutil.copyfile(FIXTURES / "metobs_sample.csv", tmp_path / "smhi" / smhi.metobs_name(97200))
+    both = smhi.read_metobs_all(97200)
+    # the archive's hours as they are (its 03:00 is empty), then only what comes after its last
+    assert both.loc["2025-01-01 04:00:00+00:00"] == pytest.approx(-3.0)
+    assert both.loc["2025-01-01 05:00:00+00:00"] == pytest.approx(-4.5)
+    assert "2025-01-01 03:00:00+00:00" not in both.index.astype(str)
+    assert both.index.is_monotonic_increasing
+
+
 def test_strang_values_are_clipped_and_utc(monkeypatch, tmp_path):
     raw = [{"date_time": "2025-06-01T10:00:00Z", "value": 512.5},
            {"date_time": "2025-06-01T11:00:00Z", "value": -0.4}]

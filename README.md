@@ -466,10 +466,27 @@ step, the digests of the inputs, the code's version and commit, and what is real
 assumed. A study without a place of its own, or that has not fetched its weather, reuses copies of
 the reference network's weather years, and says so; fetching makes its stations stale. The
 household load is the synthetic profile pool, scaled when the study overrides
-`household_kwh_per_year`, until meter data are read. The capacity figures of a station are marked
+`household_kwh_per_year`, for every customer without enough meter readings (below). The capacity figures of a station are marked
 provisional: the study's MV band and method choices are not applied yet. The demo's networks are
 built by pandapower at run time and written through `importer/from_pandapower.py`, which turns the
 LV island behind any pandapower transformer into the contract.
+
+What is already connected goes in `inputs/equipment.csv`, the contract's optional fifth table
+(`customer_id`, then PV kWp, AC rating and phase, battery, EV charger and its phases, heat pump,
+source and date; `docs/network-export-contract.md`); a station takes the rows of its customers,
+checked like the rest of the contract, into the `existing_*` columns of its customers, and an
+inverter's recorded phase, like a single-phase service's, wins over the phase allocation rule.
+Nothing else counts the existing equipment yet. Quarter-hour meter readings go in
+`inputs/meters/` as CSV files (`customer_id` or `meter_id`, `start` in ISO 8601 with its UTC
+offset, `kwh_import`, and optionally `kwh_export` and `v_l1`–`v_l3`), comma or semicolon separated.
+They are read with DuckDB (`ingest/meters.py`) and checked: a time without its offset is refused,
+and a wrong daylight-saving offset, a time off the 15-minute grid, a negative or unreadable value,
+conflicting copies and unmapped meters are left out and counted. An hour counts only with all four
+of its quarter-hours, on the study's UTC+1 hours, where both days the clocks change have 24. Each
+metered customer's load is fitted as `a + b·max(17 °C − T, 0)` per hour and daytype with `b ≥ 0`
+(`profiles/metered.py`) and laid over every weather year with the residual of the nearest metered
+day of the same kind; `processed/validation/metered_fit.json` reports the fit. `study fetch` also
+brings the SMHI station's latest months, which the corrected archive does not have yet.
 
 A DSO that exports CGMES 2.4.15 (EQ, TP, SSH and, for the map, GL) puts the files in
 `inputs/network/cgmes/` and `inputs/cim_customers.csv` beside them, which CGMES cannot carry:

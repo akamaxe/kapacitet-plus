@@ -5,11 +5,18 @@ KAPACITET_RAW_DIR on the study's downloads and KAPACITET_STUDY on the study (por
 them), so every step is the existing pipeline's and writes only into `stations/<sid>/`:
 
     import      the station's contract folder -> processed/grid (importer.build)
+    equipment   what is already connected behind its meters -> the existing_* columns of
+                processed/grid/customers.parquet: the station's rows of the study's
+                inputs/equipment.csv, or the equipment.csv of its own contract folder
+    meters      its customers' readings in the study's inputs/meters/ -> processed/meters
+                (ingest/meters.py: checked, and summed to complete hours)
     weather     the study's SMHI downloads -> processed/weather, when the study names a place of
                 its own and fetched them for it; otherwise the reference network's weather years,
                 copied and said so under provenance "synthetic"
     households  the reference network's household profile pool (CREST), linked, or scaled to the
                 study's household_kwh_per_year when it overrides it
+    load        the metered customers' load, temperature-corrected and laid over every weather
+                year (profiles/metered.py), in place of the pool's profile for them
     profiles    PV, heat pumps and EV charging on that weather (profiles.build)
     compute     static, hourly and envelope capacity per adoption order, and the nodal maps, with
                 the engine's own stages in this process (workers = 1); provisional, since the
@@ -37,7 +44,8 @@ from . import PROVENANCE, SCHEMA, Study, StudyError, code_version
 from .config import METHOD_VERSION
 
 log = logging.getLogger("kapacitet.study")
-STEPS = ("import", "weather", "households", "profiles", "compute")
+STEPS = ("import", "equipment", "meters", "weather", "households", "load", "profiles", "compute")
+POOL_NOTE = "household load: the CREST profile pool (richardsonpy), not metered"
 # what hosting_summary.json says about a station's figures until the study's method is applied
 PROVISIONAL = {"method": "provisional", "not_applied": ["mv_band", "percentile", "budget", "consumption_device"]}
 
@@ -125,7 +133,9 @@ def _study_weather(cfg, raw: Path) -> tuple[list[Path], tuple[float, float]] | N
     f = raw / "smhi" / smhi.metobs_name(cfg.temperature_station)
     if not f.is_file() or smhi.metobs_entry(cfg.temperature_station) not in manifest:
         return None
-    return files + [f], point
+    # the latest months, which the meter readings' temperature correction reads too
+    latest = raw / "smhi" / smhi.metobs_latest_name(cfg.temperature_station)
+    return files + [f] + ([latest] if latest.is_file() else []), point
 
 
 def households_source() -> Path:
@@ -200,7 +210,7 @@ def place_households(note: Callable[[str, str], None]) -> dict:
     have = float(have)
     if math.isclose(want, have, rel_tol=1e-9):
         n = procs.link_files(src, dst)
-        note("synthetic", "household load: the CREST profile pool (richardsonpy), not metered")
+        note("synthetic", POOL_NOTE)
         return {"files": n}
     factor = want / have
     arrays = {name.format(y=POOL_YEAR) for name in POOL_ARRAYS}
@@ -221,7 +231,7 @@ def place_households(note: Callable[[str, str], None]) -> dict:
             (dst / f.name).write_text(json.dumps(out, indent=1), encoding="utf-8")
         else:
             shutil.copyfile(f, dst / f.name)
-    note("synthetic", f"household load: the CREST profile pool (richardsonpy), not metered, scaled from a "
+    note("synthetic", f"{POOL_NOTE}, scaled from a "
                       f"mean of {have:g} to the study's {want:g} kWh/yr")
     return {"files": sum(1 for f in dst.iterdir() if f.is_file()), "scale": round(factor, 6)}
 
@@ -269,7 +279,8 @@ def _real_steps(study: Study, sid: str, rec: dict, quick: bool) -> dict:
         from ..importer.build import import_directory
         from .intake import quality
 
-        network, report, applied = import_directory(study.station_dir(sid) / "import")
+        # the equipment, its own folder's included, is the next step's
+        network, report, applied = import_directory(study.station_dir(sid) / "import", equipment=False)
         s = network.summary
         rec["quality"] = quality(report)
         rec["summary"] = {"customers": s["customers"], "feeders": s["feeders"], "buses": s["buses"],
@@ -279,7 +290,6 @@ def _real_steps(study: Study, sid: str, rec: dict, quick: bool) -> dict:
             note(kind, text)
         for what, n in sorted(applied.items()):
             note("assumed", f"{what} ({n})")
-        note("assumed", "existing equipment: no inventory, so no existing PV, battery or charger is counted")
         return {"summary": rec["summary"], "fallbacks": applied}
 
     def do_profiles():
@@ -306,8 +316,141 @@ def _real_steps(study: Study, sid: str, rec: dict, quick: bool) -> dict:
             note("assumed", f"{key} = {o.value} {o.unit} ({o.source})")
         return compute(quick)
 
-    return {"import": do_import, "weather": lambda: place_weather(study, note),
-            "households": lambda: place_households(note), "profiles": do_profiles, "compute": do_compute}
+    return {"import": do_import, "equipment": lambda: place_equipment(study, sid, rec, note),
+            "meters": lambda: place_meters(study, sid, rec, note), "weather": lambda: place_weather(study, note),
+            "households": lambda: place_households(note), "load": lambda: place_load(rec, note),
+            "profiles": do_profiles, "compute": do_compute}
+
+
+# ---------------------------------------------------------------- equipment, meters and load
+
+def _customers_csv(study: Study, sid: str):
+    import pandas as pd
+
+    return pd.read_csv(study.station_dir(sid) / "import" / "customers.csv", dtype={"customer_id": str})
+
+
+def _write_parquet(df, path: Path) -> None:
+    """Written beside and moved in, never through a link."""
+    tmp = path.with_name(path.name + ".tmp")
+    df.to_parquet(tmp, index=False)
+    os.replace(tmp, path)
+
+
+def place_equipment(study: Study, sid: str, rec: dict, note: Callable[[str, str], None]) -> dict:
+    """The equipment step: the station's equipment records, checked against its customers and
+    merged into processed/grid/customers.parquet as the existing_* columns; without records, those
+    columns are not there and the provenance says nothing existing is counted."""
+    import pandas as pd
+
+    from ..importer.build import EXISTING, merge_equipment
+    from ..importer.validate import check_equipment
+    from .intake import station_equipment
+
+    path = paths.PROCESSED / "grid" / "customers.parquet"
+    cust = pd.read_parquet(path)
+    contract = _customers_csv(study, sid)
+    eq, where = station_equipment(study, sid, contract)
+    quality = rec.setdefault("quality", {})
+    if eq is None:
+        quality.pop("equipment", None)
+        if any(c in cust.columns for c in EXISTING):
+            _write_parquet(cust.drop(columns=[c for c in EXISTING if c in cust.columns]), path)
+        note("assumed", "existing equipment: no inventory, so no existing PV, battery or charger is counted")
+        return {"rows": 0}
+    report = check_equipment(eq, contract)
+    quality["equipment"] = report.to_dict()
+    if not report.usable:
+        raise RuntimeError(report.text())
+    merged, applied = merge_equipment(cust, eq)
+    _write_parquet(merged, path)
+    pv = merged["existing_pv_kw_ac"] > 0
+    kw = round(float(merged.loc[pv, "existing_pv_kw_ac"].sum()), 1)
+    rec.setdefault("summary", {})["existing_pv_kw"] = kw
+    counts = {"rows": int(len(eq)), "pv": int(pv.sum()), "pv_kw_ac": kw,
+              "batteries": int((merged["existing_battery_kw"] > 0).sum()),
+              "chargers": int((merged["existing_ev_charger_kw"] > 0).sum()),
+              "heat_pumps": int(merged["existing_heat_pump"].fillna(False).astype(bool).sum())}
+    sources = sorted(set(merged["existing_source"]) - {""})
+    said = f"; source: {', '.join(sources)}" if sources else "; source not stated"
+    note("real", f"existing equipment: the DSO's records ({where}), {counts['pv']} PV systems ({kw:g} kW AC), "
+                 f"{counts['batteries']} batteries, {counts['chargers']} EV chargers and {counts['heat_pumps']} "
+                 f"heat pumps{said}")
+    for what, n in sorted(applied.items()):
+        note("assumed", f"existing equipment: {what} ({n})")
+    note("assumed", "existing equipment: recorded in customers.parquet; this build's capacity figures do not "
+                    "count it yet, and only the inverters' recorded phases are used (by the unbalanced model)")
+    return counts
+
+
+def _study_customer_ids(study: Study) -> set[str]:
+    """Every customer_id of every station of the study (a meter outside them is an unmapped one)."""
+    import pandas as pd
+
+    out: set[str] = set()
+    for p in sorted(study.stations_dir.glob("*/import/customers.csv")) if study.stations_dir.is_dir() else []:
+        try:
+            out |= set(pd.read_csv(p, usecols=["customer_id"], dtype=str)["customer_id"].astype(str).str.strip())
+        except (OSError, ValueError):
+            continue
+    return out
+
+
+def place_meters(study: Study, sid: str, rec: dict, note: Callable[[str, str], None]) -> dict:
+    """The meters step: the station's customers' readings in the study's inputs/meters/, checked
+    (a finding that stops it fails the step) and summed to complete hours in processed/meters."""
+    from ..ingest import meters
+
+    folder = paths.PROCESSED / "meters"
+    _clear(folder)
+    quality = rec.setdefault("quality", {})
+    quality.pop("meters", None)
+    files = meters.meter_files(study.inputs / "meters")
+    if not files:
+        return {"files": 0}
+    mine = set(_customers_csv(study, sid)["customer_id"].astype(str).str.strip())
+    report, hourly = meters.ingest(files, folder, keep=mine, known=_study_customer_ids(study) | mine)
+    quality["meters"] = report.to_dict()
+    if hourly is None:
+        raise RuntimeError(report.text())
+    n = int(hourly["customer_id"].nunique())
+    if n:
+        first, last = hourly["start"].min(), hourly["start"].max()
+        note("real", f"meter readings: {n} of {len(mine)} customers, {len(hourly)} complete hours from "
+                     f"{first:%Y-%m-%d} to {last:%Y-%m-%d} (inputs/meters)")
+    return {"files": len(files), "meters": n, "hours": int(len(hourly))}
+
+
+def place_load(rec: dict, note: Callable[[str, str], None]) -> dict:
+    """The load step: the metered customers' load over every weather year (profiles/metered.py),
+    which the engine takes in place of their pool profile; the provenance says how many."""
+    from ..profiles import metered
+
+    (paths.PROCESSED / "validation" / "metered_fit.json").unlink(missing_ok=True)
+    if not (paths.PROCESSED / "meters" / "hourly.parquet").is_file():
+        return {"fitted": 0}
+    report = metered.build()
+    c = report["customers"]
+    prov = rec["provenance"]
+    if c["fitted"]:
+        r2 = report["median"]["r2"]
+        note("real", f"household load: metered at {c['fitted']} of {c['total']} customers, corrected for temperature "
+                     f"(a + b·max({report['base_temp_c']:g} °C − T, 0) by hour and daytype; median R² "
+                     f"{'n/a' if r2 is None else f'{r2:.2f}'}) and laid over every weather year with the residual "
+                     "of the nearest metered day")
+        rest = c["total"] - c["fitted"]
+        for i, text in enumerate(prov["synthetic"]):
+            if text.startswith(POOL_NOTE):
+                prov["synthetic"][i] = (f"household load of the {rest} customers without enough meter readings: "
+                                        + text[len("household load: "):]) if rest else None
+        prov["synthetic"] = [t for t in prov["synthetic"] if t]
+    if c["too_few_days"]:
+        note("assumed", f"meter readings: {c['too_few_days']} customers with fewer than {report['min_complete_days']} "
+                        "complete days, too few to fit, keep a synthetic household load")
+    if c["export_seen"]:
+        note("assumed", f"metered load: {c['export_seen']} customers export, so their daytime import understates "
+                        "what they consume")
+    return {"fitted": c["fitted"], "too_few_days": c["too_few_days"], "median_r2": report["median"]["r2"]}
 
 
 def compute(quick: bool = False) -> dict:

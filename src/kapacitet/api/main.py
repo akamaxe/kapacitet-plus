@@ -475,14 +475,14 @@ class ExportCheck(BaseModel):
 @app.get(f"{API}/contract", tags=["import"])
 def get_contract() -> dict:
     """What an operator's network export has to contain, and what each column is for."""
-    from ..importer.contract import TABLES, as_markdown
+    from ..importer.contract import ALL_TABLES, OPTIONAL_TABLES, as_markdown
 
     return {
         "markdown": as_markdown(),
         "tables": [
-            {"name": t.name, "description": t.description, "key": t.key,
+            {"name": t.name, "description": t.description, "key": t.key, "optional": t in OPTIONAL_TABLES,
              "columns": [c.__dict__ for c in t.columns]}
-            for t in TABLES
+            for t in ALL_TABLES
         ],
     }
 

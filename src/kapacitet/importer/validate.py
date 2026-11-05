@@ -2,7 +2,8 @@
 
 This is the first thing a DSO gets from us, before any capacity number: a list of what
 their low-voltage records can and cannot support, with a count on every line. It runs on
-the four CSV files of `contract.py` and needs nothing else.
+the four CSV files of `contract.py`, and on the optional `equipment.csv` when it is there, and
+needs nothing else.
 
 Severities. An `error` stops the import, because the engine would otherwise be answering a
 question about a network that does not exist. A `warning` means the import proceeds on a
@@ -19,13 +20,16 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from .contract import BY_NAME, TABLES
+from .contract import ALL_TABLES, BY_NAME, NO, PV_PHASE_LABELS, TABLES, YES
 
 ERROR, WARNING, NOTE = "error", "warning", "note"
 LV_MAX_SECTION_M = 2000.0
 PLAUSIBLE_FUSES = {16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400}
+# identifiers are read as text, so "007" stays "007" and matches a meter or equipment record
+IDENTIFIERS = dict.fromkeys(("bus_id", "line_id", "from_bus", "to_bus", "lv_bus", "bus", "customer_id"), str)
 
 
 MESSAGES = {
@@ -64,6 +68,37 @@ MESSAGES = {
     "cim_no_station": "no in-service transformer steps down to {kv} kV or less",
     "cim_unreached_consumer": "low-voltage EnergyConsumers that no transformer reaches, for example {mrid}, so they are in no station",
     "cim_mapping_unused": "rows of cim_customers.csv whose EnergyConsumer is in no station, for example {mrid}",
+    # equipment.csv, the optional table of what is already connected behind each meter
+    "equipment_unknown_customer": "equipment.csv names customers that are not in customers.csv, for example {customer}; their rows are not counted",
+    "equipment_value": "equipment.csv has {column} values that are not a number of zero or more, for example {value}",
+    "equipment_phase": "equipment.csv has pv_phase labels other than a, b, c and abc, for example {label}",
+    "equipment_ev_phases": "equipment.csv has ev_phases other than 1 and 3, for example {value}",
+    "equipment_heat_pump": "equipment.csv has heat_pump values other than yes and no, for example {value}",
+    "equipment_date": "equipment.csv has connected_on values that are not dates (YYYY-MM-DD), for example {value}",
+    "equipment_phase_conflict": "customers whose service is single-phase on one phase while equipment.csv puts their equipment on another or on three, for example {customer}",
+    "equipment_pv_ac": "PV without pv_kw_ac, whose AC rating is taken as pv_kwp / {ratio}",
+    "equipment_pv_phase": "single-phase PV without pv_phase, whose phase is allocated by the rule",
+    "equipment_over_fuse": "equipment rated above what the customer's main fuse carries, for example {customer}",
+    "equipment_battery": "batteries with only one of battery_kwh and battery_kw, which are not counted",
+    "equipment_source": "rows of equipment.csv that do not say where the record comes from",
+    "equipment_summary": "equipment.csv records {pv} PV systems ({kw} kW AC), {batteries} batteries, {chargers} EV chargers and {heat_pumps} heat pumps",
+    # the meter readings (ingest/meters.py)
+    "meter_empty": "no meter readings in the files",
+    "meter_missing_column": "the meter readings have no {columns}",
+    "meter_no_id": "readings without a customer_id or meter_id, for example row {row}",
+    "meter_naive_time": "times without a UTC offset, for example {ts}: on the night the clocks go back they name two different quarter-hours, so they are refused",
+    "meter_bad_time": "times that are not ISO 8601, for example {ts}",
+    "meter_dst": "times whose UTC offset is not Swedish time at that instant, in a file that changes offset, for example {ts}: daylight saving time is written wrong, and these readings are not used",
+    "meter_off_grid": "times off the 15-minute grid, for example {ts}, whose readings are not used",
+    "meter_unreadable": "readings with a blank or unreadable value, for example {value}, which are not used",
+    "meter_negative": "readings with a negative value, which are not used",
+    "meter_unmapped": "meters that are no customer of customers.csv, for example {meter}, whose readings are not used",
+    "meter_duplicate_same": "readings given more than once with the same values, counted once",
+    "meter_duplicate": "quarter-hours given more than once with different values, for example {example}, which are not used",
+    "meter_gaps": "quarter-hours missing between a meter's first and last reading, at {meters} meters",
+    "meter_incomplete": "meters with fewer than {pct} % of their hours complete, for example {meter}",
+    "meter_complete": "complete hours at {meters} meters, {pct} % of the hours between each one's first and last reading",
+    "meter_no_readings": "customers without meter readings, whose household load stays synthetic",
 }
 
 
@@ -81,6 +116,7 @@ class Finding:
 class Report:
     findings: list[Finding] = field(default_factory=list)
     tables: dict[str, int] = field(default_factory=dict)
+    title: str = "Network export check"
 
     def add(self, severity: str, check: str, code: str, count: int = 0, **params) -> None:
         self.findings.append(Finding(severity, check, MESSAGES[code].format(**params), count, code, params))
@@ -116,7 +152,7 @@ class Report:
 
     def text(self) -> str:
         head = [f"{name}: {n} rows" for name, n in self.tables.items()]
-        lines = ["Network export check", "=" * 20, "  ".join(head), ""]
+        lines = [self.title, "=" * len(self.title), "  ".join(head), ""]
         if not self.findings:
             lines.append("Nothing to report. The export is complete.")
         for f in sorted(self.findings, key=lambda f: (f.severity != ERROR, f.severity != WARNING)):
@@ -130,10 +166,10 @@ def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
     """Read whichever contract files are present. Missing ones come back absent."""
     directory = Path(directory)
     out = {}
-    for table in TABLES:
+    for table in ALL_TABLES:
         path = directory / f"{table.name}.csv"
         if path.exists():
-            out[table.name] = pd.read_csv(path)
+            out[table.name] = pd.read_csv(path, dtype=IDENTIFIERS)
     return out
 
 
@@ -147,6 +183,15 @@ def validate(data: dict[str, pd.DataFrame], phase_cost_pct: float | None = None)
     _check_topology(data, report)
     _check_electrical_data(data, report)
     _check_customers(data, report, phase_cost_pct)
+    if "equipment" in data:
+        _check_equipment(data["equipment"], data["customers"], report)
+    return report
+
+
+def check_equipment(equipment: pd.DataFrame, customers: pd.DataFrame) -> Report:
+    """The checks of equipment.csv alone, against the customers.csv it refers to."""
+    report = Report(tables={"equipment": len(equipment)})
+    _check_equipment(equipment, customers, report)
     return report
 
 
@@ -281,6 +326,157 @@ def _check_customers(data: dict[str, pd.DataFrame], report: Report, phase_cost_p
 
     if "lon" not in buses.columns or buses["lon"].isna().all():
         report.add(WARNING, "no coordinates", "no_coordinates")
+
+
+# ---------------------------------------------------------------- equipment.csv
+
+EQUIPMENT_NUMBERS = ("pv_kwp", "pv_kw_ac", "battery_kwh", "battery_kw", "ev_charger_kw", "heat_pump_kw")
+PHASE_VOLTAGE_V = 230.0
+
+
+def _blank(values: pd.Series) -> pd.Series:
+    return values.isna() | (values.astype(str).str.strip() == "")
+
+
+def _label(values: pd.Series) -> pd.Series:
+    return values.astype(str).str.strip().str.lower().str.replace(" ", "", regex=False)
+
+
+def equipment_frame(equipment: pd.DataFrame) -> pd.DataFrame:
+    """equipment.csv with its values read: the ratings as floats (NaN when blank or not a number of
+    zero or more), pv_phase as a, b, c or abc ('' when blank or unknown), ev_phases as 1 or 3 (NaN
+    otherwise), heat_pump as True, False or NA, source as text and connected_on as YYYY-MM-DD ('' when
+    blank or not a date)."""
+    eq = equipment
+    nan = pd.Series(float("nan"), index=eq.index)
+    out = pd.DataFrame({"customer_id": eq["customer_id"].astype(str).str.strip()}, index=eq.index)
+    for col in EQUIPMENT_NUMBERS:
+        v = pd.to_numeric(eq[col], errors="coerce") if col in eq else nan
+        out[col] = v.where(v >= 0).astype(float)
+    if "pv_phase" in eq:
+        out["pv_phase"] = _label(eq["pv_phase"]).map(PV_PHASE_LABELS).where(~_blank(eq["pv_phase"])).fillna("")
+    else:
+        out["pv_phase"] = ""
+    v = pd.to_numeric(eq["ev_phases"], errors="coerce") if "ev_phases" in eq else nan
+    out["ev_phases"] = v.where(v.isin([1, 3])).astype(float)
+    if "heat_pump" in eq:
+        lab = _label(eq["heat_pump"]).where(~_blank(eq["heat_pump"]), "")
+        out["heat_pump"] = pd.array([True if x in YES else False if x in NO else pd.NA for x in lab],
+                                    dtype="boolean")
+    else:
+        out["heat_pump"] = pd.array([pd.NA] * len(eq), dtype="boolean")
+    out["source"] = (eq["source"].where(~_blank(eq["source"]), "").astype(str).str.strip()
+                     if "source" in eq else "")
+    if "connected_on" in eq:
+        when = pd.to_datetime(eq["connected_on"].astype(str).str.strip(), format="%Y-%m-%d", errors="coerce")
+        out["connected_on"] = when.dt.strftime("%Y-%m-%d").fillna("")
+    else:
+        out["connected_on"] = ""
+    return out
+
+
+def service_phases(customers: pd.DataFrame) -> pd.Series:
+    """customers.csv's phase per customer_id: a, b or c for a single-phase service, '' otherwise."""
+    ids = customers["customer_id"].astype(str).str.strip()
+    if "phase" not in customers:
+        return pd.Series("", index=ids)
+    lab = _label(customers["phase"]).map(PV_PHASE_LABELS).where(~_blank(customers["phase"]))
+    return pd.Series(lab.where(lab.isin(["a", "b", "c"])).fillna("").to_numpy(), index=ids)
+
+
+def _check_equipment(eq: pd.DataFrame, cust: pd.DataFrame, report: Report) -> None:
+    from ..config import A
+
+    table = BY_NAME["equipment"]
+    missing = [c for c in table.required_columns if c not in eq.columns]
+    if missing:
+        report.add(ERROR, "missing column", "missing_column", table=table.name, columns=", ".join(missing))
+        return
+    given = eq["customer_id"].notna()
+    if not given.all():
+        report.add(ERROR, "empty identifier", "empty_identifier", int((~given).sum()), table=table.name, key=table.key)
+    ids = eq["customer_id"].astype(str).str.strip()
+    twice = int(ids[given].duplicated().sum())
+    if twice:
+        report.add(ERROR, "duplicate identifier", "duplicate_identifier", twice, table=table.name, key=table.key)
+    unknown = given & ~ids.isin(set(cust["customer_id"].astype(str).str.strip()))
+    if unknown.any():
+        report.add(WARNING, "equipment customer", "equipment_unknown_customer", int(unknown.sum()),
+                   customer=str(ids[unknown].iloc[0]))
+    _check_equipment_values(eq, report)
+
+    f = equipment_frame(eq[given & ~unknown])
+    if f.empty:
+        return
+    by_id = cust.assign(_id=cust["customer_id"].astype(str).str.strip()).drop_duplicates("_id").set_index("_id")
+    service = service_phases(cust).groupby(level=0).first().reindex(f["customer_id"]).fillna("").to_numpy()
+    fuse = pd.to_numeric(by_id["fuse_a"], errors="coerce").reindex(f["customer_id"]).to_numpy(dtype=float)
+    kwp = f["pv_kwp"].fillna(0.0).to_numpy()
+    pv, pv_phase = kwp > 0, f["pv_phase"].to_numpy()
+    charger_kw = f["ev_charger_kw"].fillna(0.0).to_numpy()
+    charger, ev_phases = charger_kw > 0, f["ev_phases"].to_numpy()
+    single_service = service != ""
+    conflict = single_service & ((pv & (pv_phase != "") & (pv_phase != service)) | (charger & (ev_phases == 3)))
+    if conflict.any():
+        report.add(ERROR, "equipment phase", "equipment_phase_conflict", int(conflict.sum()),
+                   customer=str(f["customer_id"].to_numpy()[conflict][0]))
+
+    ratio = float(A("pv_dc_ac_ratio"))
+    ac = f["pv_kw_ac"].to_numpy()
+    no_ac = pv & ~(ac > 0)
+    if no_ac.any():
+        report.add(WARNING, "equipment fallback", "equipment_pv_ac", int(no_ac.sum()), ratio=f"{ratio:g}")
+    ac = np.where(no_ac, kwp / ratio, np.nan_to_num(ac))
+    small = pv & (ac <= float(A("pv_single_phase_max_kva")))
+    unphased = small & (pv_phase == "") & ~single_service
+    if unphased.any():
+        report.add(WARNING, "equipment fallback", "equipment_pv_phase", int(unphased.sum()))
+    bat_kwh, bat_kw = f["battery_kwh"].fillna(0.0).to_numpy(), f["battery_kw"].fillna(0.0).to_numpy()
+    battery, half = (bat_kwh > 0) & (bat_kw > 0), (bat_kwh > 0) ^ (bat_kw > 0)
+    if half.any():
+        report.add(WARNING, "equipment fallback", "equipment_battery", int(half.sum()))
+
+    # what the main fuse carries: on three phases, or on one for a single-phase service or item
+    one = PHASE_VOLTAGE_V * fuse / 1000.0
+    pv_single = single_service | ((pv_phase != "") & (pv_phase != "abc")) | (small & (pv_phase == ""))
+    pv_cap = np.where(pv_single, one, 3 * one)
+    ev_cap = np.where(single_service | (ev_phases == 1), one, 3 * one)
+    bat_cap = np.where(single_service, one, 3 * one)
+    over = np.isfinite(fuse) & ((pv & (ac > pv_cap + 1e-9)) | (charger & (charger_kw > ev_cap + 1e-9))
+                                | (battery & (bat_kw > bat_cap + 1e-9)))
+    if over.any():
+        report.add(WARNING, "equipment rating", "equipment_over_fuse", int(over.sum()),
+                   customer=str(f["customer_id"].to_numpy()[over][0]))
+    unsourced = int((f["source"] == "").sum())
+    if unsourced:
+        report.add(NOTE, "equipment source", "equipment_source", unsourced)
+    report.add(NOTE, "equipment", "equipment_summary", len(f), pv=str(int(pv.sum())), kw=f"{float(ac[pv].sum()):.1f}",
+               batteries=str(int(battery.sum())), chargers=str(int(charger.sum())),
+               heat_pumps=str(int(f["heat_pump"].fillna(False).astype(bool).sum())))
+
+
+def _check_equipment_values(eq: pd.DataFrame, report: Report) -> None:
+    """Values the engine cannot read: an error, since a record it guessed at is no record."""
+    for col in EQUIPMENT_NUMBERS:
+        if col in eq:
+            v = pd.to_numeric(eq[col], errors="coerce")
+            bad = ~_blank(eq[col]) & (v.isna() | (v < 0))
+            if bad.any():
+                report.add(ERROR, "equipment value", "equipment_value", int(bad.sum()), column=col,
+                           value=repr(eq.loc[bad, col].iloc[0]))
+    checks = (("pv_phase", "equipment phase", "equipment_phase", "label",
+               lambda s: _label(s).isin(PV_PHASE_LABELS)),
+              ("ev_phases", "equipment value", "equipment_ev_phases", "value",
+               lambda s: pd.to_numeric(s, errors="coerce").isin([1, 3])),
+              ("heat_pump", "equipment value", "equipment_heat_pump", "value",
+               lambda s: _label(s).isin(YES | NO)),
+              ("connected_on", "equipment value", "equipment_date", "value",
+               lambda s: pd.to_datetime(s.astype(str).str.strip(), format="%Y-%m-%d", errors="coerce").notna()))
+    for col, check, code, param, ok in checks:
+        if col in eq:
+            bad = ~_blank(eq[col]) & ~ok(eq[col])
+            if bad.any():
+                report.add(ERROR, check, code, int(bad.sum()), **{param: repr(eq.loc[bad, col].iloc[0])})
 
 
 def check_directory(directory: str | Path) -> Report:

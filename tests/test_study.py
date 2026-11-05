@@ -477,6 +477,120 @@ def test_the_network_and_its_phases_say_where_they_came_from():
     assert unknown[0][0] == "assumed" and "unverified" in unknown[0][1]
 
 
+# ---------------------------------------------------------------- equipment, meters and load
+
+@pytest.fixture()
+def imported(demo, monkeypatch):
+    """demo-dickert's import step, run in this process: its network in its own processed/grid."""
+    from kapacitet.importer.build import import_directory
+
+    sid = "demo-dickert"
+    monkeypatch.setattr(paths, "PROCESSED", demo.station_dir(sid) / "processed")
+    import_directory(demo.station_dir(sid) / "import", equipment=False)
+    return demo, sid
+
+
+def _ids(study, sid) -> list[str]:
+    import pandas as pd
+
+    return pd.read_csv(study.station_dir(sid) / "import" / "customers.csv", dtype=str)["customer_id"].tolist()
+
+
+def _record(study, sid):
+    rec = study.record(sid)
+    rec["provenance"] = {k: [] for k in ("real", "synthetic", "assumed")}
+    rec["summary"] = {}
+    return rec, (lambda kind, text: rec["provenance"][kind].append(text))
+
+
+def test_the_equipment_step_takes_the_stations_rows_of_the_studys_records(imported):
+    import pandas as pd
+
+    study, sid = imported
+    ids = _ids(study, sid)
+    pd.DataFrame({"customer_id": [ids[0], ids[1], "elsewhere"], "pv_kwp": [6.0, 3.0, 9.0],
+                  "pv_kw_ac": [5.0, None, 7.0], "pv_phase": ["abc", None, None],
+                  "source": ["installer", "installer", "survey"]}).to_csv(
+        study.inputs / "equipment.csv", sep=";", decimal=",", index=False)        # the Swedish Excel dialect
+    rec, note = _record(study, sid)
+    out = station.place_equipment(study, sid, rec, note)
+    assert out["pv"] == 2 and rec["summary"]["existing_pv_kw"] == pytest.approx(7.5)
+    cust = pd.read_parquet(paths.PROCESSED / "grid" / "customers.parquet").set_index("osm_id")
+    assert cust.loc[ids[0], "existing_pv_kw_ac"] == 5.0 and cust.loc[ids[2], "existing_pv_kwp"] == 0.0
+    assert rec["quality"]["equipment"]["usable"]
+    assert any(t.startswith("existing equipment: the DSO's records (inputs/equipment.csv), 2 PV systems (7.5 kW AC)")
+               for t in rec["provenance"]["real"])
+    assert "existing equipment: PV AC rating taken from its kWp (1)" in rec["provenance"]["assumed"]
+    # `study check` says the same before any build
+    assert any(f.code == "equipment_summary" for f in check(study, [sid])[sid].findings)
+
+    # a value it cannot read fails the step
+    pd.DataFrame({"customer_id": [ids[0]], "pv_kwp": ["six"]}).to_csv(study.inputs / "equipment.csv", index=False)
+    with pytest.raises(RuntimeError, match="pv_kwp"):
+        station.place_equipment(study, sid, *_record(study, sid))
+    # without records nothing existing is counted, and the columns are gone
+    (study.inputs / "equipment.csv").unlink()
+    rec, note = _record(study, sid)
+    assert station.place_equipment(study, sid, rec, note) == {"rows": 0}
+    assert not [c for c in pd.read_parquet(paths.PROCESSED / "grid" / "customers.parquet").columns
+                if c.startswith("existing_")]
+    assert any("no inventory" in t for t in rec["provenance"]["assumed"])
+
+
+def test_the_meters_step_keeps_the_stations_readings_and_the_load_step_says_what_is_metered(imported, monkeypatch):
+    import pandas as pd
+    from fixtures import meters_tiny
+
+    from kapacitet.profiles import metered
+
+    study, sid = imported
+    rec, note = _record(study, sid)
+    assert station.place_meters(study, sid, rec, note) == {"files": 0} and "meters" not in rec["quality"]
+    ids = _ids(study, sid)
+    meters_tiny.write(study.inputs / "meters", meters_tiny.frame(customers=(ids[0], ids[1], "nobody")))
+    out = station.place_meters(study, sid, rec, note)
+    assert out["meters"] == 2 and out["files"] == 1
+    hourly = pd.read_parquet(paths.PROCESSED / "meters" / "hourly.parquet")
+    assert set(hourly["customer_id"]) == {ids[0], ids[1]}
+    found = {f["code"] for f in rec["quality"]["meters"]["findings"]}
+    assert {"meter_unmapped", "meter_no_readings"} <= found
+    assert any(t.startswith(f"meter readings: 2 of {len(ids)} customers") for t in rec["provenance"]["real"])
+
+    # the load step: the pool's note now covers only the customers without enough readings
+    monkeypatch.setattr(metered, "build", lambda years=None: {
+        "customers": {"total": len(ids), "fitted": 2, "too_few_days": 0, "without_readings": len(ids) - 2,
+                      "export_seen": 1},
+        "median": {"r2": 0.8123}, "base_temp_c": 17.0, "min_complete_days": 14})
+    rec["provenance"]["synthetic"].append(station.POOL_NOTE)
+    assert station.place_load(rec, note)["fitted"] == 2
+    assert rec["provenance"]["synthetic"] == [f"household load of the {len(ids) - 2} customers without enough meter "
+                                              "readings: the CREST profile pool (richardsonpy), not metered"]
+    assert any(t.startswith(f"household load: metered at 2 of {len(ids)} customers") and "R² 0.81" in t
+               for t in rec["provenance"]["real"])
+    assert any("daytime import understates" in t for t in rec["provenance"]["assumed"])
+
+    # readings it has to refuse fail the step, and the record says why
+    bad = meters_tiny.frame(customers=(ids[0],))
+    bad["start"] = bad["start"].str[:19]
+    meters_tiny.write(study.inputs / "meters", bad)
+    with pytest.raises(RuntimeError, match="UTC offset"):
+        station.place_meters(study, sid, rec, note)
+    assert rec["quality"]["meters"]["usable"] is False
+    assert not (paths.PROCESSED / "meters" / "hourly.parquet").exists()
+
+
+def test_the_new_inputs_make_a_built_station_stale(demo):
+    from fixtures import meters_tiny
+
+    station.build(demo, "demo-dickert", steps={s: (lambda: {}) for s in station.STEPS})
+    assert portfolio.reason(demo, "demo-dickert") == "unchanged"
+    (demo.inputs / "equipment.csv").write_text("customer_id,pv_kwp\nC1,4\n", encoding="utf-8")
+    assert portfolio.reason(open_study(demo.root), "demo-dickert") == "inputs changed"
+    station.build(demo, "demo-dickert", steps={s: (lambda: {}) for s in station.STEPS})
+    meters_tiny.write(demo.inputs / "meters")
+    assert portfolio.reason(open_study(demo.root), "demo-dickert") == "inputs changed"
+
+
 def _has_reference_profiles() -> bool:
     from kapacitet.config import settings
     from kapacitet.profiles.household import POOL_YEAR

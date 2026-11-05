@@ -60,6 +60,35 @@ def test_unknown_rule_is_rejected():
         phase_of(customers(3), np.full(3, 3.0), rule="alphabetical")
 
 
+def test_a_recorded_phase_wins_over_the_rule():
+    """customers.phase (a single-phase service) and equipment.csv's pv_phase come first; the rule
+    places only the single-phase inverters nothing was recorded for."""
+    limit = A("pv_single_phase_max_kva")
+    c = customers(8)
+    c["phase"] = ["b", None, None, None, None, "L3", None, None]
+    c["existing_pv_phase"] = ["", "c", "abc", "a", "", "", "", ""]
+    inv = np.array([limit + 5.0, 3.0, 3.0, limit + 1.0, 3.0, 2.0, 3.0, 3.0])
+    phase = phase_of(c, inv, rule="round_robin")
+    assert phase[0] == 1, "a single-phase service is on its phase, whatever its inverter"
+    assert phase[5] == 2, "l1, l2 and l3 are a, b and c"
+    assert phase[1] == 2 and phase[2] == THREE_PHASE, "an inverter's recorded phase holds"
+    assert phase[3] == THREE_PHASE, "a recorded single phase cannot hold for an inverter above the limit"
+    rest = phase_of(c.iloc[[4, 6, 7]].reset_index(drop=True), inv[[4, 6, 7]], rule="round_robin")
+    np.testing.assert_array_equal(phase[[4, 6, 7]], rest)          # the rule over what is left, in its order
+    # without inverters, only the services
+    bare = phase_of(c, None)
+    assert bare[0] == 1 and bare[5] == 2 and (np.delete(bare, [0, 5]) == THREE_PHASE).all()
+
+
+def test_nothing_recorded_leaves_the_rule_as_it_was():
+    c = customers(12)
+    inv = np.full(12, 3.0)
+    plain = phase_of(c, inv, rule="round_robin")
+    c["phase"] = None
+    c["existing_pv_phase"] = ""
+    np.testing.assert_array_equal(phase_of(c, inv, rule="round_robin"), plain)
+
+
 @needs_grid
 def test_allocation_rule_changes_the_unbalance_on_the_real_grid():
     """Round-robin against random on Smedslätten, through the unbalanced power flow."""

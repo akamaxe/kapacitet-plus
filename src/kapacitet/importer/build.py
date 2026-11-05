@@ -32,8 +32,13 @@ class ImportError_(ValueError):
     """The export cannot support an answer. The report says why."""
 
 
-def import_directory(directory: str | Path, save_to_disk: bool = True) -> tuple[Network, Report, dict]:
+def import_directory(directory: str | Path, save_to_disk: bool = True,
+                     equipment: bool = True) -> tuple[Network, Report, dict]:
+    """`equipment=False` leaves an equipment.csv in the folder out (a study's station takes its
+    equipment in a step of its own)."""
     data = read_export(directory)
+    if not equipment:
+        data.pop("equipment", None)
     report = validate(data)
     if not report.usable:
         raise ImportError_(report.text())
@@ -89,6 +94,10 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
     lines = pd.DataFrame(line_rows).sort_values("line").reset_index(drop=True)
 
     customers = _customer_table(net, cust_in, index, buses, feeder, depth, note)
+    if "equipment" in data:
+        customers, eq_applied = merge_equipment(customers, data["equipment"])
+        for what, n in eq_applied.items():
+            note(what, n)
     lines["downstream"] = [
         int(((customers["dist_m"] >= 0) & _downstream_mask(customers, lines, r.line, parent)).sum())
         for r in lines.itertuples()
@@ -112,6 +121,8 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         "imported": True,
         "fallbacks": applied,
     }
+    if "existing_pv_kw_ac" in customers:
+        summary["existing_pv_kw"] = round(float(customers["existing_pv_kw_ac"].sum()), 1)
     substation = {
         "osm_id": "", "real_position": None, "address": "",
         "lon": float(buses.loc[buses["bus"] == index[lv_id], "lon"].iloc[0]),
@@ -239,6 +250,57 @@ def _customer_table(net, cust_in, index, buses, feeder, depth, note) -> pd.DataF
             phase=phase if phase in ("a", "b", "c") else "", annual_kwh=annual))
     note("customer without a roof area", no_roof)
     return pd.DataFrame(rows)
+
+
+EXISTING = {             # the columns equipment.csv adds to customers.parquet, and their value without a row
+    "existing_pv_kwp": 0.0, "existing_pv_kw_ac": 0.0, "existing_pv_phase": "",
+    "existing_battery_kwh": 0.0, "existing_battery_kw": 0.0,
+    "existing_ev_charger_kw": 0.0, "existing_ev_phases": 0,
+    "existing_heat_pump": pd.NA, "existing_heat_pump_kw": float("nan"),
+    "existing_source": "", "existing_connected_on": "",
+}
+
+
+def merge_equipment(customers: pd.DataFrame, equipment: pd.DataFrame) -> tuple[pd.DataFrame, dict[str, int]]:
+    """customers.parquet with equipment.csv's records as existing_* columns (EXISTING), matched on the
+    contract's customer_id (`osm_id` here). Columns an earlier merge added are replaced, rows naming
+    no customer of this network are left out, and the fallbacks are counted: a PV's AC rating taken
+    from its kWp, a charger's phases taken as three, a battery with half its ratings not counted."""
+    from .validate import equipment_frame
+
+    out = customers.drop(columns=[c for c in EXISTING if c in customers.columns])
+    f = equipment_frame(equipment[equipment["customer_id"].notna()]).drop_duplicates("customer_id")
+    f = f[f["customer_id"].isin(set(out["osm_id"].astype(str)))].set_index("customer_id")
+    applied: dict[str, int] = {}
+    kwp = f["pv_kwp"].fillna(0.0)
+    no_ac = (kwp > 0) & ~(f["pv_kw_ac"] > 0)
+    applied["PV AC rating taken from its kWp"] = int(no_ac.sum())
+    ac = f["pv_kw_ac"].where(~no_ac, kwp / float(A("pv_dc_ac_ratio"))).where(kwp > 0, 0.0).fillna(0.0)
+    charger = f["ev_charger_kw"].fillna(0.0)
+    applied["EV charger phases taken as three"] = int(((charger > 0) & f["ev_phases"].isna()).sum())
+    phases = f["ev_phases"].fillna(3.0).where(charger > 0, 0.0).astype("int64")
+    kwh, kw = f["battery_kwh"].fillna(0.0), f["battery_kw"].fillna(0.0)
+    battery = (kwh > 0) & (kw > 0)
+    applied["battery with only one rating not counted"] = int(((kwh > 0) ^ (kw > 0)).sum())
+    cols = pd.DataFrame({
+        "existing_pv_kwp": kwp, "existing_pv_kw_ac": ac, "existing_pv_phase": f["pv_phase"].where(kwp > 0, ""),
+        "existing_battery_kwh": kwh.where(battery, 0.0), "existing_battery_kw": kw.where(battery, 0.0),
+        "existing_ev_charger_kw": charger, "existing_ev_phases": phases,
+        "existing_heat_pump": f["heat_pump"], "existing_heat_pump_kw": f["heat_pump_kw"],
+        "existing_source": f["source"], "existing_connected_on": f["connected_on"],
+    }, index=f.index)
+    key = out["osm_id"].astype(str)
+    for col, default in EXISTING.items():
+        values = key.map(cols[col]) if len(cols) else pd.Series(default, index=out.index)
+        if col == "existing_heat_pump":
+            out[col] = pd.array(values.where(key.isin(cols.index), pd.NA), dtype="boolean")
+        elif isinstance(default, str):
+            out[col] = values.fillna(default).astype(str)
+        elif isinstance(default, int):
+            out[col] = values.fillna(default).astype("int64")
+        else:
+            out[col] = values.astype(float).where(key.isin(cols.index), default)
+    return out, {k: v for k, v in applied.items() if v}
 
 
 def _downstream_mask(customers: pd.DataFrame, lines: pd.DataFrame, line_id: int, parent: dict):
