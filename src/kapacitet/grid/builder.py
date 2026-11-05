@@ -21,6 +21,7 @@ import logging
 import math
 from collections import defaultdict
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import networkx as nx
 import numpy as np
@@ -625,8 +626,58 @@ def add_zero_sequence(net: pp.pandapowerNet) -> pp.pandapowerNet:
     return net
 
 
+class GridFileError(ValueError):
+    """A network file that holds something other than a pandapower net and its tables."""
+
+
+# What a net.json may ask pandapower to build. pp.from_json imports any module and calls any class
+# a file names (CWE-502), and a net.json can arrive from outside: in a data bundle, or written by
+# the importer from an operator's export. Ours hold exactly these two (one net, its DataFrames).
+NET_JSON_OBJECTS = frozenset({("pandapower.auxiliary", "pandapowerNet"), ("pandas.core.frame", "DataFrame")})
+
+
+def check_net_json(tree, name: str = "net.json") -> None:
+    """Refuse a parsed net.json that names any object outside NET_JSON_OBJECTS, anywhere in it.
+
+    pandapower hands every JSON object with `_module` and `_class` to its object builder, also
+    inside the JSON text of a table (`_object`), so those texts are parsed and walked as well. A
+    table's `_object` that is not JSON is refused too: pandas would read it as a path to a file.
+    """
+    if not (isinstance(tree, dict) and (tree.get("_module"), tree.get("_class")) == ("pandapower.auxiliary", "pandapowerNet")):
+        raise GridFileError(f"{name} is not a pandapower network")
+    stack = [tree]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, list):
+            stack.extend(node)
+        elif isinstance(node, dict):
+            if "_module" in node or "_class" in node:
+                pair = (node.get("_module"), node.get("_class"))
+                if pair not in NET_JSON_OBJECTS:
+                    raise GridFileError(f"{name} asks for {pair[0]}.{pair[1]}, which a network file never holds")
+                inner = node.get("_object")
+                if isinstance(inner, str):
+                    try:
+                        stack.append(json.loads(inner))
+                    except (ValueError, RecursionError) as err:
+                        raise GridFileError(f"{name} holds a {pair[1]} that is not JSON") from err
+            stack.extend(v for v in node.values() if isinstance(v, (dict, list)))
+
+
+def safe_load_net(path: str | Path | None = None) -> pp.pandapowerNet:
+    """pp.from_json, after checking that the file asks for nothing but the net and its tables."""
+    path = Path(path) if path is not None else processed("grid", "net.json")
+    try:
+        text = path.read_text(encoding="utf-8")
+        tree = json.loads(text)
+    except (UnicodeDecodeError, ValueError, RecursionError) as err:
+        raise GridFileError(f"{path.name} is not a JSON network file") from err
+    check_net_json(tree, path.name)
+    return pp.from_json_string(text)
+
+
 def load_net() -> pp.pandapowerNet:
-    return add_zero_sequence(pp.from_json(str(processed("grid", "net.json"))))
+    return add_zero_sequence(safe_load_net())
 
 
 def load_tables() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
