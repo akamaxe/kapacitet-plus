@@ -122,7 +122,7 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
     doe = gen.get("doe") or {}
     if doe:
         base.update(conditional_generation_status=doe.get("status"), approval_reference=doe.get("approval_reference"))
-    if doe.get("status") == "ok" and doe.get("kw") is not None:
+    if doe.get("status") == "ok" and doe.get("kw") is not None and not doe.get("full_year_violations"):
         # the envelope capacity, capped by the same chain as the firm one
         _, capped = up_mod.apply(up, sid, doe["kw"], None)
         base.update(conditional_generation_kw=float(doe["kw"]),

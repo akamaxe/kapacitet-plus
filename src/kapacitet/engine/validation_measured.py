@@ -24,6 +24,8 @@ Input files read by the study's layer (study/station.validate):
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 import pandas as pd
 
@@ -121,13 +123,25 @@ def measured_voltage(volt: pd.DataFrame | None, year: int) -> np.ndarray | None:
     return out
 
 
+_OFFSET = re.compile(r"(Z|[+-]\d{2}(:?\d{2})?)\s*$", re.I)
+
+
+def require_offset(times: pd.Series, path) -> None:
+    """Refuse a time without a UTC offset: on the night the clocks go back it names two instants."""
+    bad = [str(x) for x in times.dropna() if str(x).strip() and not _OFFSET.search(str(x))]
+    if bad:
+        raise ValueError(f"{path}: {len(bad)} times have no UTC offset (first: {bad[0]!r}); "
+                         "write them as 2025-03-30T03:00:00+02:00 or with Z")
+
+
 def read_mv(path) -> pd.DataFrame:
     """inputs/mv/<sid>.csv as hourly means on the time index: start (UTC), vm_pu and, when given,
     trafo_p_kw and trafo_q_kvar. The separator is sniffed and a decimal comma read as a point."""
-    df = pd.read_csv(path, sep=None, engine="python", dtype=str)
+    df = pd.read_csv(path, sep=None, engine="python", dtype=str, encoding="utf-8-sig")
     df.columns = [c.strip().lower() for c in df.columns]
     if "start" not in df.columns or "vm_pu" not in df.columns:
         raise ValueError(f"{path}: needs the columns start and vm_pu")
+    require_offset(df["start"], path)
     start = pd.to_datetime(df["start"], utc=True, errors="coerce", format="ISO8601")
     num = {c: pd.to_numeric(df[c].str.replace(",", ".", regex=False), errors="coerce")
            for c in ("vm_pu", "trafo_p_kw", "trafo_q_kvar") if c in df.columns}

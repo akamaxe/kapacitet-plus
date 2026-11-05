@@ -194,12 +194,16 @@ def test_the_conditional_column_appears_only_with_an_approval_and_a_verified_env
         "# approval_reference = \"...\"", 'approval_reference = "Board decision 2026-10"'), encoding="utf-8")
     s = open_study(s.root, allow_git=True)
     assert s.config.method.approval_reference
-    put(s, "S1", 40, 17.955, 59.335, 120.0, 80.0, doe={"status": "ok", "kw": 210.0, "approval_reference": "x"})
+    put(s, "S1", 40, 17.955, 59.335, 120.0, 80.0, doe={"status": "ok", "kw": 210.0, "approval_reference": "Board decision 2026-10"})
+    put(s, "S5", 30, 17.70, 59.40, 90.0, 60.0, doe={"status": "ok", "kw": 150.0, "approval_reference": "old reference"})
+    put(s, "S6", 30, 17.80, 59.50, 90.0, 60.0,
+        doe={"status": "ok", "kw": 150.0, "approval_reference": "Board decision 2026-10", "full_year_violations": 3})
     put(s, "S4", 60, 17.64, 59.86, 200.0, 150.0, doe={"status": "not_verified", "full_year_violations": 2})
     collect.collect(s, Q2)
     pub = publish(s, Q2)
     caps = {r["cell_id"]: r for r in rows_of(pub["folder"] / "capacity.machine.csv")}
     assert caps["S1"]["conditional_generation_kw"] == "210" and caps["S4"]["conditional_generation_kw"] == ""
+    assert caps["S5"]["conditional_generation_kw"] == "" and caps["S6"]["conditional_generation_kw"] == ""
     text = (pub["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
     assert "Board decision 2026-10" in text
 
@@ -236,3 +240,29 @@ def test_the_command_line_runs_the_four_steps(study, capsys):
     main(["study", "diff", root, "--from", Q1, "--to", Q2, "--allow-git"])
     text = capsys.readouterr().out
     assert "least margin first" in text and f"{Q2}.1" in text and SIGNED in text and "changes in" in text
+
+
+def test_the_published_manifest_names_no_station(tmp_path):
+    s = init_study(tmp_path / "nb", "Testnät AB", allow_git=True)
+    for sid, n in (("S1", 40), ("S2", 40), ("SECRET", 2)):
+        put(s, sid, n, 17.9, 59.3, 100.0, 80.0)
+    s.toml.write_text(s.toml.read_text(encoding="utf-8").replace("hidden = []", 'hidden = ["S2"]'), encoding="utf-8")
+    s = open_study(s.root, allow_git=True)
+    collect.collect(s, Q2)
+    pub = publish(s, Q2)
+    for f in pub["folder"].iterdir():
+        if f.name == "manifest.json":
+            text = f.read_text(encoding="utf-8")
+            assert "SECRET" not in text and "S2" not in text and "stations/" not in text
+
+
+def test_a_measured_mv_file_with_a_bom_and_a_decimal_comma_is_read_and_a_naive_time_is_refused(tmp_path):
+    from kapacitet.engine import validation_measured as vm
+
+    ok = tmp_path / "a.csv"
+    ok.write_bytes(("\ufeffstart;vm_pu\n2025-03-30T03:00:00+02:00;1,02\n").encode("utf-8"))
+    assert float(vm.read_mv(ok)["vm_pu"].iloc[0]) == pytest.approx(1.02)
+    bad = tmp_path / "b.csv"
+    bad.write_text("start;vm_pu\n2025-03-30T03:00:00;1,02\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="UTC offset"):
+        vm.read_mv(bad)

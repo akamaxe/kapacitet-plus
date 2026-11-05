@@ -83,6 +83,18 @@ def outputs(study: Study, q: str, rows: list[dict]) -> dict[str, str]:
     return out
 
 
+def public_outputs(study: Study, q: str, rows: list[dict]) -> dict[str, str]:
+    """`outputs` for the published manifest: the run-level digests and one digest over the station
+    files, so no station id (a hidden or merged one) is named."""
+    import hashlib
+
+    full = outputs(study, q, rows)
+    keep = {k: v for k, v in full.items() if not k.startswith("stations/")}
+    station = sorted(f"{k}:{v}" for k, v in full.items() if k.startswith("stations/"))
+    keep["stations"] = hashlib.sha256(chr(10).join(station).encode()).hexdigest()
+    return keep
+
+
 # ---------------------------------------------------------------- signing
 
 def _signer(by: str) -> str:
@@ -139,6 +151,14 @@ def _cell_finding(members: list[dict]) -> str | None:
     return f"{n} of {len(members)} stations have no figure" if n else None
 
 
+def _conditional(study: Study, m: dict) -> float | None:
+    """A station's conditional figure, only if it was computed under the approval reference now set."""
+    ref = study.config.method.approval_reference.strip()
+    if not ref or (m.get("approval_reference") or "").strip() != ref:
+        return None
+    return m.get("published_conditional_generation_kw")
+
+
 def _effective(row: dict, fix: dict, side: str) -> float | None:
     if side in ("generation", "consumption") and f"{side}_kw" in fix:
         return float(fix[f"{side}_kw"]["value"])
@@ -179,8 +199,7 @@ def cells(study: Study, q: str, rows: list[dict], fixes: dict, result: dict, sta
             "lon": one.get("lon") if one else None, "lat": one.get("lat") if one else None,
         }
         if approved:
-            row["conditional_generation_kw"] = disclosure.lowest(
-                [m.get("published_conditional_generation_kw") for m in members])
+            row["conditional_generation_kw"] = disclosure.lowest([_conditional(study, m) for m in members])
         out.append(row)
     return out
 
@@ -252,7 +271,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         conditional = ("Villkorad kapacitet (anslutning med dynamiska gränser) publiceras inte: nätföretaget har "
                        "inte angett något godkännande av metoden.")
     else:
-        n_ok = sum(1 for r in shown if r.get("published_conditional_generation_kw") is not None)
+        n_ok = sum(1 for r in shown if _conditional(study, r) is not None)
         basis = ("summan för alla nya anläggningar" if cfg.method.budget == "aggregate"
                  else "varje enskild anläggning över alla väderår")
         conditional = (f"Villkorad kapacitet publiceras i en egen kolumn med stöd av godkännandet {ref}. Den gäller "
@@ -272,6 +291,15 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
                        + (f" (rutor om {cfg.disclosure.grid_m} meter, dubblade, därefter område och hela studien)"
                           if lvl != "zone" else " (till hela studien)")
                        + ". En sammanslagen cell visar det lägsta värdet bland sina stationer, aldrig en summa.")
+    equipment = ("Befintlig utrustning: de solceller och annan utrustning som nätföretaget har registrerat räknas som "
+                 "befintliga i alla timmar." if (study.inputs / "equipment.csv").is_file() else
+                 "Befintlig utrustning: nätföretaget har inte lämnat något register över befintlig utrustning, så "
+                 "ingen utrustning räknas som befintlig utöver nätet i sig.")
+    meters = study.inputs / "meters"
+    load_basis = ("Last: uppmätta timvärden för de kunder som har tillräckligt många mätvärden, annars syntetiska "
+                  "profiler." if meters.is_dir() and any(meters.iterdir()) else
+                  "Last: nätföretaget har inte lämnat några mätvärden, så lasten är syntetiska profiler (saknas "
+                  "uppmätt underlag).")
     overrides = "\n".join(f"- {k}: {o.value} {o.unit} (källa: {o.source})" for k, o in cfg.assumptions.items()) \
         or "Inga: alla antaganden är programmets standardvärden."
     orders = sorted({int(r["orders"]) for r in rows if r.get("orders") is not None})
@@ -294,6 +322,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         "orders": " eller ".join(str(o) for o in orders) or "–", "percentile": " eller ".join(sv(p) for p in pct),
         "upstream": upstream, "conditional": conditional, "corrections": corrections_text,
         "disclosure": disclosure_text, "overrides": overrides,
+        "equipment": equipment, "load_basis": load_basis,
     }
 
 
@@ -399,8 +428,8 @@ def publish(study: Study, q: str) -> dict:
                        "suppressed_cells": len([c for c in result["cells"].values() if c["suppressed"]]),
                        "stations_hidden": sum(1 for s in result["stations"].values() if s["hidden_by"])},
         "conditional_column": bool(cfg.method.approval_reference.strip()),
-        "corrections": sum(len(v) for v in fixes.values()), "correction_findings": findings,
-        "outputs": outputs(study, q, rows), "files": files,
+        "corrections": sum(len(v) for v in fixes.values()), "correction_findings": len(findings),
+        "outputs": public_outputs(study, q, rows), "files": files,
     }
     write_json_atomic(tmp / "manifest.json", manifest, ensure_ascii=False)
     final = folder / "publication"

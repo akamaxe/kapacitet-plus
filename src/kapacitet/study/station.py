@@ -608,6 +608,7 @@ def _snapshot(study: Study, sid: str, vm, path: Path, meters, mv, hp, ev, band, 
     lines = pd.read_csv(folder / "lines.csv", dtype=str)["line_id"].astype(str).tolist()
     index = bus_index(buses, str(trafo["lv_bus"]))
     origin = (study.record(sid).get("origin") or {})
+    vm.require_offset(snap["start"], path)
     start = pd.to_datetime(snap["start"], utc=True, errors="coerce", format="ISO8601").dt.floor("h")
     out = {}
     for t, rows in snap.groupby(start):

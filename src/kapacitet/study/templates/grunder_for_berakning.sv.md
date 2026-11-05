@@ -27,10 +27,8 @@ de har för få kunder även sammanslagna: {{stations_suppressed}}.
 
 - Nät: lågspänningsnätet som nätföretaget har lämnat, en nätstation i taget, med kablar,
   kabelskåp, servisledningar, säkringar och transformator.
-- Befintlig utrustning: de solceller som nätföretaget har registrerat räknas som befintliga i
-  alla timmar.
-- Last: uppmätta timvärden för de kunder som har tillräckligt många mätvärden, annars syntetiska
-  hushållsprofiler.
+- {{equipment}}
+- {{load_basis}}
 - Väder: väderåren {{weather_years}}, {{weather_source}}.
 - Tid: varje timme av varje väderår, i svensk normaltid.
 
