@@ -448,7 +448,7 @@ def test_a_station_computes_its_capacity_json_and_the_study_collects_it(equipped
         out = st.compute(study, "tiny", rec, quick=True)
         doc = json.loads(processed("results", "capacity.json").read_text(encoding="utf-8"))
         assert processed("results", "peak_check.json").is_file()
-        assert processed("request", "existing.json").is_file()
+        assert all(processed("request", f"existing_mv{e}.json").is_file() for e in ("098", "106"))
     check_capacity(doc)
     assert out["generation_status"] == "ok" and doc["published"]["generation"]["kw"] == 1.0
     assert doc["published"]["generation"]["limited_by"] == "feeder:F1"

@@ -119,12 +119,32 @@ def write_json_atomic(path: str | Path, obj: Any, *, indent: int | None = 1, **d
     write_text_atomic(path, json.dumps(obj, indent=indent, **dumps))
 
 
-def savez_atomic(path: str | Path, *, compressed: bool = False, **arrays: Any) -> None:
-    """numpy's .npz under the exact name given (np.savez appends .npz only to a bare file name)."""
+def savez_atomic(path: str | Path, *, compressed: bool = False, stable: bool = False, **arrays: Any) -> None:
+    """numpy's .npz under the exact name given (np.savez appends .npz only to a bare file name).
+
+    `stable` writes the same bytes for the same arrays: np.savez stamps each member with the time
+    it was written, so two writes of one array differ; here every member carries the zip format's
+    earliest date, in the order given. The queue's rebuild (engine/queue.rebuild) relies on it."""
     import numpy as np
 
-    with atomic_file(path) as fh:
-        (np.savez_compressed if compressed else np.savez)(fh, **arrays)
+    if not stable:
+        with atomic_file(path) as fh:
+            (np.savez_compressed if compressed else np.savez)(fh, **arrays)
+        return
+    import io
+    import zipfile
+
+    from numpy.lib import format as npformat
+
+    how = zipfile.ZIP_DEFLATED if compressed else zipfile.ZIP_STORED
+    with atomic_file(path) as fh, zipfile.ZipFile(fh, mode="w", compression=how, allowZip64=True) as zf:
+        for name, value in arrays.items():
+            buf = io.BytesIO()
+            npformat.write_array(buf, np.asanyarray(value), allow_pickle=False)
+            info = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = how
+            info.external_attr = 0o600 << 16
+            zf.writestr(info, buf.getvalue())
 
 
 def gzip_json_atomic(path: str | Path, obj: Any, *, level: int = 6, **dumps: Any) -> None:

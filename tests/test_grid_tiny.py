@@ -173,7 +173,7 @@ def test_clear_all_forgets_everything_read_from_the_data_folder(tiny):
     netmodel.get_model()
     run.model()
     main._engine()
-    queue._CACHE["version"] = 1
+    queue._CACHE["queue"] = {"version": 1}
     named = (scenario.customers, scenario.year_profiles, netmodel.get_model, hosting._min_daytime_load,
              hosting.winter_design_load, forecast.pv_upper_bound)
     assert all(fn.cache_info().currsize >= 1 for fn in named)
@@ -184,7 +184,7 @@ def test_clear_all_forgets_everything_read_from_the_data_folder(tiny):
     assert set(named) <= set(memos)
     assert [m.__qualname__ for m in memos if m.cache_info().currsize] == []
     assert not forecast._LOAD_BOUND and run._MODEL is None and not main._ENGINE
-    assert queue._CACHE["version"] is None
+    assert not queue._CACHE
 
 
 def test_every_cache_in_the_package_is_in_the_registry():

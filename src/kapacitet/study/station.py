@@ -20,8 +20,9 @@ them), so every step is the existing pipeline's and writes only into `stations/<
     profiles    PV, heat pumps and EV charging on that weather (profiles.build)
     compute     Module 1 (engine/station.py): the generation capacity at both ends of the MV band,
                 the lower one published; the consumption capacity at the low end; the weakest
-                connection point; the peak check; the "existing" request baseline; and the upstream
-                caps applied (study/upstream.py), into processed/results/capacity.json
+                connection point; the peak check; the "existing" request baseline at each end of
+                the band (what `study cases` checks against); and the upstream caps applied
+                (study/upstream.py), into processed/results/capacity.json
 
 Nothing a later step rewrites is ever a link to the reference network's files: a write to a
 linked file is a write to the original. Each step's outcome, the inputs' digests and what is real,
@@ -490,14 +491,13 @@ def worst_generation(band: tuple[float, float], years, hp, ev) -> dict:
 
 def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
     """Module 1 for this station (engine/station.py) into processed/results/capacity.json, with
-    peak_check.json beside it and the "existing" request baseline, the upstream caps of
+    peak_check.json beside it and the "existing" request baselines, the upstream caps of
     inputs/upstream.csv applied (study/upstream.py). Quick: the reference year and fewer orders."""
     import pandas as pd
 
     from ..atomic import write_json_atomic
     from ..engine import request, run
     from ..engine import station as es
-    from ..engine.netmodel import get_model
     from . import upstream
 
     warnings.filterwarnings("ignore")
@@ -509,7 +509,7 @@ def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
     hp, ev = run.background_masks(m.C)
     gen = es.generation_capacity(band, years, n_orders, method.percentile, hp, ev,
                                  approval_reference=method.approval_reference, budget=method.budget)
-    low = get_model(vm_slack=band[0])
+    low = request.model_at(band[0])
     cons = es.consumption_capacity(low, es.engine_device(method.consumption_device), years, n_orders,
                                    method.percentile, hp, ev)
     cons["consumption_device"] = method.consumption_device
@@ -518,7 +518,13 @@ def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
     hourly = paths.PROCESSED / "meters" / "hourly.parquet"
     peak = es.peak_check(pd.read_parquet(hourly) if hourly.is_file() else None, years, hp, ev)
     write_json_atomic(paths.PROCESSED / "results" / "peak_check.json", peak, default=run._default)
-    request.precompute(m, "existing", years, hp, ev)
+    # the "existing" request baseline at each end of the band, on the model the case check uses
+    # there (request.check): a baseline at 1.00 pu would meet a check made at 0.98 or 1.06
+    baselines = []
+    for v in sorted(set(band)):
+        name = request.band_name("existing", v)
+        request.precompute(request.model_at(v), name, years, hp, ev)
+        baselines.append(name)
     up, published = upstream.apply(upstream.read(study), sid, gen.get("kw"), cons.get("kw"))
     checks = [x["verification"] for x in (gen, cons) if "verification" in x]
     out = {
@@ -526,7 +532,7 @@ def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
         "fingerprint": fingerprint(study, rec, quick), "mv_band_pu": [float(band[0]), float(band[1])],
         "years": list(years), "orders": n_orders, "percentile": float(method.percentile),
         "generation": gen, "consumption": cons, "worst_point": worst, "upstream": up, "published": published,
-        "peak_check": peak,
+        "peak_check": peak, "request_baselines": baselines,
         "verification": {"full_year_violations": sum(c["full_year_violations"] for c in checks),
                          "nonconverged_hours": sum(c["nonconverged_hours"] for c in checks),
                          "hours_checked": sum(c["hours_checked"] for c in checks)},

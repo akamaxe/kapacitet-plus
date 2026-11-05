@@ -19,12 +19,20 @@ is approved into a queue). Import envelopes for a new EV charger or heat pump fo
 with voltage drop and forward flows, and are verified the same way. A battery stores only the
 energy the export envelope would curtail and gives it back to the house's own load, so the house
 never exports more than its verified envelope; its discharge hours are checked too.
+
+The demo's grid states are at the MV voltage of assumptions.toml (`mv_voltage_pu`). A study's
+station is checked across its own MV band instead (`check`): a baseline is precomputed per end of
+the band on the model at that end (`band_name`, study/station.compute), generation is evaluated at
+both ends and the lower one counts, and consumption at the low end, where voltage drop and the
+transformer's current are both worst.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -51,11 +59,43 @@ BASELINES = {
     "existing": "today's grid: the existing PV of the equipment records, firm, and nobody added",
 }
 PUBLISHED = ("static", "doe")
+# a baseline computed on the model at one MV voltage: "existing_mv098" is "existing" at 0.98 pu
+_AT_MV = re.compile(r"^(?P<base>[a-z]+)_mv(?P<cpu>\d{3})$")
+
+
+def band_name(name: str, vm_pu: float) -> str:
+    """The name of baseline `name` computed on the model at the MV voltage `vm_pu` (`model_at`)."""
+    return f"{name}_mv{int(round(float(vm_pu) * 100)):03d}"
+
+
+def base_of(name: str) -> str:
+    """The baseline a (possibly MV-specific) name stands for: "existing_mv106" -> "existing"."""
+    m = _AT_MV.match(name)
+    return m["base"] if m else name
+
+
+_MODELS: dict[tuple[float, str | None], NetModel] = {}
+on_clear(_MODELS.clear)
+
+
+def model_at(vm_pu: float, trafo_type: str | None = None) -> NetModel:
+    """The network model with the MV voltage at `vm_pu` (and another transformer, if named), kept
+    for the process: a station's check builds one per end of its band."""
+    from .netmodel import get_model
+
+    key = (round(float(vm_pu), 4), trafo_type)
+    if key not in _MODELS:
+        _MODELS[key] = get_model(vm_slack=float(vm_pu), trafo_type=trafo_type)
+    return _MODELS[key]
 
 
 # ------------------------------------------------------------------------------ grid states
 
 def baseline_definition(name: str) -> dict:
+    """Who is connected in a baseline. A name computed at one MV voltage (`band_name`) has the
+    customers of the baseline it stands for, under its own name."""
+    if base_of(name) != name:
+        return {**baseline_definition(base_of(name)), "name": name}
     if name == "existing":
         from .scenario import existing
 
@@ -111,7 +151,7 @@ def _state(name: str, year: int) -> dict[str, np.ndarray]:
     return {k: d[k] for k in d.files}
 
 
-@memo(maxsize=2)
+@memo(maxsize=8)
 def _baseline(name: str) -> dict:
     return json.loads(processed("request", f"{name}.json").read_text(encoding="utf-8"))
 
@@ -219,6 +259,26 @@ class Request:
     bat_kwh: float = 0.0
     baseline: str = "static"
     ev_phases: int = 0          # 1 or 3; 0 = the usual (the small charger single-phase, larger three-phase)
+    pv_kw_ac: float = 0.0       # the inverter's AC rating; 0 = the panels' kWp over the DC/AC ratio
+    pv_phases: int = 0          # 1 or 3; 0 = the usual (single-phase up to pv_single_phase_max_kva)
+
+
+def pv_cap(req: Request, fuse_kva: float) -> float:
+    """The applicant's PV export rating (kW AC): the inverter's when given, otherwise the panels'
+    kWp over the DC/AC ratio, and never above what the main fuse carries."""
+    if req.pv_kwp <= 0:
+        return 0.0
+    ac = req.pv_kw_ac if req.pv_kw_ac > 0 else req.pv_kwp / A("pv_dc_ac_ratio")
+    return float(min(ac, float(fuse_kva)))
+
+
+def pv_single_phase(req: Request, cap_kw: float) -> bool:
+    """Whether the requested inverter is single-phase."""
+    if cap_kw <= 0:
+        return False
+    if req.pv_phases in (1, 3):
+        return req.pv_phases == 1
+    return cap_kw <= A("pv_single_phase_max_kva") + 1e-9
 
 
 def ev_single_phase(req: Request) -> bool:
@@ -241,7 +301,7 @@ def _applicant_profiles(req: Request, year: int, hp: np.ndarray, ev: np.ndarray,
     prof = year_profiles(year)
     j = req.cid
     ilr = A("pv_dc_ac_ratio")
-    cap = min(req.pv_kwp / ilr, float(cust.loc[j, "fuse_kva"])) if req.pv_kwp > 0 else 0.0
+    cap = pv_cap(req, float(cust.loc[j, "fuse_kva"]))
     pv = np.minimum(np.minimum(prof["pv_per_kwp"][j], 1.0 / ilr) * req.pv_kwp, cap)
     load = (prof["base"][j] * A("household_load_factor") + (prof["hp"][j] if hp[j] else 0.0)
             + (prof["ev"][j] if ev[j] else 0.0))
@@ -498,6 +558,100 @@ def evaluate(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit
     return out
 
 
+# ------------------------------------------------------------------------------ across the MV band
+
+# the export side of a verification: what the end that binds generation contributes
+_EXPORT_CHECK = ("hours_checked", "hours_tightened", "violations_after", "baseline_limited_hours")
+_PV_YEAR = ("pv_kwh", "export_kwh", "curtailed_kwh", "hours_limited", "bat_charged_kwh", "bat_discharged_kwh",
+            "curtailed_after_battery_kwh")
+_PV_SUMMARY = ("pv_curtailment_ref_pct", "pv_hours_limited_ref", "pv_risk_mean_pct", "pv_risk_cvar95_pct",
+               "bat_charged_ref_kwh", "bat_discharged_ref_kwh", "bat_captured_ref_pct",
+               "curtailment_after_battery_ref_pct")
+_PV_PROFILES = ("envelope_kw", "desired_kw", "pv_kw", "curtailed_kw", "envelope_min_month_hour", "cap_kw",
+                "battery_charge_kw", "battery_discharge_kw", "battery_soc_kwh", "battery")
+
+
+def _generation_only(req: Request) -> Request:
+    """The request's generation side alone: what the band's high end is checked for."""
+    return dataclasses.replace(req, ev_kw=0.0, hp=False, ev_phases=0)
+
+
+def _curtailment_key(result: dict) -> tuple[float, float]:
+    risk = result.get("risk") or {}
+    return float(risk.get("mean_pct") or 0.0), float(risk.get("p90_pct") or 0.0)
+
+
+def _combine(runs: dict[float, dict], low: float, gen_ends: list[float]) -> tuple[dict, dict]:
+    """One result the rule can read: the low end's, which holds consumption, with its generation
+    parts taken from the end that binds generation. The static study's PV verdict is the end that
+    rejects (the high end first); the envelope's figures are the end with the most curtailment,
+    a tie going to the high end. Returns the result and which end each part came from."""
+    out = dict(runs[low])
+    out["static"] = dict(out.get("static") or {})
+    binding: dict = {"consumption": low if low in runs else None}
+    if not gen_ends:
+        return out, binding
+    top_first = sorted(gen_ends, reverse=True)
+    e_static = next((e for e in top_first if not runs[e]["static"]["pv"]["approved"]), top_first[0])
+    e_env = max(top_first, key=lambda e: _curtailment_key(runs[e]))     # the first maximum: the high end on a tie
+    binding.update(static=e_static, envelope=e_env)
+    out["static"]["pv"] = runs[e_static]["static"]["pv"]
+    summary = dict(out.get("summary") or {})
+    summary["pv_static_approved"] = bool(out["static"]["pv"]["approved"])
+    if e_env != low:
+        g = runs[e_env]
+        out["risk"], out["economics"] = g.get("risk", {}), g.get("economics", {})
+        ver = {k: v for k, v in (out.get("verification") or {}).items() if k not in (*_EXPORT_CHECK, "battery")}
+        gv = g.get("verification") or {}
+        ver.update({k: gv[k] for k in (*_EXPORT_CHECK, "battery") if k in gv})
+        if "all_years" in ver or "all_years" in gv:
+            ver["all_years"] = {**(ver.get("all_years") or {}),
+                                **{k: v for k, v in (gv.get("all_years") or {}).items() if k != "import_violations_after"}}
+        out["verification"] = ver
+        by_year = {e["year"]: e for e in g.get("per_year", [])}
+        out["per_year"] = [{**{k: v for k, v in e.items() if k not in _PV_YEAR},
+                            **{k: v for k, v in by_year.get(e["year"], {}).items() if k in _PV_YEAR}}
+                           for e in out.get("per_year", [])]
+        summary.update({k: v for k, v in (g.get("summary") or {}).items() if k in _PV_SUMMARY})
+        if "profiles" in out or "profiles" in g:
+            prof = {k: v for k, v in (out.get("profiles") or {}).items() if k not in _PV_PROFILES}
+            prof.update({k: v for k, v in (g.get("profiles") or {}).items() if k in _PV_PROFILES})
+            out["profiles"] = prof
+    out["summary"] = summary
+    return out, binding
+
+
+def check(req: Request, hp: np.ndarray, ev: np.ndarray, band: tuple[float, float], *,
+          name: str = "existing", contexts: dict[float, Context] | None = None,
+          verify_years: list[int] | None = None, cancel: Callable[[], None] | None = None) -> dict:
+    """A request checked across a station's MV band, each end on its own model and its own baseline.
+
+    Generation is evaluated at both ends of the band, and the lower one counts: the static study
+    approves the PV only if it does at both, and the envelope's curtailment is the larger of the
+    two. Consumption (a charger, a heat pump) is evaluated at the low end only. The baseline at
+    each end is `band_name(name, end)`, precomputed on `model_at(end)` (study/station.compute), so
+    the check and the grid it meets are the same model; `contexts` replaces it per end (a queue at
+    that end). The high end is run with the generation side alone, so its import never counts.
+
+    Returns {"result": what the rule reads (`_combine`), "mv_band_pu", "binding_mv_pu": the end
+    each part came from, "by_end": {"0.98": result, ...}}. `cancel` is each run's check.
+    """
+    low, high = float(min(band)), float(max(band))
+    gen_ends = sorted({low, high}) if req.pv_kwp > 0 else []
+    runs: dict[float, dict] = {}
+    for e in sorted({low, *gen_ends}):
+        r = req if e == low else _generation_only(req)
+        ctx = (contexts or {}).get(e) or Context(band_name(name, e))
+        if cancel is not None:
+            ctx = dataclasses.replace(ctx, check=cancel)
+        runs[e], _ = run(model_at(e), r, hp, ev, ctx=ctx, verify_years=verify_years)
+    result, binding = _combine(runs, low, gen_ends)
+    result["mv_band_pu"] = [low, high]
+    result["binding_mv_pu"] = binding
+    return {"result": result, "mv_band_pu": [low, high], "binding_mv_pu": binding,
+            "by_end": {f"{e:.2f}": runs[e] for e in sorted(runs)}}
+
+
 def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None, ctx: Context | None = None,
         verify_years: list[int] | None = None) -> tuple[dict, dict]:
     """The evaluation and, per weather year, the hourly arrays behind it (the queue keeps those)."""
@@ -535,7 +689,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     if want_import:
         out["fuse"] = _fuse_check(req, hp, ev, hp_new)
     # a single-phase device on each phase, on the unbalanced model (a key of its own, like the fuse)
-    phases = _phase_check(req, base, hp, ev, ctx, hp_new)
+    phases = _phase_check(model, req, base, hp, ev, ctx, hp_new)
     if phases is not None:
         out["phases"] = phases
     emit("static", {"static": out["static"], "ms": 1000 * (time.perf_counter() - t0)})
@@ -787,9 +941,11 @@ def solve_with_device(model3, p_kw: np.ndarray, q_kvar: np.ndarray, j: int, devi
     return pf.solve(p, q, phases, model3.vm_slack, flows=True)
 
 
-def _phase_check(req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context, hp_new: bool) -> dict | None:
+def _phase_check(model: NetModel, req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: Context,
+                 hp_new: bool) -> dict | None:
     """A single-phase charger or inverter on each of the three phases, at the static study's
-    worst-case hour, on the unbalanced model: the unbalance it causes and the voltages it leaves.
+    worst-case hour, on the unbalanced model at the balanced model's MV voltage: the unbalance it
+    causes and the voltages it leaves.
 
     The envelope's verification stays on the balanced model; this says which phase to connect to.
     """
@@ -799,14 +955,14 @@ def _phase_check(req: Request, base: dict, hp: np.ndarray, ev: np.ndarray, ctx: 
     cust = customers()
     j = int(req.cid)
     devices = []
-    pv_cap = min(req.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[j, "fuse_kva"])) if req.pv_kwp > 0 else 0.0
-    if 0 < pv_cap <= A("pv_single_phase_max_kva") + 1e-9:
-        devices.append(("pv", pv_cap))
+    cap = pv_cap(req, float(cust.loc[j, "fuse_kva"]))
+    if pv_single_phase(req, cap):
+        devices.append(("pv", cap))
     if ev_single_phase(req):
         devices.append(("ev", req.ev_kw))
     if not devices:
         return None
-    m3 = get_model3ph()
+    m3 = get_model3ph(vm_slack=float(model.vm_slack))
     # the house's own row stays three-phase and the device is a row apart; a local copy, because
     # the model is shared by every evaluation running at the same time
     customer_phase = m3.phase.copy()
@@ -875,8 +1031,7 @@ def _static(model: NetModel, req: Request, base: dict, hp: np.ndarray, ev: np.nd
             hp_mask[c] = True
         extra[c] += ov.get("ev_kw", 0.0)
     if req.pv_kwp > 0:
-        cap = min(req.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[j, "fuse_kva"]))
-        pv_kw[j] = cap
+        pv_kw[j] = pv_cap(req, float(cust.loc[j, "fuse_kva"]))
         m = firm_mask.copy()
         m[j] = True
         p_s, q_s = hosting.summer_snapshot(m, pv_kw)
