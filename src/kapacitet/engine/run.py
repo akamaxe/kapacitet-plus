@@ -32,9 +32,24 @@ _MODEL: NetModel | None = None
 # ------------------------------------------------------------------------------------ helpers
 
 def background_masks(C: int) -> tuple[np.ndarray, np.ndarray]:
-    """Heat pumps and EVs present today (fixed seeds; independent of PV adoption)."""
-    return (mask_from_share(adoption_order(101, C), A("today_hp_share")),
-            mask_from_share(adoption_order(202, C), A("today_ev_share")))
+    """Heat pumps and EVs present today (fixed seeds; independent of PV adoption).
+
+    Without equipment records (the reference network) both are the shares of today_hp_share and
+    today_ev_share. With them (scenario.existing), a customer has a heat pump where the records
+    say so, and an EV where they record a charger; where the records say nothing of a heat pump,
+    the share's draw stands, except for a metered customer, whose meter already holds whatever
+    they have (scenario.in_meter), so no synthetic device is put on top of it."""
+    from .scenario import existing, in_meter
+
+    hp = mask_from_share(adoption_order(101, C), A("today_hp_share"))
+    ev = mask_from_share(adoption_order(202, C), A("today_ev_share"))
+    ex = existing()
+    if not ex["recorded"] or len(ex["hp"]) != C:
+        return hp, ev
+    metered = in_meter(settings().reference_year)
+    known = np.array([v is not None for v in ex["hp"]], dtype=bool)
+    hp = np.where(known, ex["hp"] == True, hp & ~metered).astype(bool)      # noqa: E712 (object array)
+    return hp, ex["ev"].astype(bool).copy()
 
 
 def pv_mask(order: np.ndarray, k: int, C: int) -> np.ndarray:

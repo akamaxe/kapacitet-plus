@@ -26,7 +26,7 @@ from ..cache import memo
 from ..config import A, settings
 from ..timeindex import local_standard, year_index
 from .netmodel import NetModel
-from .scenario import Scenario, customers, year_profiles
+from .scenario import Scenario, customers, existing_pv_kw, year_profiles
 
 log = logging.getLogger(__name__)
 
@@ -119,9 +119,11 @@ def cap_kw() -> np.ndarray:
 
 def summer_snapshot(pv_mask: np.ndarray, pv_kw: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Net injection (kW) and reactive power (kvar) of the static summer worst case: each PV
-    system in `pv_mask` at `static_pv_factor` × its rating (`pv_kw`, by default `cap_kw`)."""
+    system in `pv_mask` at `static_pv_factor` × its rating (`pv_kw`, by default `cap_kw`), and the
+    existing PV of the equipment records at the same share of its own rating, whatever the mask."""
     load = min_daytime_load()
-    pv = np.where(pv_mask, (cap_kw() if pv_kw is None else pv_kw) * A("static_pv_factor"), 0.0)
+    ex = existing_pv_kw()
+    pv = np.where(pv_mask & (ex <= 0), (cap_kw() if pv_kw is None else pv_kw), ex) * A("static_pv_factor")
     # (cap_kw follows the DC/AC ratio, so the static method sees the same inverters)
     tanphi = np.tan(np.arccos(A("load_power_factor")))
     return pv - load, -load * tanphi
@@ -178,18 +180,22 @@ def static_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_
     """Largest m such that the first m adopters of `order` pass the static summer snapshot.
 
     Solar only meets the export side, so the winter snapshot (consumption) is not checked here;
-    `hp_mask` and `ev_mask` are kept for the callers and do not change the count."""
-    C = model.C
-    masks = np.zeros((C, C + 1), dtype=bool)
-    for m in range(1, C + 1):
+    `hp_mask` and `ev_mask` are kept for the callers and do not change the count. The existing PV
+    of the equipment records is in every column, firm. `order` may name fewer houses than the
+    network has (a study's candidates); the count is at most its length, and -1 when the snapshot
+    fails with nobody added (the existing PV alone breaks it)."""
+    C, n = model.C, len(order)
+    masks = np.zeros((C, n + 1), dtype=bool)
+    for m in range(1, n + 1):
         masks[order[:m], m] = True
     load = min_daytime_load()
     tanphi = np.tan(np.arccos(A("load_power_factor")))
-    P = np.where(masks, (cap_kw() * A("static_pv_factor"))[:, None], 0.0) - load[:, None]
-    Q = np.repeat((-load * tanphi)[:, None], C + 1, axis=1)
+    firm = existing_pv_kw() * A("static_pv_factor")
+    P = np.where(masks, (cap_kw() * A("static_pv_factor"))[:, None], 0.0) + (firm - load)[:, None]
+    Q = np.repeat((-load * tanphi)[:, None], n + 1, axis=1)
     ok_summer = ~model.violations(model.solve(P, Q), P).export_side
     bad = np.flatnonzero(~ok_summer)
-    return int(bad[0] - 1) if len(bad) else C
+    return int(bad[0] - 1) if len(bad) else n
 
 
 # ------------------------------------------------------------------------------ time-series view
@@ -212,7 +218,8 @@ def uncontrolled_ok(model: NetModel, pv_mask: np.ndarray, hp_mask: np.ndarray, e
 
 def ts_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_mask: np.ndarray, years,
                 lo: int) -> int:
-    """Largest m (≥ lo) such that the first m adopters run the whole record without violation."""
+    """Largest m (≥ lo, at most len(order)) such that the first m adopters run the whole record
+    without violation."""
     C = model.C
 
     def ok(m: int) -> bool:
@@ -222,7 +229,7 @@ def ts_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_mask
 
     if not ok(lo):
         return lo
-    hi = C + 1
+    hi = len(order) + 1
     while hi - lo > 1:
         mid = (lo + hi) // 2
         if ok(mid):
@@ -242,10 +249,10 @@ def consumption_state(year: int, hp_mask: np.ndarray, ev_mask: np.ndarray,
                       extra_kw: np.ndarray | None = None) -> tuple[np.ndarray, np.ndarray]:
     """Net injection and reactive power (C, H) of one weather year with nobody's solar: today's
     heat pumps and EVs, plus `extra_kw` (C, H) of load. Solar only relieves the import side, so
-    leaving it out is the safe side for consumption."""
+    leaving it out, the existing PV included, is the safe side for consumption."""
     C = len(hp_mask)
     arr = Scenario(year=year, pv=np.zeros(C, dtype=bool), hp=hp_mask, ev=ev_mask,
-                   extra_load_kw=extra_kw).arrays()
+                   extra_load_kw=extra_kw, existing_pv=False).arrays()
     return arr["p_net"].astype(float), arr["q"].astype(float)
 
 

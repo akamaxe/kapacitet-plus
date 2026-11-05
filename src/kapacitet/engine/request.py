@@ -42,12 +42,27 @@ from .netmodel import NetModel
 from .scenario import Scenario, customers, year_profiles
 
 log = logging.getLogger(__name__)
-BASELINES = ("static", "doe")
+# The grid states a request can be evaluated against: the two published with the demo's results
+# (`PUBLISHED`, from showcase.json) and "existing", what a station has today by its equipment
+# records with nobody added, which a study precomputes for each station.
+BASELINES = {
+    "static": "the firm customers of the showcase",
+    "doe": "the showcase's customers, the non-firm ones held to their envelopes",
+    "existing": "today's grid: the existing PV of the equipment records, firm, and nobody added",
+}
+PUBLISHED = ("static", "doe")
 
 
 # ------------------------------------------------------------------------------ grid states
 
 def baseline_definition(name: str) -> dict:
+    if name == "existing":
+        from .scenario import existing
+
+        pv = [int(c) for c in np.flatnonzero(existing()["has_pv"])]
+        return {"name": name, "pv_cids": pv, "firm_cids": pv, "nonfirm_cids": []}
+    if name not in BASELINES:
+        raise ValueError(f"no baseline {name!r}: one of {sorted(BASELINES)}")
     sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
     if name == "static":
         firm = sc["firm_cids"]
@@ -234,7 +249,7 @@ def _applicant_profiles(req: Request, year: int, hp: np.ndarray, ev: np.ndarray,
     return {"pv": pv.astype(float), "load": np.asarray(load, dtype=float), "cap": cap, "hp": hp_kw}
 
 
-def _export_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
+def export_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
     """Residual export headroom for customer j (kW per hour), unclipped and before verification."""
     s = model.dv_dp[:, j]                                        # pu per kW
     vhead = model.v_max - (1.0 + st["vdev"].astype(float))      # (Kv, H)
@@ -249,7 +264,7 @@ def _export_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
     return np.minimum(np.minimum(ev_v, ev_l), ev_t)
 
 
-def _import_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
+def import_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
     """Residual import headroom for customer j (kW per hour, ≥ 0), with a 2 % margin."""
     s = model.dv_dp[:, j]
     vhead = (1.0 + st["vdev"].astype(float)) - model.v_min
@@ -261,7 +276,48 @@ def _import_headroom(model: NetModel, st: dict, j: int) -> np.ndarray:
     ev_l = (pbar + pl).min(axis=0) if len(lines) else np.full(vhead.shape[1], np.inf)
     pbar_t = np.sqrt(np.maximum(model.trafo_s_max_kw ** 2 - st["qt"].astype(float) ** 2, 0.0))
     ev_t = pbar_t + st["pt"].astype(float)
-    return np.clip(np.minimum(np.minimum(ev_v, ev_l), ev_t) * 0.98, 0.0, None)
+    return np.clip(np.minimum(np.minimum(ev_v, ev_l), ev_t) * IMPORT_HEADROOM_SHARE, 0.0, None)
+
+
+IMPORT_HEADROOM_SHARE = 0.98       # import_headroom's 2 % margin
+_export_headroom, _import_headroom = export_headroom, import_headroom
+
+
+def _headroom_all(model: NetModel, st: dict, side: str, chunk: int) -> np.ndarray:
+    """(C, H): `export_headroom` (side "export") or `import_headroom` ("import") of every customer
+    at once, the same expressions vectorised over customers, a block of hours at a time."""
+    s = model.dv_dp                                              # (Kv, C) pu per kW
+    vdev = st["vdev"].astype(float)
+    pl, ql = st["pl"].astype(float), st["ql"].astype(float)
+    pt, qt = st["pt"].astype(float), st["qt"].astype(float)
+    sign = -1.0 if side == "export" else 1.0
+    vhead = (model.v_max - (1.0 + vdev)) if side == "export" else ((1.0 + vdev) - model.v_min)
+    pbar = np.sqrt(np.maximum(model.line_s_max_kw[:, None] ** 2 - ql ** 2, 0.0)) + sign * pl     # (L, H)
+    room_t = np.sqrt(np.maximum(model.trafo_s_max_kw ** 2 - qt ** 2, 0.0)) + sign * pt            # (H,)
+    path = model.phi > 0                                         # (L, C)
+    sens = s > 1e-9
+    C, H = s.shape[1], vdev.shape[1]
+    out = np.empty((C, H))
+    with np.errstate(divide="ignore", invalid="ignore"):
+        inv = np.where(sens, 1.0 / np.where(sens, s, 1.0), 0.0)  # (Kv, C), 0 where insensitive
+        for a in range(0, H, chunk):
+            b = min(H, a + chunk)
+            ratio = np.where(sens[:, :, None], vhead[:, None, a:b] * inv[:, :, None], np.inf).min(axis=0)
+            lines = np.where(path[:, :, None], pbar[:, None, a:b], np.inf).min(axis=0)
+            out[:, a:b] = np.minimum(np.minimum(ratio, lines), room_t[None, a:b])
+    if side == "import":
+        out = np.clip(out * IMPORT_HEADROOM_SHARE, 0.0, None)
+    return out
+
+
+def export_headroom_all(model: NetModel, st: dict, chunk: int = 256) -> np.ndarray:
+    """(C, H) residual export headroom of every customer: `export_headroom` for each, at once."""
+    return _headroom_all(model, st, "export", chunk)
+
+
+def import_headroom_all(model: NetModel, st: dict, chunk: int = 256) -> np.ndarray:
+    """(C, H) residual import headroom of every customer (≥ 0, the 2 % margin): `import_headroom`."""
+    return _headroom_all(model, st, "import", chunk)
 
 
 def _serve_ev(room: np.ndarray, sessions: EvSessions, j: int, kw: float, H: int) -> dict:

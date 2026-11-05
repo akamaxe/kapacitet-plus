@@ -648,7 +648,7 @@ def request_baselines(years) -> None:
     from .run import background_masks, model
     m = model()
     hp, ev = background_masks(m.C)
-    for name in request.BASELINES:
+    for name in request.PUBLISHED:
         t0 = time.perf_counter()
         request.precompute(m, name, years, hp, ev)
         log.info("request baseline %s (%.0f s)", name, time.perf_counter() - t0)
