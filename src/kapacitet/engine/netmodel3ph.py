@@ -111,6 +111,7 @@ class NetModel3Ph:
         self.dv_dq = dq[order][self.check_rows]
 
         self.v_noload = self._no_load_voltage()
+        self.v_noload_unit = self.v_noload / self.vm_slack
 
     def _no_load_voltage(self) -> np.ndarray:
         """Voltage magnitude with nothing connected, per checked bus and phase."""
@@ -155,7 +156,7 @@ class NetModel3Ph:
         (exactly linear in the MV voltage, so `v_noload` is rescaled) and 1/min(vs, 1), which
         scales the thermal and the voltage-sensitivity terms below 1 pu."""
         vs = slack_per_hour(vm_slack, self.vm_slack, H)
-        return vs, self.v_noload[:, None] * (vs / self.vm_slack)[None, :], 1.0 / np.minimum(vs, 1.0)
+        return vs, self.v_noload_unit[:, None] * vs[None, :], 1.0 / np.minimum(vs, 1.0)
 
     @staticmethod
     def _not_finite(p: np.ndarray, q: np.ndarray, vs: np.ndarray) -> np.ndarray:

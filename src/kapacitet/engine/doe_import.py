@@ -78,6 +78,13 @@ def smart_charging(model: NetModel, arrays: dict[str, np.ndarray], ev_uncontroll
     unc_sched, _ = _reschedule(sessions, env, charger, H, flex)
     n_unc = len(model.import_critical_hours(p_rest - unc_sched, q_rest - unc_sched * tanphi))
     firm_bad = model.import_critical_hours(p_rest, q_rest)   # violated even without flexible charging
+    # An hour whose firm state has no power-flow answer is never excused: its envelope is zero.
+    if len(firm_bad):
+        fv = model.violations(model.solve(p_rest[:, firm_bad], q_rest[:, firm_bad]), p_rest[:, firm_bad])
+        unsolved = firm_bad[fv.nonconverged]
+        firm_bad = firm_bad[~fv.nonconverged]
+    else:
+        unsolved = firm_bad
     idx = np.flatnonzero(flex)
     plugged = plugged_matrix(sessions, C, H) & flex[:, None]
     corner = charger * plugged
@@ -112,6 +119,8 @@ def smart_charging(model: NetModel, arrays: dict[str, np.ndarray], ev_uncontroll
         env_c = env[:, crit]
         env_c[idx] = np.minimum(env_c[idx], alloc)
         env[:, crit] = env_c
+    if len(unsolved):
+        env[np.ix_(idx, unsolved)] = 0.0
     sched, unmet = _reschedule(sessions, env, charger, H, flex)
     residual = np.setdiff1d(model.import_critical_hours(p_rest - sched, q_rest - sched * tanphi), firm_bad)
     limited = (unc_sched > env + 1e-6).any(axis=0)   # hours where the envelope actually binds a charger
