@@ -8,12 +8,14 @@ records being firm in every hour (scenario.existing). The station's value is
 np.percentile(per_order, p, method="lower"), so it is one actual order's deployment, and that
 order is recorded. Capacity is NOT monotone in the MV voltage: at a low MV the transformer binds
 (the same power is more current), at a high MV the voltage does. So it is computed at both ends
-of the study's band, and the lower of the two is published with the end it came from
-(`binding_mv_pu`): the high end was meant as generation's worst case, and taking the minimum
-keeps that decision conservative whichever end binds. The binding limit is what the next
-adopter of the published order breaks (netmodel.Violations). An envelope (DOE) column is added
-only when the DSO has approved the method (`approval_reference`) and the envelopes it gives
-verify over the whole record.
+of the study's band: each order's value is the lower of its two ends, the percentile is taken
+over those, and the end the chosen order binds at is recorded (`binding_mv_pu`). The high end
+was meant as generation's worst case, and the minimum keeps that decision conservative whichever
+end binds. The published deployment is then checked on every hour at BOTH ends (one fewer until
+it passes at each), since the two ends can rank the orders differently. The binding limit is
+what the next adopter of the published order breaks (netmodel.Violations). An envelope (DOE)
+column is added only when the DSO has approved the method (`approval_reference`) and the
+envelopes it gives verify over the whole record at both ends; the lower of the two is kept.
 
 Consumption (`consumption_capacity`). hosting.ts_import_adopters, with the study's device, at the
 low end of the band, where voltage drop and transformer current are both worst, and the static
@@ -201,21 +203,53 @@ def generation_at(model: NetModel, orders: list[np.ndarray], percentile: float, 
             "adopters": rows[i]["adopters"], "kwp": rows[i]["kwp"], "static_kw": static_kw, "per_order": rows}
 
 
+def _per_order_minimum(by_end: dict[float, dict], ends: list[float]) -> list[dict]:
+    """Every order's row at the end of the band where it fits the least (a tie goes to the high
+    end), with that end (`binding_mv_pu`) and the order's kW at each end (`kw_by_end`)."""
+    rows = []
+    for o in range(len(by_end[ends[0]]["per_order"])):
+        at = {e: by_end[e]["per_order"][o] for e in ends}
+        e = min(reversed(ends), key=lambda x: at[x]["kw"])
+        rows.append({**at[e], "binding_mv_pu": e, "kw_by_end": {f"{x:.2f}": at[x]["kw"] for x in ends},
+                     "static_kw": min(at[x]["static_kw"] for x in ends),
+                     "static_adopters": min(at[x]["static_adopters"] for x in ends)})
+    return rows
+
+
+def verified_count_band(models: dict[float, NetModel], n: int, states_of, side: str) -> tuple[int, dict, int]:
+    """verified_count at every end of the band at once: the largest count at most `n` whose
+    deployment verifies on every hour at each end, the verifications summed and kept by end."""
+    stepped, checks = 0, {}
+    while True:
+        for e, m in models.items():
+            k, checks[e], s = verified_count(m, n, states_of, side)
+            stepped += s
+            if k < n:
+                n = k
+                break
+        else:
+            total = {key: sum(c[key] for c in checks.values()) for key in next(iter(checks.values()))}
+            total["by_end"] = {f"{e:.2f}": c for e, c in checks.items()}
+            return n, total, stepped
+
+
 def generation_capacity(band: tuple[float, float], years=None, n_orders: int = STUDY_ORDERS,
                         percentile: float = 50.0, hp=None, ev=None, *, approval_reference: str = "",
                         budget: str = "aggregate", z_star: float | None = None) -> dict:
-    """The station's generation capacity at both ends of the MV band, the lower one published (see
-    the module's docstring). Returns {"status", "kw", "binding_mv_pu", "order", "adopters",
-    "static_kw", "binding" (the limit the next adopter breaks), "by_end", "verification", "doe"}."""
+    """The station's generation capacity over the MV band (see the module's docstring): each
+    order's value is the lower of its two ends, the percentile is taken over those, and the
+    published order is checked on every hour at both ends. Returns {"status", "kw",
+    "binding_mv_pu", "order", "adopters", "static_kw", "binding" (the limit the next adopter
+    breaks), "by_end", "per_order", "verification", "doe"}."""
     years = _years(years)
     lo_pu, hi_pu = float(band[0]), float(band[1])
     ends = sorted({lo_pu, hi_pu})
-    m0 = get_model(vm_slack=ends[0])
-    C = m0.C
+    models = {v: get_model(vm_slack=v) for v in ends}
+    C = models[ends[0]].C
     hp, ev = _masks(C, hp, ev)
     cand = candidates()
     orders = [candidate_order(o, cand) for o in range(n_orders)]
-    by_end = {v: generation_at(get_model(vm_slack=v), orders, percentile, hp, ev, years) for v in ends}
+    by_end = {v: generation_at(models[v], orders, percentile, hp, ev, years) for v in ends}
     out = {"basis": "hourly, every candidate firm and nobody curtailed", "percentile": percentile,
            "candidates": int(cand.sum()), "existing_pv_kw_ac": float(existing()["pv_kw_ac"].sum()),
            "by_end": {f"{v:.2f}": r for v, r in by_end.items()}}
@@ -226,26 +260,31 @@ def generation_capacity(band: tuple[float, float], years=None, n_orders: int = S
                    baseline_violation_hours=by_end[v]["baseline_violation_hours"],
                    finding="today's grid already breaks an export-side limit with the existing PV alone")
         return out
-    # the lower value; on a tie, the high end (generation's worst case by the owner's decision)
-    v = min(reversed(ends), key=lambda e: by_end[e]["kw"])
-    r = by_end[v]
-    m = get_model(vm_slack=v)
+    rows = _per_order_minimum(by_end, ends)
+    _, i = pick([r["kw"] for r in rows], percentile)
+    r = rows[i]
+    v = r["binding_mv_pu"]
     order = orders[r["order"]]
-    k = r["adopters"]
+    k, check, stepped = verified_count_band(models, r["adopters"],
+                                            lambda n: _pv_states(order, n, C, hp, ev, years), "export")
+    cap = doe.customer_caps()
+    r = {**r, "adopters": k, "kw": float(cap[order[:k]].sum()),
+         "kwp": float(customers()["kwp"].to_numpy(dtype=float)[order[:k]].sum())}
     binding = ({"limit": "candidates", "detail": "every candidate of the order fits"} if k >= len(order)
-               else limit_of(m, _pv_states(order, k + 1, C, hp, ev, years), "export"))
-    k, check, stepped = verified_count(m, k, lambda n: _pv_states(order, n, C, hp, ev, years), "export")
-    if stepped:
-        cap = doe.customer_caps()
-        r = {**r, "adopters": k, "kw": float(cap[order[:k]].sum()),
-             "kwp": float(customers()["kwp"].to_numpy(dtype=float)[order[:k]].sum())}
-        binding = limit_of(m, _pv_states(order, k + 1, C, hp, ev, years), "export")
+               else limit_of(models[v], _pv_states(order, k + 1, C, hp, ev, years), "export"))
+    static_kw, _ = pick([x["static_kw"] for x in rows], percentile)
     out.update(status="ok", kw=r["kw"], binding_mv_pu=v, order=r["order"], adopters=k, kwp=r["kwp"],
-               stepped_back=stepped,
-               static_kw=min(by_end[e]["static_kw"] for e in ends), binding=binding, verification=check,
+               stepped_back=stepped, static_kw=static_kw, binding=binding, verification=check,
+               per_order=[{key: x[key] for key in ("order", "kw", "binding_mv_pu", "kw_by_end")} for x in rows],
                cids=[int(c) for c in order[:k]])
-    out["doe"] = doe_column(m, order, r, hp, ev, years, approval_reference, budget,
-                            A("z_star_pct") if z_star is None else z_star)
+    zs = A("z_star_pct") if z_star is None else z_star
+    cols = {e: doe_column(models[e], order, r, hp, ev, years, approval_reference, budget, zs) for e in ends}
+    bad = [c for c in cols.values() if c["status"] != "ok"]
+    # the lower envelope capacity of the two ends, or the reason it is not published
+    out["doe"] = dict(bad[0] if bad else min(reversed(list(cols.values())), key=lambda c: c["kw"]))
+    if not bad or bad[0]["status"] != "not_approved":
+        out["doe"]["by_end"] = {f"{e:.2f}": {key: c.get(key) for key in ("status", "kw", "full_year_violations")}
+                                for e, c in cols.items()}
     return out
 
 
@@ -253,20 +292,21 @@ def _doe_run(m: NetModel, order, ms: int, k: int, hp, ev, years, verify_: str) -
     nf = order[ms:k]
     mask = np.zeros(m.C, dtype=bool)
     mask[order[:k]] = True
-    curt = pot = 0.0
     c_c, p_c = np.zeros(len(nf)), np.zeros(len(nf))
-    full = 0
+    full = nonconv = 0
     for y in years:
         arr = Scenario(year=y, pv=mask, hp=hp, ev=ev).arrays()
         if len(nf):
             r = doe.compute(m, arr, nf, verify=verify_)
             c_c += r.curtailed.astype(float).sum(axis=1)
             full += int(r.full_year_violations or 0)
+            nonconv += int(r.info.get("full_year", {}).get("nonconverged_hours", 0))
         p_c += arr["pv"][nf].astype(float).sum(axis=1)
     curt, pot = float(c_c.sum()), float(p_c.sum())
     share = np.where(p_c > 0, 100.0 * c_c / np.where(p_c > 0, p_c, 1.0), 0.0)
     return {"z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
-            "z_customer_max_pct": float(share.max()) if len(nf) else 0.0, "full_year_violations": full}
+            "z_customer_max_pct": float(share.max()) if len(nf) else 0.0, "full_year_violations": full,
+            "nonconverged_hours": nonconv}
 
 
 def doe_column(m: NetModel, order, r: dict, hp, ev, years, approval_reference: str, budget: str,
@@ -280,7 +320,7 @@ def doe_column(m: NetModel, order, r: dict, hp, ev, years, approval_reference: s
 
     key = "z_pct" if budget == "aggregate" else "z_customer_max_pct"
     # the order's static count stays firm, as in the demo's envelopes
-    ms = min(r["adopters"], next(x["static_adopters"] for x in r["per_order"] if x["order"] == r["order"]))
+    ms = min(r["adopters"], r["static_adopters"])
 
     runs: dict[int, dict] = {}
 
@@ -291,12 +331,13 @@ def doe_column(m: NetModel, order, r: dict, hp, ev, years, approval_reference: s
 
     k = largest_true(lambda kk: z(kk)[key] <= z_star, r["adopters"], len(order))
     full = _doe_run(m, order, ms, k, hp, ev, years, "full")
-    if full["full_year_violations"]:
-        return {"status": "not_verified", "full_year_violations": full["full_year_violations"]}
+    if full["full_year_violations"] or full["nonconverged_hours"]:
+        return {"status": "not_verified", "full_year_violations": full["full_year_violations"],
+                "nonconverged_hours": full["nonconverged_hours"]}
     cap = doe.customer_caps()
     return {"status": "ok", "approval_reference": approval_reference, "budget": budget, "z_star_pct": z_star,
             "firm_adopters": ms, "adopters": int(k), "kw": float(cap[order[:k]].sum()), "z_pct": full["z_pct"],
-            "z_customer_max_pct": full["z_customer_max_pct"], "full_year_violations": 0}
+            "z_customer_max_pct": full["z_customer_max_pct"], "full_year_violations": 0, "nonconverged_hours": 0}
 
 
 # ---------------------------------------------------------------- consumption

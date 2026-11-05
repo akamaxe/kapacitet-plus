@@ -140,11 +140,54 @@ def test_the_published_generation_is_not_above_either_end_or_1_00_pu(generation)
     assert set(ends) == set(BAND)
     assert all(g["kw"] <= kw + 1e-9 for kw in ends.values())
     assert g["kw"] <= unity["kw"] + 1e-9
-    assert ends[g["binding_mv_pu"]] == g["kw"]
+    chosen = next(r for r in g["per_order"] if r["order"] == g["order"])
+    assert chosen["binding_mv_pu"] == g["binding_mv_pu"] and g["kw"] <= min(chosen["kw_by_end"].values()) + 1e-9
     # the tiny grid's long feeder binds the voltage at the top of the band
     assert g["binding_mv_pu"] == 1.06 and g["binding"]["limit"] == "voltage"
     assert g["verification"]["full_year_violations"] == 0 and g["verification"]["nonconverged_hours"] == 0
+    assert set(g["verification"]["by_end"]) == {f"{v:.2f}" for v in BAND}
     assert g["doe"]["status"] == "not_approved"
+
+
+def test_the_published_deployment_verifies_at_the_other_end_too(tiny_processed, generation):
+    from kapacitet.engine import station as es
+    from kapacitet.engine.netmodel import get_model
+    from kapacitet.engine.run import background_masks
+
+    g = generation["band"]
+    with tiny_grid(tiny_processed):
+        other = next(v for v in BAND if v != g["binding_mv_pu"])
+        m = get_model(vm_slack=other)
+        hp, ev = background_masks(m.C)
+        order = np.asarray(g["cids"], dtype=int)
+        check = es.verify(m, es._pv_states(order, len(order), m.C, hp, ev, YEARS), "export")
+        assert check["full_year_violations"] == 0
+
+
+def test_the_ends_ranking_orders_differently_publish_the_lowest_order_minimum(tiny_processed, monkeypatch):
+    """At the high end the orders give [100, 110, 120] kW (median: order 1), at the low end
+    [130, 90, 140] (median: 130). Taking each end's median apart would publish order 1 at 110 kW,
+    which fits only 90 kW at the low end; the per-order minima [100, 90, 120] publish order 0."""
+    from kapacitet.engine import station as es
+
+    kws = {1.06: [100.0, 110.0, 120.0], 0.98: [130.0, 90.0, 140.0]}
+    adopters = {1.06: [2, 3, 4], 0.98: [5, 1, 6]}
+
+    def generation_at(model, orders, percentile, hp, ev, years):
+        v = round(float(model.vm_slack), 2)
+        rows = [{"order": o, "kw": kws[v][o], "adopters": adopters[v][o], "kwp": 0.0, "static_kw": 0.0,
+                 "static_adopters": 0} for o in range(len(orders))]
+        return {"vm_pu": v, "status": "ok", "kw": float(np.median(kws[v])), "per_order": rows}
+
+    zero = {"full_year_violations": 0, "nonconverged_hours": 0, "hours_checked": 1}
+    monkeypatch.setattr(es, "generation_at", generation_at)
+    monkeypatch.setattr(es, "verified_count", lambda m, n, states_of, side: (n, dict(zero), 0))
+    monkeypatch.setattr(es, "limit_of", lambda *a: {"limit": "voltage"})
+    with tiny_grid(tiny_processed):
+        g = es.generation_capacity(BAND, YEARS, n_orders=3)
+    assert g["order"] == 0 and g["binding_mv_pu"] == 1.06 and g["adopters"] == 2
+    assert [r["kw"] for r in g["per_order"]] == [100.0, 90.0, 120.0]
+    assert g["per_order"][1]["binding_mv_pu"] == 0.98
 
 
 def test_the_device_names_map_in_one_place():

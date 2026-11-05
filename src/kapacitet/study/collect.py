@@ -25,12 +25,20 @@ FIELDS = (
     ("generation_limit", "string"), ("generation_order", "int64"),
     ("consumption_device", "string"), ("consumption_status", "string"), ("consumption_kw", "float64"),
     ("consumption_limit", "string"),
+    ("generation_baseline_violation_hours", "int64"), ("consumption_baseline_violation_hours", "int64"),
+    ("worst_generation_status", "string"), ("worst_consumption_status", "string"),
     ("worst_generation_kw", "float64"), ("worst_generation_customer", "string"),
     ("worst_consumption_kw", "float64"), ("worst_consumption_customer", "string"),
     ("published_generation_kw", "float64"), ("published_generation_limited_by", "string"),
     ("published_consumption_kw", "float64"), ("published_consumption_limited_by", "string"),
     ("upstream_complete", "bool_"), ("full_year_violations", "int64"), ("nonconverged_hours", "int64"),
 )
+
+
+def _hours(block: dict) -> int | None:
+    """The hours today's grid already breaks a limit in, summed over the years (a finding's)."""
+    hours = block.get("baseline_violation_hours")
+    return int(sum(hours.values())) if hours else None
 
 
 def quarter(today: dt.date | None = None) -> str:
@@ -70,6 +78,9 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
         generation_limit=_limit(gen), generation_order=gen.get("order"),
         consumption_device=cons.get("consumption_device"), consumption_status=cons.get("status"),
         consumption_kw=cons.get("kw"), consumption_limit=_limit(cons),
+        generation_baseline_violation_hours=_hours(gen), consumption_baseline_violation_hours=_hours(cons),
+        worst_generation_status=(worst.get("generation") or {}).get("status"),
+        worst_consumption_status=(worst.get("consumption") or {}).get("status"),
         worst_generation_kw=(worst.get("generation") or {}).get("kw"),
         worst_generation_customer=(worst.get("generation") or {}).get("customer_id"),
         worst_consumption_kw=(worst.get("consumption") or {}).get("kw"),
