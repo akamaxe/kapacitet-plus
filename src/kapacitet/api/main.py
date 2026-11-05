@@ -36,7 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import __version__
+from .. import __version__, geo
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from . import jobs, records
@@ -670,49 +670,9 @@ def network() -> dict:
         result_path("showcase.json"), result_path("nodal.json")])}
 
 
-def _num(v) -> float | None:
-    """A number JSON can carry: NaN and infinity become null."""
-    try:
-        f = float(v)
-    except (TypeError, ValueError):
-        return None
-    return f if math.isfinite(f) else None
-
-
-COORD_DECIMALS = 6        # about 0.1 m on the ground, finer than any drawing on the map
-
-
-def _xy(x, y) -> list | None:
-    x, y = _num(x), _num(y)
-    return [round(x, COORD_DECIMALS), round(y, COORD_DECIMALS)] if x is not None and y is not None else None
-
-
-def _point(lon, lat) -> dict | None:
-    xy = _xy(lon, lat)
-    return {"type": "Point", "coordinates": xy} if xy else None
-
-
-def _house_geometry(polygon, lon, lat) -> dict | None:
-    """The roof outline when there is one; an imported network may only have the service point."""
-    if isinstance(polygon, str) and polygon:
-        try:
-            ring = [_xy(p[0], p[1]) for p in json.loads(polygon)]
-        except (ValueError, TypeError, IndexError):
-            ring = []
-        if ring and all(ring):
-            return {"type": "Polygon", "coordinates": [ring]}
-    return _point(lon, lat)
-
-
-def _line_geometry(coords) -> dict | None:
-    try:
-        pts = json.loads(coords) if isinstance(coords, str) else coords
-    except ValueError:
-        return None
-    pts = [_xy(p[0], p[1]) for p in (pts or []) if len(p) >= 2]
-    if len(pts) < 2 or not all(pts):
-        return None
-    return {"type": "LineString", "coordinates": pts}
+# the GeoJSON helpers live in kapacitet.geo, which a study's publication uses too
+_num, _xy, _point = geo.num, geo.xy, geo.point
+_house_geometry, _line_geometry = geo.house_geometry, geo.line_geometry
 
 
 @memo(maxsize=2)
