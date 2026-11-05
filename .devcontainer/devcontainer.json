@@ -1,6 +1,6 @@
 {
   "name": "Kapacitet+",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm@sha256:5ff1ba19e3b9273b24ec101055172d0e75046bc9ec40780643c530d2df2c75e5",
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24" }
   },

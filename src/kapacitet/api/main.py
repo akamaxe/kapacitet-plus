@@ -1162,10 +1162,11 @@ def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
     return work
 
 
-def _submit(body: RequestIn, ctx=None, save: bool = True) -> dict:
+def _submit(body: RequestIn, ctx=None, save: bool = True, source: str = "dso") -> dict:
     """Admit an evaluation to the pool, or refuse it with 429 `busy` when every slot and the line are full."""
     try:
-        return POOL.submit(uuid.uuid4().hex[:12], _evaluation(body, ctx, save), request=body.model_dump())
+        return POOL.submit(uuid.uuid4().hex[:12], _evaluation(body, ctx, save), request=body.model_dump(),
+                           source=source)
     except jobs.Busy as exc:
         raise HTTPException(429, {"code": "busy", "message": API_ERRORS["busy"].format(n=exc.waiting),
                                   "params": {"n": exc.waiting}}, headers={"Retry-After": "5"}) from exc
@@ -1261,25 +1262,33 @@ def list_requests(limit: int = Query(30, ge=1, le=200)) -> dict:
 
 
 @app.post(f"{API}/requests", tags=["requests"])
-def create_request(body: RequestIn) -> dict:
+def create_request(body: RequestIn, source: str = "dso") -> dict:
     """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE).
 
     It starts at once when one of KAPACITET_MAX_JOBS slots is free, otherwise it waits in line
     (the stream says `queued` with its place); a full line is a 429 `busy`."""
     _check_request(body)
     ctx = _context_for(body)
-    job = _submit(body, ctx)
+    job = _submit(body, ctx, source=source)
     job_id = job["id"]
     return {"id": job_id, "status": job["status"], "events": f"{API}/requests/{job_id}/events",
             "result": f"{API}/requests/{job_id}"}
 
 
 @app.delete(f"{API}/requests/{{job_id}}", tags=["requests"])
-def cancel_request(job_id: str) -> dict:
+def cancel_request(job_id: str, source: str | None = None) -> dict:
     """Stop an evaluation that is waiting or running: it leaves the line at once, or stops at the
-    engine's next check, and nothing of it is saved. A finished one is a 409 `already_finished`."""
-    status = POOL.cancel(_job_id(job_id))
+    engine's next check, and nothing of it is saved. A finished one is a 409 `already_finished`,
+    also when it was already swept from memory but is saved. `source` limits the call to jobs
+    started from that route (the portal cannot stop a planner's evaluation)."""
+    jid = _job_id(job_id)
+    job = POOL.jobs.get(jid)
+    if job is not None and source is not None and job.get("source") != source:
+        raise HTTPException(404, "unknown request")
+    status = POOL.cancel(jid)
     if status is None:
+        if records.load(jid, resolve=False) is not None:
+            raise api_error(409, "already_finished")
         raise HTTPException(404, "unknown request")
     if status != "cancelled":
         raise api_error(409, "already_finished")
@@ -1433,6 +1442,7 @@ def evaluate_sync(body: RequestIn) -> JSONResponse:
             raise api_error(409, "cancelled")
         raise HTTPException(500, job.get("error", "failed"))
     out = dict(job["result"])
+    POOL.forget(job["id"])       # nothing reads it again; do not keep the result for the TTL
     out["provenance"] = provenance(*_REQUEST_SOURCES, files=_request_files(body.baseline))
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
 

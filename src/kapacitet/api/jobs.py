@@ -196,6 +196,13 @@ class JobPool:
         job["_closed"].wait(timeout)
         return job
 
+    def forget(self, job_id: str) -> None:
+        """Drop a closed job nobody will read again (a synchronous answer already returned)."""
+        with self._lock:
+            job = self.jobs.get(job_id)
+            if job is not None and job.get("closed"):
+                self.jobs.pop(job_id, None)
+
     def sweep(self) -> None:
         """Give up on jobs past their time (a job whose work never reaches a check is still reported
         as timed out) and forget finished ones after `ttl_s`."""

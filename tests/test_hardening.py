@@ -28,6 +28,18 @@ def test_the_docker_examples_publish_the_port_on_loopback_only():
         for line in (ln for ln in text.splitlines() if "docker run" in ln):
             for port in re.findall(r"(?:-p|--publish)[ =](\S+)", line):
                 assert port.startswith("127.0.0.1:"), f"{rel}: {line.strip()}"
+    # the same in the guides and the devcontainer scripts, and a bind mount needs the caller's uid
+    others = [p.relative_to(ROOT).as_posix() for p in
+              [*(ROOT / "docs").glob("*.md"), *(ROOT / ".devcontainer").glob("*.sh")]]
+    for rel in ("README.md", "Dockerfile", *others):
+        text = re.sub(r"\\\n\s*", " ", _read(rel))
+        assert "-p 8000:8000" not in text, rel
+        for line in (ln for ln in text.splitlines() if "docker run" in ln):
+            for port in re.findall(r"(?:-p|--publish)[ =](\S+)", line):
+                assert port.startswith("127.0.0.1:"), f"{rel}: {line.strip()}"
+            for src in re.findall(r"(?:-v|--volume)[ =]([^:\s]+):", line):
+                if re.match(r"[/.$~]|[A-Za-z]:", src):    # a path, not a named volume
+                    assert re.search(r"(?:--user|-u)[ =]", line), f"{rel}: bind mount without --user"
     for rel in ("README.md", "Dockerfile"):
         text = " ".join(_read(rel).split())
         assert "-p 127.0.0.1:8000:8000" in text, rel
@@ -55,9 +67,16 @@ def test_the_image_runs_unprivileged_on_pinned_base_images():
     user_at = max(i for i, ln in enumerate(stage) if ln.upper().startswith("USER "))
     assert not any(ln.upper().startswith("CMD") for ln in stage[:user_at]), "the server starts as that user"
     # the server writes only to data/: nothing else becomes its own
+    # the data folder is handed over before it becomes a VOLUME, or a new volume starts as root's
+    assert text.index("chown 10001:10001") < text.index("VOLUME /app/data")
     assert "chown -R" not in text and "--chown" not in text
     assert not re.search(r"chown\s+--recursive", text)
     assert re.findall(r"chown\s+\S+\s+(\S+)", text) == ["/app/data"]
+
+
+def test_the_devcontainer_base_image_is_pinned_by_digest():
+    image = re.search(r'"image":\s*"([^"]+)"', _read(".devcontainer/devcontainer.json")).group(1)
+    assert re.fullmatch(r"[\w.\-/]+:[\w.\-]+@sha256:[0-9a-f]{64}", image), image
 
 
 def test_every_action_is_pinned_to_a_commit():

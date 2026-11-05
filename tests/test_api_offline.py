@@ -421,6 +421,35 @@ def test_the_portal_cancels_its_own_answer_and_the_sync_route_shares_the_pool(cl
     assert r.status_code == 200 and r.json()["summary"] == {"pv_static_approved": True}
 
 
+def test_the_portal_cannot_cancel_a_planners_job_and_a_swept_saved_one_is_finished(client, stubbed, monkeypatch):
+    import threading
+
+    main = stubbed
+    release = threading.Event()
+    _slow_engine(monkeypatch, release)
+    try:
+        dso = client.post(f"{API}/requests", json={"cid": 2, "pv_kwp": 5.0}).json()["id"]
+        r = client.request("DELETE", f"{API}/apply/evaluate/{dso}", json={})
+        assert r.status_code == 404
+        assert main.POOL.jobs[dso]["status"] in ("queued", "running")
+        d = client.request("DELETE", f"{API}/requests/{dso}", json={})
+        assert d.json().get("status") == "cancelled", d.text
+    finally:
+        release.set()
+    done = client.post(f"{API}/requests", json={"cid": 3, "pv_kwp": 5.0}).json()["id"]
+    _finish(client, done)
+    main.POOL.jobs.pop(done)                      # as the TTL sweep does
+    assert client.request("DELETE", f"{API}/requests/{done}", json={}).status_code == 409
+    assert client.request("DELETE", f"{API}/requests/{'a' * 12}", json={}).status_code == 404
+
+
+def test_a_synchronous_answer_leaves_nothing_in_the_pool(client, stubbed):
+    before = set(stubbed.POOL.jobs)
+    r = client.post(f"{API}/evaluate", json={"cid": 3, "pv_kwp": 5.0})
+    assert r.status_code == 200
+    assert set(stubbed.POOL.jobs) == before
+
+
 def test_no_sealed_or_logged_file_holds_an_address(client, stubbed, tmp_path, monkeypatch):
     import gzip
 

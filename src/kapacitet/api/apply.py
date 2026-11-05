@@ -71,7 +71,7 @@ def evaluate(body: Ask) -> dict:
     """Start the answer for one house, against the grid as the DSO sees it now."""
     from . import main
 
-    started = main.create_request(main.RequestIn(**body.model_dump(), baseline=_baseline()))
+    started = main.create_request(main.RequestIn(**body.model_dump(), baseline=_baseline()), source="portal")
     return {"id": started["id"], "events": f"/api/v1/apply/evaluate/{started['id']}/events"}
 
 
@@ -88,7 +88,7 @@ def cancel(job_id: str) -> dict:
     the slot for the next one); nothing of it is kept."""
     from . import main
 
-    return main.cancel_request(job_id)
+    return main.cancel_request(job_id, source="portal")
 
 
 @router.get("/evaluate/{job_id}")
