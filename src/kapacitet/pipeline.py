@@ -29,6 +29,35 @@ from contextlib import contextmanager
 
 log = logging.getLogger("kapacitet")
 
+# What `fetch --only` (and `all --only`) can name, in the order cmd_fetch downloads them.
+FETCH_SOURCES = ("osm", "zones", "smhi", "esett", "scb", "prices")
+# The extra stages live in engine/run.py (EXTRA_STAGES), so a new stage never needs this file.
+# Importing the engine takes seconds, so their list is filled into the help only when it is shown.
+_STAGES = "{stages}"
+
+
+class _Parser(argparse.ArgumentParser):
+    """An argument parser that writes the engine's stage names into a help text on demand."""
+
+    def format_help(self) -> str:
+        for action in self._actions:
+            if action.help and _STAGES in action.help:
+                from .engine import run
+
+                action.help = action.help.replace(_STAGES, ", ".join(run.EXTRA_STAGES))
+        return super().format_help()
+
+
+def _names(text: str) -> set[str]:
+    return {s.strip() for s in (text or "").split(",") if s.strip()}
+
+
+def _check_sources(only: str) -> None:
+    unknown = _names(only) - set(FETCH_SOURCES)
+    if unknown:
+        print(f"unknown source {', '.join(sorted(unknown))}: --only takes {','.join(FETCH_SOURCES)}")
+        sys.exit(2)
+
 
 @contextmanager
 def step(name: str):
@@ -39,11 +68,12 @@ def step(name: str):
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
+    _check_sources(args.only)
     from .config import settings
     from .ingest import esett, osm, prices, scb, smhi, zones
 
     cfg = settings()
-    only = set(args.only.split(",")) if args.only else None
+    only = _names(args.only) or None
     want = (lambda k: only is None or k in only)
     refresh = args.refresh
 
@@ -101,17 +131,25 @@ def cmd_profiles(args: argparse.Namespace) -> None:
 
 
 def cmd_compute(args: argparse.Namespace) -> None:
+    """The engine. `--workers` reaches both runs (six by default for the whole run, four for the
+    extra stages); `--only` names extra stages, so it needs `--stage extra` rather than quietly
+    running everything."""
     from .engine import run
 
-    only = {s.strip() for s in getattr(args, "only", "").split(",") if s.strip()} or None
+    only = _names(getattr(args, "only", "")) or None
+    extra = getattr(args, "stage", "all") == "extra"
+    if only and not extra:
+        print(f"--only needs --stage extra: python -m kapacitet compute --stage extra --only {','.join(sorted(only))}")
+        sys.exit(2)
     if only and not only <= set(run.EXTRA_STAGES):
         print(f"--only takes: {', '.join(run.EXTRA_STAGES)}")
         sys.exit(2)
+    workers = getattr(args, "workers", None)
     with step("Engine"):
-        if getattr(args, "stage", "all") == "extra":
-            run.compute_extra(quick=args.quick, only=only, workers=args.workers)
+        if extra:
+            run.compute_extra(quick=args.quick, only=only, workers=workers or 4)
         else:
-            run.compute_all(quick=args.quick)
+            run.compute_all(quick=args.quick, workers=workers or 6)
 
 
 def cmd_bundle(args: argparse.Namespace) -> None:
@@ -231,10 +269,12 @@ def cmd_dataset(args: argparse.Namespace) -> None:
 
 
 def cmd_all(args: argparse.Namespace) -> None:
+    """`--only` here narrows the download; the compute that follows always runs whole."""
+    _check_sources(args.only)
     cmd_fetch(args)
     cmd_build(args)
     cmd_profiles(args)
-    cmd_compute(args)
+    cmd_compute(argparse.Namespace(**{**vars(args), "only": "", "stage": "all"}))
 
 
 def cmd_import(args: argparse.Namespace) -> None:
@@ -305,14 +345,13 @@ def cmd_export_grid(args: argparse.Namespace) -> None:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(prog="kapacitet", description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = _Parser(prog="kapacitet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--site", default=None, help="site key from config/site.toml, e.g. olovslund (default: the [site] table, Smedslätten)")
     parser.add_argument("-v", "--verbose", action="store_true")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("fetch", help="download external data")
-    p.add_argument("--only", default="", help="comma list: osm,zones,smhi,esett,scb,prices")
+    p.add_argument("--only", default="", help=f"comma list of sources: {','.join(FETCH_SOURCES)}")
     p.add_argument("--refresh", action="store_true", help="ignore the cache")
     p.set_defaults(func=cmd_fetch)
 
@@ -324,13 +363,10 @@ def main(argv: list[str] | None = None) -> None:
         p.add_argument("--quick", action="store_true", help="fewer years/orders for a fast run")
         if name == "compute":
             p.add_argument("--stage", choices=["all", "extra"], default="all",
-                           help="extra: only the stages that build on the showcase (baselines, 2030 "
-                                "scenarios, tornado, foresight, over-installation, phases, validation)")
-            p.add_argument("--only", default="",
-                           help="with --stage extra: comma list of national,requests,scenarios,tornado,"
-                                "foresight,overinstallation,phases,validation,protection,operation")
-            p.add_argument("--workers", type=int, default=4,
-                           help="with --stage extra: worker processes for the heavy stages")
+                           help=f"extra: only the stages that build on the showcase ({_STAGES})")
+            p.add_argument("--only", default="", help=f"with --stage extra: comma list of {_STAGES}")
+            p.add_argument("--workers", type=int, default=None,
+                           help="worker processes for the parallel stages (default 6, or 4 with --stage extra)")
         p.set_defaults(func=func)
 
     p = sub.add_parser("import", help="build the engine's tables from a network export")
@@ -377,9 +413,11 @@ def main(argv: list[str] | None = None) -> None:
     p.set_defaults(func=cmd_unbundle)
 
     p = sub.add_parser("all", help="fetch + build + profiles + compute")
-    p.add_argument("--only", default="")
-    p.add_argument("--refresh", action="store_true")
-    p.add_argument("--quick", action="store_true")
+    p.add_argument("--only", default="",
+                   help=f"fetch only these sources (comma list of {','.join(FETCH_SOURCES)}); the rest still runs whole")
+    p.add_argument("--refresh", action="store_true", help="ignore the download cache")
+    p.add_argument("--quick", action="store_true", help="fewer years/orders for a fast run")
+    p.add_argument("--workers", type=int, default=None, help="worker processes for the parallel stages (default 6)")
     p.set_defaults(func=cmd_all)
 
     args = parser.parse_args(argv)

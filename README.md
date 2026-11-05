@@ -156,10 +156,13 @@ sources and assumptions behind it.
 | `kapacitet all` | The four build steps in order |
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
-`--quick` shortens a compute run, `compute --stage extra` recomputes only the scenario,
-tornado, foresight, over-installation, phase and validation blocks, `--only foresight,phases`
-narrows that to a comma list, and `--workers 2` runs the heavy stages on fewer processes when
-memory is short.
+`--quick` shortens a compute run, `compute --stage extra` recomputes only the stages that build
+on the showcase (scenarios, tornado, foresight, over-installation, phases, validation, protection
+and operation), `--only foresight,phases` narrows that to a comma list (it needs `--stage extra`,
+and `compute --help` lists the stages), and `--workers 2` runs the parallel stages on fewer
+processes when memory is short (six by default, four with `--stage extra`; `all` takes it too).
+In `all`, `--only` names download sources (`all --only prices`): the build, the profiles and the
+compute that follow still run whole.
 
 `compute --stage extra --only overinstallation` writes `overinstallation.json`: for the
 deployment points of `zcurve.json`, the energy the customers beyond the static limit produce and
