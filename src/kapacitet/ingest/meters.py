@@ -170,10 +170,12 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
     # which rows are used, and why the others are not
     con.execute("""
         CREATE OR REPLACE TABLE parsed AS
-        SELECT p.*, f.offsets FROM parsed p
-        JOIN (SELECT file, count(DISTINCT off_min) AS offsets FROM parsed GROUP BY file) f USING (file)""")
+        SELECT p.*, f.offsets, m.meter_offsets FROM parsed p
+        JOIN (SELECT file, count(DISTINCT off_min) AS offsets FROM parsed GROUP BY file) f USING (file)
+        JOIN (SELECT customer_id, count(DISTINCT off_min) AS meter_offsets FROM parsed GROUP BY customer_id) m
+             USING (customer_id)""")
     con.execute("CREATE OR REPLACE TABLE flagged AS SELECT *, "
-                "offsets > 1 AND off_min <> sweden_min AS dst, "
+                "(offsets > 1 OR meter_offsets > 1) AND off_min <> sweden_min AS dst, "
                 "(epoch_us(t) % 900000000) <> 0 AS off_grid, "
                 "(NOT imp_blank AND kwh_import IS NULL) OR (NOT exp_blank AND kwh_export IS NULL) AS unreadable, "
                 "imp_blank AS empty, "

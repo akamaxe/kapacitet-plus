@@ -182,7 +182,8 @@ def build(years=None) -> dict:
             continue
         load = pd.Series(g["kwh_import"].to_numpy(dtype=float), index=pd.DatetimeIndex(g["start"]))
         f = fit(load, temps.reindex(load.index), base_c)
-        entry = {"customer_id": cid, "cid": int(i), "hours": f.hours, "complete_days": int(len(f.residual)),
+        entry = {"customer_id": cid, "cid": int(i), "hours": f.hours,
+                 "hours_without_temperature": int(load.notna().sum()) - f.hours, "complete_days": int(len(f.residual)),
                  "first": str(load.index.min()), "last": str(load.index.max()),
                  "export_seen": bool(np.nansum(g["kwh_export"].to_numpy(dtype=float)) > 0)}
         if len(f.residual) < MIN_DAYS:
@@ -211,9 +212,13 @@ def build(years=None) -> dict:
                       "export_seen": int(sum(r["export_seen"] for r in rows))},
         "median": {"r2": _round(_median([r["r2"] for r in fitted])),
                    "cv_rmse": _round(_median([r["cv_rmse"] for r in fitted]))},
+        "hours_without_temperature": int(sum(r["hours_without_temperature"] for r in rows)),
         "unmatched_meters": int(len(set(groups) - set(ids))),
         "note": ("Fitted on energy taken from the grid: where a customer has PV behind the meter (export_seen), "
-                 "the daytime load is understated. The load includes any electric heating the house has."),
+                 "the daytime load is understated. The load includes any electric heating the house has. "
+                 "A working day is Monday to Friday by local standard time, so Swedish public holidays count as "
+                 "working days. Hours without a temperature are left out of the fit "
+                 "(hours_without_temperature)."),
         "per_customer": rows,
     }
     processed("validation", "metered_fit.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
