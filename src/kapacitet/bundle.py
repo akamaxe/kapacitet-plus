@@ -6,9 +6,11 @@
     python -m kapacitet unbundle kapacitet-data.zip
 
 The archive holds data/... (and web/dist/... with --web) plus bundle-manifest.json, which records
-the version, the level and a sha256 for every file; unbundle checks each one. The data are derived
-from OpenStreetMap (ODbL), so a bundle is never committed with the MIT code: it is published as the
-asset of the release `data`, under ODbL (DATA-LICENSE.md).
+the version, the level, a sha256 for every file and its modification time; unbundle checks each
+sum and gives every file back its time, so a result unpacked elsewhere is still dated by when it
+was computed (the API's provenance reads those times), not by when it was unpacked. The data are
+derived from OpenStreetMap (ODbL), so a bundle is never committed with the MIT code: it is
+published as the asset of the release `data`, under ODbL (DATA-LICENSE.md).
 
 Unpacking is also what the setup page does with a bundle uploaded from the browser
 (api/setup.py), so it trusts nothing in the archive: it writes only under data/processed,
@@ -21,7 +23,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
+import time
 import zipfile
 import zlib
 from collections.abc import Callable
@@ -100,19 +104,21 @@ def make_bundle(out: str | Path, level: str = "full", web: bool = False, data_di
         raise BundleError("nothing_computed", folder=str(data_dir))
     out = Path(out)
     manifest: dict = {"kapacitet": __version__, "created": datetime.now(timezone.utc).isoformat(),
-                      "level": level, "web": web, "files": {}}
+                      "level": level, "web": web, "files": {}, "mtimes": {}}
+
+    def add(z: zipfile.ZipFile, f: Path, rel: str) -> None:
+        manifest["files"][rel] = _sha256(f)
+        manifest["mtimes"][rel] = round(f.stat().st_mtime, 3)
+        z.write(f, rel)
+
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for f in _files(data_dir, level):
-            rel = "data/" + f.relative_to(data_dir).as_posix()
-            manifest["files"][rel] = _sha256(f)
-            z.write(f, rel)
+            add(z, f, "data/" + f.relative_to(data_dir).as_posix())
         if web:
             if not (WEB_DIST / "index.html").exists():
                 raise BundleError("web_not_built")
             for f in sorted(p for p in WEB_DIST.rglob("*") if p.is_file()):
-                rel = "web/dist/" + f.relative_to(WEB_DIST).as_posix()
-                manifest["files"][rel] = _sha256(f)
-                z.write(f, rel)
+                add(z, f, "web/dist/" + f.relative_to(WEB_DIST).as_posix())
         z.writestr(MANIFEST, json.dumps(manifest, indent=1))
     return manifest
 
@@ -163,8 +169,28 @@ def _destination(name: str, data_dir: Path, web_dir: Path) -> tuple[str, Path]:
     return kind, dest
 
 
-def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, dest: Path) -> None:
-    """Stream one entry through its checksum into a temporary file, then put it in place."""
+# Modification times outside this range are not believed (a hostile manifest, a broken clock).
+_MTIME_RANGE = (0.0, 2.0**33)
+
+
+def _mtime(manifest: dict, name: str, info: zipfile.ZipInfo) -> float | None:
+    """When the file was last written where the bundle was made: the manifest's time, or, for a
+    bundle made before it recorded them, the archive's own entry time (local time, to 2 s)."""
+    mtimes = manifest.get("mtimes")
+    value = mtimes.get(name) if isinstance(mtimes, dict) else None
+    finite = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    if finite and _MTIME_RANGE[0] < value < _MTIME_RANGE[1]:
+        return float(value)
+    try:
+        return time.mktime(info.date_time + (0, 0, -1))
+    except (OverflowError, ValueError):
+        return None
+
+
+def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, dest: Path,
+             mtime: float | None = None) -> None:
+    """Stream one entry through its checksum into a temporary file, give it its modification time,
+    then put it in place."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_name(dest.name + ".part")
     h = hashlib.sha256()
@@ -179,6 +205,11 @@ def _extract(z: zipfile.ZipFile, info: zipfile.ZipInfo, name: str, digest: str, 
                 out.write(chunk)
         if h.hexdigest() != digest.lower():
             raise BundleError("damaged", entry=name)
+        if mtime is not None:
+            try:
+                os.utime(tmp, (mtime, mtime))
+            except (OSError, OverflowError, ValueError):
+                pass        # a file system that keeps no times: the file still counts
         os.replace(tmp, dest)
     except (zipfile.BadZipFile, zlib.error, EOFError) as err:
         raise BundleError("damaged", entry=name) from err
@@ -225,7 +256,7 @@ def unpack_bundle(path: str | Path, data_dir: Path | None = None, web_dir: Path 
             if dest.exists() and not force:
                 skipped += 1
             else:
-                _extract(z, info, name, digest, dest)
+                _extract(z, info, name, digest, dest, _mtime(manifest, name, info))
                 written += 1
             if progress is not None:
                 progress(done, len(plan))

@@ -292,3 +292,78 @@ def test_decision_log_lists_sealed_decisions_with_digests(client):
     rows = r.text.strip().splitlines()
     assert rows[0].startswith("decided,assessment,house,address,decision,note")
     assert "Testvägen 7" in rows[1] and "nonfirm" in rows[1] and len(rows[1].split(",")[-3]) == 64
+
+
+# ---------------------------------------------------------------- provenance (no data needed)
+
+@pytest.fixture()
+def data_folder(tmp_path, monkeypatch):
+    """The API reading a data folder of the test's own."""
+    from kapacitet.api import main
+
+    monkeypatch.setattr(main, "processed", lambda *parts: tmp_path.joinpath(*parts))
+    (tmp_path / "results").mkdir()
+    return tmp_path
+
+
+def _write(path, body: str, stamp: float):
+    import os
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(body, encoding="utf-8")
+    os.utime(path, (stamp, stamp))
+    return path
+
+
+def test_a_result_is_dated_by_its_own_newest_file(data_folder):
+    """A stage rerun on its own writes no meta.json: its results still carry their own date."""
+    from datetime import datetime, timezone
+
+    from kapacitet.api import main
+
+    full = "2026-09-19T12:03:00+00:00"
+    _write(data_folder / "results" / "meta.json", '{"computed_at": "%s"}' % full, 1_758_283_380)
+    old = _write(data_folder / "results" / "tornado.json", "{}", 1_760_000_000)
+    new = _write(data_folder / "results" / "overinstallation.json", "{}", 1_762_000_000)
+    prov = main.provenance("elprisetjustnu", files=[old, new, data_folder / "results" / "missing.json"])
+    newest = datetime.fromtimestamp(1_762_000_000, timezone.utc).isoformat()
+    assert prov["run_id"] == prov["computed_at"] == newest
+    assert prov["full_run_at"] == full
+    assert set(prov["files"]) == {"results/tornado.json", "results/overinstallation.json"}
+    # without files of its own, a response is dated by the last full run, as before
+    assert main.provenance("osm")["run_id"] == full
+
+
+def test_meta_says_when_the_results_last_changed(client, data_folder):
+    from datetime import datetime, timezone
+
+    _write(data_folder / "results" / "meta.json", '{"computed_at": "2026-09-19T12:03:00+00:00"}', 1_758_283_380)
+    _write(data_folder / "results" / "operation" / "dayahead" / "maxmin" / "compliance.json", "{}", 1_762_040_460)
+    body = client.get(f"{API}/meta").json()
+    assert body["run"]["computed_at"] == "2026-09-19T12:03:00+00:00"
+    assert body["results_updated_at"] == datetime.fromtimestamp(1_762_040_460, timezone.utc).isoformat()
+
+
+def test_real_and_synthetic_follow_what_the_data_folder_holds(data_folder):
+    import numpy as np
+    import pandas as pd
+
+    from kapacitet.api import main
+
+    prov = main.provenance()
+    assert any("OpenStreetMap" in s for s in prov["real"])
+    assert any(s.startswith("LV network topology") for s in prov["synthetic"])
+    assert "household load (CREST/richardsonpy)" in prov["synthetic"]
+    # an operator's network, with metered load and an inventory of what is connected today
+    _write(data_folder / "grid" / "summary.json", '{"site": "imported", "imported": true}', 1_762_000_000)
+    (data_folder / "households").mkdir()
+    np.save(data_folder / "households" / "metered_2025.npy", np.zeros((2, 3)))
+    pd.DataFrame({"cid": [0], "existing_pv_kw": [3.0]}).to_parquet(data_folder / "grid" / "customers.parquet")
+    prov = main.provenance()
+    assert any(s.startswith("LV network topology") for s in prov["real"])
+    assert not any(s.startswith("LV network topology") for s in prov["synthetic"])
+    assert "household load (metered, temperature-corrected)" in prov["real"]
+    assert not any("CREST" in s for s in prov["synthetic"])
+    assert any("inventory" in s for s in prov["real"])
+    # what is modelled whatever the inputs
+    assert any("EV charging" in s for s in prov["synthetic"])

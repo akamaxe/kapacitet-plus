@@ -1,7 +1,8 @@
 """Kapacitet+ API (FastAPI). Run with: python -m kapacitet serve  →  http://127.0.0.1:8000
 
-Every JSON response that carries results includes a `provenance` block (run id, data sources,
-synthetic parts). OpenAPI documentation is served at /docs.
+Every JSON response that carries results includes a `provenance` block: when its own files were
+computed, the full run behind them, the data sources, and which inputs are real and which
+synthetic. OpenAPI documentation is served at /docs.
 """
 
 from __future__ import annotations
@@ -19,8 +20,10 @@ import threading
 import time
 import uuid
 import warnings
+from collections.abc import Iterable
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -195,19 +198,127 @@ def result(name: str) -> Any:
     return _cached(name, path.stat().st_mtime)
 
 
-def provenance(*sources: str) -> dict:
-    meta = processed("results", "meta.json")
-    run = json.loads(meta.read_text(encoding="utf-8")) if meta.exists() else {}
+def result_path(name: str) -> Path:
+    """The file behind result(name): what a response passes to provenance(files=...)."""
+    return processed("results", name)
+
+
+def _iso(stamp: float) -> str:
+    return datetime.fromtimestamp(stamp, timezone.utc).isoformat()
+
+
+@memo(maxsize=16)
+def _json_version(path: str, stamp: float) -> dict:
+    try:
+        out = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return out if isinstance(out, dict) else {}
+
+
+def _small_json(path: Path) -> dict:
+    """A small JSON file (meta.json, grid/summary.json), read once per version; {} when absent.
+    Shared between calls: read it, never change it."""
+    try:
+        stamp = path.stat().st_mtime
+    except OSError:
+        return {}
+    return _json_version(str(path), stamp)
+
+
+@memo(maxsize=4)
+def _has_inventory(path: str, stamp: float) -> bool:
+    """customers.parquet carries the operator's equipment (the importer's `existing_*` columns)."""
+    try:
+        import pyarrow.parquet as pq
+
+        return any(name.startswith("existing_") for name in pq.read_schema(path).names)
+    except Exception:  # noqa: BLE001 - an unreadable table simply has no inventory
+        return False
+
+
+def data_origin() -> dict[str, list[str]]:
+    """Which inputs of this data folder are real and which synthetic, from what it holds: an
+    operator's network (grid/summary.json says `imported`), metered household load (the
+    temperature-corrected years, households/metered_<year>.npy) and an equipment inventory."""
+    imported = _small_json(processed("grid", "summary.json")).get("imported") is True
+    households = processed("households")
+    metered = households.is_dir() and any(households.glob("metered_*.npy"))
+    cust = processed("grid", "customers.parquet")
+    try:
+        inventory = _has_inventory(str(cust), cust.stat().st_mtime)
+    except OSError:
+        inventory = False
+    real: list[str] = []
+    synthetic: list[str] = []
+    if imported:
+        real.append("LV network topology, cables, cabinets, transformer and fuses (the operator's export)")
+    else:
+        real.append("buildings, addresses, streets and the substation's position (OpenStreetMap)")
+        synthetic.append("LV network topology, cables, cabinets, transformer and fuses "
+                         "(built on the OpenStreetMap streets)")
+    real.append("weather (SMHI) and spot prices")
+    if metered:
+        real.append("household load (metered, temperature-corrected)")
+    else:
+        synthetic.append("household load (CREST/richardsonpy)")
+    if inventory:
+        real.append("existing PV, batteries, EV chargers and heat pumps (the operator's inventory)")
+    else:
+        synthetic.append("who has PV, a heat pump or an EV today (adoption shares, fixed seeds)")
+    synthetic.append("heat-pump demand, EV charging and the sizing of new PV (modelled)")
+    return {"real": real, "synthetic": synthetic}
+
+
+def provenance(*sources: str, files: Iterable[Path] = ()) -> dict:
+    """Where a response comes from.
+
+    `computed_at` is the newest modification time among the response's own `files`, so a stage
+    rerun alone (`compute --stage extra --only ...`) dates what it wrote; `run_id` is the same
+    value under the name the interface already prints. Without files, both fall back to the last
+    full run, `full_run_at`: results/meta.json, which only a whole compute writes. `files` lists
+    each file's own time, `sources` the attributions and `real`/`synthetic` the inputs.
+    """
+    full = _small_json(processed("results", "meta.json")).get("computed_at")
+    root = processed()
+    stamps: dict[str, float] = {}
+    for f in files:
+        f = Path(f)
+        try:
+            stamp = f.stat().st_mtime
+        except OSError:
+            continue
+        try:
+            rel = f.relative_to(root).as_posix()
+        except ValueError:
+            rel = f.name
+        stamps[rel] = stamp
+    computed = _iso(max(stamps.values())) if stamps else full
     return {
-        "run_id": run.get("computed_at"),
+        "run_id": computed,
+        "computed_at": computed,
+        "full_run_at": full,
+        "files": {rel: _iso(stamp) for rel, stamp in sorted(stamps.items())},
         "sources": [SOURCES[s].attribution for s in sources if s in SOURCES],
-        "synthetic": ["LV network topology, cables, cabinets, transformer and fuses",
-                      "household load (CREST/richardsonpy), heat pumps, EV charging, PV sizing"],
+        **data_origin(),
     }
 
 
-def with_prov(obj: Any, *sources: str) -> dict:
-    return {"data": obj, "provenance": provenance(*sources)}
+def with_prov(obj: Any, *sources: str, files: Iterable[Path] = ()) -> dict:
+    return {"data": obj, "provenance": provenance(*sources, files=files)}
+
+
+def _newest_under(folder: Path) -> float | None:
+    newest = None
+    if folder.is_dir():
+        for f in folder.rglob("*"):
+            try:
+                if f.is_file():
+                    stamp = f.stat().st_mtime
+                    newest = stamp if newest is None or stamp > newest else newest
+            except OSError:
+                continue
+    return newest
 
 
 # ------------------------------------------------------------------------------ basics
@@ -268,6 +379,9 @@ def meta() -> dict:
         p = processed("results", name)
         if p.exists():
             out["run"] = json.loads(p.read_text(encoding="utf-8"))
+    # the last full run is run.computed_at; a stage rerun alone since then shows here
+    newest = _newest_under(processed("results"))
+    out["results_updated_at"] = _iso(newest) if newest is not None else None
     g = processed("grid", "summary.json")
     if g.exists():
         out["grid"] = json.loads(g.read_text(encoding="utf-8"))
@@ -378,7 +492,8 @@ def _example() -> dict[str, str]:
 @app.get(f"{API}/contract/example", tags=["import"])
 def contract_example() -> dict:
     """The reference network in the contract's four tables, as CSV text: a worked example."""
-    return {"files": _example(), "provenance": provenance("osm", "synthetic_grid")}
+    return {"files": _example(),
+            "provenance": provenance("osm", "synthetic_grid", files=[processed("grid", "net.json")])}
 
 
 @app.get(f"{API}/contract/example.zip", tags=["import"])
@@ -601,7 +716,10 @@ def _network(stamp: tuple) -> dict:
     bbox = [float(lons[ok].min()), float(lats[ok].min()), float(lons[ok].max()), float(lats[ok].max())] if ok.any() else None
     return {"type": "FeatureCollection", "features": feats,
             "bbox": bbox,
-            "bus_order": buses["bus"].tolist(), "provenance": provenance("osm", "synthetic_grid")}
+            "bus_order": buses["bus"].tolist(),
+            "provenance": provenance("osm", "synthetic_grid", files=[
+                *(processed("grid", n) for n in ("customers.parquet", "lines.parquet", "buses.parquet", "substation.json")),
+                result_path("showcase.json"), result_path("nodal.json")])}
 
 
 @app.get(f"{API}/zones", tags=["national"])
@@ -616,12 +734,14 @@ def zones() -> Response:
 
 @app.get(f"{API}/national", tags=["national"])
 def national() -> dict:
-    return with_prov(result("national.json"), "esett", "elprisetjustnu", "zones", "capacity_maps")
+    return with_prov(result("national.json"), "esett", "elprisetjustnu", "zones", "capacity_maps",
+                     files=[result_path("national.json")])
 
 
 @app.get(f"{API}/series/{{year}}", tags=["twin"])
 def series(year: int) -> dict:
-    return with_prov(result(f"series_{year}.json"), "smhi_strang", "smhi_metobs", "elprisetjustnu")
+    return with_prov(result(f"series_{year}.json"), "smhi_strang", "smhi_metobs", "elprisetjustnu",
+                     files=[result_path(f"series_{year}.json")])
 
 
 STATES = ("static", "uncontrolled", "doe")
@@ -675,58 +795,63 @@ def state_bin(name: str, request: Request, basis: str | None = Query(None, patte
 
 @app.get(f"{API}/hosting", tags=["hosting"])
 def hosting_summary() -> dict:
+    names = ["hosting_summary.json", "zcurve.json", "nodal.json"]
     out = {"summary": result("hosting_summary.json"), "curve": result("zcurve.json"), "nodal": result("nodal.json")}
     for name in ("tornado.json", "foresight.json"):
         if processed("results", name).exists():
             out[name.split(".")[0]] = result(name)
-    return with_prov(out, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid")
+            names.append(name)
+    return with_prov(out, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid", files=map(result_path, names))
 
 
 @app.get(f"{API}/showcase", tags=["doe"])
 def showcase(heatmaps: bool = Query(True, description="false: leave out the hour-by-month heatmaps (/showcase/heatmaps)")) -> dict:
     body = {"showcase": result("showcase.json")}
+    names = ["showcase.json"]
     if heatmaps:
         body["heatmaps"] = result("heatmaps.json")
-    return with_prov(body, "smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
+        names.append("heatmaps.json")
+    return with_prov(body, "smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid",
+                     files=map(result_path, names))
 
 
 @app.get(f"{API}/showcase/heatmaps", tags=["doe"])
 def showcase_heatmaps() -> dict:
     """When the envelopes bind, hour by month: fetched by the section that draws it, when it nears."""
-    return with_prov(result("heatmaps.json"), "smhi_strang", "smhi_metobs", "synthetic_grid")
+    return with_prov(result("heatmaps.json"), "smhi_strang", "smhi_metobs", "synthetic_grid", files=[result_path("heatmaps.json")])
 
 
 @app.get(f"{API}/risk", tags=["doe"])
 def risk() -> dict:
-    return with_prov(result("risk.json"), "smhi_strang", "smhi_metobs")
+    return with_prov(result("risk.json"), "smhi_strang", "smhi_metobs", files=[result_path("risk.json")])
 
 
 @app.get(f"{API}/scenarios", tags=["scenarios"])
 def scenarios() -> dict:
-    return with_prov(result("scenarios.json"), "smhi_strang", "smhi_metobs", "scb")
+    return with_prov(result("scenarios.json"), "smhi_strang", "smhi_metobs", "scb", files=[result_path("scenarios.json")])
 
 
 @app.get(f"{API}/validation", tags=["provenance"])
 def validation() -> dict:
-    return with_prov(result("validation.json"), "smhi_strang", "smhi_metobs", "esett", "scb")
+    return with_prov(result("validation.json"), "smhi_strang", "smhi_metobs", "esett", "scb", files=[result_path("validation.json")])
 
 
 @app.get(f"{API}/forecast", tags=["doe"])
 def forecast_schemes() -> dict:
     """The published envelopes against three day-ahead schemes: what perfect foresight is worth."""
-    return with_prov(result("forecast.json"), "smhi_strang", "smhi_metobs", "synthetic_grid")
+    return with_prov(result("forecast.json"), "smhi_strang", "smhi_metobs", "synthetic_grid", files=[result_path("forecast.json")])
 
 
 @app.get(f"{API}/protection", tags=["hosting"])
 def protection() -> dict:
     """Whether a fault at the far end of each feeder, and at each house, blows its fuse in time."""
-    return with_prov(result("protection.json"), "osm", "synthetic_grid")
+    return with_prov(result("protection.json"), "osm", "synthetic_grid", files=[result_path("protection.json")])
 
 
 @app.get(f"{API}/phases", tags=["hosting"])
 def phases() -> dict:
     """Static capacity when single-phase inverters and unknown phases are modelled."""
-    return with_prov(result("phases.json"), "osm", "synthetic_grid")
+    return with_prov(result("phases.json"), "osm", "synthetic_grid", files=[result_path("phases.json")])
 
 
 @app.get(f"{API}/overinstallation", tags=["hosting"])
@@ -735,7 +860,8 @@ def overinstallation() -> dict:
     from ..engine.summaries import overinstallation_summary
 
     return with_prov(overinstallation_summary(result("overinstallation.json")),
-                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
+                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid",
+                     files=[result_path("overinstallation.json")])
 
 
 @app.get(f"{API}/reinforcement", tags=["hosting"])
@@ -749,7 +875,8 @@ def reinforcement() -> dict:
             "reinforce_urban_supplement_sek", "reinforce_price_level_year")
     over = overinstallation_summary(result("overinstallation.json"))
     return with_prov(reinforce(result("tornado.json"), over, {k: A(k) for k in keys}),
-                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid")
+                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid",
+                     files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 
 @app.get(f"{API}/business", tags=["hosting"])
@@ -762,7 +889,8 @@ def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
 
     horizon = years or dso.load().deferral_years
     reinf = reinforcement()["data"]
-    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon), "elprisetjustnu", "synthetic_grid")
+    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon), "elprisetjustnu", "synthetic_grid",
+                     files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 
 # ---------------------------------------------------------------- annual filing and audit trail
@@ -791,7 +919,8 @@ def compliance_report(basis: str | None = Query(None, pattern=BASIS_PATTERN),
     worst = rep.get("worst_uncontrolled") or {}
     if worst.get("timestamp"):
         rep["worst_uncontrolled"] = {**worst, "hour": hour_of_timestamp(worst["timestamp"], rep["year"])}
-    return with_prov(rep, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid")
+    return with_prov(rep, "smhi_strang", "smhi_metobs", "osm", "synthetic_grid",
+                     files=[combo.result("compliance.json")])
 
 
 @app.get(f"{API}/compliance.txt", tags=["compliance"])
@@ -813,10 +942,15 @@ def _audit_table(path: str, stamp: float) -> tuple[list[str], list[dict]]:
         return list(reader.fieldnames or []), list(reader)
 
 
-def _audit(cid: int | None, basis: str | None = None, policy: str | None = None) -> tuple[list[str], list[dict]]:
+def _audit_path(basis: str | None = None, policy: str | None = None) -> Path:
     path = resolve(basis, policy).result("audit_trail.csv")
     if not path.exists():
         raise not_computed("audit_trail.csv")
+    return path
+
+
+def _audit(cid: int | None, basis: str | None = None, policy: str | None = None) -> tuple[list[str], list[dict]]:
+    path = _audit_path(basis, policy)
     cols, rows = _audit_table(str(path), path.stat().st_mtime)
     if cid is not None:
         rows = [r for r in rows if int(r["customer_id"]) == cid]
@@ -843,7 +977,7 @@ def audit(cid: int | None = Query(None, ge=0), limit: int = Query(200, ge=1, le=
     cols, rows = _audit(cid, basis, policy)
     page = [{k: _audit_value(k, v) for k, v in r.items()} for r in rows[offset:offset + limit]]
     return {"columns": cols, "total": len(rows), "offset": offset, "limit": limit, "rows": page,
-            "provenance": provenance("smhi_strang", "osm", "synthetic_grid")}
+            "provenance": provenance("smhi_strang", "osm", "synthetic_grid", files=[_audit_path(basis, policy)])}
 
 
 @app.get(f"{API}/audit.csv", tags=["compliance"])
@@ -1029,11 +1163,16 @@ def _sweep_jobs() -> None:
 _REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
 
 
+def _request_files() -> list[Path]:
+    """What a live assessment is computed against: the request baselines and the showcase."""
+    return [processed("request", "static.json"), processed("request", "doe.json"), result_path("showcase.json")]
+
+
 def make_record(job_id: str, created: float, request: dict, result: dict) -> dict:
     """What is kept of an assessment: the question, the full answer and what it was computed with."""
     return {"id": job_id, "created": datetime.fromtimestamp(created, timezone.utc).isoformat(),
             "request": request, "result": json.loads(json.dumps(result, default=_json_default)),
-            "version": __version__, "provenance": provenance(*_REQUEST_SOURCES)}
+            "version": __version__, "provenance": provenance(*_REQUEST_SOURCES, files=_request_files())}
 
 
 def _record(job_id: str, job: dict, result: dict) -> dict:
@@ -1213,7 +1352,7 @@ def evaluate_sync(body: RequestIn) -> JSONResponse:
     ctx = _context_for(body)
     eng = _engine()
     out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
-    out["provenance"] = provenance("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
+    out["provenance"] = provenance(*_REQUEST_SOURCES, files=_request_files())
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
 
 

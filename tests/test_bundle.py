@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import time
 import zipfile
 
 import pytest
@@ -179,7 +181,8 @@ def test_showcase_is_written_last_and_progress_counts_every_file(data, tmp_path,
     make_bundle(out, data_dir=root)
     order, seen = [], []
     real = b._extract
-    monkeypatch.setattr(b, "_extract", lambda z, info, name, digest, dest: (order.append(name), real(z, info, name, digest, dest)))
+    monkeypatch.setattr(b, "_extract", lambda z, info, name, digest, dest, *rest: (order.append(name),
+                                                                                     real(z, info, name, digest, dest, *rest)))
     unpack_bundle(out, data_dir=tmp_path / "t", progress=lambda done, total: seen.append((done, total)))
     assert order[-1] == b.LAST
     assert seen[-1] == (len(files), len(files)) and len(seen) == len(files)
@@ -207,3 +210,50 @@ def test_an_archive_that_unpacks_to_too_much_is_refused_before_writing(data, tmp
     monkeypatch.setattr(b, "MAX_TOTAL", 100)
     assert _codes(lambda: unpack_bundle(out, data_dir=tmp_path / "t")) == "bundle_too_large"
     assert not (tmp_path / "t").exists() or not any((tmp_path / "t").rglob("*"))
+
+
+# ---------------------------------------------------------------- modification times travel
+# The API dates each result by its file's modification time, so unpacking must not reset them.
+
+def test_a_round_trip_keeps_each_files_modification_time(data, tmp_path):
+    root, files = data
+    base = time.time() - 30 * 86400
+    stamps = {rel: base + 3600 * i + 0.25 for i, rel in enumerate(sorted(files))}
+    for rel, mt in stamps.items():
+        os.utime(root / rel, (mt, mt))
+    out = tmp_path / "b.zip"
+    manifest = make_bundle(out, data_dir=root)
+    assert set(manifest["mtimes"]) == set(manifest["files"])
+    target = tmp_path / "elsewhere"
+    unpack_bundle(out, data_dir=target, web_dir=tmp_path / "web")
+    for rel, mt in stamps.items():
+        assert abs((target / rel).stat().st_mtime - mt) < 2, rel
+
+
+def test_a_bundle_made_before_it_kept_times_falls_back_on_the_archives_own(tmp_path):
+    entries = {"data/processed/results/showcase.json": b"{}", "data/processed/results/risk.json": b"[]"}
+    when = (2026, 9, 19, 12, 3, 30)
+    z_path = tmp_path / "old.zip"
+    with zipfile.ZipFile(z_path, "w") as z:
+        for name, body in entries.items():
+            z.writestr(zipfile.ZipInfo(name, date_time=when), body)
+        z.writestr(MANIFEST, _manifest(entries))         # no "mtimes": an older bundle
+    unpack_bundle(z_path, data_dir=tmp_path / "d")
+    expected = time.mktime(when + (0, 0, -1))
+    assert abs((tmp_path / "d" / "processed" / "results" / "risk.json").stat().st_mtime - expected) < 2
+
+
+@pytest.mark.parametrize("bad", ["yesterday", 1e300, -5, True, None])
+def test_a_time_that_makes_no_sense_is_not_believed(tmp_path, bad):
+    body = b"{}"
+    name = "data/processed/results/showcase.json"
+    when = (2026, 10, 1, 8, 0, 0)
+    z_path = tmp_path / "x.zip"
+    with zipfile.ZipFile(z_path, "w") as z:
+        z.writestr(zipfile.ZipInfo(name, date_time=when), body)
+        z.writestr(MANIFEST, json.dumps({"kapacitet": "x", "created": "", "level": "full", "web": False,
+                                         "files": {name: hashlib.sha256(body).hexdigest()},
+                                         "mtimes": {name: bad}}))
+    unpack_bundle(z_path, data_dir=tmp_path / "d")
+    got = (tmp_path / "d" / "processed" / "results" / "showcase.json").stat().st_mtime
+    assert abs(got - time.mktime(when + (0, 0, -1))) < 2
