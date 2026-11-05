@@ -14,7 +14,6 @@ export const KEYS: [string, string][] = [
   ["PageUp / PageDown", "keys.page"],
   ["⌘ / Ctrl + K", "keys.palette"],
   ["/", "keys.search"],
-  ["N", "keys.notes"],
   ["F", "keys.fullscreen"],
   ["?", "keys.help"],
   ["Esc", "keys.close"],

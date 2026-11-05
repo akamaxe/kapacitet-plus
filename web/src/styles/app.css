@@ -921,42 +921,6 @@ table.data th.r {
   line-height: var(--lh-h1);
 }
 
-/* ---------------------------------------------------------------- presenter notes */
-.notes {
-  position: fixed;
-  right: var(--space-4);
-  top: calc(var(--topbar-h) + var(--space-3));
-  width: min(410px, calc(100vw - 32px));
-  max-height: calc(100dvh - var(--topbar-h) - var(--statusbar-h) - var(--space-6));
-  transition: transform var(--dur-drawer) var(--ease-drawer), opacity var(--dur-drawer) var(--ease-drawer);
-  overflow-y: auto;
-  background: var(--bg-elevated);
-  color: var(--text-primary);
-  border-radius: var(--radius-lg);
-  padding: var(--space-4) var(--space-5);
-  z-index: var(--z-overlay);
-  font-size: var(--text-small);
-  box-shadow: var(--shadow-popover);
-}
-
-@starting-style {
-  .notes { opacity: 0; transform: translateX(24px); }
-}
-
-.notes h4 {
-  font-size: var(--text-small);
-  margin: 0;
-  color: var(--text-muted);
-  font-weight: 500;
-}
-
-.notes ul {
-  margin: 0;
-  padding-left: var(--space-4);
-  display: grid;
-  gap: var(--space-1);
-}
-
 /* ---------------------------------------------------------------- misc */
 .empty {
   display: grid;
@@ -1063,7 +1027,6 @@ table.data th.r {
     scroll-behavior: auto !important;
   }
 
-  .notes,
   .toast {
     transform: none !important;
   }

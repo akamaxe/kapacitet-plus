@@ -175,10 +175,9 @@ prices can be fetched from the source for all 11 weather years.
 
 ### Demo in five minutes
 
-Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for fullscreen and
-**N** for the presenter notes. **1**–**8** jump straight to a screen, Ctrl + arrow keys or
-PageUp/PageDown step through them, **EN**/**SV** in the top bar switch language, and **?** lists
-every key.
+Start `python -m kapacitet serve`, open `http://127.0.0.1:8000` and press **F** for fullscreen.
+**1**–**8** jump straight to a screen, Ctrl + arrow keys or PageUp/PageDown step through them,
+**EN**/**SV** in the top bar switch language, and **?** lists every key.
 
 **Ctrl + K** is the way in if you know what you are looking for: it searches the eight screens,
 all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the

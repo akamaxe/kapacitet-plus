@@ -8,7 +8,6 @@ const paths = {
   method: "M9 4H5v16h14V4h-4M9 3h6v4H9V3Zm0 9h6m-6 4h6",
   report: "M6 3h9l4 4v14H6V3Zm9 0v4h4M9 17v-3m3 3v-6m3 6v-4",
   arrow: "M4 12h16m-6-6 6 6-6 6",
-  notes: "M5 3h14v18H5V3Zm4 5h6m-6 4h6m-6 4h3",
   expand: "M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5",
   close: "m6 6 12 12M6 18 18 6",
   menu: "M4 7h16M4 12h16M4 17h16",

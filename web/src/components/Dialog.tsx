@@ -1,9 +1,11 @@
 /**
- * The one dialog primitive: the command palette, the shortcut sheet and the presenter
- * drawer all use it, so keyboard behaviour cannot drift between them.
+ * The one dialog primitive: the command palette, the key sheet, the menu sheet, the decision
+ * and confirm dialogs and the imported networks all use it, so keyboard behaviour cannot drift
+ * between them.
  *
- * Not `<dialog>`: its `::backdrop` and top layer sit outside the token system, and the
- * drawer needs the same Escape and focus handling without a scrim or a modal trap.
+ * Not `<dialog>`: its `::backdrop` and top layer sit outside the token system, and a layer
+ * without a scrim (useDismissable with `modal` false) needs the same Escape and focus handling
+ * without a modal trap.
  */
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -12,9 +14,9 @@ const FOCUSABLE =
   'a[href], button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 /**
- * Open layers, newest last. Escape closes only the newest, so a palette opened over the
- * notes drawer closes alone; and while any modal layer is open the global shortcuts stay
- * quiet, so a digit typed under the key sheet does not change the screen behind it.
+ * Open layers, newest last. Escape closes only the newest, so a dialog opened over another
+ * closes alone; and while any modal layer is open the global shortcuts stay quiet, so a digit
+ * typed under the key sheet does not change the screen behind it.
  */
 const layers: { id: number; modal: boolean }[] = [];
 let nextLayer = 0;

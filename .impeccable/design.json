@@ -343,7 +343,7 @@
       {
         "name": "float",
         "value": "0 0 0 1px rgba(22, 32, 43, 0.08), 0 10px 28px -8px rgba(22, 32, 43, 0.22)",
-        "purpose": "Day. Only floating layers: dialogs, palette, toasts, notes drawer, glossary popovers, tooltips. The tour card and the offline-map note are edged, never shadowed."
+        "purpose": "Day. Only floating layers: dialogs, palette, toasts, glossary popovers, tooltips. The tour card and the offline-map note are edged, never shadowed."
       },
       {
         "name": "float-night",
@@ -356,11 +356,6 @@
         "name": "ease",
         "value": "cubic-bezier(0.23, 1, 0.32, 1)",
         "purpose": "Everything that responds."
-      },
-      {
-        "name": "ease-drawer",
-        "value": "cubic-bezier(0.32, 0.72, 0, 1)",
-        "purpose": "The notes drawer."
       },
       {
         "name": "ease-in-out",
@@ -381,11 +376,6 @@
         "name": "dur-panel",
         "value": "200ms",
         "purpose": "Toasts, meters, the request answer rising in, the tour card rising 8 px, a chart's first draw."
-      },
-      {
-        "name": "dur-drawer",
-        "value": "240ms",
-        "purpose": "Notes drawer slide-in."
       },
       {
         "name": "dur-exit",

@@ -74,8 +74,6 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
   const setLang = useStore((s) => s.setLang);
   const theme = useStore((s) => s.theme);
   const setTheme = useStore((s) => s.setTheme);
-  const notes = useStore((s) => s.notes);
-  const toggleNotes = useStore((s) => s.toggleNotes);
   const barRef = useRef<HTMLElement>(null);
   const probeRef = useRef<HTMLDivElement>(null);
   const folded = useFold(barRef, probeRef);
@@ -105,9 +103,6 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
           <Icon name="search" size={16} />
           <span className="top-search-label">{t("pal.searchHint")}</span>
           <kbd>Ctrl K</kbd>
-        </button>
-        <button className="top-tool" onClick={toggleNotes} aria-pressed={notes} title={`${t("ui.notes")} (N)`} aria-label={t("ui.notes")}>
-          <Icon name="notes" size={18} />
         </button>
         <div className="top-lang" role="group" aria-label={t("shell.language")}>
           {LANGS.map((l) => (

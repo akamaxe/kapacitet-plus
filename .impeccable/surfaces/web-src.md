@@ -64,7 +64,7 @@ envelopes. They can then test one connection, read its verdict with the hours be
 see what issuing the limits the day before costs.
 
 FIRST VIEWPORT (Static vs envelopes, 1536×730):
-- **Top bar:** wordmark, scope, the eight screens, search, notes, language and theme.
+- **Top bar:** wordmark, scope, the eight screens, search, language and theme.
 - **Left, about 60 %:** `NetworkMap.tsx`, the Smedslätten network on the real map in 3D, with its key.
 - **Right, about 40 %:**
   - the h1;
@@ -94,7 +94,6 @@ Signature interaction: the network map is live.
 Motion grammar:
 - Map colours change in place with no transition, and none during playback.
 - The palette and dialogs open without animation.
-- The notes drawer slides in over 240 ms.
 - Presses scale to 0.97.
 - Reduced motion keeps only opacity and colour.
 

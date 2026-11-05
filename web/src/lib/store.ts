@@ -161,7 +161,6 @@ interface State {
   screen: Screen;
   lang: Lang;
   theme: Theme;
-  notes: boolean;
   hour: number;
   /** true once the viewer has moved the hour; until then the twin opens on the showcase hour from /meta */
   hourTouched: boolean;
@@ -185,7 +184,7 @@ interface State {
   tourOffered: boolean;
   /** a link named a screen that does not exist; App says so once */
   notFound: string | null;
-  /** the shortcuts that are one character (the screen numbers, N, F, /, ?), which a speech-input user may need off */
+  /** the shortcuts that are one character (the screen numbers, F, /, ?), which a speech-input user may need off */
   singleKeys: boolean;
   setSingleKeys: (on: boolean) => void;
   setTour: (step: number | null, instant?: boolean) => void;
@@ -193,7 +192,6 @@ interface State {
   /** switches once the language's dictionary has loaded, so nothing shows in a half-loaded language */
   setLang: (l: Lang) => Promise<void>;
   setTheme: (t: Theme) => void;
-  toggleNotes: () => void;
   setHour: (h: number) => void;
   setScenario: (s: Scenario) => void;
   setPlaying: (p: boolean) => void;
@@ -215,7 +213,6 @@ export const useStore = create<State>((set) => ({
   lang: ((v) => (isLang(v) ? v : "en"))(readLS("kap.lang", "en")),
   // day is the default (DESIGN.md); a value this version does not know falls back to it
   theme: ((t) => (THEMES.includes(t) ? t : "light") as Theme)(readLS("kap.theme", "light")),
-  notes: false,
   hour: initial.hour ?? DEFAULT_HOUR,
   hourTouched: initial.hour !== undefined,
   scenario: initial.scenario ?? "doe",
@@ -256,7 +253,6 @@ export const useStore = create<State>((set) => ({
     applyTheme(theme);
     set({ theme });
   },
-  toggleNotes: () => set((s) => ({ notes: !s.notes })),
   setHour: (hour) => {
     set({ hour, hourTouched: true });
     scheduleHashWrite();

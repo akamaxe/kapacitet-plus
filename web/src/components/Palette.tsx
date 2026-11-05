@@ -40,7 +40,6 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
   const net = useApi<any>(open ? "/network" : null);
   const setScreen = useStore((s) => s.setScreen);
   const select = useStore((s) => s.select);
-  const toggleNotes = useStore((s) => s.toggleNotes);
   const setLang = useStore((s) => s.setLang);
   const setTheme = useStore((s) => s.setTheme);
   const lang = useStore((s) => s.lang);
@@ -111,17 +110,6 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
         },
       })),
       {
-        id: "act:notes",
-        group: t("pal.actions"),
-        label: t("ui.notes"),
-        hint: "N",
-        icon: "notes",
-        run: () => {
-          toggleNotes();
-          onClose();
-        },
-      },
-      {
         id: "act:tour",
         group: t("pal.actions"),
         label: t("tour.start"),
@@ -146,7 +134,7 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
       },
     ];
     return [...screens, ...houses, ...actions];
-  }, [net.data, t, f, lang, setScreen, select, toggleNotes, setLang, setTheme, onClose]);
+  }, [net.data, t, f, lang, setScreen, select, setLang, setTheme, onClose]);
 
   const shown = useMemo(() => {
     const needle = fold(q.trim());

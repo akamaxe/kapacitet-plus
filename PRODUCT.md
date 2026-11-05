@@ -57,8 +57,7 @@ non-firm offer.
 - The applicant's portal (`#/apply`) is its own small page, without the application's chrome.
 - URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`, plus `job=` for a saved assessment,
   `basis=`/`policy=` on the report, `date=` on the operation screen and `ds=` on an imported network.
-- Keyboard shortcuts: 1–8 for the screens, Ctrl+K for search, ? for the key sheet, N for notes, F for full
-  screen.
+- Keyboard shortcuts: 1–8 for the screens, Ctrl+K for search, ? for the key sheet, F for full screen.
 - Light and dark themes.
 - Used mostly on a laptop and on a projector. It must still work on a phone.
 

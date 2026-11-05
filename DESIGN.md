@@ -376,7 +376,7 @@ Base unit 4 px; every margin, padding and gap is a `--space-*` step (4, 8, 12, 1
 
 **The frame.** `.app` is a three-row grid: the top bar (`--topbar-h` 56 px), the screen, and the foot line (`--statusbar-h` 30 px). The window never scrolls; each screen scrolls inside `.page`, which is `position: relative` so absolutely placed children cannot escape it.
 
-- **Top bar**: Chrome Blue, white type. Left: the roundel (a white disc with the plus of the name) and "Kapacitet+", then the site scope, read from `/meta` (site and bidding zone). Right of centre: the eight screens as text links in Chrome Mist, in key order (Sweden, Neighbourhood, Static vs envelopes, Connection request, Operation, Annual report, 2030 scenarios, Method & data), the current one white at 600 with a 3 px white rule on the bar's bottom edge. Whether they fit is measured, not set at a width: a hidden probe holds the eight labels at 600 with the bar's gaps, and the bar folds them into the menu sheet when the room left by the brand, the scope and the tools is narrower than the probe, in whatever language is on screen; it unfolds only with 24 px to spare, so a window resized across the edge does not flicker. Right: search (a tinted field with its "Ctrl K" key), notes, language, theme, full screen. Focus inside the bar is a white ring drawn within it.
+- **Top bar**: Chrome Blue, white type. Left: the roundel (a white disc with the plus of the name) and "Kapacitet+", then the site scope, read from `/meta` (site and bidding zone). Right of centre: the eight screens as text links in Chrome Mist, in key order (Sweden, Neighbourhood, Static vs envelopes, Connection request, Operation, Annual report, 2030 scenarios, Method & data), the current one white at 600 with a 3 px white rule on the bar's bottom edge. Whether they fit is measured, not set at a width: a hidden probe holds the eight labels at 600 with the bar's gaps, and the bar folds them into the menu sheet when the room left by the brand, the scope and the tools is narrower than the probe, in whatever language is on screen; it unfolds only with 24 px to spare, so a window resized across the edge does not flicker. Right: search (a tinted field with its "Ctrl K" key), language, theme, full screen. Focus inside the bar is a white ring drawn within it.
 - **Foot line**: on the ground with a hairline above, caption size, muted: the real/synthetic legend on the left, the reference year, the tour button and the key-sheet button on the right. The same on every screen; while the setup screen is shown there is nothing to tour, so the tour button is left out.
 - **Section bar**: the four long document screens (Static vs envelopes, Operation, Annual report, Method & data) carry a sticky bar at the top of their scroller, `--toolbar-h` 44 px: sections as text links on the left (the one being read underlined 2 px in ink), the basis of the figures on the right in caption. The section being read is the one crossing a line a third of the way down the scroller, never above the bar; while a section with its own basis is read, the bar shows that basis instead of the screen's. It scrolls only `.page`, never the window. A region's controls stay in its own head row, never in the bar.
 
@@ -398,17 +398,17 @@ A region whose figures rest on something narrower than the screen's basis (one a
 
 ## Elevation & Depth
 
-Flat by default. Depth is a tonal step plus a hairline; a surface that sits in the page never has a shadow. Only what floats casts one, and it is always the same: a 1 px ring and one soft offset depth (`--shadow-popover`). Floating layers stack at `--z-sticky` 3, `--z-overlay` 40 (notes drawer, glossary popovers, the tour card), `--z-dialog` 50 (dialogs, palette, key sheet, menu sheet), `--z-toast` 60. The dialog scrim is the night tint at 38 % (the Comma Tint Rule).
+Flat by default. Depth is a tonal step plus a hairline; a surface that sits in the page never has a shadow. Only what floats casts one, and it is always the same: a 1 px ring and one soft offset depth (`--shadow-popover`). Floating layers stack at `--z-sticky` 3, `--z-overlay` 40 (glossary popovers, the tour card), `--z-dialog` 50 (dialogs, palette, key sheet, menu sheet), `--z-toast` 60. The dialog scrim is the night tint at 38 % (the Comma Tint Rule).
 
 ### Shadow Vocabulary
-- **Float** (`box-shadow: 0 0 0 1px rgba(22,32,43,.08), 0 10px 28px -8px rgba(22,32,43,.22)`; night `0 0 0 1px rgba(255,255,255,.08), 0 14px 36px -10px rgba(0,0,0,.65)`): dialogs, the palette, toasts, the notes drawer, glossary popovers, chart and map tooltips, the "updating" note.
+- **Float** (`box-shadow: 0 0 0 1px rgba(22,32,43,.08), 0 10px 28px -8px rgba(22,32,43,.22)`; night `0 0 0 1px rgba(255,255,255,.08), 0 14px 36px -10px rgba(0,0,0,.65)`): dialogs, the palette, toasts, glossary popovers, chart and map tooltips, the "updating" note.
 
 ### Named Rules
 **The Only-What-Floats Rule.** The map key, the segmented control's chosen option, MapLibre's controls, the offline-map note and the tour card are edged with a hairline, never shadowed; the tour card sits beside the screen on the SL wash rather than floating over it. No glows, no accent-coloured shadows, no decorative gradients; the only gradients are colour-scale keys drawn from the same function as the marks they explain.
 
 ## Shapes
 
-Small, even corners: `--radius-sm` 4 px for controls, marks, badges, tooltips and bar ends; `--radius-md` 8 px for segmented tracks, range fields, popovers, toasts and the tour card; `--radius-lg` 12 px for dialogs and the notes drawer. Bars round only their free end. The well band and heatmap cells have no radius.
+Small, even corners: `--radius-sm` 4 px for controls, marks, badges, tooltips and bar ends; `--radius-md` 8 px for segmented tracks, range fields, popovers, toasts and the tour card; `--radius-lg` 12 px for dialogs. Bars round only their free end. The well band and heatmap cells have no radius.
 
 The recurring forms are few: the substation as a ring in SL blue on the maps; houses as extruded footprints, and as small square keys in legends, tables and the inspector. Provenance marks are 9 px squares (filled for real, dashed for synthetic, a hollow circle for a reference). Status marks are a circle (good), a triangle (warning) and a cross (critical), always with their word. The live strip carries an 8 px disc in `--good-fill` beside its heading. On paper the roundel turns to a print-ink disc with a paper-coloured plus.
 
@@ -472,7 +472,7 @@ The top bar (above), the menu sheet when the bar has folded (a 420 px dialog: th
 Offered once, on a first visit, as a card with "Take the tour" (small primary) and "Not now" (small ghost); it never starts itself, so a projector stays still. The foot line's tour button starts it at any time. While the setup screen is shown (nothing computed) neither the offer nor the tour is rendered. The card is not modal: the screen behind it is the point and stays usable. It sits bottom-right above the foot line, 380 px wide, on the SL wash with a hairline and 8 px corners, no shadow; its head row holds the step count in caption and a 32 px close button, then the step's title at h3 and its text at label size in ink-2, then Back (small ghost) and Next (small primary, focused). Each step drives the real screen (screen, scenario, hour, house). On map screens at 1101 px and wider (`data-place`) it moves to the top of the map, against the side panel's edge (`--panel-w` or `--panel-w-wide`), off the panel the step explains. Escape closes it unless a modal is open.
 
 ### Key sheet
-`?` opens the key sheet (`Shortcuts.tsx`, a 460 px dialog) generated from the same list the keyboard handler walks. Under a hairline at its foot, a checkbox turns the single-key shortcuts (1–8, N, F, / and ?) off for speech input and assistive typing; Ctrl and Cmd combinations keep working.
+`?` opens the key sheet (`Shortcuts.tsx`, a 460 px dialog) generated from the same list the keyboard handler walks. Under a hairline at its foot, a checkbox turns the single-key shortcuts (1–8, F, / and ?) off for speech input and assistive typing; Ctrl and Cmd combinations keep working.
 
 ### Glossary term
 A word of the trade carries a dotted underline in `--border-strong` (SL blue while open). Hover after a short delay, focus or tap opens its definition in a floating popover above the word; Escape closes it.
@@ -525,7 +525,7 @@ The Neighbourhood's only hour control and a year at a glance: a canvas of one co
 - **A missing section (`SectionMissing`):** the section keeps its place under a hairline with its title in bold and why it is missing in caption, plus the command when a result is not computed; it never disappears.
 - **Setup (`Setup.tsx`):** when the pipeline has not run, the whole interface is one document screen (760 px): the headline, a lead line, then numbered steps with a command to copy each (activate the project environment first, then `kapacitet all`, or unbundle a data package, then `serve`), the missing parts as a caption list, and "Check again" as the primary button. A server that takes the data from the browser (`setup_upload` in /health, as in a codespace) turns the page into "Load the data": one primary file chooser for `kapacitet-data.zip` beside a ghost link that downloads it from the data release, then the progress, an 8 px bar in SL blue on the inset grey with the MB sent or the files unpacked in tabular caption under it; a refusal as a critical status in plain words, and the restart said in a sentence before the page reloads by itself. The commands, the missing parts and a ghost "Check again" fold under a "From a terminal instead" disclosure behind a hairline.
 - **Offline map:** a small note centred at the top of the map, on the elevated surface with a hairline and 4 px corners, in caption.
-- **Layers:** `Dialog.tsx` is the one modal primitive: focus trap, Escape closes only the newest layer, focus returns where it came from, global shortcuts stay quiet while a modal is open. The notes drawer uses the same dismissal without a scrim. A dialog's content sits in a sheet (24 px padding, its title an h2 at h2 size with 16 px under it): the decision dialog, the queue's confirm, the key sheet and the imported networks.
+- **Layers:** `Dialog.tsx` is the one modal primitive: focus trap, Escape closes only the newest layer, focus returns where it came from, global shortcuts stay quiet while a modal is open. A dialog's content sits in a sheet (24 px padding, its title an h2 at h2 size with 16 px under it): the decision dialog, the queue's confirm, the key sheet and the imported networks.
 
 ### Charts
 ECharts, modular, wrapped by `Chart.tsx`; every option is built from `tokens()`, so charts follow the theme and are rebuilt on theme and language changes.
@@ -549,19 +549,18 @@ MapLibre on all four map views: the opening network map, the Neighbourhood, the 
 | Token | Value | Use |
 |---|---|---|
 | `--ease` | `cubic-bezier(0.23, 1, 0.32, 1)` | everything that responds |
-| `--ease-drawer` | `cubic-bezier(0.32, 0.72, 0, 1)` | the notes drawer |
 | `--ease-in-out` | `cubic-bezier(0.77, 0, 0.175, 1)` | things that travel on screen |
-| `--dur-micro` / `--dur-popover` / `--dur-panel` / `--dur-drawer` / `--dur-exit` | 120 / 160 / 200 / 240 / 140 ms | colour and press / popover / panels, toasts, the answer / drawer / exits |
+| `--dur-micro` / `--dur-popover` / `--dur-panel` / `--dur-exit` | 120 / 160 / 200 / 140 ms | colour and press / popover / panels, toasts, the answer / exits |
 
 - Colours ease over 120 ms, listed property by property, never `all`. Compact controls scale to 0.97 on press.
 - Map colours change in place with the hour (feature state, no transition). Meters ease their fill, but not during playback, where an hour is shorter than the transition.
 - Dialogs opened from the keyboard, the palette and screen changes do not animate.
-- The notes drawer slides in from 24 px over 240 ms; toasts rise 12 px with a transition, so several in a row retarget.
+- Toasts rise 12 px with a transition, so several in a row retarget.
 - A glossary popover grows from its word (scale 0.97, 160 ms) after a 350 ms delay; once one has been open, the next opens instantly and without its entrance.
 - The request answer's parts rise in once, 8 px, 40 ms apart.
 - The tour card rises 8 px over 200 ms when opened by a click and appears at once from the keyboard; moving to the other side of the screen enters again rather than jumping.
 - Charts draw once in 200 ms and never animate on a theme or language change.
-- `prefers-reduced-motion: reduce` keeps colour and opacity only: no animation, no transforms on the drawer, toasts and the tour card, no smooth scrolling, no chart animation.
+- `prefers-reduced-motion: reduce` keeps colour and opacity only: no animation, no transforms on toasts and the tour card, no smooth scrolling, no chart animation.
 
 ## Do's and Don'ts
 
@@ -597,7 +596,7 @@ Short, factual, sentence case. Plain words first: a viewer who has never heard o
 - WCAG 2.1 AA in both themes: text ≥ 4.5:1, large text and graphics ≥ 3:1. Every text and graphic pair in the tables above was measured and passes; the one known exception is the production mix's "Other", which is why that chart keeps its legend and table.
 - Focus: a 2 px SL-blue outline at 2 px offset on every interactive element; a white ring inside the top bar.
 - Hit targets 40 px (44 px on coarse pointers); smaller visible controls extend their hit area with a pseudo-element.
-- A complete keyboard path: 1–8 for screens, PageUp / PageDown or Ctrl+← → for the previous or next screen, Ctrl+K and / search, ? key sheet, N notes, F full screen; the single-key shortcuts can be turned off in the key sheet; the year strip is a slider with arrow keys; tables sort from the keyboard; dialogs trap focus and return it. A new screen moves focus to its h1, which shows no ring because it is not a control.
+- A complete keyboard path: 1–8 for screens, PageUp / PageDown or Ctrl+← → for the previous or next screen, Ctrl+K and / search, ? key sheet, F full screen; the single-key shortcuts can be turned off in the key sheet; the year strip is a slider with arrow keys; tables sort from the keyboard; dialogs trap focus and return it. A new screen moves focus to its h1, which shows no ring because it is not a control.
 - Every chart has a table twin and an `aria-label`; the maps carry descriptive labels; skip link to the content.
 - Readable projected in a lit room and at 200 % zoom.
 

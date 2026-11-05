@@ -1,16 +1,14 @@
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FootLine, MenuSheet, TopBar } from "./components/Shell";
-import { Icon } from "./components/Icon";
 import { useT } from "./lib/i18n";
 import { PageSkeleton, SplitSkeleton } from "./components/Skeleton";
-import { modalOpen, useDismissable } from "./components/Dialog";
+import { modalOpen } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts, toast } from "./components/Toast";
 import { Setup } from "./components/Setup";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
-import { NOTE_COUNT } from "./lib/notes";
 import { useApi } from "./lib/api";
 import { SCREENS, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
 
@@ -35,43 +33,6 @@ function ScreenSkeleton({ screen }: { screen: Screen }) {
   if (screen === "compare" || screen === "report" || screen === "operation") return <PageSkeleton bar hero blocks={2} />;
   if (screen === "method") return <PageSkeleton bar blocks={2} />;
   return <PageSkeleton blocks={1} />;
-}
-
-function Notes() {
-  const t = useT();
-  const screen = useStore((s) => s.screen);
-  const open = useStore((s) => s.notes);
-  // the talking points quote a few figures; they come from the same answers as the screens
-  const meta = useApi<any>(open ? "/meta" : null);
-  const val = useApi<any>(open && screen === "method" ? "/validation" : null);
-  const nat = useApi<any>(open && screen === "national" ? "/national" : null);
-  const close = useCallback(() => useStore.getState().toggleNotes(), []);
-  // not modal: the drawer sits beside the screen it annotates, so Tab leaves it
-  const panel = useDismissable(open, close, false);
-  if (!open) return null;
-  return (
-    <aside className="notes" aria-label={t("ui.notes")} ref={panel}>
-      <div className="block-head">
-        <h4>{t("ui.notesOf", { n: SCREENS.indexOf(screen) + 1, total: SCREENS.length })}</h4>
-        <button className="icon-btn" aria-label={t("shell.close")} onClick={close}>
-          <Icon name="close" size={16} />
-        </button>
-      </div>
-      <ul>
-        {Array.from({ length: NOTE_COUNT[screen] }, (_, i) => (
-          <li key={i}>
-            {t(`note.${screen}.${i + 1}`, {
-              year: meta.data?.reference_year ?? "–",
-              years: meta.data?.weather_years?.length ?? "–",
-              zone: meta.data?.bidding_zone ?? "–",
-              nyear: nat.data?.data?.year ?? "–",
-              acc: val.data?.data?.powerflow ? val.data.data.powerflow.max_abs_dv_pu.toExponential(0) : "–",
-            })}
-          </li>
-        ))}
-      </ul>
-    </aside>
-  );
 }
 
 export default function App() {
@@ -154,7 +115,7 @@ export default function App() {
   const [attempt, setAttempt] = useState(0);
 
   // Keys: 1–8 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
-  // sheet, N the notes, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
+  // sheet, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -192,8 +153,6 @@ export default function App() {
       } else if (e.key === "PageUp" || (e.ctrlKey && e.key === "ArrowLeft")) {
         st.setScreen(SCREENS[Math.max(0, i - 1)]);
         e.preventDefault();
-      } else if (e.key.toLowerCase() === "n" && !e.ctrlKey && !e.metaKey) {
-        st.toggleNotes();
       } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
         if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined);
         else document.exitFullscreen?.().catch(() => undefined);
@@ -262,7 +221,6 @@ export default function App() {
       </main>
       {/* with nothing computed there is nothing to tour: no offer and no link until the data is in */}
       <FootLine onKeys={() => setKeys(true)} onTour={setupNeeded ? undefined : () => useStore.getState().setTour(0)} />
-      <Notes />
       {!setupNeeded && <Tour />}
       {!setupNeeded && <TourOffer />}
       <Palette open={palette} onClose={() => setPalette(false)} />

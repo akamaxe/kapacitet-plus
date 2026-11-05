@@ -45,14 +45,12 @@
   --track-h3: -0.005em;
 
   /* motion: strong ease-out for anything that responds, ease-in-out for things that move
-     on screen, the drawer curve for the notes drawer. Exits are faster than entrances. */
+     on screen. Exits are faster than entrances. */
   --ease: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   --dur-micro: 120ms;
   --dur-popover: 160ms;
   --dur-panel: 200ms;
-  --dur-drawer: 240ms;
   --dur-exit: 140ms;
 
   /* chrome bands: a sticky region has to know what the frame already takes */
