@@ -59,8 +59,19 @@ label = "MV (10 kV) voltage at the secondary substation"
 label_sv = "Mellanspänning (10 kV) vid nätstationen"
 source = "No measurement available; planning value, identical for every method"
 url = ""
-note = "Varied 0.98–1.03 pu in the tornado chart."
-note_sv = "Varieras 0,98–1,03 pu i tornadodiagrammet."
+note = "The published envelopes use this value. The tornado chart takes it to both ends of mv_voltage_band_pu, and mv_band.json computes the same adoption order across that band."
+note_sv = "De publicerade exportgränserna använder detta värde. Tornadodiagrammet sätter det till båda ändarna av mv_voltage_band_pu, och mv_band.json beräknar samma anslutningsordning över hela bandet."
+
+[mv_voltage_band_pu]
+value = [0.98, 1.06]
+unit = "pu"
+tag = "team-assumption"
+label = "Planning band of the MV (10 kV) voltage at the secondary substation (lowest, highest)"
+label_sv = "Planeringsband för mellanspänningen (10 kV) vid nätstationen (lägsta, högsta)"
+source = "Planning band until the MV voltage at the substation is measured (no measurement available)"
+url = ""
+note = "A sensitivity only: the tornado chart and mv_band.json use it, while the published envelopes stay at mv_voltage_pu."
+note_sv = "Endast en känslighetsanalys: tornadodiagrammet och mv_band.json använder det, medan de publicerade exportgränserna stannar vid mv_voltage_pu."
 
 [trafo_tap_pos]
 value = 0

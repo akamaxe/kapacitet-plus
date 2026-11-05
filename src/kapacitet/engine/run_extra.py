@@ -1,4 +1,4 @@
-"""Additional precomputations: sensitivity (tornado), 2030 scenarios, request baselines, validation."""
+"""Additional precomputations: sensitivity (tornado, MV band), 2030 scenarios, request baselines, validation."""
 
 from __future__ import annotations
 
@@ -55,9 +55,14 @@ def _z_doe(m: NetModel, order, ms, k, years, hp, ev) -> float:
 
 # ------------------------------------------------------------------------------ tornado
 
+def _mv_case(vm_pu: float) -> tuple:
+    """The case with the MV voltage at `vm_pu`, as the tornado and mv_band.json run it."""
+    return ("mv_voltage", "MV voltage at the substation", f"{vm_pu:.2f} pu", {"vm_slack": vm_pu}, {})
+
+
+# The inputs varied one at a time besides the MV voltage, whose two levels are the ends of its
+# planning band (tornado_cases).
 TORNADO_CASES = [
-    ("mv_voltage", "MV voltage at the substation", "0.98 pu", {"vm_slack": 0.98}, {}),
-    ("mv_voltage", "MV voltage at the substation", "1.03 pu", {"vm_slack": 1.03}, {}),
     ("v_margin", "Voltage planning margin", "0 %", {}, {"v_margin_pu": 0.0}),
     ("v_margin", "Voltage planning margin", "2 %", {}, {"v_margin_pu": 0.02}),
     ("trafo", "Transformer rating", "0.25 MVA", {"trafo_type": "0.25 MVA 10/0.4 kV"}, {}),
@@ -89,9 +94,16 @@ def _tornado_case(args) -> dict:
         yd = _largest_true(lambda k: _z_doe(m, order, ms, k, years, hp, ev) <= z_star, mts, m.C)
         return {"key": key, "label": label, "level": level, "static_kw": float(cap[order[:ms]].sum()),
                 "timeseries_kw": float(cap[order[:mts]].sum()), "doe_kw": float(cap[order[:yd]].sum()),
-                "static_adopters": ms, "doe_adopters": yd}
+                "static_adopters": ms, "timeseries_adopters": mts, "doe_adopters": yd}
     finally:
         set_overrides(None)
+
+
+def tornado_cases() -> list[tuple]:
+    """Every case of the tornado: the MV voltage at both ends of its planning band, then the
+    other inputs of TORNADO_CASES."""
+    levels = mv_band_levels()
+    return [_mv_case(levels[0]), _mv_case(levels[-1])] + TORNADO_CASES
 
 
 def tornado(o: int, years, z_star: float, workers: int = 8) -> None:
@@ -99,11 +111,108 @@ def tornado(o: int, years, z_star: float, workers: int = 8) -> None:
 
     from .run import _init_worker
     base_case = ("base", "Base case", "base", {}, {})
-    cases = [base_case] + TORNADO_CASES
+    cases = [base_case] + tornado_cases()
     with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
         rows = list(ex.map(_tornado_case, [(c, o, tuple(years), z_star) for c in cases]))
     _write("tornado.json", {"order": o, "years": list(years), "z_star_pct": z_star, "base": rows[0],
                             "cases": rows[1:]})
+
+
+# ------------------------------------------------------------------------------ the MV band
+
+MV_BAND_STEP_PU = 0.02
+# What mv_band.json keeps of each level's capacity search (_tornado_case) and of the full-year
+# check of the published envelopes there (doe.verify_full_year).
+_MV_CAPACITY = ("static_kw", "timeseries_kw", "doe_kw", "static_adopters", "timeseries_adopters", "doe_adopters")
+_MV_HELD = ("hours_checked", "violation_hours", "firm_violation_hours", "export_violation_hours",
+            "nonconverged_hours", "max_voltage_pu", "max_trafo_loading_pct", "max_line_loading_pct")
+
+
+def mv_band_levels(step: float = MV_BAND_STEP_PU) -> list[float]:
+    """The MV voltages (pu) of the band's sensitivity: both ends of the planning band
+    (mv_voltage_band_pu), the demo's own level (mv_voltage_pu) and every `step` from it between."""
+    lo, hi = (float(v) for v in A("mv_voltage_band_pu"))
+    base = float(A("mv_voltage_pu"))
+    if not lo <= base <= hi:
+        raise ValueError(f"mv_voltage_pu {base} lies outside mv_voltage_band_pu [{lo}, {hi}]")
+    down, up = int((base - lo) / step + 1e-9), int((hi - base) / step + 1e-9)
+    return sorted({round(base + i * step, 4) for i in range(-down, up + 1)} | {round(lo, 4), round(hi, 4)})
+
+
+def mv_band_envelopes(o: int, ms: int, k: int, levels) -> list[dict]:
+    """The showcase deployment in the reference year (order `o`: order[:ms] firm, order[ms:k] on
+    envelopes) at each MV level of `levels`, in two ways:
+
+    - `published`: the envelopes the demo publishes, computed at its own level (mv_voltage_pu),
+      held in every hour and solved again with the MV at this level (doe.verify_full_year).
+      `violation_hours` are the hours they no longer keep within a limit there, and
+      `firm_violation_hours` those the firm customers alone break, which no envelope can fix.
+    - `recomputed`: envelopes computed afresh with the MV at this level, verified the same way,
+      and the curtailment they impose on the same customers (the showcase's measures).
+    """
+    from .delivery import share_pct
+    from .run import REF_POLICY, background_masks, model, pv_mask
+
+    m = model()
+    hp, ev = background_masks(m.C)
+    order = adoption_order(o, m.C)
+    nf = order[ms:k]
+    arr = Scenario(year=settings().reference_year, pv=pv_mask(order, k, m.C), hp=hp, ev=ev).arrays()
+    published = doe.compute(m, arr, nf, policy=REF_POLICY)
+    pot = arr["pv"][nf].astype(float).sum(axis=1)
+    rows = []
+    for v in levels:
+        held = doe.verify_full_year(m, arr, published, vm_slack=v)
+        r = published if abs(v - m.vm_slack) < 1e-9 else doe.compute(m, arr, nf, policy=REF_POLICY, vm_slack=v)
+        curt = r.curtailed.astype(float).sum(axis=1)
+        rows.append({
+            "published": {key: held[key] for key in _MV_HELD},
+            "recomputed": {
+                "curtailed_kwh": float(curt.sum()), "potential_kwh": float(pot.sum()),
+                "z_pct": float(100 * curt.sum() / pot.sum()) if pot.sum() > 0 else 0.0,
+                "max_customer_z_pct": float(share_pct(curt, pot).max()) if len(nf) else 0.0,
+                "critical_hours": int(r.info.get("critical_hours", 0)),
+                "intervention_hours": int((r.curtailed.sum(axis=0) > 1e-3).sum()),
+                "full_year_violations": r.full_year_violations,
+                "firm_violation_hours": int(r.info["full_year"]["firm_violation_hours"]),
+            },
+        })
+    return rows
+
+
+def mv_band(o: int, ms: int, k: int, years, z_star: float, workers: int = 4) -> dict:
+    """mv_band.json: the showcase order across the planning band of the MV voltage. The demo's
+    envelopes stay at mv_voltage_pu; this is a sensitivity published beside them.
+
+    At each level of mv_band_levels(): the static, hourly and envelope capacity of order `o`,
+    searched over `years` as the tornado searches them (_tornado_case); and, for the deployment
+    the showcase publishes (order[:ms] firm, order[:k] with solar), the full-year check of its
+    envelopes and the curtailment of envelopes recomputed at that level (mv_band_envelopes).
+    With `workers` > 1 the searches run in that many processes while this one checks the
+    envelopes; with one, everything runs here. Returns what it writes.
+    """
+    from .run import REF_POLICY
+
+    levels = mv_band_levels()
+    jobs = [(_mv_case(v), o, tuple(years), z_star) for v in levels]
+    if workers > 1:
+        from concurrent.futures import ProcessPoolExecutor
+
+        from .run import _init_worker
+        with ProcessPoolExecutor(max_workers=min(workers, len(jobs)), initializer=_init_worker) as ex:
+            searches = ex.map(_tornado_case, jobs)          # submitted now, collected after the checks
+            checks = mv_band_envelopes(o, ms, k, levels)
+            capacity = list(searches)
+    else:
+        capacity = [_tornado_case(job) for job in jobs]
+        checks = mv_band_envelopes(o, ms, k, levels)
+    out = {"order": o, "years": list(years), "z_star_pct": z_star, "policy": REF_POLICY,
+           "year": settings().reference_year, "firm": ms, "adopters": k,
+           "base_pu": float(A("mv_voltage_pu")), "band_pu": [float(v) for v in A("mv_voltage_band_pu")],
+           "levels": [{"vm_pu": v, **{key: c[key] for key in _MV_CAPACITY}, **chk}
+                      for v, c, chk in zip(levels, capacity, checks)]}
+    _write("mv_band.json", out)
+    return out
 
 
 # ------------------------------------------------------------------- the cost of the forecast

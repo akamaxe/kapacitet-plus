@@ -139,6 +139,7 @@ _WRITTEN_BY = {
     "national.json": "compute --stage extra --only national",
     "scenarios.json": "compute --stage extra --only scenarios",
     "tornado.json": "compute --stage extra --only tornado",
+    "mv_band.json": "compute --stage extra --only mvband",
     "foresight.json": "compute --stage extra --only foresight",
     "overinstallation.json": "compute --stage extra --only overinstallation",
     "consumption.json": "compute --stage extra --only consumption",

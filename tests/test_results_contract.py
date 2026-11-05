@@ -251,3 +251,52 @@ def test_order_9_carries_87_adopters_on_the_per_installation_budget(results):
     at = run.curtailment(order, ms, 87, years, hp, ev, verify="critical")
     above = run.curtailment(order, ms, 88, years, hp, ev, verify="critical")
     assert at["z_customer_max_pct"] <= h["z_star_pct"] + 1e-9 < above["z_customer_max_pct"]
+
+
+# ---------------------------------------------------------------- the MV band
+
+MV_BAND = "run: python -m kapacitet compute --stage extra --only mvband"
+
+
+def _mv_band(results) -> dict:
+    if not processed("results", "mv_band.json").exists():
+        pytest.skip(f"mv_band.json not published yet; {MV_BAND}")
+    return results("mv_band")
+
+
+def _at_level(band: dict, vm_pu: float) -> dict:
+    return next(r for r in band["levels"] if abs(r["vm_pu"] - vm_pu) < 1e-9)
+
+
+def test_the_mv_band_at_the_demos_level_is_the_published_capacity(results):
+    """mv_band.json moves only the MV voltage: at mv_voltage_pu its capacity is the tornado's base
+    case and the showcase order's published capacity, and its deployment the showcase's."""
+    band = _mv_band(results)
+    tornado, show, h = results("tornado"), results("showcase"), results("hosting_summary")
+    assert band["base_pu"] == A("mv_voltage_pu")
+    assert band["order"] == tornado["order"] == show["order"]
+    assert band["years"] == tornado["years"] == h["years"]
+    at = _at_level(band, band["base_pu"])
+    for key in ("static_kw", "timeseries_kw", "doe_kw", "static_adopters", "doe_adopters"):
+        assert at[key] == pytest.approx(tornado["base"][key], rel=1e-9), key
+    o = next(r for r in h["per_order"] if r["order"] == band["order"])
+    for m in ("static", "timeseries", "doe"):
+        assert at[f"{m}_adopters"] == o[m]["adopters"], m
+        assert at[f"{m}_kw"] == pytest.approx(o[m]["kw_ac"], rel=1e-9), m
+    assert (band["year"], band["firm"], band["adopters"]) == (show["year"], show["firm"], show["adopters"])
+    assert at["timeseries_adopters"] == show["timeseries_adopters"]
+
+
+def test_the_published_envelopes_have_no_violation_at_the_demos_mv_level(results):
+    band = _mv_band(results)
+    at = _at_level(band, band["base_pu"])
+    assert at["published"]["violation_hours"] == 0 and at["published"]["nonconverged_hours"] == 0
+    # the envelopes checked are the showcase's: at its own level they curtail what it publishes
+    show = results("showcase")["policies"][band["policy"]]
+    assert at["recomputed"]["critical_hours"] == show["critical_hours"]
+    assert at["recomputed"]["intervention_hours"] == show["intervention_hours"]
+    assert at["recomputed"]["curtailed_kwh"] == pytest.approx(show["curtailed_kwh"], rel=1e-4)
+    # each level's own envelopes verify at that level, and the levels run across the whole band
+    assert all(r["recomputed"]["full_year_violations"] == 0 for r in band["levels"])
+    vm = [r["vm_pu"] for r in band["levels"]]
+    assert vm == sorted(vm) and [vm[0], vm[-1]] == band["band_pu"] == A("mv_voltage_band_pu")

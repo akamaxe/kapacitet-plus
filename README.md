@@ -214,6 +214,14 @@ deployment points of `zcurve.json`, the energy the customers beyond the static l
 lose to envelopes in every weather year, and its spot value in the years with price data. It is
 the profit curve of connecting more than the static study allows.
 
+`compute --stage extra --only mvband` writes `mv_band.json`, a sensitivity published beside the
+figures above, which stay at an MV voltage of 1.00 pu. It takes the showcase order across the
+planning band of that voltage (`mv_voltage_band_pu`, until it is measured) in steps of 0.02 pu.
+At each level: the static, hourly and envelope capacity, searched as the tornado searches them;
+the published envelopes, held in every hour of the reference year and solved again there; and
+the curtailment of envelopes computed afresh at that level for the same customers. The tornado's
+MV case takes the two ends of the same band.
+
 ### Optional: ENTSO-E token
 
 Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se) (free, no key, history from
@@ -749,7 +757,8 @@ number comes from the balanced three-phase model**, so single-phase unbalance is
 (a request with a single-phase charger or inverter is checked on the unbalanced model, phase by
 phase, at the static study's worst hour); the LV topology is synthetic;
 household demand comes from a UK behaviour model scaled to Swedish consumption; the MV supply is
-held at 1.00 pu; economics use the SE3 spot price only.
+held at 1.00 pu (`mv_band.json` repeats the showcase order across its planning band); economics
+use the SE3 spot price only.
 
 Protection is checked by `compute --stage extra --only protection` (`engine/protection.py`, under a
 second): a single-phase fault at the weakest point of each feeder and at each house, at the minimum
