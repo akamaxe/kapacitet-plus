@@ -538,7 +538,7 @@ the Method screen):
   and VAT; exported solar earns the spot price and Ellevio's compensation for its net benefit
   (4.40 or 3.30 öre/kWh, weighted by when the house exports). The tax reduction for exported solar
   ended on 1 January 2026 and is not counted. The sum over the wait is discounted at a household
-  rate that is a team assumption (3 %), with the undiscounted sum beside it; the solar system's own
+  rate that is a modelling assumption (3 %), with the undiscounted sum beside it; the solar system's own
   cost is the same either way and is left out.
 
 ## What the forecast is worth

@@ -59,7 +59,7 @@ non-firm offer.
   `basis=`/`policy=` on the report, `date=` on the operation screen and `ds=` on an imported network.
 - Keyboard shortcuts: 1–8 for the screens, Ctrl+K for search, ? for the key sheet, F for full screen.
 - Light and dark themes.
-- Used mostly on a laptop and on a projector. It must still work on a phone.
+- Used mostly on a desktop or laptop, also projected in meetings. It must still work on a phone.
 
 ## Capabilities and Constraints
 
@@ -75,7 +75,7 @@ non-firm offer.
   - Synthetic: the cable network, the transformer, household behaviour.
 - **Attribution is mandatory:** OpenStreetMap (ODbL), SMHI (CC BY), and "Elpriser tillhandahålls av Elpriset
   just nu.se".
-- Every interface string goes through `web/src/lib/i18n/` in English and Swedish, with the terms of `docs/glossary.md`; nobody on the team reviews the Swedish, and the glossary says so.
+- Every interface string goes through `web/src/lib/i18n/` in English and Swedish, with the terms of `docs/glossary.md`; the Swedish has not yet been reviewed by a native speaker, and the glossary says so.
 - MIT licence for the code. The computed data are never committed; they are published separately as the
   `data` release's archive, under ODbL (`DATA-LICENSE.md`).
 - Stack: React 19, Vite, TypeScript, zustand, react-query, ECharts (modular), MapLibre GL, plain CSS. FastAPI

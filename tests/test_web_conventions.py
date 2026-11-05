@@ -1,8 +1,8 @@
 """Conventions of the web interface that a reviewer would otherwise check by eye.
 
 Standard library only, so it runs on a fresh clone without Node or the pipeline output:
-- every interface string exists in English and Swedish (lib/i18n/{en,sv}.ts), and
-  every literal key a component asks for exists;
+- every interface string exists in English and Swedish (lib/i18n/{en,sv}.ts), the only two
+  languages, and every literal key a component asks for exists;
 - every screen has its tab label;
 - numbers are formatted through lib/format.ts (no `.toFixed(` for display);
 - nothing scrolls with `scrollIntoView(` except the palette's own list (it would lift the whole
@@ -38,6 +38,14 @@ def test_every_language_has_the_same_keys():
         other = _dict_keys(lang)
         assert not en - other, f"missing in {lang}: {sorted(en - other)[:20]}"
         assert not other - en, f"only in {lang}: {sorted(other - en)[:20]}"
+
+
+def test_the_interface_speaks_english_and_swedish_only():
+    """No Spanish dictionary: nothing would load it and no one would keep it in step."""
+    assert not (WEB / "lib" / "i18n" / "es.ts").exists(), "web/src/lib/i18n/es.ts is back"
+    core = (WEB / "lib" / "i18n" / "core.ts").read_text(encoding="utf-8")
+    langs = re.search(r"export const LANGS: readonly Lang\[\] = \[(.*?)\]", core).group(1)
+    assert tuple(re.findall(r'"(\w+)"', langs)) == LANGS, f"core.ts LANGS is [{langs}], expected {LANGS}"
 
 
 def test_every_literal_key_asked_for_exists():

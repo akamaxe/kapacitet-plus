@@ -1,0 +1,126 @@
+"""Kapacitet+ speaks for itself, not for the place it was first written in.
+
+Standard library only, so it runs on a fresh clone without Node or the pipeline output. Every
+tracked text file (`git ls-files`, or a walk of the tree where there is no git) is read line by
+line, and no line may match FORBIDDEN: the origin and personal references the product must not
+carry. A word that comes back fails here, with the file and the line, before it reaches the
+public repository.
+
+Skipped: binary files, the npm lockfile (package names and hashes, nobody's prose) and this file,
+which has to spell the pattern out. A line quoting pandas' error "assignment destination is
+read-only" (constraints.txt explains it) is always allowed, so a looser pattern later cannot
+trip on it.
+"""
+
+from __future__ import annotations
+
+import fnmatch
+import os
+import re
+import subprocess
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SELF = Path(__file__).resolve()
+
+FORBIDDEN = re.compile(
+    r"(?i)\bKTH\b|EI2600|\bcourse\b|seminar|teammates?|examiner|kursprototyp|prototipo de curso"
+    r"|Assignment ?[12]\b|Assignment[12]|Lean Canvas|\bA2\b|compañer[oa]s?|kollega|student project"
+    r"|chiharum|ebbarandi|Hilber|innovation_course|\bcurso\b"
+)
+ALLOWED = re.compile(r"(?i)assignment destination")
+
+# what the fallback walk never enters: environments, installed packages, data and build output
+SKIP_DIRS = {".git", ".venv", "node_modules", "data", "__pycache__", ".pytest_cache", "test-results", "playwright-report"}
+SKIP_PATHS = {"web/dist", "web/package-lock.json"}
+
+
+def _rules(path: Path) -> list[str]:
+    """The patterns of an ignore file, without comments, blanks and negations."""
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    return [s for s in (line.strip() for line in lines) if s and not s.startswith(("#", "!"))]
+
+
+def _ignored() -> list[tuple[str, bool, bool]]:
+    """The root .gitignore and .git/info/exclude as (pattern, anchored, directories only), for
+    the walk without git. A simplification of git's rules, enough to keep local tool output out."""
+    out = []
+    for line in _rules(ROOT / ".gitignore") + _rules(ROOT / ".git" / "info" / "exclude"):
+        pattern = line.rstrip("/").lstrip("/")
+        out.append((pattern, "/" in pattern, line.endswith("/")))
+    return out
+
+
+def _tracked() -> list[Path]:
+    """The files git tracks; without git, every file under the root that is neither in SKIP_DIRS
+    nor matched by the root .gitignore."""
+    try:
+        out = subprocess.run(["git", "ls-files", "-z"], cwd=ROOT, capture_output=True, check=True, timeout=60).stdout
+        names = [n for n in out.decode("utf-8").split("\0") if n]
+        if names:
+            return [ROOT / n for n in names]
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
+        pass
+    rules = _ignored()
+
+    def skip(rel: str, is_dir: bool) -> bool:
+        name = rel.rsplit("/", 1)[-1]
+        return any(fnmatch.fnmatchcase(rel if anchored else name, pattern)
+                   for pattern, anchored, dirs_only in rules if is_dir or not dirs_only)
+
+    files = []
+    for dirpath, dirnames, filenames in os.walk(ROOT):
+        base = Path(dirpath).relative_to(ROOT).as_posix()
+        rel = (lambda n: n) if base == "." else (lambda n: f"{base}/{n}")
+        # a folder whose own .gitignore is "*" (tool state that ignores itself) is never committed
+        dirnames[:] = [d for d in dirnames
+                       if d not in SKIP_DIRS and rel(d) not in SKIP_PATHS and not skip(rel(d), True)
+                       and _rules(Path(dirpath) / d / ".gitignore") != ["*"]]
+        files += [Path(dirpath) / f for f in filenames if not skip(rel(f), False)]
+    return files
+
+
+def _text(path: Path) -> str | None:
+    """The file as text, or None for a binary file (or one that vanished since it was listed)."""
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return None
+    if b"\0" in raw[:8192]:
+        return None
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+
+
+def _checked() -> list[tuple[str, str]]:
+    out = []
+    for path in _tracked():
+        rel = path.relative_to(ROOT).as_posix()
+        if path.resolve() == SELF or rel in SKIP_PATHS:
+            continue
+        text = _text(path)
+        if text is not None:
+            out.append((rel, text))
+    return out
+
+
+def test_the_files_are_found():
+    """A guard that reads nothing would pass on any repository."""
+    files = dict(_checked())
+    assert len(files) > 50, f"only {len(files)} text files found under {ROOT}"
+    assert "README.md" in files and "src/kapacitet/__init__.py" in files
+
+
+def test_no_file_names_a_course_or_its_people():
+    hits = []
+    for rel, text in _checked():
+        for i, line in enumerate(text.splitlines(), 1):
+            m = FORBIDDEN.search(line)
+            if m and not ALLOWED.search(line):
+                hits.append(f"{rel}:{i}: {m.group(0)!r} in {line.strip()[:120]!r}")
+    assert not hits, "course or personal references in the repository:\n" + "\n".join(hits[:40])

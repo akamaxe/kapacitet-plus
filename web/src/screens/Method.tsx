@@ -114,7 +114,7 @@ export default function Method() {
   const inputs: Input[] = ass.data?.assumptions ?? [];
   const shown = inputs.filter((a) => tag === "all" || a.tag === tag);
   const counts = TAGS.map((tg) => inputs.filter((a) => a.tag === tg).length);
-  // everything that is not the team's own judgement, however the tags are distributed
+  // everything that is not Kapacitet+'s own modelling choice, however the tags are distributed
   const ours = counts[TAGS.indexOf("team-assumption")];
 
   const sections: Section[] = [

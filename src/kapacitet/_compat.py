@@ -1,9 +1,9 @@
 """NumPy 2.x compatibility for pandapower 2.14.
 
-The base environment runs NumPy 2.5, which removed aliases that pandapower 2.14 still uses
-(np.Inf, np.in1d, ...). Restoring them here, before pandapower is imported, keeps the
-installed pandapower working without changing any package. Aliases are only added when
-missing, so nothing changes on older NumPy versions.
+The project's environment pins NumPy 1.26.4 (constraints.txt), where pandapower 2.14 runs as is
+and this module adds nothing. It stays for an install without the constraints, where pip may pick
+NumPy 2.x, which removed aliases pandapower 2.14 still uses (np.Inf, np.in1d, ...): they are
+restored here, only when missing, before pandapower is imported.
 """
 
 from __future__ import annotations

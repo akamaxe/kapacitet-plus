@@ -124,7 +124,7 @@ def parse_osm(data: dict) -> tuple[list[Building], list[Building], list[dict], l
 
 
 def dwellings_in(b: Building) -> int:
-    """Number of dwellings (customers) in a building (team assumption, see README)."""
+    """Number of dwellings (customers) in a building (modelling assumption, see README)."""
     if b.tag == "terrace":
         return int(min(8, max(1, round(b.area / 80.0))))
     if b.tag in ("semi", "semidetached_house"):

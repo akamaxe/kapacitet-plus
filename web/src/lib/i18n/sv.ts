@@ -1,5 +1,6 @@
-// Swedish. Loaded on demand as its own chunk (core.ts, loadLang). Nobody on the team reads
-// Swedish well enough to review it: the terms follow docs/glossary.md.
+// Swedish. Loaded on demand as its own chunk (core.ts, loadLang). The Swedish has not yet been
+// reviewed by a native speaker: it follows the list in docs/glossary.md, and a Swedish-speaking DSO
+// engineer should check it before it is shown to one.
 type Dict = Record<string, string>;
 
 const sv: Dict = {
@@ -335,7 +336,7 @@ const sv: Dict = {
   "met.tag.regulation": "Regelverk",
   "met.tag.library": "Bibliotek",
   "met.tag.derived": "Härledd",
-  "met.tag.team-assumption": "Teamets antagande",
+  "met.tag.team-assumption": "Modellantagande",
   "met.validation": "Validering",
   "met.pf": "Lastflöde: Z-bus-lösare mot pandapowers Newton–Raphson",
   "met.pf.dv": "Största spänningsskillnad",
@@ -434,7 +435,7 @@ const sv: Dict = {
   "term.cvar": "CVaR 95 %: medelvärdet för de 5 % sämsta åren. Den visar hur illa ett dåligt år kan bli, inte bara det typiska.",
   "term.kwp": "Kilowattpeak: solpanelernas märkeffekt under standardiserat testljus. Verklig produktion är oftast lägre.",
   "term.pu": "Per unit: spänning som andel av dess nominella värde, så 1,00 pu är exakt nominell spänning.",
-  "met.inputsLine": "Modellen har {n} indataparametrar, var och en med ett värde, en enhet och en källa: {rest} kommer från publicerade data, ett regelverk eller ett bibliotek, och {team} är teamets egna, var och en med skälet till valet.",
+  "met.inputsLine": "Modellen har {n} indataparametrar, var och en med ett värde, en enhet och en källa: {rest} kommer från publicerade data, ett regelverk eller ett bibliotek, och {team} är Kapacitet+:s egna modellval, var och en med sitt skäl.",
   "nets.title": "Nät",
   "net.title": "Nätet på kartan",
   "net.sub": "{n} hus på {f} utgående ledningar från nätstationen",
@@ -1102,7 +1103,7 @@ const sv: Dict = {
   "own.exportNote": "{kwh} kWh per år till spotpris och nätbolagets {rate} öre/kWh",
   "own.curtailed": "Den dynamiska exportgränsen kostar",
   "own.curtailedNote": "{kwh} kWh per år nedreglerade, inte inmatade",
-  "own.note": "Båda räknas efter den dynamiska exportgränsens nedreglering; att vänta avstår från båda tills nätet förstärks. Diskonterat med {rate} % per år (ett antagande från teamet); odiskonterat {undisc} SEK. Skattereduktionen för inmatad solel upphörde efter {last} och räknas därför inte. Solcellsanläggningens egen kostnad är densamma i båda fallen och lämnas utanför. Priser: medelspotpriset {span}, med dagens skatter och avgifter.",
+  "own.note": "Båda räknas efter den dynamiska exportgränsens nedreglering; att vänta avstår från båda tills nätet förstärks. Diskonterat med {rate} % per år (ett modellantagande); odiskonterat {undisc} SEK. Skattereduktionen för inmatad solel upphörde efter {last} och räknas därför inte. Solcellsanläggningens egen kostnad är densamma i båda fallen och lämnas utanför. Priser: medelspotpriset {span}, med dagens skatter och avgifter.",
   "apply.title": "Ansök om anslutning",
   "apply.lead": "Välj ditt hus, ange vad du vill ansluta och läs svaret för nätet som det ser ut i dag. Om du ansöker avgör nätbolagets regel direkt när den kan; annars gör en handläggare det.",
   "apply.strip.real": "Verkligt: vädret, byggnaderna, priserna.",

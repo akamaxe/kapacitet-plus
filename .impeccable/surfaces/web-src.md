@@ -107,7 +107,7 @@ rides on an envelope, beside the 413 → 787 kW answer.
 
 ## Unresolved
 
-- **The Swedish copy.** The interface is also in Swedish and nobody in the team can review it; a
-  Swedish-speaking DSO engineer should check it before it is shown to one (`docs/glossary.md`).
+- **The Swedish copy.** The interface is also in Swedish, which has not yet been reviewed by a native
+  speaker; a Swedish-speaking DSO engineer should check it before it is shown to one (`docs/glossary.md`).
 - **One primary per view on a long screen.** Operation carries one primary per section ("Issue the file",
   "Try a synthetic day"); whether a section of a long screen counts as a view is not decided.

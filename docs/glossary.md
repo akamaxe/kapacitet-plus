@@ -2,8 +2,8 @@
 
 The interface speaks two languages (`web/src/lib/i18n/{en,sv}.ts`). These are the terms every
 string uses, so a screen, its printed record and the data labels say the same thing. English is the
-reference. **Nobody on the team reads Swedish well enough to review the Swedish:** it follows this
-list, and a Swedish-speaking DSO engineer should check it before it is shown to one.
+reference. **The Swedish has not yet been reviewed by a native speaker:** it follows this list, and a
+Swedish-speaking DSO engineer should check it before it is shown to one.
 
 | English | Swedish | Note |
 |---|---|---|
