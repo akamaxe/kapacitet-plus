@@ -34,6 +34,8 @@ interface Job {
   error: string | null;
   /** the technical detail behind it, kept for whoever reports it */
   detail?: string;
+  /** its place in the server's line while every slot is taken (lib/evaluate.ts says the same) */
+  queued?: number | null;
 }
 
 export default function Request() {
@@ -276,6 +278,11 @@ export default function Request() {
       setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p.ms ?? 0 } } : j));
     };
     STAGES.forEach((s) => es.addEventListener(s, mark(s) as any));
+    es.addEventListener("queued", (e: MessageEvent) => {
+      const n = Number(JSON.parse(e.data)?.position);
+      setJob((j) => (j && Number.isFinite(n) ? { ...j, id, queued: n } : j));
+    });
+    es.addEventListener("started", () => setJob((j) => (j ? { ...j, queued: null } : j)));
     es.addEventListener("done", async () => {
       es.close();
       // the server answers 202 while a job is still running; only a 200 carries the result
@@ -480,6 +487,7 @@ export default function Request() {
 
         {job && (
           <div className="steps" aria-live="polite">
+            {running && job.queued != null && <p className="caption-muted">{t("req.queued", { n: f(job.queued) })}</p>}
             {STAGES.map((s, i) => {
               const done = job.stages[s] !== undefined;
               const active = !done && STAGES.slice(0, i).every((p) => job.stages[p] !== undefined) && running;

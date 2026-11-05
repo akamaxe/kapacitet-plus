@@ -7,23 +7,35 @@ recomputes each year's grid state with the house in it. Declining records the de
 nothing in the grid.
 
 Stored in data/requests/queue/:
-  queue.json           the decisions, the published baseline the queue started from, and a version
-                       that changes with every approval (an assessment made against an older
-                       version has to be evaluated again before it can be approved);
-  <assessment>.npz     an approved house's injection (p, q) for every weather year;
-  state_<year>.npz     the grid state of each weather year with every approved house.
+  queue.json             the decisions, the published baseline the queue started from, and a version
+                         that changes with every approval (an assessment made against an older
+                         version has to be evaluated again before it can be approved);
+  <assessment>.npz       an approved house's injection (p, q) for every weather year;
+  state_<year>.v<n>.npz  the grid state of each weather year with every approved house, as of
+                         version n (`state_<year>.npz` in a queue from before the versions);
+  seal_pending.json      the decision whose seal is still owed, while it is being written.
+
+queue.json is the commit point. An approval writes the new version's files first, each atomically,
+then queue.json, atomically: a crash before that leaves the queue as it was, and the half-written
+version is never read (recover() removes it). The decision is sealed after the commit; the marker,
+written before it, says which seal is owed, and recover() makes it good at the server's next start.
+A decision keeps the house's number, not its address (the reader takes the address from the network).
 """
 
 from __future__ import annotations
 
 import json
+import logging
+import re
 import shutil
 import threading
 from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 
 from .. import seals
+from ..atomic import savez_atomic, write_json_atomic
 from ..cache import on_clear
 from ..config import A, settings
 from ..paths import DATA
@@ -32,6 +44,10 @@ from .scenario import customers
 
 _LOCK = threading.RLock()
 DECISIONS = ("firm", "nonfirm", "declined")
+PENDING = "seal_pending.json"
+log = logging.getLogger(__name__)
+_STATE = re.compile(r"^state_(\d{4})(?:\.v(\d+))?\.npz$")
+_INJECTION = re.compile(r"^[0-9a-f]{12}\.npz$")
 
 
 ERRORS = {
@@ -68,14 +84,38 @@ def load() -> dict:
 
 
 def _save(q: dict) -> None:
-    folder().mkdir(parents=True, exist_ok=True)
-    tmp = folder() / "queue.json.tmp"
-    tmp.write_text(json.dumps(q, indent=1), encoding="utf-8")
-    tmp.replace(folder() / "queue.json")
+    """Write queue.json atomically: the commit point of every decision."""
+    write_json_atomic(folder() / "queue.json", q)
 
 
 def approved(q: dict) -> list[dict]:
     return [it for it in q["items"] if it["decision"] in ("firm", "nonfirm")]
+
+
+def _state_path(year: int, version: int) -> Path:
+    return folder() / f"state_{year}.v{version}.npz"
+
+
+def _state_file(year: int, version: int) -> Path | None:
+    """The state file of a year as of `version`, or of a queue from before the versions."""
+    for path in (_state_path(year, version), folder() / f"state_{year}.npz"):
+        if path.exists():
+            return path
+    return None
+
+
+def state_files() -> list[Path]:
+    """The grid-state files the queue's current version reads (provenance of an assessment)."""
+    if not folder().exists():
+        return []
+    version = load().get("version", 0)
+    files = sorted(folder().glob(f"state_*.v{version}.npz"))
+    return files or sorted(p for p in folder().glob("state_*.npz") if (m := _STATE.match(p.name)) and m[2] is None)
+
+
+def _load_npz(path: Path) -> dict[str, np.ndarray]:
+    with np.load(path) as d:          # closed at once: Windows will not replace or remove an open file
+        return {k: d[k] for k in d.files}
 
 
 _CACHE: dict = {"version": None, "states": None, "overrides": None}
@@ -96,15 +136,14 @@ def context() -> rq.Context | None:
             years = settings().weather_years
             states, overrides = {}, {}
             for y in years:
-                path = folder() / f"state_{y}.npz"
-                if path.exists():
-                    d = np.load(path)
-                    states[y] = {k: d[k] for k in d.files}
+                path = _state_file(y, q["version"])
+                if path is not None:
+                    states[y] = _load_npz(path)
             for it in items:
-                d = np.load(folder() / f"{it['assessment']}.npz")
+                d = _load_npz(folder() / f"{it['assessment']}.npz")
                 overrides[it["cid"]] = {
-                    "p": {y: d[f"p_{y}"].astype(float) for y in years if f"p_{y}" in d.files},
-                    "q": {y: d[f"q_{y}"].astype(float) for y in years if f"q_{y}" in d.files},
+                    "p": {y: d[f"p_{y}"].astype(float) for y in years if f"p_{y}" in d},
+                    "q": {y: d[f"q_{y}"].astype(float) for y in years if f"q_{y}" in d},
                     "pv_kw": it.get("pv_kw", 0.0), "ev_kw": it.get("ev_kw", 0.0), "hp": it.get("hp", False)}
             _CACHE.update(version=q["version"], states=states, overrides=overrides)
         return rq.Context(q["baseline"], overrides=_CACHE["overrides"], states=_CACHE["states"], label=label)
@@ -143,15 +182,14 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
         base = _check(q, record, decision)
         req, res = record["request"], record["result"]
         cid = int(req["cid"])
-        item = {"assessment": record["id"], "cid": cid, "address": res.get("customer", {}).get("address"),
+        item = {"assessment": record["id"], "cid": cid,
                 "decision": decision, "by": by, "note": note.strip()[:500],
                 "decided": datetime.now(timezone.utc).isoformat(), "request": req,
                 "summary": res.get("summary", {})}
         if decision == "declined":
             q["baseline"] = base
             q["items"].append(item)
-            _save(q)
-            seals.seal("decision", record["id"], item)
+            _commit(q, record["id"])
             return item
 
         static = res.get("static", {})
@@ -187,23 +225,90 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
             states[y] = rq.build_state(model, p, qq)
             emit("state", {"year": y, "done": i + 1, "of": len(years)})
 
-        folder().mkdir(parents=True, exist_ok=True)
-        np.savez(folder() / f"{record['id']}.npz",
-                 **{f"p_{y}": inj[y][0].astype(np.float32) for y in years},
-                 **{f"q_{y}": inj[y][1].astype(np.float32) for y in years})
+        # the next version's files first; none of them is read until queue.json names that version
+        version = q["version"] + 1
+        savez_atomic(folder() / f"{record['id']}.npz",
+                     **{f"p_{y}": inj[y][0].astype(np.float32) for y in years},
+                     **{f"q_{y}": inj[y][1].astype(np.float32) for y in years})
         for y, st in states.items():
-            np.savez(folder() / f"state_{y}.npz", **st)
+            savez_atomic(_state_path(y, version), **st)
         cust = customers()
         cap = min(r.pv_kwp / A("pv_dc_ac_ratio"), float(cust.loc[cid, "fuse_kva"])) if r.pv_kwp > 0 else 0.0
         item.update(pv_kw=cap, ev_kw=r.ev_kw, hp=hp_new, verification=out["verification"],
                     summary=out["summary"])
         q["items"].append(item)
         q["baseline"] = base
-        q["version"] += 1
-        _save(q)
+        q["version"] = version
+        _commit(q, record["id"])
         _CACHE["version"] = None
-        seals.seal("decision", record["id"], item)
+        _collect(q)
         return item
+
+
+def _commit(q: dict, assessment: str) -> None:
+    """Commit a decision: say which seal is owed, write queue.json, seal the decision, clear the marker.
+    A crash at any point leaves either the old queue or the new one with its seal owed (recover())."""
+    write_json_atomic(folder() / PENDING, {"kind": "decision", "id": assessment})
+    _save(q)
+    _seal_owed(q)
+
+
+def _seal_owed(q: dict) -> str | None:
+    """Seal the decision the marker names when queue.json holds it (once: a seal already in the chain
+    with the same digest is not repeated), then remove the marker. Returns the id it sealed."""
+    marker = folder() / PENDING
+    if not marker.exists():
+        return None
+    try:
+        owed = json.loads(marker.read_text(encoding="utf-8"))
+    except ValueError:
+        owed = None
+    done = None
+    item = next((it for it in q.get("items", []) if isinstance(owed, dict) and it.get("assessment") == owed.get("id")),
+                None)
+    if item is not None:              # committed: the seal is owed; otherwise the decision never happened
+        entry = seals.entry_for("decision", item["assessment"])
+        if entry is None or entry["digest"] != seals.digest(item):
+            seals.seal("decision", item["assessment"], item)
+        done = item["assessment"]
+    marker.unlink(missing_ok=True)
+    return done
+
+
+def _collect(q: dict) -> None:
+    """Remove what no committed version reads: other versions' states (a crashed approval's among
+    them), states from before the versions once the current version has its own, and injections of
+    houses the queue does not hold."""
+    if not folder().exists():
+        return
+    version = q.get("version", 0)
+    held = {f"{it['assessment']}.npz" for it in approved(q)} if q.get("items") else set()
+    for path in folder().iterdir():
+        m = _STATE.match(path.name)
+        if m:
+            stale = (m[2] is not None and int(m[2]) != version) or (
+                m[2] is None and _state_path(int(m[1]), version).exists())
+        else:
+            stale = bool(_INJECTION.match(path.name)) and path.name not in held
+        if stale:
+            try:
+                path.unlink()
+            except OSError:           # held open for a moment: the next approval or start removes it
+                pass
+
+
+def recover() -> dict:
+    """At the server's start: seal the decision a crash left unsealed, and remove the files of a
+    version that never committed."""
+    with _LOCK:
+        if not folder().exists():
+            return {"sealed": None}
+        q = load()
+        sealed = _seal_owed(q)
+        if sealed:
+            log.info("sealed decision %s, owed since the server last stopped", sealed)
+        _collect(q)
+        return {"sealed": sealed}
 
 
 def reset() -> None:

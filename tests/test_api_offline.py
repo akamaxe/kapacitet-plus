@@ -90,9 +90,10 @@ def test_requests_are_refused_when_the_engine_is_busy(client, monkeypatch):
     from kapacitet.api import main
 
     monkeypatch.setattr(main, "_check_cid", lambda cid: None)
-    monkeypatch.setattr(main, "MAX_JOBS", 0)
+    monkeypatch.setattr(main.POOL, "max_running", 0)
+    monkeypatch.setattr(main.POOL, "max_queued", 0)
     r = client.post(f"{API}/requests", json={"cid": 0, "pv_kwp": 5.0})
-    assert r.status_code == 429
+    assert r.status_code == 429 and r.json()["detail"]["code"] == "busy" and r.headers["retry-after"]
 
 
 def test_a_job_that_runs_too_long_is_given_up_and_a_finished_one_is_forgotten(client):
@@ -186,6 +187,8 @@ def stubbed(client, monkeypatch, tmp_path):
     monkeypatch.setattr(main, "_engine", lambda: {"model": None, "hp": None, "ev": None})
     monkeypatch.setattr(rq, "evaluate", lambda model, req, hp, ev, emit=None, ctx=None: _stub_result(req.cid))
     monkeypatch.setattr(records, "folder", lambda: tmp_path)
+    # the address is the network's, read when a record is read: this test's network has one street
+    monkeypatch.setattr(records, "address_of", lambda cid: None if cid is None else "Testvägen 1")
     return main
 
 
@@ -293,6 +296,215 @@ def test_decision_log_lists_sealed_decisions_with_digests(client):
     rows = r.text.strip().splitlines()
     assert rows[0].startswith("decided,assessment,house,address,decision,note")
     assert "Testvägen 7" in rows[1] and "nonfirm" in rows[1] and len(rows[1].split(",")[-3]) == 64
+
+
+# ---------------------------------------------------------------- the job pool (stubbed engine)
+
+def _slow_engine(monkeypatch, release):
+    """An evaluation that runs until `release` is set, checking for a cancel as the engine does."""
+    import threading
+    import time
+
+    from kapacitet.engine import request as rq
+
+    threads: dict[int, threading.Thread] = {}
+
+    def slow(model, req, hp, ev, emit=None, ctx=None):
+        threads[req.cid] = threading.current_thread()
+        while not release.is_set():
+            ctx.check()
+            time.sleep(0.01)
+        return _stub_result(req.cid)
+
+    monkeypatch.setattr(rq, "evaluate", slow)
+    return threads
+
+
+def test_racing_requests_get_one_slot_two_places_in_line_and_two_refusals(client, stubbed, monkeypatch):
+    import threading
+    import time
+
+    main = stubbed
+    monkeypatch.setattr(main.POOL, "max_running", 1)
+    monkeypatch.setattr(main.POOL, "max_queued", 2)
+    release = threading.Event()
+    threads = _slow_engine(monkeypatch, release)
+    start = threading.Barrier(5)
+    answers: dict[int, object] = {}
+
+    def post(cid):
+        start.wait()
+        answers[cid] = client.post(f"{API}/requests", json={"cid": cid, "pv_kwp": 5.0})
+
+    racers = [threading.Thread(target=post, args=(cid,)) for cid in range(5)]
+    try:
+        for t in racers:
+            t.start()
+        for t in racers:
+            t.join(20)
+        codes = sorted(r.status_code for r in answers.values())
+        assert codes == [200, 200, 200, 429, 429]
+        taken = {cid: r.json() for cid, r in answers.items() if r.status_code == 200}
+        assert sorted(b["status"] for b in taken.values()) == ["queued", "queued", "running"]
+        assert all(r.json()["detail"]["code"] == "busy" for r in answers.values() if r.status_code == 429)
+        assert main.POOL.counts() == {"running": 1, "queued": 2}
+        running = next(cid for cid, b in taken.items() if b["status"] == "running")
+        waiting = [b["id"] for b in taken.values() if b["status"] == "queued"]
+        assert all(main.POOL.jobs[j]["events"][0]["stage"] == "queued" for j in waiting)
+
+        # a running job stops at the engine's next check, its thread ends, and the line moves up
+        for _ in range(200):
+            if running in threads:
+                break
+            time.sleep(0.01)
+        r = client.request("DELETE", f"{API}/requests/{taken[running]['id']}", json={})
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
+        threads[running].join(5)
+        assert not threads[running].is_alive()
+        assert client.get(f"{API}/requests/{taken[running]['id']}").json()["detail"]["code"] == "cancelled"
+        for _ in range(200):
+            if main.POOL.counts() == {"running": 1, "queued": 1}:
+                break
+            time.sleep(0.01)
+        assert main.POOL.counts() == {"running": 1, "queued": 1}
+        moved = next(j for j in waiting if main.POOL.jobs[j]["status"] == "running")
+        still = next(j for j in waiting if j != moved)
+        stages = [e["stage"] for e in main.POOL.jobs[moved]["events"]]
+        assert stages[0] == "queued" and "started" in stages
+        assert main.POOL.jobs[still]["events"][-1]["payload"] == {"position": 1}      # moved up the line
+
+        # one in line leaves it at once; a finished one cannot be cancelled
+        r = client.request("DELETE", f"{API}/requests/{still}", json={})
+        assert r.status_code == 200 and main.POOL.jobs[still]["status"] == "cancelled"
+        release.set()
+        assert _finish(client, moved)["id"] == moved
+        r = client.request("DELETE", f"{API}/requests/{moved}", json={})
+        assert r.status_code == 409 and r.json()["detail"]["code"] == "already_finished"
+        assert client.request("DELETE", f"{API}/requests/0123456789ab", json={}).status_code == 404
+        # nothing of a cancelled job is saved
+        from kapacitet.api import records
+
+        assert records.load(taken[running]["id"]) is None and records.load(still) is None
+    finally:
+        release.set()
+    for _ in range(200):
+        if not main.POOL.busy():
+            break
+        time.sleep(0.01)
+    assert not main.POOL.busy()
+
+
+def test_the_portal_cancels_its_own_answer_and_the_sync_route_shares_the_pool(client, stubbed, monkeypatch):
+    import threading
+
+    main = stubbed
+    monkeypatch.setattr(main.POOL, "max_running", 1)
+    monkeypatch.setattr(main.POOL, "max_queued", 0)
+    monkeypatch.setattr("kapacitet.api.apply._baseline", lambda: "static")
+    release = threading.Event()
+    _slow_engine(monkeypatch, release)
+    try:
+        first = client.post(f"{API}/apply/evaluate", json={"cid": 2, "pv_kwp": 5.0})
+        assert first.status_code == 200
+        # the one slot is taken and nobody may wait: the synchronous route is refused like the others
+        r = client.post(f"{API}/evaluate", json={"cid": 3, "pv_kwp": 5.0})
+        assert r.status_code == 429 and r.json()["detail"]["code"] == "busy"
+        r = client.request("DELETE", f"{API}/apply/evaluate/{first.json()['id']}", json={})
+        assert r.status_code == 200 and r.json()["status"] == "cancelled"
+    finally:
+        release.set()
+    for _ in range(300):
+        if not main.POOL.busy():
+            break
+        threading.Event().wait(0.01)
+    r = client.post(f"{API}/evaluate", json={"cid": 3, "pv_kwp": 5.0})
+    assert r.status_code == 200 and r.json()["summary"] == {"pv_static_approved": True}
+
+
+def test_no_sealed_or_logged_file_holds_an_address(client, stubbed, tmp_path, monkeypatch):
+    import gzip
+
+    from kapacitet import seals
+    from kapacitet.api import records
+    from kapacitet.engine import queue as qu
+
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "queue")
+    job_id = client.post(f"{API}/requests", json={"cid": 6, "pv_kwp": 4.0}).json()["id"]
+    body = _finish(client, job_id)
+    assert body["customer"]["address"] == "Testvägen 1"           # read from the network for the reader
+    # a decision on it, by the queue (a refusal needs no engine)
+    item = qu.decide(None, None, None, records.load(job_id), "declined", "no room this year")
+    assert "address" not in item
+    assert client.get(f"{API}/queue").json()["items"][0]["address"] == "Testvägen 1"
+    assert seals.verify("assessment", job_id, records.load(job_id, resolve=False))["ok"]
+    assert seals.verify("decision", job_id, item)["ok"]
+    written = [p for p in tmp_path.rglob("*") if p.is_file()]
+    assert any(p.suffix == ".gz" for p in written) and any(p.name == "seals.jsonl" for p in written)
+    for path in written:
+        data = path.read_bytes()
+        if path.suffix == ".gz":
+            data = gzip.decompress(data)
+        assert b"Testv" not in data, f"{path.relative_to(tmp_path)} keeps the address"
+    listed = client.get(f"{API}/requests").json()["items"]
+    assert listed[0]["id"] == job_id and listed[0]["address"] == "Testvägen 1"
+
+
+# ---------------------------------------------------------------- retention and the server's lock
+
+def test_old_assessments_are_purged_and_their_seals_erased_but_not_what_a_decision_rests_on(tmp_path, monkeypatch):
+    from datetime import datetime, timedelta, timezone
+
+    from kapacitet import seals
+    from kapacitet.api import inbox, records
+    from kapacitet.engine import queue as qu
+
+    monkeypatch.setattr(records, "folder", lambda: tmp_path / "requests")
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "requests" / "queue")
+    monkeypatch.setattr(inbox, "log_path", lambda: tmp_path / "requests" / "applications.jsonl")
+    now = datetime(2026, 11, 5, tzinfo=timezone.utc)
+
+    def saved(job_id, days_ago):
+        rec = {"id": job_id, "created": (now - timedelta(days=days_ago)).isoformat(),
+               "request": {"cid": 1, "pv_kwp": 5.0, "baseline": "static"},
+               "result": {"customer": {"cid": 1}, "summary": {}, "static": {}}}
+        records.save(rec)
+        return rec
+
+    saved("a00000000001", 40)
+    decided = saved("a00000000002", 40)
+    saved("a00000000003", 2)
+    qu.decide(None, None, None, decided, "declined")
+    assert records.purge(30, now=now, dry_run=True)["ids"] == ["a00000000001"]
+    out = records.purge(30, now=now)
+    assert out["ids"] == ["a00000000001"] and out["kept_for_decisions"] == 1
+    assert records.load("a00000000001") is None and records.load("a00000000002") is not None
+    assert [it["id"] for it in records.listing()] == ["a00000000003", "a00000000002"]
+    v = seals.verify("assessment", "a00000000001")
+    assert v["erased"] and v["ok"] and v["reason"].startswith("retention")
+    assert seals.verify_chain()["ok"]
+    assert records.purge(30, now=now)["assessments"] == 0          # nothing left to do, nothing broken
+
+
+def test_a_second_writer_of_the_same_folder_is_refused_and_a_crashed_one_leaves_no_lock(tmp_path, monkeypatch):
+    from conftest import another_server
+    from kapacitet.api import records
+
+    monkeypatch.setattr(records, "folder", lambda: tmp_path / "requests")
+    with another_server(tmp_path) as other:
+        with pytest.raises(records.FolderInUse) as e:
+            records.claim_server_lock(wait_s=0)
+        assert e.value.pid == other and str(other) in str(e.value)
+    # killed, not stopped: the OS let go of its lock, and the PID it left in the file means nothing
+    assert records.server_lock_path().read_text() == str(other)
+    lock = records.claim_server_lock()
+    assert lock is not None and lock.read_text() == str(__import__("os").getpid())
+    assert records.claim_server_lock() == lock            # a second app in this process holds it too
+    records.release_server_lock(lock)
+    assert lock.read_text() == str(__import__("os").getpid())    # held until the last release
+    records.release_server_lock(lock)
+    assert lock.read_text() == ""
+    with another_server(tmp_path):                       # free again for whoever comes next
+        pass
 
 
 # ---------------------------------------------------------------- provenance (no data needed)

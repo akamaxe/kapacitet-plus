@@ -30,6 +30,8 @@ def client(tmp_path, monkeypatch):
     monkeypatch.setattr(qu, "folder", lambda: tmp_path / "requests" / "queue")
     monkeypatch.setattr(inbox, "log_path", lambda: tmp_path / "requests" / "applications.jsonl")
     monkeypatch.setattr(dso, "path", lambda: tmp_path / "requests" / "settings.json")
+    # an address is read from the network, never kept: this test's network names house n "Gatan n"
+    monkeypatch.setattr(records, "address_of", lambda cid: None if cid is None else f"Gatan {cid}")
     with TestClient(app) as c:
         yield c, records, inbox
 
@@ -72,6 +74,7 @@ def test_the_code_is_never_kept_and_the_dsos_view_sees_only_its_hint(client):
     code = sent["reference"]
     log = inbox.log_path().read_text(encoding="utf-8")
     assert code not in log and code.replace("-", "") not in log and "household-key-3-0123456789" not in log
+    assert "Gatan" not in log                    # the house's number, never its address
     received = json.loads(log.splitlines()[0])
     assert "reference" not in received and received["reference_hint"] == code[3:7] and len(received["reference_sha256"]) == 64
     listed = c.get("/api/v1/inbox").json()

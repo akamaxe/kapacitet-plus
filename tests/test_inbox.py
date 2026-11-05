@@ -206,6 +206,24 @@ def test_decisions_share_the_queue_lock(inbox_dirs, monkeypatch):
         inbox._STATE["working"] = None
 
 
+def test_the_log_keeps_the_house_and_never_its_address(inbox_dirs, monkeypatch, tmp_path):
+    from kapacitet import seals
+
+    inbox, records, qu = inbox_dirs
+    monkeypatch.setattr(records, "address_of", lambda cid: f"Gatan {cid}")
+    rec = _saved(records, "a00000000005", cid=13, **_result(pv_ok=True))
+    app = inbox.receive(rec["id"])
+    assert app["address"] == "Gatan 13"                          # read from the network for the reader
+    monkeypatch.setattr(qu, "decide", lambda *a, **k: {"pv_kw": 4.0})
+    inbox.process(app, engine=lambda: {"model": None, "hp": None, "ev": None},
+                  make_record=lambda *a: None, evaluate=lambda r: None)
+    assert inbox.applications()[app["id"]]["status"] == "firm"
+    text = inbox.log_path().read_text(encoding="utf-8")
+    assert '"cid": 13' in text and "Gatan" not in text
+    for path in seals.folder().rglob("*.json*"):
+        assert "Gatan" not in path.read_text(encoding="utf-8"), path.name
+
+
 # ---------------------------------------------------------------- a real automatic approval (data)
 
 @needs_results

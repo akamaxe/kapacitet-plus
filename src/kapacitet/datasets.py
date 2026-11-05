@@ -15,6 +15,10 @@ downloads (weather and prices are the same), and the reference network's househo
 copied in. The server uses one network at a time and switches only when it runs under the
 supervisor (`kapacitet serve`), which restarts it on the new folder: no cache survives a switch.
 
+At most KAPACITET_MAX_BUILDS builds run at once (1: a build takes the machine's cores), each
+for at most KAPACITET_BUILD_TIMEOUT_S (4 h) before it is stopped (`reap`), and one can be stopped
+at any time (`cancel`). The network in use is never rebuilt under the server that reads it.
+
 The record, the lock, the log and the step runner are procs.py's, shared with a study's stations.
 """
 
@@ -28,6 +32,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 
 from . import procs
@@ -37,6 +42,10 @@ REFERENCE = "reference"
 RESTART = 75                       # the exit code that asks the supervisor for a restart
 STEPS = ("import", "households", "profiles", "compute")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
+MAX_BUILDS = int(os.environ.get("KAPACITET_MAX_BUILDS", "1"))
+BUILD_TIMEOUT_S = float(os.environ.get("KAPACITET_BUILD_TIMEOUT_S", str(4 * 3600)))
+# launching checks how many builds run and then starts one: two at once could both pass the check
+_LAUNCH_LOCK = threading.Lock()
 
 
 class DatasetError(ValueError):
@@ -56,6 +65,8 @@ ERRORS = {
     "in_use": "network {id} is in use; switch to another one first",
     "not_supervised": "the server was not started with `kapacitet serve`, so it cannot switch networks",
     "jobs_running": "an evaluation or a decision is running; switch when it has finished",
+    "too_many_builds": "{n} network builds are already running; start this one when one has finished",
+    "not_building": "network {id} is not being built",
 }
 
 
@@ -134,7 +145,11 @@ def current() -> str:
 def restart_soon(delay: float = 0.5) -> None:
     """Hand the server back to its supervisor in a moment (after the answer has gone out), which
     starts it again: on another network after a switch, on new data after a bundle was loaded."""
-    threading.Timer(delay, lambda: os._exit(RESTART)).start()
+    def leave() -> None:
+        procs.let_go_all()            # the server's lock is free for the server that replaces it
+        os._exit(RESTART)
+
+    threading.Timer(delay, leave).start()
 
 
 # ---------------------------------------------------------------- creating one
@@ -184,29 +199,100 @@ def building(ds_id: str) -> bool:
     return procs.building(folder(ds_id))
 
 
+def _launched(rec: dict) -> bool:
+    """A build was started and its process is alive, whether or not it has taken its lock yet."""
+    return rec.get("status") == "building" and procs.alive(int(rec.get("pid") or 0))
+
+
+def _running(rec: dict) -> bool:
+    return building(rec["id"]) or _launched(rec)
+
+
+def builds_running() -> list[str]:
+    """The networks being built now."""
+    return [rec["id"] for rec in listing() if rec.get("building") or _launched(rec)]
+
+
+def can_launch(ds_id: str | None = None) -> None:
+    """Refuse a build that may not start now: the network in use (the server reads its folder), one
+    already building, or one more than KAPACITET_MAX_BUILDS."""
+    if ds_id is not None:
+        if building(ds_id) or _launched(record(ds_id)):
+            raise DatasetError("building", id=ds_id)
+        if ds_id in (active(), current()):
+            raise DatasetError("in_use", id=ds_id)
+    running = builds_running()
+    if len(running) >= MAX_BUILDS:
+        raise DatasetError("too_many_builds", n=len(running))
+
+
 def launch(ds_id: str, workers: int = 2) -> int:
     """Start the build in its own process, detached from the server, and return its PID."""
+    with _LAUNCH_LOCK:
+        rec = record(ds_id)
+        reap()
+        can_launch(ds_id)
+        root = folder(ds_id)
+        env = {**os.environ, **child_env(ds_id), "PYTHONUNBUFFERED": "1"}
+        env.pop("KAPACITET_SUPERVISED", None)
+        cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", ds_id, "--workers", str(workers)]
+        if rec.get("quick"):
+            cmd.append("--quick")
+        kwargs: dict = {}
+        if sys.platform == "win32":
+            kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
+        else:
+            kwargs["start_new_session"] = True
+        log = open(root / procs.LOG, "ab")
+        proc = subprocess.Popen(cmd, cwd=str(ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
+                                stdin=subprocess.DEVNULL, **kwargs)
+        log.close()
+        rec.update(status="building", launched=_now(), pid=proc.pid)
+        rec.pop("error", None)
+        _save(rec)
+        return proc.pid
+
+
+def cancel(ds_id: str, reason: str = "cancelled") -> dict:
+    """Stop a network's build and every process it started; the record says where it stopped and why."""
     rec = record(ds_id)
-    if building(ds_id):
-        raise DatasetError("building", id=ds_id)
-    root = folder(ds_id)
-    env = {**os.environ, **child_env(ds_id), "PYTHONUNBUFFERED": "1"}
-    env.pop("KAPACITET_SUPERVISED", None)
-    cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", ds_id, "--workers", str(workers)]
-    if rec.get("quick"):
-        cmd.append("--quick")
-    kwargs: dict = {}
-    if sys.platform == "win32":
-        kwargs["creationflags"] = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP  # type: ignore[attr-defined]
-    else:
-        kwargs["start_new_session"] = True
-    log = open(root / procs.LOG, "ab")
-    proc = subprocess.Popen(cmd, cwd=str(ROOT), env=env, stdout=log, stderr=subprocess.STDOUT,
-                            stdin=subprocess.DEVNULL, **kwargs)
-    log.close()
-    rec.update(status="building", launched=_now(), pid=proc.pid)
+    holder = procs.holder(_lock(ds_id))
+    pids = {p for p in (holder, int(rec.get("pid") or 0) if _launched(rec) else None) if p}
+    if not pids:
+        raise DatasetError("not_building", id=ds_id)
+    for pid in pids:
+        procs.kill_tree(pid)
+    rec = record(ds_id)                    # as the build last wrote it
+    for s in rec.get("steps", []):
+        if s.get("status") == "running":
+            s.update(status="failed", error=reason, finished=_now())
+    rec.update(status="failed", error=reason, finished=_now(), cancelled=True)
     _save(rec)
-    return proc.pid
+    _lock(ds_id).unlink(missing_ok=True)
+    return rec
+
+
+def reap(now: float | None = None) -> list[str]:
+    """Stop every build that has run past KAPACITET_BUILD_TIMEOUT_S; returns the networks stopped."""
+    from datetime import datetime
+
+    now = time.time() if now is None else now
+    stopped = []
+    for rec in listing():
+        if not _running(rec):
+            continue
+        began = rec.get("launched") or rec.get("started")
+        try:
+            age = now - datetime.fromisoformat(began).timestamp() if began else 0.0
+        except ValueError:
+            age = 0.0
+        if age > BUILD_TIMEOUT_S:
+            try:
+                cancel(rec["id"], f"timed out after {BUILD_TIMEOUT_S:.0f} s")
+                stopped.append(rec["id"])
+            except DatasetError:
+                pass
+    return stopped
 
 
 def _copy_households(dest_processed: Path) -> int:

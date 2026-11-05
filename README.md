@@ -175,9 +175,21 @@ folder by default), `KAPACITET_RAW_DIR` (the downloads; `raw/` in the data folde
 `KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_ALLOWED_HOSTS` (comma-separated names the server
 answers to besides localhost, 127.0.0.1 and `[::1]`, such as its address on a LAN; `*` turns the
 check off; a codespace's forwarded names are allowed by themselves), `KAPACITET_CORS_ORIGINS`
-(comma-separated; cross-origin access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
+(comma-separated; cross-origin access is off by default), `KAPACITET_MAX_JOBS`,
+`KAPACITET_MAX_QUEUED` and `KAPACITET_JOB_TIMEOUT_S` (live requests, below),
+`KAPACITET_MAX_BUILDS` and `KAPACITET_BUILD_TIMEOUT_S` (builds of imported networks),
+`KAPACITET_RETENTION_DAYS` (how long saved assessments are kept, [Privacy](#privacy-and-retention)),
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
 `KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release).
+
+Live evaluations share one pool: `KAPACITET_MAX_JOBS` (4) run at once, `KAPACITET_MAX_QUEUED` (8)
+more wait their turn, and anything beyond is refused at once with 429 `busy`. One that waits is
+told its place in line (a `queued` event on its stream, shown on screen). Each stops after
+`KAPACITET_JOB_TIMEOUT_S` (120 s) of running, and `DELETE /api/v1/requests/{id}` (the portal's
+`DELETE /api/v1/apply/evaluate/{id}`) stops one at the engine's next check; nothing of a stopped
+evaluation is saved. One server writes a data folder at a time: it holds an OS lock on
+`data/requests/server.lock`, so a second one started on the same folder refuses to start, and one
+that crashed leaves nothing behind to clean up.
 
 The API documentation is at `/docs`. A write (POST, PUT, DELETE) is taken only as JSON and, from
 a browser, only from the server's own origin, which keeps another site's page from making one;
@@ -197,6 +209,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet compute` | Hosting capacity, envelopes, risk, 2030 scenarios, validation and the UI payloads |
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
+| `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet study …` | A DSO's study of many secondary substations, each built in its own process (below) |
 | `kapacitet all` | The four build steps in order |
@@ -429,6 +442,10 @@ in `data/datasets/<id>/import/`, and a separate process builds the network in it
 reference network's household profiles, builds the profiles for every weather year and computes
 everything the screens read; `dataset.json` records each step, and `build.log` keeps the output.
 A *quick* build (one weather year and fewer adoption orders in the computation) takes minutes.
+One build runs at a time (`KAPACITET_MAX_BUILDS`), the network in use is never rebuilt under the
+server that reads it (`in_use`), `POST /api/v1/datasets/{id}/cancel` stops a build and every
+process it started, and one that runs past `KAPACITET_BUILD_TIMEOUT_S` (4 h) is stopped the next
+time the networks are read.
 
 `python -m kapacitet serve` now runs the server as the child of a small supervisor. *Use this
 network* asks first, then writes `data/active.json` and has the server exit with code 75; the
@@ -549,6 +566,34 @@ under an answer) re-hashes both, `GET /api/v1/seals` gives the chain's head, and
 `GET /api/v1/queue/log.csv` is every decision ever sealed, including those an emptied queue no
 longer holds. This is tamper-evident, not tamper-proof: whoever can write the folder can rewrite
 the whole chain, so the head is worth writing down somewhere else, as the printed record does.
+
+Every one of these files is written atomically (`src/kapacitet/atomic.py`): a crash leaves the old
+file or the new one, never half of either. A chain line cut short by a crash is a *torn tail*:
+`GET /api/v1/seals` says `torn_tail`, the lines before it still verify, and the next seal cuts it
+off. An approval writes the queue's new grid states under the next version and only then
+`queue.json`, its commit point, so a crash part-way leaves the queue as it was; a decision whose
+seal a crash left owed is sealed when the server next starts.
+
+### Privacy and retention
+
+A house is kept by its number in the network (`cid`), never by its address: not in a saved
+assessment, its index line or its seal, not in a queue decision, and not in the applications' log
+or its seals. The address is read from the network when a record is read, as the portal's list of
+houses does, so the screens still show it. The number still leads to the house through the
+network, so these records stay personal data in the GDPR's sense: that is why they can be purged.
+The portal asks for nothing but the address (from the network's own list) and keeps only the hash
+of each reference code. The one free text is the planner's reason for a decision, which is sealed
+with it: the decision form says not to write personal data there.
+
+Saved assessments are kept until they are purged. With `KAPACITET_RETENTION_DAYS=N` the server
+purges those older than N days at startup and then once a day; `kapacitet purge --older-than N`
+(`--dry-run` to see what would go) does the same with the server stopped. An assessment a queue
+decision or an application still waiting rests on is kept. Purging removes the saved answer and
+its line in the index, and *erases* its seal: the kept copy goes and an `erasure` record is sealed
+in its place, with the digest the copy had and why it went, so the chain stays valid and
+`GET /api/v1/seals/verify` answers `erased` instead of failing. Decisions and applications are the
+DSO's record of what it decided and are not purged. Records written before addresses were left
+out still hold them, and their seals cover them as they are.
 
 ## Every rule, and what can be sent the day before
 

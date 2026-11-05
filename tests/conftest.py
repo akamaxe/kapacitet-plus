@@ -68,6 +68,41 @@ def _a_fresh_rate_limit():
     LIMITER.reset()
 
 
+@contextlib.contextmanager
+def another_server(data_dir: Path):
+    """A process that holds data/requests/server.lock of the data folder `data_dir`, as a running
+    server does (kapacitet.api.records.claim_server_lock), until the block ends; yields its PID.
+
+    The PID is the one the process prints: on Windows a virtual environment's python.exe starts the
+    interpreter as a child, so Popen's own PID is the launcher's. The block ends by killing both."""
+    import subprocess
+    import time
+
+    from kapacitet import procs
+
+    code = ("import os; from kapacitet.api import records; records.claim_server_lock(); "
+            "print('held', os.getpid(), flush=True); import time; time.sleep(60)")
+    env = {**os.environ, "KAPACITET_DATA_DIR": str(data_dir)}
+    proc = subprocess.Popen([sys.executable, "-c", code], env=env, stdout=subprocess.PIPE, text=True)
+    pid = None
+    try:
+        word, _, pid_text = proc.stdout.readline().strip().partition(" ")
+        assert word == "held", "the other process could not take the lock"
+        pid = int(pid_text)
+        yield pid
+    finally:
+        procs.kill_tree(proc.pid)
+        if pid is not None:
+            procs.kill_tree(pid)
+        proc.kill()
+        proc.wait()
+        proc.stdout.close()
+        for _ in range(250):                  # gone, and the OS has let go of its lock
+            if pid is None or not procs.alive(pid):
+                break
+            time.sleep(0.02)
+
+
 def _has_operation() -> bool:
     from kapacitet.paths import processed_ro
 

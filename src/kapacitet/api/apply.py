@@ -82,6 +82,15 @@ async def evaluate_events(job_id: str):
     return await main.request_events(job_id)
 
 
+@router.delete("/evaluate/{job_id}")
+def cancel(job_id: str) -> dict:
+    """Stop an answer that is waiting or being computed (a household that changed its mind frees
+    the slot for the next one); nothing of it is kept."""
+    from . import main
+
+    return main.cancel_request(job_id)
+
+
 @router.get("/evaluate/{job_id}")
 def answer(job_id: str) -> dict:
     """The answer in the terms a household needs: firm or with a limit, what the limit costs, what the

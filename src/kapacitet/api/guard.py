@@ -73,9 +73,12 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("POST", f"{API}/check"): Policy("compute", "nothing: checks the four CSV tables in memory"),
     ("POST", f"{API}/requests"): Policy(
         "compute", "data/requests/<id>.json.gz, its index, the injection cache and a seal",
-        "KAPACITET_MAX_JOBS evaluations at once, each within KAPACITET_JOB_TIMEOUT_S"),
+        "KAPACITET_MAX_JOBS evaluations at once and KAPACITET_MAX_QUEUED waiting, each within "
+        "KAPACITET_JOB_TIMEOUT_S"),
+    ("DELETE", f"{API}/requests/{{job_id}}"): Policy("write", "nothing: a waiting or running evaluation stops",
+                                                     "only one that has not finished"),
     ("POST", f"{API}/evaluate"): Policy("compute", "nothing: the evaluation is answered in the request",
-                                        "KAPACITET_MAX_JOBS evaluations at once"),
+                                        "the same pool as POST /requests"),
     ("POST", f"{API}/queue"): Policy("write", "the queue, its seal and the application it decides",
                                      "one queue update at a time"),
     ("DELETE", f"{API}/queue"): Policy("write", "a seal, then the queue is emptied", "one queue update at a time"),
@@ -88,9 +91,14 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("POST", f"{API}/applications/{{app_id}}/requeue"): Policy("write", "applications.jsonl",
                                                                "only an application in review"),
     ("POST", f"{API}/apply/evaluate"): Policy("compute", "as POST /requests, against the DSO's grid"),
+    ("DELETE", f"{API}/apply/evaluate/{{job_id}}"): Policy("write", "as DELETE /requests/{id}"),
     ("POST", f"{API}/apply/submit"): Policy("write", "as POST /applications"),
     ("POST", f"{API}/datasets"): Policy("write", "data/datasets/<id> and its build process"),
-    ("POST", f"{API}/datasets/{{ds_id}}/build"): Policy("write", "a build process for data/datasets/<id>"),
+    ("POST", f"{API}/datasets/{{ds_id}}/build"): Policy(
+        "write", "a build process for data/datasets/<id>",
+        "not the network in use, and at most KAPACITET_MAX_BUILDS builds at once"),
+    ("POST", f"{API}/datasets/{{ds_id}}/cancel"): Policy("write", "stops the build process; its record says so",
+                                                        "only a build that is running"),
     ("DELETE", f"{API}/datasets/{{ds_id}}"): Policy("write", "removes data/datasets/<id>",
                                                     "not the network in use"),
     ("POST", f"{API}/datasets/{{ds_id}}/activate"): Policy(

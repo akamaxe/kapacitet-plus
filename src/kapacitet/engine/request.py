@@ -26,10 +26,12 @@ from __future__ import annotations
 import json
 import logging
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
 
+from ..atomic import savez_atomic
 from ..cache import memo, on_clear
 from ..config import A, settings
 from ..paths import DATA, processed
@@ -105,7 +107,9 @@ def baseline_pq(model: NetModel, name: str, year: int, hp: np.ndarray, ev: np.nd
     """The published baseline's injection for one year, kept for the last few years asked for.
 
     Recomputing it means the non-firm customers' envelopes for that year, a few seconds each, so a
-    copy is also kept in data/requests/cache, tied to the baseline file it was computed from.
+    copy is also kept in data/requests/cache, tied to the baseline file it was computed from. The
+    copy is written atomically, and one that cannot be read or does not fit the model is computed
+    again (`_cached_pq`).
     """
     key = (name, year)
     if key not in _PQ_CACHE:
@@ -113,21 +117,40 @@ def baseline_pq(model: NetModel, name: str, year: int, hp: np.ndarray, ev: np.nd
             _PQ_CACHE.pop(next(iter(_PQ_CACHE)))
         stamp = processed("request", f"{name}.json").stat().st_mtime
         path = DATA / "requests" / "cache" / f"{name}_{year}.npz"
-        pq = None
-        if path.exists():
-            d = np.load(path)
-            if float(d["stamp"]) == stamp:
-                pq = (d["p"].astype(float), d["q"].astype(float))
+        pq = _cached_pq(path, stamp, model.C)
         if pq is None:
             # rounded as the cache stores it, so a fresh run and a cached one give the same answer
             pq = tuple(x.astype(np.float32).astype(float) for x in base_injection(model, _baseline(name), year, hp, ev))
             try:
-                path.parent.mkdir(parents=True, exist_ok=True)
-                np.savez(path, p=pq[0].astype(np.float32), q=pq[1].astype(np.float32), stamp=stamp)
+                savez_atomic(path, p=pq[0].astype(np.float32), q=pq[1].astype(np.float32), stamp=stamp)
             except OSError:   # a read-only data folder only costs the next request some seconds
                 log.warning("could not cache %s", path)
         _PQ_CACHE[key] = pq
     return _PQ_CACHE[key]
+
+
+def _cached_pq(path, stamp: float, customers: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """The kept injection when it is whole, of this baseline file and of the model's size; None
+    otherwise. A file that cannot be read (cut short before the writes were atomic, a full disk)
+    is not an error: it only means computing the year again."""
+    if not path.exists():
+        return None
+    try:
+        with np.load(path) as d:
+            if float(d["stamp"]) != stamp:
+                return None
+            p, q = d["p"].astype(float), d["q"].astype(float)
+    except Exception as exc:  # noqa: BLE001 - whatever is wrong with the copy, the year is recomputed
+        log.warning("ignoring the unreadable cache %s: %s", path, exc)
+        return None
+    if p.ndim != 2 or p.shape != q.shape or p.shape[0] != customers \
+            or not (np.isfinite(p).all() and np.isfinite(q).all()):
+        return None
+    return p, q
+
+
+def _no_check() -> None:
+    """A Context's check when nobody can stop the evaluation (the queue's approvals, the CLI)."""
 
 
 @dataclass
@@ -138,12 +161,16 @@ class Context:
     weather year ("p": {year: (H,)}), its reactive power ("q"), and what the static study must
     count for it ("pv_kw", "ev_kw", "hp"). `states` replaces the published grid states with ones
     that include those houses.
+
+    `check` is called at every stage boundary and in every per-year loop of `run`; the API's job
+    pool (api/jobs.py) passes one that raises once the evaluation is cancelled or out of time.
     """
 
     name: str
     overrides: dict[int, dict] = field(default_factory=dict)
     states: dict[int, dict] | None = None
     label: dict | None = None
+    check: Callable[[], None] = field(default=_no_check, repr=False, compare=False)
 
     def state(self, year: int) -> dict[str, np.ndarray]:
         return self.states[year] if self.states is not None else _state(self.name, year)
@@ -418,6 +445,8 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     """The evaluation and, per weather year, the hourly arrays behind it (the queue keeps those)."""
     emit = emit or (lambda *_: None)
     ctx = ctx or Context(req.baseline)
+    check = ctx.check
+    check()
     cfg = settings()
     t_all = time.perf_counter()
     cust = customers()
@@ -452,11 +481,13 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     if phases is not None:
         out["phases"] = phases
     emit("static", {"static": out["static"], "ms": 1000 * (time.perf_counter() - t0)})
+    check()
 
     # ---- 2) dynamic envelopes, every weather year (closed form) ------------------------------
     t0 = time.perf_counter()
     detail: dict[int, dict] = {}
     for y in years:
+        check()
         st = ctx.state(y)
         prof = _applicant_profiles(req, y, hp, ev, hp_new)
         H = len(prof["pv"])
@@ -486,11 +517,13 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
             d["curt"] = np.maximum(d["desired"] - d["env"], 0.0)
         detail[y] = d
     emit("envelope", {"years": len(years), "ms": 1000 * (time.perf_counter() - t0)})
+    check()
 
     # ---- 3) verification with the nonlinear power flow ---------------------------------------
     t0 = time.perf_counter()
     checks: dict[int, dict] = {}
     for y in verify_years:
+        check()
         d = detail[y]
         p0, q0 = ctx.pq(model, y, hp, ev)
         c: dict = {}
@@ -527,6 +560,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
             "battery_violations_after": sum(c.get("battery", {}).get("violations_after", 0) for c in checks.values())}
     out["verification"] = verify
     emit("verify", {"verification": verify, "ms": 1000 * (time.perf_counter() - t0)})
+    check()
 
     # ---- per-year figures ----------------------------------------------------------------------
     per_year = []
@@ -574,6 +608,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
                 "method": f"Weekly block bootstrap over {len(per_year)} weather years (4 000 resampled years)"}
     out["risk"] = risk
     emit("risk", {"risk": risk, "ms": 1000 * (time.perf_counter() - t0)})
+    check()
 
     # ---- 5) economics at the real spot price -------------------------------------------------
     t0 = time.perf_counter()
@@ -583,6 +618,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
         for y in economics.price_years():
             if y not in detail:
                 continue
+            check()
             d = detail[y]
             self_use = np.minimum(d["pv"], d["load"] + d["hp_s"] + d["ev_s"])
             v_c = economics.value_sek(d["curt"], y)
@@ -607,6 +643,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
                 econ["battery_sek_mean"] = float(np.mean([r["battery_sek"] for r in rows]))
     out["economics"] = econ
     emit("economics", {"economics": econ, "ms": 1000 * (time.perf_counter() - t0)})
+    check()
 
     # ---- 6) profiles for the charts (reference year) ----------------------------------------
     if ref in detail:

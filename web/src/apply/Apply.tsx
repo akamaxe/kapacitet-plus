@@ -13,7 +13,7 @@ import { Icon } from "../components/Icon";
 import { OwnerFigures } from "../components/OwnerCase";
 import { API, apiWrite, useApi } from "../lib/api";
 import { refusalOf, refusalText } from "../lib/errors";
-import { follow, type Failure } from "../lib/evaluate";
+import { follow, type Failure, type Following } from "../lib/evaluate";
 import { dateTime, round, useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { describeRequest, fuseText, reasonLine } from "../lib/reasons";
@@ -52,18 +52,21 @@ export default function Apply() {
   const [hp, setHp] = useState(false);
   const [bat, setBat] = useState(0);
   const [stages, setStages] = useState<string[]>([]);
+  // its place in line while every slot of the server is taken; null once it runs
+  const [queued, setQueued] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [answer, setAnswer] = useState<any>(null);
   const [status, setStatus] = useState<any>(null);
   const [ref, setRef] = useState<string>(refInHash() ?? "");
   const key = useRef(newKey());
-  const watch = useRef<{ close: () => void } | null>(null);
+  const watch = useRef<Following | null>(null);
 
   useEffect(() => {
     document.title = `${t("apply.title")} · Kapacitet+`;
   }, [t]);
-  useEffect(() => () => watch.current?.close(), []);
+  // a household that leaves the page frees the slot its answer was taking
+  useEffect(() => () => watch.current?.cancel(), []);
   // a link with a reference opens on its state
   useEffect(() => {
     const r = refInHash();
@@ -91,6 +94,7 @@ export default function Apply() {
     setAnswer(null);
     setStatus(null);
     setStages([]);
+    setQueued(null);
     setBusy(true);
     key.current = newKey();
     const r = await apiWrite("/apply/evaluate", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 }).catch(() => null);
@@ -104,7 +108,12 @@ export default function Apply() {
     }
     const { id } = await r.json();
     watch.current = follow(`${API}/apply/evaluate/${id}/events`, `${API}/apply/evaluate/${id}`, STAGES, {
-      stage: (s) => setStages((done) => [...done, s]),
+      queued: setQueued,
+      started: () => setQueued(null),
+      stage: (s) => {
+        setQueued(null);
+        setStages((done) => [...done, s]);
+      },
       done: (res) => {
         setBusy(false);
         setAnswer(res);
@@ -113,7 +122,7 @@ export default function Apply() {
         setBusy(false);
         setError(failText(why, detail));
       },
-    });
+    }, `/apply/evaluate/${id}`);
   };
 
   const apply = async () => {
@@ -215,7 +224,10 @@ export default function Apply() {
                 {busy && !answer ? t("apply.checking") : t("apply.check")}
               </button>
               {busy && !answer && (
-                <p className="caption-muted" role="status">{t("apply.progress", { done: f(stages.length), of: f(STAGES.length) })}</p>
+                <p className="caption-muted" role="status">
+                  {queued !== null ? t("req.queued", { n: f(queued) })
+                    : t("apply.progress", { done: f(stages.length), of: f(STAGES.length) })}
+                </p>
               )}
               {answer && <Answer a={answer} />}
               {answer && !status && (

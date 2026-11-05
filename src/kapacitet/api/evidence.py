@@ -1,5 +1,6 @@
 """The evidence trail over HTTP: verify a sealed record, read the chain's head, download the log of
-every queue decision ever sealed (including those an emptied queue no longer holds)."""
+every queue decision ever sealed (including those an emptied queue no longer holds). A record
+erased after its retention period verifies as `erased`: the chain still holds its digest."""
 
 from __future__ import annotations
 
@@ -31,7 +32,7 @@ def verify(kind: str = Query(..., pattern="^(" + "|".join(seals.KINDS) + ")$"),
     """Re-hash a sealed record's kept copy and, where it still exists, its working copy."""
     current = None
     if kind == "assessment":
-        current = records.load(id)
+        current = records.load(id, resolve=False)     # as kept: without the address, as it was sealed
     elif kind == "decision":
         from ..engine import queue as qu   # the engine loads lazily, as in main.py
 
@@ -54,7 +55,9 @@ def decision_log() -> Response:
     w.writerow(_LOG_COLUMNS)
     for item in seals.sealed_of_kind("decision"):
         rec, entry = item["record"], item["entry"]
-        w.writerow([rec.get("decided", ""), rec.get("assessment", ""), rec.get("cid", ""), rec.get("address") or "",
+        # a decision keeps the house's number; its address is the network's, read now
+        address = rec.get("address") or records.address_of(rec.get("cid")) or ""
+        w.writerow([rec.get("decided", ""), rec.get("assessment", ""), rec.get("cid", ""), address,
                     rec.get("decision", ""), rec.get("note", ""), rec.get("pv_kw", ""), rec.get("ev_kw", ""),
                     rec.get("hp", ""), entry["digest"], entry["at"], entry["seq"]])
     return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",

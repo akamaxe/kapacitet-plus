@@ -11,7 +11,8 @@ rule never declines).
 Every step is an event in data/requests/applications.jsonl, appended and never rewritten; an
 application's state is the fold of its events, and the indicators (time to a decision, the share
 the rule decided, kW connected firm and with an envelope) are computed from the same events. Each
-application is sealed when it arrives; each decision is sealed by the queue.
+application is sealed when it arrives; each decision is sealed by the queue. The log keeps the
+house's number and never its address, which is read from the network when an application is read.
 
 An application's reference code is the household's key to its state, so it is shown once, to
 whoever sent the application, and never kept: the log holds its SHA-256 and a hint of its first
@@ -38,6 +39,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from .. import dso, seals
+from ..atomic import append_line
 from ..engine import rules
 from ..paths import DATA
 from . import records
@@ -116,7 +118,8 @@ def find(reference: str) -> dict | None:
         legacy = e.get("reference")
         if (kept and hmac.compare_digest(kept, digest)) or (legacy and hmac.compare_digest(legacy.upper(), ref)):
             found = e["app"]
-    return fold(evs).get(found) if found else None
+    app = fold(evs).get(found) if found else None
+    return _addressed(app) if app else None
 
 
 def log_path():
@@ -146,12 +149,15 @@ def append(event: dict) -> dict:
     """Add one event; the sequence number and the time are the log's, not the caller's."""
     with _LOG_LOCK:
         path = log_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        seq = sum(1 for _ in path.open(encoding="utf-8")) + 1 if path.exists() else 1
+        seq = len(path.read_text(encoding="utf-8").splitlines()) + 1 if path.exists() else 1
         event = {"seq": seq, "at": _now(), **event}
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, sort_keys=True) + "\n")
+        append_line(path, json.dumps(event, sort_keys=True))
     return event
+
+
+def _addressed(app: dict) -> dict:
+    """An application with its house's address, read from the network (older events kept it)."""
+    return app if app.get("address") else {**app, "address": records.address_of(app.get("cid"))}
 
 
 def fold(evs: list[dict]) -> dict[str, dict]:
@@ -213,7 +219,7 @@ def kpis(apps: dict[str, dict]) -> dict:
 
 
 def applications() -> dict[str, dict]:
-    return fold(events())
+    return {k: _addressed(a) for k, a in fold(events()).items()}
 
 
 # ---------------------------------------------------------------- receiving
@@ -225,9 +231,9 @@ def _replay(evs: list[dict], apps: dict, key: str) -> dict | None:
         if e.get("event") != "received" or e.get("app") not in apps:
             continue
         if e.get("key_sha256") and hmac.compare_digest(e["key_sha256"], digest):
-            return {**apps[e["app"]], "reference": new_reference(key)}
+            return {**_addressed(apps[e["app"]]), "reference": new_reference(key)}
         if e.get("key") and hmac.compare_digest(e["key"], key):          # an application from before the hashes
-            return {**apps[e["app"]], "reference": e.get("reference")}
+            return {**_addressed(apps[e["app"]]), "reference": e.get("reference")}
     return None
 
 
@@ -261,13 +267,12 @@ def receive(assessment: str, source: str = "dso", key: str | None = None) -> dic
         reference = new_reference(key)
         request = {k: v for k, v in rec["request"].items() if k != "baseline"}
         event = append({"app": app_id, "event": "received", "reference_sha256": _sha256(reference),
-                        "reference_hint": reference[3:7], "assessment": assessment, "cid": cid,
-                        "address": rec["result"].get("customer", {}).get("address"), "source": source,
+                        "reference_hint": reference[3:7], "assessment": assessment, "cid": cid, "source": source,
                         "request": request, **({"key_sha256": _sha256(key)} if key else {})})
     seals.seal("application", app_id, {k: event[k] for k in ("app", "reference_sha256", "reference_hint", "assessment",
                                                              "cid", "source", "request", "at")})
     start()
-    return {**fold(events())[app_id], "reference": reference}
+    return {**applications()[app_id], "reference": reference}
 
 
 # ---------------------------------------------------------------- the worker

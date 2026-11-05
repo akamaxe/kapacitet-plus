@@ -12,11 +12,13 @@ Nothing here knows what the steps do. Standard library only.
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
 import shutil
 import sys
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -97,6 +99,153 @@ def claim(path: Path) -> int | None:
             fh.write(str(os.getpid()))
         return None
     return holder(path) or -1
+
+
+def kill_tree(pid: int) -> bool:
+    """Stop a build process and every process it started (its pool of workers). Returns whether
+    there was a live process to stop. On Windows the whole tree goes (taskkill /T); elsewhere the
+    build leads a session of its own (datasets.launch), so its process group goes, and a process
+    that leads no group of its own is stopped alone. Never this process or its own group."""
+    import signal
+    import subprocess
+
+    if pid <= 0 or pid == os.getpid() or not alive(pid):
+        return False
+    if sys.platform == "win32":
+        subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)
+        return True
+    try:
+        group = os.getpgid(pid)
+        if group == pid and group != os.getpgrp():
+            os.killpg(group, signal.SIGTERM)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, PermissionError):
+        return False
+    return True
+
+
+# Lock files this process holds for its lifetime (`hold`): path -> [fd, holds, OS-locked].
+_HELD: dict[str, list] = {}
+_HELD_LOCK = threading.Lock()
+# Windows locks a byte range: one far past any real end of file guards no data (as in atomic.py).
+_LOCK_OFFSET = 2**62
+
+
+def _os_lock(fd: int) -> bool | None:
+    """Lock an open file against other processes without waiting: True when this process now holds
+    it, False when another one does, None when the file system has no locks."""
+    if os.name == "nt":
+        import msvcrt
+
+        os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
+        try:
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        except OSError as exc:
+            return False if exc.errno in (errno.EACCES, errno.EDEADLK) else None
+        return True
+    import fcntl
+
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        return False
+    except OSError:
+        return None
+    return True
+
+
+def _os_unlock(fd: int) -> None:
+    try:
+        if os.name == "nt":
+            import msvcrt
+
+            os.lseek(fd, _LOCK_OFFSET, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+
+            fcntl.flock(fd, fcntl.LOCK_UN)
+    except OSError:
+        pass                          # closing the file lets go of it anyway
+
+
+def _pid_in(path: Path) -> int | None:
+    try:
+        return int(Path(path).read_text().strip() or 0) or None
+    except (ValueError, OSError):
+        return None
+
+
+def hold(path: Path) -> int | None:
+    """Hold the lock file `path` for as long as this process runs, or until `let_go`.
+
+    The hold is an OS lock on the file, which the OS drops however the process ends: a crash
+    leaves no lock behind, and a PID the system has since given to another program cannot fake
+    one. This process's PID is written in the file, so whoever is refused can say who holds it.
+    Where the file system has no locks, the PID in the file and whether it is alive decide, as in
+    `claim`. Returns None once held (a second hold by this process counts, and needs its own
+    `let_go`), or the PID of the process that holds it (-1 when it cannot be read).
+    """
+    path = Path(path)
+    key = os.path.normcase(os.path.abspath(path))
+    with _HELD_LOCK:
+        if key in _HELD:
+            _HELD[key][1] += 1
+            return None
+        path.parent.mkdir(parents=True, exist_ok=True)
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o644)
+        try:
+            locked = _os_lock(fd)
+            pid = None if locked else _pid_in(path)
+            if locked is False or (locked is None and pid and pid != os.getpid() and alive(pid)):
+                os.close(fd)
+                return pid or -1
+            os.ftruncate(fd, 0)
+            os.lseek(fd, 0, os.SEEK_SET)
+            os.write(fd, str(os.getpid()).encode("ascii"))
+            os.fsync(fd)
+        except BaseException:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            raise
+        _HELD[key] = [fd, 1, bool(locked)]
+        return None
+
+
+def let_go(path: Path) -> None:
+    """Release one `hold` of `path`; the last one clears the PID and drops the OS lock. The file
+    stays, empty: removing it could remove the lock of a process taking it at that moment."""
+    key = os.path.normcase(os.path.abspath(Path(path)))
+    with _HELD_LOCK:
+        entry = _HELD.get(key)
+        if entry is None:
+            return
+        entry[1] -= 1
+        if entry[1] > 0:
+            return
+        del _HELD[key]
+        fd, _, locked = entry
+        try:
+            os.ftruncate(fd, 0)
+        except OSError:
+            pass
+        if locked:
+            _os_unlock(fd)
+        os.close(fd)
+
+
+def let_go_all() -> None:
+    """Release every lock file this process holds, however many holds each has: for a process about
+    to leave without its usual cleanup (os._exit), so the one that replaces it finds them free."""
+    with _HELD_LOCK:
+        for entry in _HELD.values():
+            entry[1] = 1
+        keys = list(_HELD)
+    for key in keys:
+        let_go(Path(key))
 
 
 def link_files(src: Path, dst: Path, replace: bool = True) -> int:

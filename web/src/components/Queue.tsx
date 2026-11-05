@@ -119,7 +119,8 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
           <div className="field decision-note">
             <label htmlFor="decision-note">{t("req.decide.note")}</label>
             <textarea id="decision-note" rows={2} maxLength={500} value={note} disabled={running}
-              onChange={(e) => setNote(e.target.value)} />
+              aria-describedby="decision-note-hint" onChange={(e) => setNote(e.target.value)} />
+            <p id="decision-note-hint" className="caption-muted">{t("req.decide.noteHint")}</p>
           </div>
           <div className="decision-actions">
             {fuseShort && (

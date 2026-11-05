@@ -105,3 +105,83 @@ def test_emptying_the_queue_seals_what_it_held(tmp_path, monkeypatch):
     resets = seals.sealed_of_kind("queue_reset")
     assert len(resets) == 1 and resets[0]["record"]["items"] == held["items"]
     assert not (tmp_path / "queue").exists()
+
+
+def test_a_torn_last_line_is_left_out_reported_and_cut_off_by_the_next_seal():
+    from kapacitet import seals
+
+    for i in range(2):
+        seals.seal("decision", f"d{i:011d}", {"decision": "firm", "i": i})
+    path = seals.folder() / "seals.jsonl"
+    whole = path.read_bytes()
+    third = seals.canonical({"seq": 3, "kind": "decision"})
+    path.write_bytes(whole + third[: len(third) // 2])               # a crash in the middle of an append
+    torn = seals.verify_chain()
+    assert torn["ok"] and torn["length"] == 2 and torn["torn_tail"]
+    assert seals.verify("decision", "d00000000001")["ok"]
+    entry = seals.seal("decision", "d00000000002", {"decision": "nonfirm"})
+    assert entry["seq"] == 3
+    after = seals.verify_chain()
+    assert after == {**after, "ok": True, "length": 3, "torn_tail": False}
+    assert path.read_bytes().startswith(whole) and path.read_bytes().count(b"\n") == 3
+
+
+def test_a_last_line_that_lost_only_its_newline_still_counts():
+    from kapacitet import seals
+
+    seals.seal("decision", "e00000000000", {"decision": "firm"})
+    path = seals.folder() / "seals.jsonl"
+    path.write_bytes(path.read_bytes().rstrip(b"\n"))
+    assert seals.verify_chain() == {**seals.verify_chain(), "ok": True, "length": 1, "torn_tail": False}
+    seals.seal("decision", "e00000000001", {"decision": "firm"})
+    assert seals.verify_chain()["ok"] and seals.verify_chain()["length"] == 2
+
+
+def test_erasing_a_record_removes_its_copy_and_keeps_the_chain_valid():
+    from kapacitet import seals
+
+    for i in range(3):
+        seals.seal("assessment", f"f{i:011d}", {"result": {"i": i}})
+    gone = seals.erase("assessment", "f00000000001", "retention: older than 30 days")
+    assert gone["kind"] == "erasure" and gone["seq"] == 4
+    assert seals.sealed_copy("assessment", "f00000000001") is None
+    v = seals.verify("assessment", "f00000000001")
+    assert v["sealed"] and v["erased"] and v["ok"] and v["copy_ok"] is None
+    assert v["reason"].startswith("retention") and v["digest"] == seals.digest({"result": {"i": 1}})
+    assert seals.verify_chain() == {**seals.verify_chain(), "ok": True, "length": 4}
+    for other in ("f00000000000", "f00000000002"):                  # the others are untouched
+        assert seals.verify("assessment", other)["ok"] and not seals.verify("assessment", other)["erased"]
+    assert [r["entry"]["id"] for r in seals.sealed_of_kind("assessment")] == ["f00000000000", "f00000000002"]
+    assert seals.erase("assessment", "f00000000001", "again")["seq"] == 4  # once is enough
+    with pytest.raises(ValueError):
+        seals.erase("assessment", "ffffffffffff", "never sealed")
+    with pytest.raises(ValueError):
+        seals.erase("erasure", "assessment.f00000000001", "an erasure stays")
+
+
+def test_a_decision_whose_seal_a_crash_left_owed_is_sealed_at_the_next_start(tmp_path, monkeypatch):
+    from kapacitet import seals
+    from kapacitet.engine import queue as qu
+
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "queue")
+    rec = {"id": "0123456789ab", "request": {"cid": 3, "baseline": "static"}, "result": {"customer": {"cid": 3}}}
+    real = seals.seal
+
+    def power_cut(*args, **kwargs):
+        raise OSError("power cut")
+
+    monkeypatch.setattr(seals, "seal", power_cut)
+    with pytest.raises(OSError):
+        qu.decide(None, None, None, rec, "declined")
+    monkeypatch.setattr(seals, "seal", real)
+    assert qu.load()["items"][0]["assessment"] == rec["id"]                  # committed, its seal owed
+    assert seals.entry_for("decision", rec["id"]) is None and (qu.folder() / qu.PENDING).exists()
+    assert qu.recover()["sealed"] == rec["id"]
+    assert seals.verify("decision", rec["id"], qu.load()["items"][0])["ok"]
+    assert not (qu.folder() / qu.PENDING).exists()
+    (qu.folder() / qu.PENDING).write_text(json.dumps({"kind": "decision", "id": rec["id"]}), encoding="utf-8")
+    assert qu.recover()["sealed"] == rec["id"] and seals.verify_chain()["length"] == 1     # sealed once only
+    # a crash before the commit: the marker names a decision the queue never took
+    (qu.folder() / qu.PENDING).write_text(json.dumps({"kind": "decision", "id": "fedcba987654"}), encoding="utf-8")
+    assert qu.recover()["sealed"] is None and not (qu.folder() / qu.PENDING).exists()
+    assert seals.entry_for("decision", "fedcba987654") is None

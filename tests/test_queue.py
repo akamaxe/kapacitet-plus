@@ -101,3 +101,44 @@ def test_a_refusal_is_recorded_without_touching_the_grid_and_firm_needs_the_stat
     assert not list(qu.folder().glob("state_*.npz"))
     qu.reset()
     assert qu.load()["items"] == []
+
+
+def test_a_crash_while_the_states_are_written_leaves_the_queue_as_it_was(engine, queue_dir, monkeypatch):
+    from kapacitet import seals
+    from kapacitet.config import settings
+
+    qu = queue_dir
+    m, hp, ev = engine
+    first = _record(engine, "d00000000001", cid=84, pv_kwp=20.0, baseline="doe")
+    item = qu.decide(m, hp, ev, first, "nonfirm")
+    assert item["verification"]["years_verified"] == sorted(settings().weather_years)   # every year, all 11
+    before = qu.load()
+    loading = {y: st["trafo_loading"].copy() for y, st in qu.context().states.items()}
+
+    second = _record(engine, "d00000000002", ctx=qu.context(), cid=76, pv_kwp=15.0, baseline="queue")
+    real, written = qu.savez_atomic, []
+
+    def disk_full_at_the_third_year(path, **arrays):
+        if path.name.startswith("state_"):
+            written.append(path.name)
+            if len(written) == 3:
+                raise OSError("no space left on device")
+        return real(path, **arrays)
+
+    monkeypatch.setattr(qu, "savez_atomic", disk_full_at_the_third_year)
+    with pytest.raises(OSError):
+        qu.decide(m, hp, ev, second, "nonfirm")
+    monkeypatch.setattr(qu, "savez_atomic", real)
+    assert len(written) == 3 and all(name.endswith(f".v{before['version'] + 1}.npz") for name in written)
+
+    # read again from disk: the version on record, its states, the one house, its seal
+    qu._CACHE["version"] = None
+    assert qu.load() == before
+    ctx = qu.context()
+    assert set(ctx.overrides) == {84} and set(ctx.states) == set(loading)
+    assert all(np.array_equal(ctx.states[y]["trafo_loading"], loading[y]) for y in loading)
+    assert seals.entry_for("decision", second["id"]) is None
+    assert seals.verify("decision", first["id"], before["items"][0])["ok"]
+    qu.recover()                                    # the next start removes what never committed
+    assert not list(qu.folder().glob(f"state_*.v{before['version'] + 1}.npz"))
+    assert len(list(qu.folder().glob(f"state_*.v{before['version']}.npz"))) == len(loading)

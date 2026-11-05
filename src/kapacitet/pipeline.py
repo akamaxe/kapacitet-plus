@@ -61,6 +61,17 @@ def _workers(text: str) -> int:
     return n
 
 
+def _days(text: str) -> int:
+    """--older-than: a whole number of days, zero or more."""
+    try:
+        n = int(text)
+    except ValueError:
+        n = -1
+    if n < 0:
+        raise argparse.ArgumentTypeError(f"{text!r} is not a number of days (0 or more)")
+    return n
+
+
 def _digest(text: str) -> str:
     """--expect-sha256: 64 hexadecimal digits, as sha256sum prints them."""
     if len(text.strip()) != 64 or any(c not in "0123456789abcdefABCDEF" for c in text.strip()):
@@ -361,6 +372,30 @@ def cmd_dataset(args: argparse.Namespace) -> None:
     sys.exit(0 if rec["status"] == "ready" else 1)
 
 
+def cmd_purge(args: argparse.Namespace) -> None:
+    """Remove the saved assessments older than N days and erase their seals (api/records.purge).
+    A running server holds the data folder, and purges by itself once a day when
+    KAPACITET_RETENTION_DAYS is set, so this refuses to run beside one."""
+    from .api import records
+
+    days = args.older_than if args.older_than is not None else records.retention_days()
+    if days is None:
+        print("say how old: --older-than N (days), or set KAPACITET_RETENTION_DAYS")
+        sys.exit(2)
+    try:
+        lock = None if args.dry_run else records.claim_server_lock(wait_s=0)
+    except records.FolderInUse as exc:
+        print(f"{exc}. A running server purges by itself once a day when KAPACITET_RETENTION_DAYS is set.")
+        sys.exit(2)
+    try:
+        out = records.purge(days, dry_run=args.dry_run)
+    finally:
+        records.release_server_lock(lock)
+    verb = "would remove" if args.dry_run else "removed"
+    log.info("%s %d assessments saved before %s (%d kept: a decision or an open application rests on them)",
+             verb, out["assessments"], out["cutoff"][:10], out["kept_for_decisions"])
+
+
 def cmd_all(args: argparse.Namespace) -> None:
     """`--only` here narrows the download; the compute that follows always runs whole."""
     _check_sources(args.only)
@@ -471,6 +506,12 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("forecast", help="what the published envelopes owe to perfect foresight")
     p.set_defaults(func=cmd_forecast)
+
+    p = sub.add_parser("purge", help="remove saved assessments older than N days, and erase their seals")
+    p.add_argument("--older-than", type=_days, default=None, metavar="N",
+                   help="days to keep (default: KAPACITET_RETENTION_DAYS)")
+    p.add_argument("--dry-run", action="store_true", help="say what would go, and remove nothing")
+    p.set_defaults(func=cmd_purge)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")

@@ -135,6 +135,105 @@ def test_a_network_in_use_or_being_built_is_not_deleted(tmp_path, monkeypatch):
     assert not (tmp_path / "datasets" / ds_id).exists()
 
 
+class _Started:
+    """What subprocess.Popen gives launch(): a process that is alive (this one), started nowhere."""
+
+    def __init__(self, *args, **kwargs):
+        import os
+
+        self.pid = os.getpid()
+
+
+def test_one_build_at_a_time_and_never_the_network_in_use(tmp_path, monkeypatch):
+    from kapacitet import datasets as ds
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    monkeypatch.setattr(ds, "MAX_BUILDS", 1)
+    monkeypatch.setattr(ds.subprocess, "Popen", _Started)
+    first, second = _dataset(ds, "first-net-000000"), _dataset(ds, "second-net-00000")
+    ds.launch(first)
+    assert ds.builds_running() == [first]
+    with pytest.raises(ds.DatasetError) as e:              # launched, though it has not taken its lock yet
+        ds.launch(first)
+    assert e.value.code == "building"
+    with pytest.raises(ds.DatasetError) as e:
+        ds.launch(second)
+    assert e.value.code == "too_many_builds" and e.value.params == {"n": 1}
+    monkeypatch.setattr(ds, "MAX_BUILDS", 2)
+    monkeypatch.setenv("KAPACITET_DATASET", second)        # the server runs on it: never rebuilt under it
+    with pytest.raises(ds.DatasetError) as e:
+        ds.launch(second)
+    assert e.value.code == "in_use"
+    monkeypatch.delenv("KAPACITET_DATASET")
+    (tmp_path / "active.json").write_text(json.dumps({"dataset": second}), encoding="utf-8")
+    with pytest.raises(ds.DatasetError) as e:
+        ds.launch(second)
+    assert e.value.code == "in_use"
+
+
+def test_a_build_is_cancelled_with_every_process_it_started(tmp_path, monkeypatch):
+    import os
+    import time
+
+    from kapacitet import datasets as ds
+    from kapacitet import procs
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    ds_id = _dataset(ds)
+    kwargs = ({"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if sys.platform == "win32"  # type: ignore[attr-defined]
+              else {"start_new_session": True})
+    # a build that has started a worker of its own, as compute's process pool does
+    worker = tmp_path / "worker.pid"
+    code = ("import pathlib, subprocess, sys, time; "
+            "w = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(60)']); "
+            f"pathlib.Path({str(worker)!r}).write_text(str(w.pid)); time.sleep(60)")
+    build = subprocess.Popen([sys.executable, "-c", code], **kwargs)
+    try:
+        for _ in range(500):
+            if worker.exists() and worker.read_text():
+                break
+            time.sleep(0.02)
+        rec = ds.record(ds_id)
+        rec["steps"][1]["status"] = "running"
+        (tmp_path / "datasets" / ds_id / "dataset.json").write_text(json.dumps({**rec, "status": "building"}))
+        (tmp_path / "datasets" / ds_id / "build.lock").write_text(str(build.pid))
+        assert ds.building(ds_id)
+        done = ds.cancel(ds_id)
+        build.wait(10)
+        assert done["status"] == "failed" and done["cancelled"] and done["steps"][1]["status"] == "failed"
+        assert not ds.building(ds_id) and not (tmp_path / "datasets" / ds_id / "build.lock").exists()
+        with pytest.raises(ds.DatasetError) as e:
+            ds.cancel(ds_id)
+        assert e.value.code == "not_building"
+        for _ in range(250):                      # the worker goes with it
+            if not procs.alive(int(worker.read_text())):
+                break
+            time.sleep(0.02)
+        assert not procs.alive(int(worker.read_text()))
+    finally:
+        if build.poll() is None:
+            build.kill()
+    assert not procs.alive(build.pid) and build.pid != os.getpid()
+
+
+def test_a_build_past_its_time_is_stopped(tmp_path, monkeypatch):
+    from kapacitet import datasets as ds
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    monkeypatch.setattr(ds, "BUILD_TIMEOUT_S", 60.0)
+    ds_id = _dataset(ds)
+    rec = ds.record(ds_id)
+    rec.update(status="building", launched="2026-11-01T00:00:00+00:00", pid=__import__("os").getpid())
+    (tmp_path / "datasets" / ds_id / "dataset.json").write_text(json.dumps(rec), encoding="utf-8")
+    killed = []
+    monkeypatch.setattr(ds.procs, "kill_tree", lambda pid: killed.append(pid) or True)
+    assert ds.reap() == [ds_id] and killed == [__import__("os").getpid()]
+    assert ds.record(ds_id)["error"] == "timed out after 60 s"
+
+
 def test_the_household_assignment_is_unchanged_up_to_the_pools_size():
     from kapacitet.profiles.household import assignment
 

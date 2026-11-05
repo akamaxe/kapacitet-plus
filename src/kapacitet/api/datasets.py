@@ -2,7 +2,8 @@
 build starts at once, in its own process), read how the build is going, delete one, and switch
 the server to one. A switch restarts the server under its supervisor, so it is refused when the
 server runs without one, and while an evaluation or a decision is running. Nothing ever switches
-by itself.
+by itself. A build can be stopped; one past KAPACITET_BUILD_TIMEOUT_S is stopped when the networks
+are next read, and no more than KAPACITET_MAX_BUILDS run at once.
 
 This router and its builds are the API's second place to write: data/datasets/. (The first is
 data/requests/, the third the setup page's bundle upload, api/setup.py.)
@@ -34,7 +35,17 @@ class NewDataset(BaseModel):
 def _jobs_running() -> bool:
     from . import main
 
-    return main._queue_busy() or any(j["status"] == "running" for j in main._JOBS.values())
+    return main._queue_busy() or main.POOL.busy()
+
+
+def _reap() -> None:
+    """Stop any build past its time before saying how the builds are going."""
+    try:
+        ds.reap()
+    except Exception:  # noqa: BLE001 - the listing still answers
+        import logging
+
+        logging.getLogger("kapacitet.datasets").exception("could not stop a build past its time")
 
 
 @router.get("/datasets")
@@ -42,6 +53,7 @@ def list_datasets() -> dict:
     """The reference network and every imported one, which one is in use, and whether it can switch."""
     from ..config import settings
 
+    _reap()
     return {"current": ds.current(), "active": ds.active(), "supervised": os.environ.get("KAPACITET_SUPERVISED") == "1",
             "reference": {"id": ds.REFERENCE, "name": settings().site.name}, "items": ds.listing()}
 
@@ -59,17 +71,25 @@ def create_dataset(body: NewDataset) -> dict:
     if big:
         raise api_error(413, "too_large", mb=MAX_BYTES // 1_000_000, tables=", ".join(sorted(big)))
     try:
+        ds.can_launch()                 # a build slot first, so a refusal leaves nothing behind
+    except ds.DatasetError as err:
+        raise refusal(err) from err
+    try:
         rec = ds.create(body.name, body.files, quick=body.quick)
     except ds.DatasetError as err:
         raise refusal(err, 422) from err
     except Exception as err:    # a table pandas cannot read
         raise api_error(422, "unreadable_csv", table="?", detail=str(err)[:200]) from err
-    ds.launch(rec["id"], workers=2)
+    try:
+        ds.launch(rec["id"], workers=2)
+    except ds.DatasetError as err:  # another build took the slot meanwhile: kept, to be built later
+        raise refusal(err) from err
     return ds.record(rec["id"])
 
 
 @router.get("/datasets/{ds_id}")
 def get_dataset(ds_id: str) -> dict:
+    _reap()
     try:
         rec = ds.record(ds_id)
     except ds.DatasetError as err:
@@ -85,6 +105,15 @@ def rebuild(ds_id: str) -> dict:
     except ds.DatasetError as err:
         raise refusal(err, 404 if err.code == "unknown_dataset" else 409) from err
     return ds.record(ds_id)
+
+
+@router.post("/datasets/{ds_id}/cancel")
+def cancel_build(ds_id: str) -> dict:
+    """Stop a network's build and the processes it started; its record says where it stopped."""
+    try:
+        return ds.cancel(ds_id)
+    except ds.DatasetError as err:
+        raise refusal(err, 404 if err.code == "unknown_dataset" else 409) from err
 
 
 @router.delete("/datasets/{ds_id}")

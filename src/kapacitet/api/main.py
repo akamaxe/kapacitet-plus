@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import csv
+import dataclasses
 import gzip
 import hashlib
 import io
@@ -38,7 +39,7 @@ from pydantic import BaseModel, Field
 from .. import __version__
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
-from . import records
+from . import jobs, records
 from .guard import ERRORS as GUARD_ERRORS
 from .guard import Guard
 from .. import seals
@@ -53,11 +54,16 @@ warnings.filterwarnings("ignore", category=FutureWarning)
 warnings.filterwarnings("ignore", category=DeprecationWarning)
 log = logging.getLogger("kapacitet.api")
 
-# Live connection requests: how many may run at once, how long one may take, and how long a
-# finished one stays in memory (it is also saved to disk, see the requests section).
+# Live connection requests: how many may run at once, how many may wait for a slot, how long one
+# may take once it runs, and how long a finished one stays in memory (it is also saved to disk, see
+# the requests section). api/jobs.py holds them to it.
 MAX_JOBS = int(os.environ.get("KAPACITET_MAX_JOBS", "4"))
+MAX_QUEUED = int(os.environ.get("KAPACITET_MAX_QUEUED", "8"))
 JOB_TIMEOUT_S = float(os.environ.get("KAPACITET_JOB_TIMEOUT_S", "120"))
-JOB_TTL_S = 15 * 60
+JOB_TTL_S = jobs.TTL_S
+POOL = jobs.JobPool(MAX_JOBS, MAX_QUEUED, JOB_TIMEOUT_S, JOB_TTL_S)
+# Old saved assessments are purged once a day when the DSO sets a retention (api/records.py).
+RETENTION_EVERY_S = 24 * 3600.0
 # A stream of progress events sends a comment line when it has been quiet this long, so a proxy in
 # between (the codespace's port forwarding) does not take a long stage for a dead connection.
 KEEPALIVE_S = 15.0
@@ -69,11 +75,40 @@ CHECK_MAX_BYTES = 5_000_000
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # one server writes a data folder at a time: a second one on the same folder refuses to start
+    lock = records.claim_server_lock()
+    # a decision committed just before the server last stopped is sealed now, if it was not yet
+    try:
+        from ..engine import queue as qu
+
+        qu.recover()
+    except Exception:  # noqa: BLE001 - the queue says what is wrong when it is next read
+        log.exception("could not recover the queue")
     # load the model and the request baselines in the background, so the first request is fast
     threading.Thread(target=_warm, daemon=True).start()
     # applications left waiting when the server last stopped are taken up again, in order
     inbox.start()
-    yield
+    retention = asyncio.create_task(_purge_daily()) if records.retention_days() else None
+    try:
+        yield
+    finally:
+        if retention is not None:
+            retention.cancel()
+        records.release_server_lock(lock)
+
+
+async def _purge_daily() -> None:
+    """With KAPACITET_RETENTION_DAYS set, purge what is older at startup and then once a day."""
+    while True:
+        days = records.retention_days()
+        if days:
+            try:
+                out = await asyncio.to_thread(records.purge, days)
+                if out["assessments"]:
+                    log.info("retention: purged %d assessments older than %d days", out["assessments"], days)
+            except Exception:  # noqa: BLE001 - tried again tomorrow
+                log.exception("retention purge failed")
+        await asyncio.sleep(RETENTION_EVERY_S)
 
 
 app = FastAPI(
@@ -127,7 +162,8 @@ app.include_router(setup_router)
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
 if _CORS:
-    app.add_middleware(CORSMiddleware, allow_origins=_CORS, allow_methods=["GET", "POST"], allow_headers=["*"])
+    app.add_middleware(CORSMiddleware, allow_origins=_CORS, allow_methods=["GET", "POST", "PUT", "DELETE"],
+                       allow_headers=["*"])
 
 API = "/api/v1"
 
@@ -165,6 +201,8 @@ API_ERRORS = {
     "has_heat_pump": "this house already has a heat pump",
     "unknown_customer": "unknown customer",
     "busy": "busy: {n} requests are already being evaluated, try again shortly",
+    "cancelled": "this evaluation was cancelled",
+    "already_finished": "this evaluation has already finished",
     "bad_phases": "a charger is single-phase (1) or three-phase (3)",
     **GUARD_ERRORS,
 }
@@ -1046,7 +1084,8 @@ class RequestIn(BaseModel):
 
 _ENGINE: dict[str, Any] = {}
 _ENGINE_LOCK = threading.Lock()
-_JOBS: dict[str, dict] = {}
+# the pool's jobs, by id (api/jobs.py): what the progress stream and the result read
+_JOBS = POOL.jobs
 
 
 @on_clear
@@ -1093,41 +1132,43 @@ def _warm() -> None:
         log.warning("warm-up failed: %s", exc)
 
 
-def _run_job(job_id: str, body: RequestIn, ctx=None) -> None:
-    from ..engine import request as rq
-    job = _JOBS[job_id]
+def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
+    """An evaluation as the pool runs it: the engine with the job's check in its context, then the
+    answer stored in the job and, for /requests, saved as an assessment. The `done` event is
+    handed back to the pool, which adds it once the job is marked done, so the browser fetches the
+    answer only after it is stored."""
 
-    held: list[dict] = []
+    def work(job: dict, check) -> list[dict]:
+        from ..engine import request as rq
 
-    def emit(stage: str, payload: dict) -> None:
-        ev = {"stage": stage, "payload": payload, "t": time.time()}
-        # `done` tells the browser to fetch the result, so it waits until the result is stored
-        (held if stage == "done" else job["events"]).append(ev)
+        held: list[dict] = []
 
-    try:
+        def emit(stage: str, payload: dict) -> None:
+            ev = {"stage": stage, "payload": payload, "t": time.time()}
+            (held if stage == "done" else job["events"]).append(ev)
+
         eng = _engine()
-        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit, ctx=ctx)
-        if job["status"] != "running":   # gave up on by the watchdog: the late answer is dropped
-            return
+        here = rq.Context(body.baseline, check=check) if ctx is None else dataclasses.replace(ctx, check=check)
+        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit, ctx=here)
+        check()       # stopped while the last stage ran: the late answer is dropped, nothing is saved
         job["result"] = result
-        try:
-            records.save(_record(job_id, job, result))
-        except Exception:   # the answer still reaches the screen; only its saved copy is lost
-            log.exception("could not save assessment %s", job_id)
-        job["status"] = "done"
-        job["finished"] = time.time()
-        job["events"].extend(held)
-    except Exception as exc:
-        log.exception("request failed")
-        job["status"] = "error"
-        job["finished"] = time.time()
-        job["error"] = str(exc)
-        # not "error": EventSource fires its own `error` event for transport trouble, and
-        # a stage of the same name is indistinguishable from the stream simply dropping.
-        job["events"].append({"stage": "failed", "payload": {"error": str(exc)}, "t": time.time()})
-    finally:
-        # the stream ends only once every event, the last included, has been queued
-        job["closed"] = True
+        if save:
+            try:
+                records.save(_record(job["id"], job, result))
+            except Exception:   # the answer still reaches the screen; only its saved copy is lost
+                log.exception("could not save assessment %s", job["id"])
+        return held
+
+    return work
+
+
+def _submit(body: RequestIn, ctx=None, save: bool = True) -> dict:
+    """Admit an evaluation to the pool, or refuse it with 429 `busy` when every slot and the line are full."""
+    try:
+        return POOL.submit(uuid.uuid4().hex[:12], _evaluation(body, ctx, save), request=body.model_dump())
+    except jobs.Busy as exc:
+        raise HTTPException(429, {"code": "busy", "message": API_ERRORS["busy"].format(n=exc.waiting),
+                                  "params": {"n": exc.waiting}}, headers={"Retry-After": "5"}) from exc
 
 
 def _check_cid(cid: int) -> None:
@@ -1166,15 +1207,7 @@ def _check_request(body: RequestIn) -> None:
 
 def _sweep_jobs() -> None:
     """Forget finished jobs after JOB_TTL_S and give up on any that ran past JOB_TIMEOUT_S."""
-    now = time.time()
-    for jid, job in list(_JOBS.items()):
-        if job["status"] == "running" and now - job["created"] > JOB_TIMEOUT_S:
-            job["status"] = "error"
-            job["error"] = f"timed out after {JOB_TIMEOUT_S:.0f} s"
-            job["events"].append({"stage": "failed", "payload": {"error": job["error"]}, "t": now})
-            job["closed"] = True
-        elif job["status"] != "running" and now - job.get("finished", job["created"]) > JOB_TTL_S:
-            _JOBS.pop(jid, None)
+    POOL.sweep()
 
 
 _REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synthetic_grid")
@@ -1187,8 +1220,7 @@ def _request_files(baseline: str | None = None) -> list[Path]:
     if baseline == "queue":
         from ..engine import queue as qu
 
-        folder = qu.folder()
-        files += [folder / "queue.json", *sorted(folder.glob("state_*.npz"))]
+        files += [qu.folder() / "queue.json", *qu.state_files()]
     return files
 
 
@@ -1230,17 +1262,28 @@ def list_requests(limit: int = Query(30, ge=1, le=200)) -> dict:
 
 @app.post(f"{API}/requests", tags=["requests"])
 def create_request(body: RequestIn) -> dict:
-    """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE)."""
+    """Start a connection-request evaluation; follow it with GET /requests/{id}/events (SSE).
+
+    It starts at once when one of KAPACITET_MAX_JOBS slots is free, otherwise it waits in line
+    (the stream says `queued` with its place); a full line is a 429 `busy`."""
     _check_request(body)
     ctx = _context_for(body)
-    _sweep_jobs()
-    if sum(j["status"] == "running" for j in _JOBS.values()) >= MAX_JOBS:
-        raise api_error(429, "busy", n=MAX_JOBS)
-    job_id = uuid.uuid4().hex[:12]
-    _JOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time(),
-                     "request": body.model_dump()}
-    threading.Thread(target=_run_job, args=(job_id, body, ctx), daemon=True).start()
-    return {"id": job_id, "events": f"{API}/requests/{job_id}/events", "result": f"{API}/requests/{job_id}"}
+    job = _submit(body, ctx)
+    job_id = job["id"]
+    return {"id": job_id, "status": job["status"], "events": f"{API}/requests/{job_id}/events",
+            "result": f"{API}/requests/{job_id}"}
+
+
+@app.delete(f"{API}/requests/{{job_id}}", tags=["requests"])
+def cancel_request(job_id: str) -> dict:
+    """Stop an evaluation that is waiting or running: it leaves the line at once, or stops at the
+    engine's next check, and nothing of it is saved. A finished one is a 409 `already_finished`."""
+    status = POOL.cancel(_job_id(job_id))
+    if status is None:
+        raise HTTPException(404, "unknown request")
+    if status != "cancelled":
+        raise api_error(409, "already_finished")
+    return {"id": job_id, "status": status}
 
 
 @app.get(f"{API}/requests/{{job_id}}/events", tags=["requests"])
@@ -1260,6 +1303,8 @@ def _stream(jobs: dict, job_id: str, timeout_s: float, keepalive_s: float | None
         start = last = time.time()
         while True:
             job = jobs[job_id]
+            if job.get("status") == "queued":    # the time allowed counts from when it starts
+                start = time.time()
             while sent < len(job["events"]):
                 ev = job["events"][sent]
                 sent += 1
@@ -1285,10 +1330,12 @@ def _finished(job_id: str) -> dict:
     _sweep_jobs()
     job = _JOBS.get(_job_id(job_id))
     if job is not None:
-        if job["status"] == "running":
-            raise HTTPException(202, "running")
+        if job["status"] in ("queued", "running"):
+            raise HTTPException(202, job["status"])
         if job["status"] == "error":
             raise HTTPException(500, job.get("error", "failed"))
+        if job["status"] == "cancelled":
+            raise api_error(409, "cancelled")
     rec = records.load(job_id)
     if rec is not None:
         return rec
@@ -1304,7 +1351,7 @@ def request_result(job_id: str, download: bool = Query(False)) -> JSONResponse:
         rec = _finished(job_id)
     except HTTPException as exc:
         if exc.status_code == 202:
-            return JSONResponse({"status": "running"}, status_code=202)
+            return JSONResponse({"status": exc.detail}, status_code=202)
         raise
     if download:
         return JSONResponse(rec, headers={"Content-Disposition": f'attachment; filename="kapacitet-assessment-{job_id}.json"'})
@@ -1371,12 +1418,21 @@ def request_hourly(job_id: str) -> Response:
 
 @app.post(f"{API}/evaluate", tags=["requests"])
 def evaluate_sync(body: RequestIn) -> JSONResponse:
-    """Synchronous variant of /requests (returns the full result)."""
-    from ..engine import request as rq
+    """Synchronous variant of /requests (returns the full result). It takes a slot of the same pool,
+    waits in the same line and is refused with the same 429 `busy`; nothing is saved."""
     _check_request(body)
     ctx = _context_for(body)
-    eng = _engine()
-    out = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
+    job = _submit(body, ctx, save=False)
+    # the line ahead of it and its own run, each bounded by the pool's timeout
+    job = POOL.wait(job["id"], JOB_TIMEOUT_S * (2 + POOL.max_queued))
+    if job["status"] != "done":
+        if job["status"] in ("queued", "running"):
+            POOL.cancel(job["id"])
+            raise HTTPException(504, f"no answer within {JOB_TIMEOUT_S * (2 + POOL.max_queued):.0f} s")
+        if job["status"] == "cancelled":
+            raise api_error(409, "cancelled")
+        raise HTTPException(500, job.get("error", "failed"))
+    out = dict(job["result"])
     out["provenance"] = provenance(*_REQUEST_SOURCES, files=_request_files(body.baseline))
     return JSONResponse(json.loads(json.dumps(out, default=_json_default)))
 
@@ -1408,7 +1464,9 @@ def get_queue() -> dict:
     from ..engine import queue as qu
 
     q = qu.load()
-    return {**q, "approved": len(qu.approved(q)), "updating": _queue_busy()}
+    # the address is the network's, read now: the decisions keep only the house's number
+    items = [{**it, "address": it.get("address") or records.address_of(it.get("cid"))} for it in q["items"]]
+    return {**q, "items": items, "approved": len(qu.approved(q)), "updating": _queue_busy()}
 
 
 def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:

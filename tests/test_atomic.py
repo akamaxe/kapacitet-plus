@@ -150,3 +150,36 @@ def test_append_line_takes_exactly_one_line(tmp_path):
     atomic.append_line(tmp_path / "x.log", "one")
     atomic.append_line(tmp_path / "x.log", "two")
     assert (tmp_path / "x.log").read_bytes() == b"one\ntwo\n"
+
+
+# ---------------------------------------------------------------- the readers of what these write
+
+def test_a_cut_request_cache_is_computed_again_not_an_error(tmp_path):
+    from kapacitet.engine import request as rq
+
+    path = tmp_path / "static_2025.npz"
+    p = np.arange(12, dtype=np.float32).reshape(3, 4)
+    atomic.savez_atomic(path, p=p, q=-p, stamp=7.0)
+    got = rq._cached_pq(path, 7.0, 3)
+    assert got is not None and np.array_equal(got[0], p) and got[0].dtype == float
+    assert rq._cached_pq(path, 8.0, 3) is None                      # another baseline file
+    assert rq._cached_pq(path, 7.0, 5) is None                      # another network
+    path.write_bytes(path.read_bytes()[:40])                        # cut short, as a crash left it
+    assert rq._cached_pq(path, 7.0, 3) is None
+    assert rq._cached_pq(tmp_path / "none.npz", 7.0, 3) is None
+
+
+def test_an_index_line_cut_short_is_skipped(tmp_path, monkeypatch):
+    from kapacitet.api import records
+
+    monkeypatch.setattr(records, "folder", lambda: tmp_path)
+    monkeypatch.setattr(records, "address_of", lambda cid: None)
+    for job_id in ("a00000000001", "a00000000002"):
+        records.save({"id": job_id, "created": "2026-11-05T10:00:00+00:00", "request": {"cid": 1},
+                      "result": {"customer": {"cid": 1, "address": "Gatan 1"}, "summary": {}}})
+    with (tmp_path / "index.jsonl").open("ab") as fh:
+        fh.write(b'{"id": "a00000000003", "crea')
+    assert [it["id"] for it in records.listing()] == ["a00000000002", "a00000000001"]
+    assert not _strays(tmp_path)
+    kept = gzip.decompress((tmp_path / "a00000000001.json.gz").read_bytes())
+    assert b"Gatan" not in kept and json.loads(kept)["result"]["customer"] == {"cid": 1}

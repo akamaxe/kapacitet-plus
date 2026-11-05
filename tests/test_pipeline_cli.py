@@ -277,3 +277,23 @@ def test_the_server_says_it_when_it_starts(checkout, monkeypatch, caplog):
         pipeline._serve_child(argparse.Namespace(host="127.0.0.1", port=8123))
     assert started == [8123]
     assert any("git working tree" in r.getMessage() for r in caplog.records)
+
+
+def test_purge_needs_an_age_and_stays_away_from_a_running_server(tmp_path, monkeypatch, capsys):
+    from conftest import another_server
+    from kapacitet.api import records
+
+    monkeypatch.setattr(records, "folder", lambda: tmp_path / "requests")
+    monkeypatch.delenv("KAPACITET_RETENTION_DAYS", raising=False)
+    assert _exit_code(["purge"]) == 2 and "--older-than" in capsys.readouterr().out
+    assert _exit_code(["purge", "--older-than", "-1"]) == 2
+    asked = []
+    monkeypatch.setattr(records, "purge", lambda days, dry_run=False: asked.append((days, dry_run)) or {
+        "assessments": 0, "cutoff": "2026-10-06T00:00:00+00:00", "kept_for_decisions": 0})
+    monkeypatch.setenv("KAPACITET_RETENTION_DAYS", "30")
+    pipeline.main(["purge"])
+    pipeline.main(["purge", "--older-than", "7", "--dry-run"])
+    assert asked == [(30, False), (7, True)]
+    with another_server(tmp_path):
+        assert _exit_code(["purge", "--older-than", "30"]) == 2
+        assert "KAPACITET_RETENTION_DAYS" in capsys.readouterr().out and len(asked) == 2
