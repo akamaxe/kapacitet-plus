@@ -63,21 +63,21 @@ def test_the_round_trip_is_electrically_the_same_network(tmp_path):
 
 
 def _hand_made():
-    """MV source, one transformer; LV bus A fused to A2 by a closed bus-bus switch; A2 - B - C with
+    """MV source, one transformer; LV bus A fused to the tie bus T by a closed bus-bus switch; T - B - C with
     an open switch on B - C (C is beyond the open point); an out-of-service line A - D; a second
     transformer with its own LV bus E."""
     net = pp.create_empty_network()
     mv = pp.create_bus(net, 10.0, name="MV")
     pp.create_ext_grid(net, mv)
-    a, a2, b, c, d, e = (pp.create_bus(net, 0.4, name=n) for n in ("A", "A2", "B", "C", "D", "E"))
+    a, tie, b, c, d, e = (pp.create_bus(net, 0.4, name=n) for n in ("A", "T", "B", "C", "D", "E"))
     pp.create_transformer(net, mv, a, "0.25 MVA 10/0.4 kV")
     pp.create_transformer(net, mv, e, "0.25 MVA 10/0.4 kV")
-    pp.create_switch(net, a, a2, et="b", closed=True)
-    pp.create_line(net, a2, b, 0.1, "NAYY 4x150 SE")
+    pp.create_switch(net, a, tie, et="b", closed=True)
+    pp.create_line(net, tie, b, 0.1, "NAYY 4x150 SE")
     bc = pp.create_line(net, b, c, 0.1, "NAYY 4x50 SE")
     pp.create_switch(net, b, bc, et="l", closed=False)
     pp.create_line(net, a, d, 0.1, "NAYY 4x50 SE", in_service=False)
-    for bus in (a2, b, c, d, e):
+    for bus in (tie, b, c, d, e):
         pp.create_load(net, bus, p_mw=0.002)
     net.bus.loc[b, "origin_id"] = "mrid-b"
     return net
@@ -87,10 +87,10 @@ def test_the_island_stops_at_open_points_and_fuses_closed_bus_switches():
     net = _hand_made()
     tables = contract_tables(net, 0, {int(i): {"fuse_a": 20} for i in net.load.index})
     buses = tables["buses"]
-    assert list(buses["name"]) == ["A", "B"]                         # A2 fused into A; C, D, E outside
+    assert list(buses["name"]) == ["A", "B"]                         # T fused into A; C, D, E outside
     assert list(buses["bus_id"]) == ["B1", "mrid-b"]                 # an origin_id is kept as the id
     assert len(tables["lines"]) == 1 and tables["lines"]["from_bus"].iloc[0] == "B1"
-    assert list(tables["customers"]["bus"]) == ["B1", "mrid-b"]      # the loads on A2 and B
+    assert list(tables["customers"]["bus"]) == ["B1", "mrid-b"]      # the loads on T and B
     assert validate(tables).usable
     other = contract_tables(net, 1, {int(i): {"fuse_a": 20} for i in net.load.index})
     assert list(other["buses"]["name"]) == ["E"] and len(other["customers"]) == 1
