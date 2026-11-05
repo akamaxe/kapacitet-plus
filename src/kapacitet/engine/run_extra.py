@@ -66,6 +66,8 @@ TORNADO_CASES = [
     ("dcac", "PV DC/AC ratio", "1.4", {}, {"pv_dc_ac_ratio": 1.4}),
     ("minload", "Minimum load in the static snapshot", "×0 (no load)", {}, {"static_min_load_factor": 0.0}),
     ("minload", "Minimum load in the static snapshot", "×2", {}, {"static_min_load_factor": 2.0}),
+    ("static_pv", "Solar output in the static snapshot", "×0.8", {}, {"static_pv_factor": 0.8}),
+    ("static_pv", "Solar output in the static snapshot", "×0.9", {}, {"static_pv_factor": 0.9}),
     ("household", "Household demand", "−20 %", {}, {"household_load_factor": 0.8}),
     ("household", "Household demand", "+20 %", {}, {"household_load_factor": 1.2}),
 ]
@@ -107,9 +109,11 @@ def tornado(o: int, years, z_star: float, workers: int = 8) -> None:
 # ------------------------------------------------------------------- the cost of the forecast
 
 def _foresight_case(args) -> dict:
-    """The capacity one adoption order carries on envelopes issued a day ahead."""
+    """The capacity one adoption order carries on envelopes issued a day ahead, on both bases of
+    the budget: the aggregate one (the headline's) and every installation's own, from one memo
+    of the counts measured."""
     warnings.filterwarnings("ignore")
-    o, ms, mts, yd, years, z_star, window = args
+    o, ms, mts, yd, yd_i, years, z_star, window = args
     from . import forecast
     from .run import background_masks, model
     m = model()
@@ -117,13 +121,27 @@ def _foresight_case(args) -> dict:
     order = adoption_order(o, m.C)
     cap = doe.customer_caps()
     t0 = time.perf_counter()
+    runs: dict[int, dict] = {}
     k, det = forecast.adopters(m, order, ms, mts, years, hp, ev, "climatological", z_star,
-                               window_days=window, hi=yd)
+                               window_days=window, hi=yd, memo=runs)
+    # each installation's share is at least the aggregate one, so this count is at most `k`,
+    # and a dominating state never carries more than perfect foresight on the same basis
+    if det["z_customer_max_pct"] <= z_star and k <= yd_i:
+        k_i, det_i = k, det
+    else:
+        k_i, det_i = forecast.adopters(m, order, ms, mts, years, hp, ev, "climatological", z_star,
+                                       window_days=window, hi=min(k, yd_i), budget="installation", memo=runs)
     return {"order": o, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum()),
             "z_pct": det["z_pct"], "violation_hours": det["violation_hours"],
+            "z_customer_max_pct": det["z_customer_max_pct"],
             "at_floor": bool(k <= mts),
             "exceedance": det["exceedance"],
             "exceedance_per_year": [{"year": p["year"], **p["exceedance"]} for p in det["per_year"] if p["exceedance"]],
+            "installation": {"adopters": int(k_i), "kw_ac": float(cap[order[:k_i]].sum()),
+                             "z_pct": det_i["z_pct"], "z_customer_max_pct": det_i["z_customer_max_pct"],
+                             "z_customer_year_max_pct": det_i["z_customer_year_max_pct"],
+                             "violation_hours": det_i["violation_hours"], "at_floor": bool(k_i <= mts),
+                             "exceedance": det_i["exceedance"]},
             "seconds": time.perf_counter() - t0}
 
 
@@ -141,6 +159,10 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
     year of every order is audited (`forecast.plan_exceedance`), per order and per year here.
     Per order, `at_floor` says the day-ahead search ended at or below the time-series capacity
     it starts from, and `kw_minus_timeseries` by how much it rose above it (or fell below).
+
+    Both bases of the budget are searched, from one memo per order: the top level holds the
+    aggregate share to it (the headline's basis), `installation` each installation's own share
+    over the years, against the published `doe_installation`.
     """
     from concurrent.futures import ProcessPoolExecutor
 
@@ -150,16 +172,23 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
     summary = json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8"))
     cap_total = summary["total_cap_kw"]
     hp, ev = background_masks(summary["customers"])
+    # a summary from before the per-installation basis has no doe_installation: its aggregate
+    # count is still a ceiling for the installation search, only a looser one
+    installation = lambda r: r.get("doe_installation", r["doe"])
     jobs = [(r["order"], r["static"]["adopters"], r["timeseries"]["adopters"],
-             r["doe"]["adopters"], tuple(years), z_star, window) for r in summary["per_order"]]
+             r["doe"]["adopters"], installation(r)["adopters"], tuple(years), z_star, window)
+            for r in summary["per_order"]]
     with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
         rows = list(ex.map(_foresight_case, jobs))
 
     by_order = {r["order"]: r for r in rows}
     med = lambda xs: float(np.median(xs))
-    published = {m: med([r[m]["kw_ac"] for r in summary["per_order"]])
-                 for m in ("static", "timeseries", "fixed_cap", "doe")}
+    measures = ("static", "timeseries", "fixed_cap", "doe") + \
+        (("doe_installation",) if all("doe_installation" in r for r in summary["per_order"]) else ())
+    published = {m: med([r[m]["kw_ac"] for r in summary["per_order"]]) for m in measures}
     climatological_kw = med([r["kw_ac"] for r in rows])
+    inst = [r["installation"] for r in rows]
+    inst_kw = med([r["kw_ac"] for r in inst])
     pv_margin, load_margin = forecast.day_ahead_margins()
     by_year = {y: forecast.total_exceedance([next((p for p in r["exceedance_per_year"] if p["year"] == y), None)
                                              for r in rows]) for y in years}
@@ -169,8 +198,25 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
         per_order.append({**row, "doe_kw": r["doe"]["kw_ac"], "static_kw": r["static"]["kw_ac"],
                           "timeseries_kw": r["timeseries"]["kw_ac"],
                           "kw_minus_timeseries": row["kw_ac"] - r["timeseries"]["kw_ac"]})
+        per_order[-1]["installation"] = {**row["installation"], "doe_kw": installation(r)["kw_ac"]}
     _write("foresight.json", {
         "years": list(years), "z_star_pct": z_star, "window_days": window,
+        # the top level holds the aggregate share to the budget (the headline's basis);
+        # `installation` repeats the search with each installation's own share held to it
+        "budget_basis": "aggregate",
+        "installation": {
+            "budget_basis": "installation",
+            "median_kw": {"climatological": inst_kw, "doe": published.get("doe_installation")},
+            "kw_ac_stats": {"climatological": spread([r["kw_ac"] for r in inst])},
+            "median_adopters": {"climatological": med([r["adopters"] for r in inst]),
+                                "doe": med([installation(r)["adopters"] for r in summary["per_order"]])},
+            "foresight_premium_kw": (published["doe_installation"] - inst_kw
+                                     if "doe_installation" in published else None),
+            "violation_hours": int(sum(r["violation_hours"] for r in inst)),
+            "within_budget_orders": int(sum(r["z_customer_max_pct"] <= z_star + 1e-9 for r in inst)),
+            "at_floor_orders": int(sum(r["at_floor"] for r in inst)),
+            "plan_exceedance": forecast.total_exceedance([r["exceedance"] for r in inst]),
+        },
         "margins": {"pv_pct": round(pv_margin * 100.0, 6), "load_pct": round(load_margin * 100.0, 6)},
         "n_orders": len(rows), "total_cap_kw": cap_total,
         "exceedance": forecast.exceedance_audit(settings().reference_year, hp, ev, window),
@@ -223,7 +269,8 @@ def overinstallation(workers: int = 4) -> None:
 
     Same showcase order and the same deployment points as `zcurve.json`, so the two curves line
     up. Values are spot only (no network tariff, energy tax or compensation), on the years with
-    price data; energies cover every weather year.
+    price data; energies cover every weather year. The envelopes are the published ones, which
+    know each hour's weather (`envelope_basis: "foresight"`), not those issued a day ahead.
     """
     from concurrent.futures import ProcessPoolExecutor
 
@@ -250,7 +297,85 @@ def overinstallation(workers: int = 4) -> None:
     _write("overinstallation.json", {"order": o, "static_adopters": ms, "doe_adopters": zc["doe_adopters"],
                                      "z_star_pct": zc["z_star_pct"], "years": list(years),
                                      "price_years": priced, "value_basis": "spot price of the bidding zone",
+                                     "envelope_basis": "foresight",
                                      "points": pts})
+
+
+# ------------------------------------------------------------------- consumption, hour by hour
+
+def _consumption_order(args) -> dict:
+    """How many new devices of one kind one adoption order carries (hosting.ts_import_adopters)."""
+    warnings.filterwarnings("ignore")
+    o, device, years, flat_kw = args
+    from .run import background_masks, model
+    m = model()
+    hp, ev = background_masks(m.C)
+    t0 = time.perf_counter()
+    k = hosting.ts_import_adopters(m, adoption_order(o, m.C), device, hp, ev, years, flat_kw=flat_kw)
+    return {"order": o, "device": device, "adopters": int(k), "seconds": time.perf_counter() - t0}
+
+
+def _consumption_nodal(args) -> dict:
+    warnings.filterwarnings("ignore")
+    years, = args
+    from .run import background_masks, model
+    m = model()
+    hp, ev = background_masks(m.C)
+    t0 = time.perf_counter()
+    return {"timeseries_kw": hosting.nodal_import_hc_ts(m, hp, ev, years),
+            "static_kw": hosting.nodal_import_hc(m, hp, ev), "seconds": time.perf_counter() - t0}
+
+
+def consumption(years, n_orders: int, workers: int = 4) -> None:
+    """The consumption capacity of the hourly record, next to the static one (results/consumption.json).
+
+    Each house alone: the most load it can add, constant in every hour of every weather year,
+    with no import-side violation (`hosting.nodal_import_hc_ts`), beside the static winter
+    snapshot's (`hosting.nodal_import_hc`, also in nodal.json). And per adoption order, how
+    many new EV chargers (each house's own home charging), heat pumps (its own heat pump) or
+    flat loads of the charger rating the street takes, house after house, before an hour of
+    the record breaks a limit (`hosting.ts_import_adopters`). Nobody's solar is counted: it
+    only relieves the import side.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from .run import _init_worker, background_masks, spread
+    years = tuple(years)
+    flat_kw = float(A("ev_charger_kw"))
+    cust = customers()
+    C = len(cust)
+    hp, ev = background_masks(C)
+    jobs = [(o, d, years, flat_kw) for d in hosting.IMPORT_DEVICES for o in range(n_orders)]
+    with ProcessPoolExecutor(max_workers=max(1, workers), initializer=_init_worker) as ex:
+        nodal = ex.submit(_consumption_nodal, (years,))
+        rows = list(ex.map(_consumption_order, jobs))
+        nodal = nodal.result()
+    has = {"ev": ev, "hp": hp, "flat": np.zeros(C, dtype=bool)}
+    device_kw = {"ev": flat_kw, "hp": None, "flat": flat_kw}
+    devices = {}
+    for d in hosting.IMPORT_DEVICES:
+        mine = [r for r in rows if r["device"] == d]
+        devices[d] = {"device_kw": device_kw[d], "existing": int(has[d].sum()),
+                      "candidates": int(C - has[d].sum()),
+                      "adopters": spread([r["adopters"] for r in mine]),
+                      "per_order": [{"order": r["order"], "adopters": r["adopters"]} for r in mine]}
+    winter = hosting.winter_design_load()
+    _write("consumption.json", {
+        "years": list(years), "n_orders": n_orders, "customers": C,
+        "basis": "every hour of every weather year, today's heat pumps and EVs, no solar; import side "
+                 "(undervoltage and forward overloads of cables and the transformer)",
+        "devices_text": {"ev": "the house's own uncontrolled home charging",
+                         "hp": "the house's own heat pump", "flat": "a constant load of the charger rating"},
+        "nodal": {"customers": cust["cid"].tolist(),
+                  "timeseries_kw": np.round(nodal["timeseries_kw"], 2),
+                  "static_kw": np.round(nodal["static_kw"], 2),
+                  "static_hour": {"year": winter["year"], "hour": winter["hour"]}},
+        "nodal_kw": {"timeseries": spread(nodal["timeseries_kw"]), "static": spread(nodal["static_kw"])},
+        "devices": devices,
+    })
+    log.info("consumption: nodal median %.1f kW hourly vs %.1f kW static; EV chargers median %.0f",
+             float(np.median(nodal["timeseries_kw"])), float(np.median(nodal["static_kw"])),
+             devices["ev"]["adopters"]["median"])
 
 
 # ------------------------------------------------------------------- what the phase record is worth

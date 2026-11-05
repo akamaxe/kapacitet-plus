@@ -141,6 +141,7 @@ _WRITTEN_BY = {
     "tornado.json": "compute --stage extra --only tornado",
     "foresight.json": "compute --stage extra --only foresight",
     "overinstallation.json": "compute --stage extra --only overinstallation",
+    "consumption.json": "compute --stage extra --only consumption",
     "phases.json": "compute --stage extra --only phases",
     "validation.json": "compute --stage extra --only validation",
     "forecast.json": "forecast",

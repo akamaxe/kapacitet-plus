@@ -69,6 +69,15 @@ def season_days(year: int, months: tuple[int, int]) -> np.ndarray:
     return np.flatnonzero((days.month >= months[0]) & (days.month <= months[1]))
 
 
+def share_pct(curtailed, potential) -> np.ndarray:
+    """Curtailed energy as a percentage of the potential, element by element; 0 where the potential
+    is 0 (a house that produced nothing lost nothing). The share an agreement is held to, here and
+    in the capacity search (run.curtailment, forecast.multiyear)."""
+    c = np.asarray(curtailed, dtype=float)
+    p = np.asarray(potential, dtype=float)
+    return np.divide(c, p, out=np.zeros(np.broadcast(c, p).shape), where=p > 0) * 100.0
+
+
 def go_no_go(days: dict, per_house: dict, season: np.ndarray, agreed_level_pct: float) -> dict:
     """The season's two criteria, and each agreement's share over the whole replayed year.
 
@@ -79,9 +88,8 @@ def go_no_go(days: dict, per_house: dict, season: np.ndarray, agreed_level_pct: 
     viol = np.asarray(days["violation_hours"], dtype=int)
     curtailed = np.asarray(per_house["curtailed"], dtype=float)
     pv = np.asarray(per_house["pv"], dtype=float)
-    year_share = np.divide(curtailed.sum(axis=1), pv.sum(axis=1), out=np.zeros(len(pv)), where=pv.sum(axis=1) > 0) * 100
-    season_share = np.divide(curtailed[:, season].sum(axis=1), pv[:, season].sum(axis=1), out=np.zeros(len(pv)),
-                             where=pv[:, season].sum(axis=1) > 0) * 100
+    year_share = share_pct(curtailed.sum(axis=1), pv.sum(axis=1))
+    season_share = share_pct(curtailed[:, season].sum(axis=1), pv[:, season].sum(axis=1))
     within = year_share <= agreed_level_pct + 1e-9
     safety = int(viol[season].sum())
     return {

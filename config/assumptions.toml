@@ -812,6 +812,29 @@ url = ""
 note = "Applied in the published and the issued day-ahead figures. The bound stays empirical: every issue counts the hours the year still came in under it."
 note_sv = "Används både i de publicerade och i de utfärdade siffrorna för dagen före. Gränsen förblir empirisk: varje utfärdande räknar de timmar då året ändå låg under den."
 
+# ---------------------------------------------------------------- the static reference
+[static_pv_factor]
+value = 1.0
+unit = "× AC rating"
+tag = "team-assumption"
+label = "Solar output in the static summer snapshot, as a share of each inverter's AC rating"
+label_sv = "Solcellernas effekt i den statiska ögonblicksbilden för sommaren, som andel av växelriktarens AC-märkeffekt"
+source = "Base case 1.0: every system at its rating at the same time, the conservative convention of a static connection study; varied to 0.8 and 0.9 in the tornado chart"
+url = ""
+note = "Below 1 the static study allows for the systems not all peaking together (orientation, shading, clipping), as some DSOs do. It moves the static reference only, never the envelopes."
+note_sv = "Under 1 tar den statiska studien hänsyn till att alla anläggningar inte når sin topp samtidigt (riktning, skuggning, begränsning i växelriktaren), som vissa nätbolag gör. Det flyttar bara den statiska referensen, aldrig exportgränserna."
+
+[static_load_rule]
+value = "min_daytime_summer"
+unit = "-"
+tag = "team-assumption"
+label = "Household load assumed in the static summer snapshot"
+label_sv = "Hushållslast som antas i den statiska ögonblicksbilden för sommaren"
+source = "Modelling choice: each household's lowest simulated load on summer days (May–August, 10–16 h) in any weather year, scaled by static_min_load_factor"
+url = ""
+note = "The alternative value is 'no_load', no household load at all, the strictest reading."
+note_sv = "Det alternativa värdet är 'no_load', ingen hushållslast alls, den strängaste tolkningen."
+
 # ---------------------------------------------------------------- sensitivity factors (1 = base case)
 [static_min_load_factor]
 value = 1.0

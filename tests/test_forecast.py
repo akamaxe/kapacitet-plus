@@ -263,15 +263,30 @@ def searched(monkeypatch):
     def multiyear(model, order, ms, k, years, hp, ev, scheme, *, window_days, policy,
                   check_safety=False):
         calls.append((int(k), bool(check_safety)))
-        return {"adopters": int(k), "z_pct": _z(k), "violation_hours": 0}
+        # the worst installation curtails 1.4 times the average
+        return {"adopters": int(k), "z_pct": _z(k), "z_customer_max_pct": 1.4 * _z(k), "violation_hours": 0}
 
     monkeypatch.setattr(forecast, "multiyear", multiyear)
     return calls
 
 
-def _search(lo: int, hi: int | None):
+def _search(lo: int, hi: int | None, **kw):
     return forecast.adopters(_Grid(), np.arange(_Grid.C), MS, lo, (2025,), None, None,
-                             "climatological", 3.0, hi=hi)
+                             "climatological", 3.0, hi=hi, **kw)
+
+
+def test_the_installation_budget_reuses_the_counts_already_measured(searched):
+    runs: dict = {}
+    k, _ = _search(60, 96, memo=runs)
+    first = [n for n, full in searched if not full]
+    k_i, det = _search(60, k, budget="installation", memo=runs)
+    trial = [n for n, full in searched if not full]
+    assert (k, k_i) == (72, 65), "1.4 × z(k) <= 3 % up to 65 adopters"
+    assert det["adopters"] == 65 and searched[-1] == (65, True)
+    assert len(trial) == len(set(trial)), "a count the first search measured is not run again"
+    assert len(trial) > len(first) and set(first) <= set(runs)
+    with pytest.raises(ValueError):
+        _search(60, 96, budget="per_house")
 
 
 def test_the_search_measures_its_floor_and_goes_down_when_it_fails(searched):

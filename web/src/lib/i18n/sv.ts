@@ -798,6 +798,7 @@ const sv: Dict = {
   "tor.trafo": "Transformatorns märkeffekt",
   "tor.dcac": "Solcellernas DC/AC-förhållande",
   "tor.minload": "Minimilast i den statiska ögonblicksbilden",
+  "tor.static_pv": "Solcellernas effekt i den statiska ögonblicksbilden",
   "tor.household": "Hushållens förbrukning",
   "tor.noLoad": "(ingen last)",
   "req.liveOff": "Ansökningar i realtid kräver ansökningarnas utgångslägen, som den här datamappen saknar (ett lite-paket visar bara de publicerade resultaten). Packa upp ett fullständigt paket, eller skapa dem:",

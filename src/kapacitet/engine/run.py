@@ -17,6 +17,7 @@ from ..config import A, settings
 from ..paths import processed
 from ..timeindex import day_of_year, hour_of_day, year_index
 from . import compliance, doe, economics, hosting
+from .delivery import share_pct
 from .netmodel import NetModel
 from .scenario import Scenario, adoption_order, customers, mask_from_share
 from .stateblob import encode_state
@@ -108,6 +109,11 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
 
     `verify` goes to doe.compute: the bisections pass "critical", the points they publish are
     verified in full and report `full_year_violations` (None when not checked).
+
+    Both bases of the budget come from the same run: `z_pct` is the aggregate share (all their
+    curtailed energy over all their solar energy), `z_customer_max_pct` the highest share of any
+    one installation over the years, and `z_customer_year_max_pct` its highest in a single year.
+    `per_customer` holds the energies behind them, in the order of order[ms:k].
     """
     m = model()
     C = m.C
@@ -117,6 +123,7 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
     per_year = []
     kappa = None
     full = 0 if method == "doe" and verify == "full" else None
+    cust_curt, cust_pot, year_max = np.zeros(len(nf)), np.zeros(len(nf)), np.zeros(len(nf))
     for y in years:
         arr = Scenario(year=y, pv=pvm, hp=hp, ev=ev).arrays()
         pot_y = float(arr["pv"][nf].sum())
@@ -126,6 +133,7 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
         if method == "doe":
             r = doe.compute(m, arr, nf, policy=policy, verify=verify)
             c_y = float(r.curtailed.sum())
+            c_c = r.curtailed.astype(float).sum(axis=1)
             if full is not None:
                 full += r.full_year_violations
         else:
@@ -133,15 +141,41 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
                 p_s, q_s = hosting.summer_snapshot(pv_mask(order, ms, C))
                 kappa, _ = doe.fixed_cap(m, arr, nf, p_s, q_s)
             cap = doe.customer_caps()[nf]
-            c_y = float(np.maximum(np.clip(arr["p_net"][nf], 0, None) - kappa * cap[:, None], 0).sum())
+            cut = np.maximum(np.clip(arr["p_net"][nf], 0, None) - kappa * cap[:, None], 0)
+            c_y = float(cut.sum())
+            c_c = cut.astype(float).sum(axis=1)
+        p_c = arr["pv"][nf].astype(float).sum(axis=1)
+        year_max = np.maximum(year_max, share_pct(c_c, p_c))
+        cust_curt += c_c
+        cust_pot += p_c
         curt += c_y
         pot += pot_y
         per_year.append({"year": y, "curtailed_kwh": c_y, "potential_kwh": pot_y})
+    cust_share = share_pct(cust_curt, cust_pot)
     return {"curtailed_kwh": curt, "potential_kwh": pot, "z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
-            "kappa": kappa, "per_year": per_year, "full_year_violations": full}
+            "z_customer_max_pct": float(cust_share.max()) if len(nf) else 0.0,
+            "z_customer_year_max_pct": float(year_max.max()) if len(nf) else 0.0,
+            "kappa": kappa, "per_year": per_year, "full_year_violations": full,
+            "per_customer": {"curtailed_kwh": cust_curt, "potential_kwh": cust_pot, "share_pct": cust_share,
+                             "year_max_pct": year_max}}
+
+
+def within_pct(c: dict, z_star: float) -> float:
+    """The share (%) of a curtailment's installations whose own share over the years is inside
+    the budget (all of them when there are none)."""
+    share = c["per_customer"]["share_pct"]
+    return float(100.0 * np.mean(share <= z_star + 1e-9)) if len(share) else 100.0
 
 
 def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
+    """The capacity of one adoption order by every method.
+
+    The envelope capacity is searched on both bases of the budget, on one memo of the runs:
+    `doe` holds the aggregate share to `z_star` (the headline), `doe_installation` every
+    installation's own share over the years. The second can only be lower, so it is searched
+    between the time-series capacity and the first. `z_doe_*` and `customers_within_pct`
+    describe the `doe` point; `z_doe_installation` the other one, verified in full the same way.
+    """
     o, years, z_star = args
     m = model()
     C = m.C
@@ -153,16 +187,31 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     ms = hosting.static_adopters(m, order, hp, ev)
     mts = hosting.ts_adopters(m, order, hp, ev, years, lo=ms)
     yf = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev, method="fixed")["z_pct"] <= z_star, ms, C)
-    yd = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev, verify="critical")["z_pct"] <= z_star,
-                      mts, C)
+    runs: dict[int, dict] = {}
+
+    def searched(k: int) -> dict:
+        if k not in runs:
+            runs[k] = curtailment(order, ms, k, years, hp, ev, verify="critical")
+        return runs[k]
+
+    yd = largest_true(lambda k: searched(k)["z_pct"] <= z_star, mts, C)
+    yd_i = largest_true(lambda k: searched(k)["z_customer_max_pct"] <= z_star, mts, yd)
     z_at_yd = curtailment(order, ms, yd, years, hp, ev)
+    z_at_ydi = z_at_yd if yd_i == yd else curtailment(order, ms, yd_i, years, hp, ev)
     z_at_yf = curtailment(order, ms, yf, years, hp, ev, method="fixed")
 
     def kw(k):
         return {"adopters": int(k), "kw_ac": float(cap[order[:k]].sum()), "kwp": float(kwp[order[:k]].sum())}
 
     return {"order": o, "static": kw(ms), "timeseries": kw(mts), "fixed_cap": kw(yf), "doe": kw(yd),
+            "doe_installation": kw(yd_i),
             "z_doe_pct": z_at_yd["z_pct"], "z_fixed_pct": z_at_yf["z_pct"], "kappa": z_at_yf["kappa"],
+            "z_doe_customer_max_pct": z_at_yd["z_customer_max_pct"],
+            "z_doe_customer_year_max_pct": z_at_yd["z_customer_year_max_pct"],
+            "customers_within_pct": within_pct(z_at_yd, z_star),
+            "z_doe_installation": {"z_pct": z_at_ydi["z_pct"], "customer_max_pct": z_at_ydi["z_customer_max_pct"],
+                                   "customer_year_max_pct": z_at_ydi["z_customer_year_max_pct"],
+                                   "full_year_violations": z_at_ydi["full_year_violations"]},
             "doe_full_year_violations": z_at_yd["full_year_violations"],
             "seconds": time.perf_counter() - t0}
 
@@ -176,6 +225,8 @@ def _curve_point(args) -> dict:
     f = curtailment(order, ms, k, years, hp, ev, method="fixed")
     cap = doe.customer_caps()
     return {"adopters": k, "kw_ac": float(cap[order[:k]].sum()), "z_doe_pct": d["z_pct"],
+            "z_doe_customer_max_pct": d["z_customer_max_pct"],
+            "z_doe_customer_year_max_pct": d["z_customer_year_max_pct"],
             "z_fixed_pct": f["z_pct"], "kappa": f["kappa"], "full_year_violations": d["full_year_violations"],
             "z_doe_by_year": [100 * p["curtailed_kwh"] / p["potential_kwh"] if p["potential_kwh"] else 0
                               for p in d["per_year"]]}
@@ -233,10 +284,12 @@ def compute_all(quick: bool = False, workers: int = 6) -> None:
     log.info("showcase done (%.0f s)", time.perf_counter() - t0)
 
     # 4) curve of curtailment vs deployment for the showcase order
-    ks = sorted(set(list(range(ms, C + 1, 4 if not quick else 12)) + [C, mts, k]))
+    ks = sorted(set(list(range(ms, C + 1, 4 if not quick else 12))
+                    + [C, mts, k, best["doe_installation"]["adopters"]]))
     with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
         pts = list(ex.map(_curve_point, [(o, ms, kk, tuple(years)) for kk in ks]))
     _write("zcurve.json", {"order": o, "static_adopters": ms, "timeseries_adopters": mts, "doe_adopters": k,
+                           "doe_installation_adopters": best["doe_installation"]["adopters"],
                            "z_star_pct": z_star, "years": list(years), "points": pts})
     log.info("curve done (%.0f s)", time.perf_counter() - t0)
 
@@ -290,8 +343,11 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
         **(extra or {}),
         "z_star_pct": z_star, "years": list(years), "n_orders": n_orders, "customers": C,
         "total_cap_kw": float(doe.customer_caps().sum()), "total_kwp": float(cust["kwp"].sum()),
+        "static_definition": hosting.static_definition(m),
+        # the headline holds the aggregate share to the budget; doe_installation each installation's
+        "budget_basis": {"doe": "aggregate", "doe_installation": "installation"},
         "measures": {k: {"kw_ac": stats(k, "kw_ac"), "kwp": stats(k, "kwp"), "adopters": stats(k, "adopters")}
-                     for k in ("static", "timeseries", "fixed_cap", "doe")},
+                     for k in ("static", "timeseries", "fixed_cap", "doe", "doe_installation")},
         "per_order": per_order,
     }
     _write("hosting_summary.json", summary)
@@ -299,13 +355,14 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
 
 
 EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "foresight", "overinstallation",
-                "phases", "validation", "protection", "operation")
+                "consumption", "phases", "validation", "protection", "operation")
 
 
 def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] | None = None,
                   workers: int = 4) -> None:
     """Stages that build on the showcase: request baselines, 2030 scenarios, tornado, foresight,
-    over-installation, validation. `only` runs a subset of EXTRA_STAGES and leaves meta.json alone.
+    over-installation, consumption capacity, validation. `only` runs a subset of EXTRA_STAGES and
+    leaves meta.json alone.
 
     Heavy stages use `workers` processes (4 fits next to a desktop session in 16 GB).
     """
@@ -336,6 +393,9 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
     if want("overinstallation"):
         run_extra.overinstallation(workers=workers)
         log.info("over-installation done (%.0f s)", time.perf_counter() - t0)
+    if want("consumption"):
+        run_extra.consumption(years, N_ORDERS if not quick else 4, workers=workers)
+        log.info("consumption capacity done (%.0f s)", time.perf_counter() - t0)
     if want("phases"):
         run_extra.phase_cost()
         log.info("phase cost done (%.0f s)", time.perf_counter() - t0)

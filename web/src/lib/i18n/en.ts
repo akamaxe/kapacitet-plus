@@ -797,6 +797,7 @@ const en: Dict = {
   "tor.trafo": "Transformer rating",
   "tor.dcac": "Solar DC/AC ratio",
   "tor.minload": "Minimum load in the static snapshot",
+  "tor.static_pv": "Solar output in the static snapshot",
   "tor.household": "Household demand",
   "tor.noLoad": "(no load)",
   "req.liveOff": "Live requests need the request baselines, which this data folder does not have (a lite bundle shows the published results only). Unpack a full bundle, or make them:",

@@ -19,14 +19,19 @@ Median over 20 seeded adoption orders and 11 weather years (2015–2025), transf
 | Static study, worst case | **413 kW AC** (P10–P90 405–415) | 50 |
 | Static study + fixed export cap at 3 % curtailment | 416 kW | 51 |
 | Real hours, no control (every hour of 11 years within limits) | 609 kW | 74 |
-| **Dynamic envelopes at 3 % curtailment** | **787 kW** (782–800) | 96 |
+| **Dynamic envelopes at 3 % curtailment** (aggregate) | **787 kW** (782–800) | 96 |
 
 So the same grid carries **1.9×** more solar with envelopes, and the customers who join beyond
 the static limit lose about **2–3 %** of their annual solar energy. Without any control, the
 same 94 systems would push the transformer above its rating in **148 hours** of 2025.
 
 The 3 % threshold is an anchor, not an invention: German EnWG §11(2) *Spitzenkappung* lets a
-DSO plan with up to 3 % of the annual energy of each installation curtailed. The full
+DSO plan with up to 3 % of the annual energy of each installation curtailed. The headline holds
+the 3 % to the **aggregate** of the installations beyond the static limit (all their curtailed
+energy over all their solar energy), so some of them lose more than 3 % and others less.
+`hosting_summary.json` also publishes the stricter basis that anchor describes, each
+installation's own share over the 11 years held to 3 % (`doe_installation`, with the worst single
+year reported beside it); `budget_basis` says which figure uses which. The full
 curtailment-versus-capacity curve is on screen, not just that point.
 
 Three findings worth a sentence each:
@@ -311,10 +316,14 @@ web/        React + MapLibre + ECharts: 8 screens in English and Swedish (docs/g
 matches `pp.runpp` to 1e-12 pu — the tests check this on both a synthetic feeder and the real
 network.
 
-**Hosting capacity.** Static: worst-case summer (PV at rating, minimum daytime load, high MV
-voltage) and winter (record demand hour) snapshots. Time series: every hour of 11 weather years
-must be within limits. Both use seeded adoption orders, so the result is a distribution, not a
-single number.
+**Hosting capacity.** Static, for solar: the worst-case summer snapshot (PV at
+`static_pv_factor` × its rating, the household load `static_load_rule` picks: the minimum daytime
+summer load), on the export side only; `hosting_summary.json` writes that definition out as
+`static_definition`. The winter snapshot (the record's demand peak) is the static consumption
+capacity of each house. Time series: every hour of 11 weather years must be within limits, for
+solar and, in `compute --stage extra --only consumption` (`consumption.json`), for consumption:
+the load each house can add alone and how many new EV chargers, heat pumps or flat loads a street
+takes. All use seeded adoption orders, so the result is a distribution, not a single number.
 
 **Envelopes.** For each critical hour, non-firm customers get export limits from a linear model
 (voltage sensitivities `S = Re Z` and a 0/1 downstream incidence for cables and transformer),

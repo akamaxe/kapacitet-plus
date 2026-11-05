@@ -196,3 +196,58 @@ def test_the_reinforcement_comparison_rests_on_the_published_results(results):
     assert r["bigger"]["timeseries_kw"] >= r["envelopes"]["kw_ac"], "the bigger unit carries the deployment uncontrolled"
     yrs = r["years_of_curtailment"]["transformer"]
     assert yrs[0] == pytest.approx(lo / r["envelopes"]["curtailed_sek_per_year"])
+
+
+# ---------------------------------------------------------------- the budget per installation
+
+PER_INSTALLATION = "run: python -m kapacitet compute (the per-installation budget came after these results)"
+
+
+def _per_installation(o: dict) -> dict:
+    if "doe_installation" not in o:
+        pytest.skip(f"doe_installation not published yet; {PER_INSTALLATION}")
+    return o
+
+
+def test_the_per_installation_budget_carries_no_more_than_the_aggregate_one(results):
+    h = results("hosting_summary")
+    for o in map(_per_installation, h["per_order"]):
+        assert o["timeseries"]["adopters"] <= o["doe_installation"]["adopters"] <= o["doe"]["adopters"], o["order"]
+        assert o["doe_installation"]["kw_ac"] <= o["doe"]["kw_ac"] + 1e-9
+        assert 0.0 <= o["customers_within_pct"] <= 100.0
+        assert o["z_doe_customer_max_pct"] >= o["z_doe_pct"] - 1e-6
+    m = h["measures"]
+    assert m["doe_installation"]["kw_ac"]["median"] <= m["doe"]["kw_ac"]["median"]
+    assert h["budget_basis"] == {"doe": "aggregate", "doe_installation": "installation"}
+
+
+def test_no_installation_curtails_beyond_the_budget_at_its_own_capacity(results):
+    h = results("hosting_summary")
+    z_star = h["z_star_pct"]
+    for o in map(_per_installation, h["per_order"]):
+        z = o["z_doe_installation"]
+        assert z["customer_max_pct"] <= z_star + 1e-9, o["order"]
+        assert z["full_year_violations"] == 0, o["order"]
+        # the worst single year is reported, never held to the budget
+        assert z["customer_year_max_pct"] >= z["customer_max_pct"] - 1e-9
+
+
+@needs_results
+def test_order_9_carries_87_adopters_on_the_per_installation_budget(results):
+    """The review's check of order 9 (h9): 87 adopters, 717.8 kW, recomputed here. Slow: two
+    curtailment runs over every weather year."""
+    from kapacitet.engine import doe, run
+    from kapacitet.engine.scenario import adoption_order
+
+    h = results("hosting_summary")
+    o = _per_installation(next(r for r in h["per_order"] if r["order"] == 9))
+    assert o["doe_installation"]["adopters"] == 87
+    assert o["doe_installation"]["kw_ac"] == pytest.approx(717.8, abs=0.05)
+    m = run.model()
+    hp, ev = run.background_masks(m.C)
+    order = adoption_order(9, m.C)
+    assert float(doe.customer_caps()[order[:87]].sum()) == pytest.approx(717.8, abs=0.05)
+    ms, years = o["static"]["adopters"], tuple(h["years"])
+    at = run.curtailment(order, ms, 87, years, hp, ev, verify="critical")
+    above = run.curtailment(order, ms, 88, years, hp, ev, verify="critical")
+    assert at["z_customer_max_pct"] <= h["z_star_pct"] + 1e-9 < above["z_customer_max_pct"]

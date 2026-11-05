@@ -44,7 +44,7 @@ bound bracket the cost of the forecast rather than guessing at it.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 
 import numpy as np
 from scipy.ndimage import maximum_filter1d, minimum_filter1d
@@ -54,6 +54,7 @@ from ..config import A, settings
 from ..profiles.pv import load_ac_per_kwp
 from ..timeindex import local_standard, year_index
 from . import doe
+from .delivery import share_pct
 from .netmodel import NetModel
 from .scenario import Scenario, customers, year_profiles
 
@@ -76,6 +77,8 @@ class Issued:
     export_kwh: float
     hours_limited: int           # hours in which somebody was actually cut
     exceedance: dict | None = None   # where what happened beat the plan (plan_exceedance)
+    # (N,) kWh curtailed per non-firm customer, in the order issued; not part of the payload
+    curtailed_by_customer: np.ndarray | None = field(default=None, repr=False, compare=False)
 
     @property
     def safe(self) -> bool:
@@ -443,6 +446,7 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
         export_kwh=export,
         hours_limited=int((curtailed.sum(axis=0) > 1e-3).sum()),
         exceedance=plan_exceedance(planning, actual, nonfirm),
+        curtailed_by_customer=curtailed.sum(axis=1),
     )
 
 
@@ -468,6 +472,10 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
 
     Every year issued against a planning state carries its audit (`plan_exceedance`) in
     `per_year`, and `exceedance` adds them up; the static rung issues nothing, so has none.
+
+    Both bases of the budget come from the same run, as in `run.curtailment`: `z_pct` is the
+    aggregate share, `z_customer_max_pct` the highest share of one installation over the years
+    and `z_customer_year_max_pct` its highest in one year, with the energies in `per_customer`.
     """
     C = model.C
     nf = order[ms:k]
@@ -475,6 +483,7 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
     curt = pot = 0.0
     violations = 0
     per_year = []
+    cust_curt, cust_pot, year_max = np.zeros(len(nf)), np.zeros(len(nf)), np.zeros(len(nf))
     for y in years:
         actual = Scenario(year=y, pv=pvm, hp=hp, ev=ev).arrays()
         pot_y = float(actual["pv"][nf].sum())
@@ -486,24 +495,35 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
             p_s, q_s = _static_snapshot(order, ms, C)
             kappa, _ = doe.fixed_cap(model, actual, nf, p_s, q_s)
             cap = doe.customer_caps()[nf]
-            c_y = float(np.maximum(np.clip(actual["p_net"][nf], 0, None) - kappa * cap[:, None], 0).sum())
+            cut = np.maximum(np.clip(actual["p_net"][nf], 0, None) - kappa * cap[:, None], 0)
+            c_y, c_c = float(cut.sum()), cut.astype(float).sum(axis=1)
             v_y = 0                     # worst-case feasible by construction
             ex_y = None
         else:
             plan = planning_state(scheme, y, pvm, hp, ev, actual, window_days)
             r = issue(model, plan, actual, nf, scheme, policy=policy, check_safety=check_safety)
             c_y, v_y, ex_y = r.curtailed_kwh, r.violation_hours, r.exceedance
+            c_c = np.asarray(r.curtailed_by_customer, dtype=float)
+        p_c = actual["pv"][nf].astype(float).sum(axis=1)
+        year_max = np.maximum(year_max, share_pct(c_c, p_c))
+        cust_curt += c_c
+        cust_pot += p_c
         curt += c_y
         pot += pot_y
         violations += v_y
         per_year.append({"year": y, "curtailed_kwh": c_y, "potential_kwh": pot_y,
                          "violation_hours": v_y, "exceedance": ex_y})
+    cust_share = share_pct(cust_curt, cust_pot)
     return {"scheme": scheme, "adopters": int(k), "non_firm": int(len(nf)),
             "curtailed_kwh": curt, "potential_kwh": pot,
             "z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
+            "z_customer_max_pct": float(cust_share.max()) if len(nf) else 0.0,
+            "z_customer_year_max_pct": float(year_max.max()) if len(nf) else 0.0,
             "violation_hours": violations if (check_safety or scheme != "static") else 0,
             "exceedance": total_exceedance([p["exceedance"] for p in per_year]),
-            "per_year": per_year}
+            "per_year": per_year,
+            "per_customer": {"curtailed_kwh": cust_curt, "potential_kwh": cust_pot, "share_pct": cust_share,
+                             "year_max_pct": year_max}}
 
 
 def _static_snapshot(order: np.ndarray, ms: int, C: int):
@@ -511,10 +531,21 @@ def _static_snapshot(order: np.ndarray, ms: int, C: int):
     return summer_snapshot(_pv_mask(order, ms, C))
 
 
+BUDGETS = ("aggregate", "installation")
+_SHARE = {"aggregate": "z_pct", "installation": "z_customer_max_pct"}
+
+
 def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np.ndarray,
              ev: np.ndarray, scheme: str, z_star: float, *, window_days: int = WINDOW_DAYS,
-             policy: str = "maxmin", hi: int | None = None) -> tuple[int, dict]:
+             policy: str = "maxmin", hi: int | None = None, budget: str = "aggregate",
+             memo: dict[int, dict] | None = None) -> tuple[int, dict]:
     """The most adopters this scheme carries inside the curtailment budget, and the cost there.
+
+    `budget` is its basis: "aggregate" holds the share of all the non-firm customers' solar
+    energy to `z_star`, "installation" each one's own share over the years. Every count the
+    search runs goes into `memo` (count -> `multiyear`), which carries both shares, so a second
+    search on the other basis, given the same memo, pays only for the counts the first did not
+    measure.
 
     `lo` is where the search starts: the published one passes the time-series capacity, the
     count that needs no curtailment with perfect foresight. A planning state issued ahead can
@@ -529,13 +560,18 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
     that as the ceiling keeps the bisection out of a region it cannot reach, which on this
     grid is most of the search. Each count is evaluated once.
     """
-    z: dict[int, float] = {int(ms): 0.0}
+    if budget not in BUDGETS:
+        raise ValueError(f"budget must be one of {BUDGETS}, not {budget!r}")
+    share = _SHARE[budget]
+    runs = {} if memo is None else memo
 
     def ok(k: int) -> bool:
-        if k not in z:
-            z[k] = multiyear(model, order, ms, k, years, hp, ev, scheme,
-                             window_days=window_days, policy=policy)["z_pct"]
-        return z[k] <= z_star
+        if k == int(ms):
+            return True                 # nobody holds an envelope, so nobody is curtailed
+        if k not in runs:
+            runs[k] = multiyear(model, order, ms, k, years, hp, ev, scheme,
+                                window_days=window_days, policy=policy)
+        return runs[k][share] <= z_star
 
     def largest(good: int, bad: int) -> int:
         """The largest count that passes, between one that does and one that does not."""
@@ -610,8 +646,11 @@ LADDER_LABEL = {
 
 def ladder_payload(rows: list[Issued], year: int, window_days: int = WINDOW_DAYS) -> dict:
     """The ladder as data, written to results/forecast.json by `kapacitet forecast`."""
+    def row(r: Issued) -> dict:
+        return {k: v for k, v in asdict(r).items() if k != "curtailed_by_customer"}
+
     return {"year": year, "window_days": window_days,
-            "rows": [{**asdict(r), "label": LADDER_LABEL.get(r.scheme, r.scheme), "safe": r.safe}
+            "rows": [{**row(r), "label": LADDER_LABEL.get(r.scheme, r.scheme), "safe": r.safe}
                      for r in rows]}
 
 

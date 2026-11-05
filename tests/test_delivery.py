@@ -93,6 +93,18 @@ def test_meter_check_refuses_readings_without_an_offset():
     assert e.value.code == "meter_columns"
 
 
+def test_the_share_is_a_percentage_and_nothing_lost_where_nothing_was_produced():
+    from kapacitet.engine.delivery import share_pct
+
+    out = share_pct(np.array([1.0, 5.0, 0.0, 2.0]), np.array([100.0, 50.0, 0.0, 0.0]))
+    assert out.tolist() == [1.0, 10.0, 0.0, 0.0]
+    assert share_pct(3.0, 200.0) == pytest.approx(1.5)
+    assert share_pct(np.zeros(0), np.zeros(0)).shape == (0,)
+    # each row against its own potential, and one potential for every row
+    rows = share_pct(np.array([[1.0, 2.0], [3.0, 4.0]]), np.array([[10.0], [0.0]]))
+    assert rows.tolist() == [[10.0, 20.0], [0.0, 0.0]]
+
+
 def test_go_needs_zero_violations_and_every_agreement_within_its_level():
     from kapacitet.engine.delivery import go_no_go
 
