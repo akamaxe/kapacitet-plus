@@ -318,12 +318,13 @@ def _vector_groups(net) -> None:
 # ------------------------------------------------------------------------------- stations
 
 def lv_transformers(net) -> list[int]:
-    """The in-service two-winding transformers that step down to at most 1 kV."""
+    """The in-service two-winding transformers that step down from above 1 kV to at most 1 kV (an
+    LV/LV transformer, such as 0.69/0.4 kV, is not a station)."""
     t = net.trafo
     if not len(t):
         return []
     keep = (t["in_service"].astype(bool) & (t["vn_lv_kv"].astype(float) <= LV_MAX_KV)
-            & (t["vn_hv_kv"].astype(float) > t["vn_lv_kv"].astype(float)))
+            & (t["vn_hv_kv"].astype(float) > LV_MAX_KV))
     return [int(i) for i in t.index[keep]]
 
 

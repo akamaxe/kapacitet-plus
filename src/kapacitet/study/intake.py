@@ -121,14 +121,24 @@ def _names(study: Study) -> dict[str, str]:
 
 def cgmes_state(study: Study) -> dict:
     """The digests of what a CGMES import is made from."""
-    return {"cgmes": dir_digest(cgmes_dir(study)), "mapping": file_digest(mapping_file(study)),
+    from ..importer import cim
+
+    folder = cgmes_dir(study)
+    h = hashlib.sha256()                                     # only the CGMES files: a stray note changes nothing
+    files = cim.cgmes_files(folder)
+    for f in files:
+        h.update(f.relative_to(folder).as_posix().encode("utf-8") + b"\0"
+                 + (file_digest(f) or "").encode("ascii") + b"\n")
+    return {"cgmes": h.hexdigest() if files else None, "mapping": file_digest(mapping_file(study)),
             "stations": file_digest(study.inputs / "stations.csv")}
 
 
 def _cgmes_pending(study: Study) -> bool:
     """CGMES files that were never converted, or changed (or their mapping did) since."""
     folder = cgmes_dir(study)
-    if not folder.is_dir() or not any(p.is_file() for p in folder.rglob("*")):
+    from ..importer import cim
+
+    if not cim.cgmes_files(folder):                          # a README or .DS_Store is not CGMES input
         return False
     try:
         mark = json.loads((contract_dir(study) / CGMES_MARK).read_text(encoding="utf-8"))
@@ -170,7 +180,9 @@ def import_cim(study: Study):
     """inputs/network/cgmes and inputs/cim_customers.csv as one contract folder per LV transformer
     (importer/cim.py). Returns (the conversion, the ids of the stations an earlier conversion wrote
     and this one no longer has, whose folders are removed). When the conversion is blocked nothing
-    is written; a folder that did not come from a conversion is never written over."""
+    is written; a folder that did not come from a conversion is never written over. The mark is
+    removed before the stations are written and written last, so a failure partway leaves the
+    study pending (split() refuses) and a rerun repairs it."""
     from ..importer import cim
     from ..importer.from_pandapower import write_contract
 
@@ -191,6 +203,7 @@ def import_cim(study: Study):
                 and any((dst / f).is_file() for f in CONTRACT_FILES):
             raise StudyError("cim_overwrites", id=st.sid)
     state = cgmes_state(study)
+    (folder / CGMES_MARK).unlink(missing_ok=True)            # until the last station is in, split() sees it pending
     source = {"files": {f.relative_to(cgmes_dir(study)).as_posix(): file_digest(f) for f in files},
               "mapping": state["mapping"]}
     for st in conversion.stations:
@@ -257,18 +270,10 @@ def split(study: Study) -> list[str]:
 
 
 def read_table(path: Path):
-    """A CSV file a DSO hands over: comma or semicolon separated (with a decimal comma), UTF-8 with
-    or without a BOM."""
-    import pandas as pd
+    """A handed-over CSV (importer.validate.read_table) with customer_id as text."""
+    from ..importer.validate import read_table as read
 
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        sample = fh.read(4096)
-    try:
-        sep = csv.Sniffer().sniff(sample, delimiters=",;").delimiter if sample else ","
-    except csv.Error:
-        sep = ","
-    return pd.read_csv(path, sep=sep, decimal="," if sep == ";" else ".", encoding="utf-8-sig",
-                       dtype={"customer_id": str})
+    return read(path, dtype={"customer_id": str})
 
 
 def equipment_file(study: Study) -> Path:

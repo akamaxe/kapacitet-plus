@@ -300,3 +300,38 @@ def test_without_a_mapping_file_the_import_says_what_it_needs(cim_study):
     with pytest.raises(StudyError) as err:
         import_cim(study)
     assert err.value.code == "cim" and "customer_id and fuse_a" in str(err.value)
+
+
+def test_a_stray_file_in_the_cgmes_folder_is_not_pending_input(cim_study):
+    study, fx = cim_study
+    import_cim(study)
+    (study.inputs / "network" / "cgmes" / "README.txt").write_text("notes", encoding="utf-8")
+    assert split(study)                                                    # not blocked by the note
+
+
+def test_a_failure_while_writing_leaves_the_study_pending(cim_study, monkeypatch):
+    study, fx = cim_study
+    import_cim(study)
+    mapping = study.inputs / "cim_customers.csv"
+    fx.mapping.assign(fuse_a=25).to_csv(mapping, index=False)
+    from kapacitet.study import intake
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+    monkeypatch.setattr(intake, "add_contract", boom)
+    with pytest.raises(OSError):
+        import_cim(study)
+    monkeypatch.undo()
+    with pytest.raises(StudyError) as err:
+        split(study)
+    assert err.value.code == "cgmes_pending"
+
+
+def test_an_lv_lv_transformer_is_not_a_station():
+    from kapacitet.importer.cim import lv_transformers
+
+    net = pp.create_empty_network()
+    hv, mid, lv = (pp.create_bus(net, vn_kv=v) for v in (10.0, 0.69, 0.4))
+    pp.create_transformer_from_parameters(net, hv, mid, 0.63, 10.0, 0.69, 1.0, 4.0, 1.0, 0.1)
+    pp.create_transformer_from_parameters(net, mid, lv, 0.4, 0.69, 0.4, 1.0, 4.0, 1.0, 0.1)
+    assert lv_transformers(net) == [0]

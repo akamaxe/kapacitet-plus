@@ -450,6 +450,14 @@ def place_load(rec: dict, note: Callable[[str, str], None]) -> dict:
     if c["export_seen"]:
         note("assumed", f"metered load: {c['export_seen']} customers export, so their daytime import understates "
                         "what they consume")
+    if c["fitted"]:
+        lost = report.get("hours_without_temperature", 0)
+        seen = sum(r["hours"] for r in report.get("per_customer", [])) + lost
+        if lost and lost > 0.03 * seen:
+            note("assumed", f"metered load: {lost} of {seen} metered hours ({100 * lost / seen:.0f} %) had no "
+                            "temperature and were left out of the fit; refresh the weather download")
+        note("assumed", "metered load: peak and 10-minute statistics still describe the CREST pool, "
+                        "not the meters (the readings are hourly)")
     return {"fitted": c["fitted"], "too_few_days": c["too_few_days"], "median_r2": report["median"]["r2"]}
 
 

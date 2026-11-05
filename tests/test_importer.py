@@ -366,3 +366,11 @@ def test_identifiers_are_read_as_text(tmp_path):
     from kapacitet.importer.validate import read_export
 
     assert list(read_export(tmp_path)["customers"]["customer_id"]) == ["007", "08"]
+
+
+def test_read_export_accepts_the_swedish_dialect(tmp_path):
+    from kapacitet.importer.validate import read_table
+
+    (tmp_path / "t.csv").write_text("customer_id;kw\n007;1,5\n", encoding="utf-8-sig")
+    df = read_table(tmp_path / "t.csv", dtype={"customer_id": str})
+    assert df["customer_id"][0] == "007" and df["kw"][0] == 1.5

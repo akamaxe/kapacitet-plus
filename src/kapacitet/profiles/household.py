@@ -158,7 +158,8 @@ def customer_base_load(year: int, n_customers: int, load_seed: int = 0) -> np.nd
     rows = np.isfinite(metered).all(axis=1)
     if rows.all():
         return metered
-    out = pool_hourly(year)[assignment(n_customers, load_seed)].astype(metered.dtype)
+    pool = pool_hourly(year)[assignment(n_customers, load_seed)]
+    out = pool.astype(np.result_type(pool.dtype, metered.dtype))     # never narrower than the pool
     out[rows] = metered[rows]
     return out
 

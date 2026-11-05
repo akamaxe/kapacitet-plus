@@ -17,6 +17,7 @@ place the English wording lives, and tests/test_messages.py holds both languages
 
 from __future__ import annotations
 
+import csv
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -162,6 +163,19 @@ class Report:
         return "\n".join(lines)
 
 
+def read_table(path: str | Path, dtype=None) -> pd.DataFrame:
+    """A CSV file a DSO hands over: comma or semicolon separated (with a decimal comma), UTF-8 with
+    or without a BOM."""
+    path = Path(path)
+    with path.open(encoding="utf-8-sig", newline="") as fh:
+        sample = fh.read(4096)
+    try:
+        sep = csv.Sniffer().sniff(sample, delimiters=",;").delimiter if sample else ","
+    except csv.Error:
+        sep = ","
+    return pd.read_csv(path, sep=sep, decimal="," if sep == ";" else ".", encoding="utf-8-sig", dtype=dtype)
+
+
 def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
     """Read whichever contract files are present. Missing ones come back absent."""
     directory = Path(directory)
@@ -169,7 +183,7 @@ def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
     for table in ALL_TABLES:
         path = directory / f"{table.name}.csv"
         if path.exists():
-            out[table.name] = pd.read_csv(path, dtype=IDENTIFIERS)
+            out[table.name] = read_table(path, dtype=IDENTIFIERS)
     return out
 
 
