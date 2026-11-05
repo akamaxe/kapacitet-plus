@@ -170,7 +170,108 @@ def test_non_finite_input_is_refused_by_name_and_kept_by_the_screens(grid_model)
         assert 4 in grid_model.screen_export(np.nan_to_num(p), q2)
 
 
-@pytest.mark.parametrize("vm", [0.98, 1.00, 1.06])
+MV_BAND = [0.98, 1.00, 1.02, 1.06]
+
+
+def _patterns(model, side: str, seed: int, n: int = 48) -> tuple[np.ndarray, np.ndarray]:
+    """(C, n) shapes of load (import) or generation (export) and their reactive power: spread over
+    every house, concentrated on a few, or on the houses farthest from the substation, each with
+    reactive power of either sign or none, so that the hours that hit a limit do so by voltage at
+    the far end, by a cable or by the transformer."""
+    rng = np.random.default_rng(seed)
+    C = model.C
+    far = model.dist_m >= np.quantile(model.dist_m, 0.75)
+    shapes = []
+    for j in range(n):
+        kind = j % 3
+        if kind == 0:
+            s = rng.uniform(0.2, 1.0, C)
+        elif kind == 1:
+            s = (rng.random(C) < rng.uniform(0.05, 0.4)) * rng.uniform(0.5, 1.0, C)
+        else:
+            s = far * rng.uniform(0.5, 1.0, C) + (~far) * rng.uniform(0.0, 0.2, C)
+        shapes.append(s if s.any() else np.ones(C))
+    s = np.array(shapes).T
+    s *= model.trafo_s_max_kw / s.sum(axis=0)          # each pattern totals the transformer's rating
+    tan = np.array([0.0, 0.33, -0.33, 0.1])[np.arange(n) % 4]
+    sign = -1.0 if side == "import" else 1.0
+    return sign * s, -sign * tan * s if side == "import" else tan * s
+
+
+def _edge_of_the_limit(model, side: str, p: np.ndarray, q: np.ndarray, vm: float, steps: int = 40):
+    """Each column scaled to just past the first limit it meets on `side`: the smallest scale (to
+    1e-12 of it) at which the nonlinear check flags the hour, the exact criterion the screen has to
+    keep. Returns the injections there and the flags, which are all True."""
+    def flagged(scale):
+        ps, qs = p * scale, q * scale
+        return getattr(model.violations(model.solve(ps, qs, vm), ps), f"{side}_side")
+
+    lo, hi = np.zeros(p.shape[1]), np.full(p.shape[1], 3.0)
+    assert flagged(hi).all(), "every pattern must break a limit at the top of the search"
+    for _ in range(steps):
+        mid = 0.5 * (lo + hi)
+        bad = flagged(mid)
+        hi = np.where(bad, mid, hi)
+        lo = np.where(bad, lo, mid)
+    return p * hi, q * hi, flagged(hi), flagged(lo)
+
+
+@pytest.mark.parametrize("vm", MV_BAND)
+@pytest.mark.parametrize("side", ["import", "export"])
+def test_the_screens_keep_an_hour_just_past_the_limit_across_the_mv_band(grid_model, vm, side, request):
+    """The hour that breaks a limit by the smallest amount the nonlinear check flags (0.909999 pu
+    against 0.91 at 1.02 pu used to pass the import screen, and reactive power injected with
+    the export used to be left out of the rise) is a candidate, at every MV voltage of the
+    band, for load and generation spread out, concentrated or at the far end, with reactive
+    power of either sign. The scale below it is clean, so the edge is the limit's own."""
+    p, q = _patterns(grid_model, side, seed=7 if side == "import" else 8)
+    _assert_the_edges_are_kept(grid_model, side, p, q, vm)
+    if on_tiny(request):        # on the reference network the far-end voltage comes first everywhere
+        pe, qe, _, _ = _edge_of_the_limit(grid_model, side, p, q, vm)
+        v = grid_model.violations(grid_model.solve(pe, qe, vm), pe)
+        if side == "import":
+            assert v.under_v.any() and (v.trafo | v.line).any(), "the edges must reach both kinds of limit"
+        else:
+            assert v.over_v.any() and (v.trafo_rev | v.line_rev).any(), "the edges must reach both kinds of limit"
+
+
+def _assert_the_edges_are_kept(model, side: str, p: np.ndarray, q: np.ndarray, vm: float) -> None:
+    pe, qe, past, before = _edge_of_the_limit(model, side, p, q, vm)
+    assert past.all() and not before.any()
+    cand = set(getattr(model, f"screen_{side}")(pe, qe, vm_slack=vm).tolist())
+    missed = sorted(set(range(pe.shape[1])) - cand)
+    assert not missed, f"the {side} screen at {vm} pu misses the edge of patterns {missed}"
+    got = getattr(model, f"{side}_critical_hours")(pe, qe, vm)
+    assert got.tolist() == list(range(pe.shape[1])), "the confirmation must keep every edge"
+
+
+@pytest.mark.parametrize("vm", MV_BAND)
+@pytest.mark.parametrize("seed", [3, 4])
+def test_the_screens_keep_every_violating_hour_of_load_and_generation_extremes(grid_model, vm, seed):
+    """Seeded draws of one sign at every house and mixed, with reactive power of both signs:
+    whatever side an hour breaks, the screen of that side keeps it, including the hours that do
+    not converge (a violation on both sides)."""
+    _assert_the_extremes_are_kept(grid_model, vm, seed)
+
+
+def _assert_the_extremes_are_kept(model, vm: float, seed: int, H: int = 200) -> None:
+    rng = np.random.default_rng(seed)
+    per, C = _per_house_kw(model), model.C
+    gen = rng.uniform(0.0, 1.0, (C, H)) * rng.uniform(0.3, 5.0, (C, 1)) * per
+    load = -rng.uniform(0.0, 1.0, (C, H)) * rng.uniform(0.3, 6.0, (C, 1)) * per
+    both = rng.uniform(-1.0, 1.0, (C, H)) * rng.uniform(0.3, 6.0, (C, 1)) * per
+    p = np.hstack([gen, load, both])
+    q = p * rng.choice([-0.33, -0.05, 0.0, 0.1, 0.33], size=(1, p.shape[1]))
+    found = model.violations(model.solve(p, q, vm), p)
+    for side in ("export", "import"):
+        truth = getattr(found, f"{side}_side")
+        assert truth.any() and not truth.all(), f"the draw must break {side} limits in some hours only"
+        cand = set(getattr(model, f"screen_{side}")(p, q, vm_slack=vm).tolist())
+        missed = sorted(set(np.flatnonzero(truth).tolist()) - cand)
+        assert not missed, f"the {side} screen at {vm} pu misses hours {missed[:10]}"
+
+
+@pytest.mark.parametrize("vm", MV_BAND)
 @pytest.mark.parametrize("seed", [0, 1])
 def test_the_screens_follow_the_mv_voltage_they_are_given(grid_model, vm, seed):
     """At any MV voltage the screen keeps every hour the nonlinear flow finds violating, whether
@@ -230,7 +331,7 @@ def test_the_unbalanced_model_treats_an_hour_without_an_answer_alike(grid_model,
     assert 2 in model3.screen_export(p, q) and 2 in model3.screen_import(p, q)
 
 
-@pytest.mark.parametrize("vm", [0.98, 1.06])
+@pytest.mark.parametrize("vm", MV_BAND)
 def test_the_unbalanced_screens_follow_the_mv_voltage(grid_model, model3, vm):
     from kapacitet.engine.netmodel3ph import NetModel3Ph
 
@@ -244,3 +345,22 @@ def test_the_unbalanced_screens_follow_the_mv_voltage(grid_model, model3, vm):
         assert truth <= set(cand.tolist())
         assert np.array_equal(cand, getattr(own, screen)(p, q))
         assert np.array_equal(getattr(model3, critical)(p, q, vm), getattr(own, critical)(p, q))
+
+
+@pytest.mark.parametrize("vm", MV_BAND)
+@pytest.mark.parametrize("side", ["import", "export"])
+def test_the_unbalanced_screens_keep_an_hour_just_past_the_limit(model3, vm, side):
+    """As on the balanced model, with every connection single-phase: a house's load raises the
+    other two phases through the neutral and its generation lowers them, so a load-only hour can
+    break the upper limit. The screens read that from sensitivities turned into each phase's own
+    frame; read without the turn they missed it."""
+    p, q = _patterns(model3, side, seed=9 if side == "import" else 10, n=24)
+    _assert_the_edges_are_kept(model3, side, p, q, vm)
+
+
+@pytest.mark.parametrize("vm", MV_BAND)
+def test_the_unbalanced_screens_keep_every_violating_hour_of_the_extremes(model3, vm):
+    """The draws of the balanced test above on the unbalanced model, where a load-only hour can
+    break the upper limit on another phase and a generation-only hour the lower one."""
+    _assert_the_extremes_are_kept(model3, vm, seed=5, H=100)
+

@@ -227,6 +227,50 @@ def test_a_device_count_is_the_last_that_keeps_every_hour(bare, device):
         hosting.ts_import_adopters(model, order, "sauna", hp, ev, years)
 
 
+@pytest.mark.parametrize("vm", [0.98, 1.00, 1.02, 1.06])
+def test_the_consumption_searches_agree_with_the_full_flow_across_the_mv_band(tiny, vm):
+    """`ts_import_adopters` and `import_baseline_violations` rely on the import screen. At every MV
+    voltage of the band their answers hold against the nonlinear flow of every hour of both
+    years, with no screen in between: the count fits and one more does not, and the baseline
+    counts exactly the hours today's grid breaks. The tiny grid's own background sits at the
+    voltage limit, the case where the screen used to miss an hour at 1.02 pu (0.909999 pu)."""
+    from kapacitet.config import A
+    from kapacitet.engine import hosting, run
+    from kapacitet.engine.netmodel import get_model
+    from kapacitet.engine.scenario import adoption_order
+    from kapacitet.timeindex import hours_in_year
+
+    model = get_model(vm_slack=vm)
+    years = synthetic_profiles.YEARS
+    hp, ev = run.background_masks(model.C)
+    truth = {int(y): int(model.violations(model.solve(*hosting.consumption_state(y, hp, ev)),
+                                          hosting.consumption_state(y, hp, ev)[0]).import_side.sum())
+             for y in years}
+    assert hosting.import_baseline_violations(model, hp, ev, years) == truth
+
+    none = np.zeros(model.C, dtype=bool)
+    order = adoption_order(5, model.C)
+
+    def breaks(device: str, n: int) -> bool:
+        add = np.zeros(model.C, dtype=bool)
+        add[order[:n]] = True
+        for y in years:
+            extra = None
+            if device == "flat":
+                extra = np.zeros((model.C, hours_in_year(y)))
+                extra[add] = A("ev_charger_kw")
+            p, q = hosting.consumption_state(y, none, add if device == "ev" else none, extra)
+            if model.violations(model.solve(p, q), p).import_side.any():
+                return True
+        return False
+
+    for device in ("ev", "flat"):
+        k = hosting.ts_import_adopters(model, order, device, none, none, years)
+        assert not breaks(device, k), f"{device}: {k} devices at {vm} pu break a limit the search let through"
+        if k < model.C:
+            assert breaks(device, k + 1), f"{device}: one more than {k} at {vm} pu still fits"
+
+
 # ------------------------------------------------------------------ the static reference
 
 def test_less_solar_in_the_static_snapshot_connects_at_least_as_many(setup):

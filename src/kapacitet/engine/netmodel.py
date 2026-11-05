@@ -82,6 +82,83 @@ def at_hours(vm_slack, hours: np.ndarray):
     return vm_slack if vm_slack is None or np.ndim(vm_slack) == 0 else np.asarray(vm_slack)[hours]
 
 
+# ------------------------------------------------------------------------------- the screens
+
+IMPORT_SCREEN_V = 0.008    # pu, absolute margin of the import voltage screen
+EXPORT_SCREEN_V = 0.006    # pu, absolute margin of the export voltage screen
+SCREEN_FRAC = 0.06         # fraction of the rating, margin of both thermal screens
+DROP_ALLOWANCE = 0.12      # relative margin on the import drop, for the second-order terms
+
+
+def screen_bounds(v_noload_unit: np.ndarray, dv_dp: np.ndarray, dv_dp_cross: np.ndarray,
+                  dv_dq: np.ndarray, v_min: float, p: np.ndarray, q: np.ndarray, vs: np.ndarray,
+                  import_screen_v: float, drop_allowance: float = DROP_ALLOWANCE):
+    """The linear bounds both screens judge an hour by, for a balanced or an unbalanced model.
+
+    `v_noload_unit` (rows,) is the no-load voltage at 1 pu; `dv_dp` (rows, C) the sensitivity to
+    active injection clipped at zero and `dv_dp_cross` its negative part (an injection that
+    lowers a voltage: on the unbalanced model, the other phases of a single-phase house through
+    the neutral); `dv_dq` (rows, C) the sensitivity to reactive injection; `p`/`q` (C, H) and
+    `vs` (H,) the MV voltage. Returns `vs`, `v_hi` (rows, H) the export voltage bound, `v_lo`
+    (rows, H) the import voltage bound and `k` (H,) = 1/V_low. A non-finite input gives NaN,
+    which every comparison fails: the screens keep such hours by `_not_finite`.
+
+    The bound, for any MV voltage of the band 0.98-1.06 pu. The nonlinear check flags a
+    customer voltage past v_min/v_max by more than 1e-6 pu, a loading past the thermal limit by
+    more than 1e-4 %, or an hour without a converged answer, on both sides; a screen has to keep
+    every such hour. The sensitivities (Re Z, Im Z) and the kW ratings hold at 1 pu, the no-load
+    voltage is exactly linear in vs, and a power S draws the current S/V, so every power term is
+    divided by a voltage the hour cannot go below while it is inside the limits:
+
+    - Import voltage: the drop of every injection that lowers a voltage (loads, generation
+      through a negative coefficient, reactive power of the sign whose Im Z term is a drop)
+      over v_min, not 1 pu. While no customer is below v_min no current is above S/v_min, and
+      an hour that ends below v_min crosses v_min on the way, where the same holds. The drop is
+      then raised by `drop_allowance` for what the first-order term leaves out (mostly the
+      angle the drop itself opens, X sin(theta) on top of R cos(theta)), which the tests
+      measure at up to 11 % of the drop near the limit; `import_screen_v` is a further absolute
+      margin. The scale 1/min(vs, 1) used before was 1 above 1 pu, where the drop needed to
+      reach v_min is the largest (0.09 pu at 1.00, 0.11 at 1.02, 0.15 at 1.06), so its error
+      outgrew the 0.008 pu margin: the screen missed hours at 0.909999 pu.
+    - V_low, the hour's lower voltage bound: the import bound's lowest customer voltage less
+      `import_screen_v`, kept within [v_min, 1]. It holds only for an hour inside the lower
+      limit, so both screens keep every hour the import bound cannot place there.
+    - Export voltage: the rise of every injection that raises a voltage (generation, loads
+      through a negative coefficient, reactive power of that sign; the screen used to leave the
+      last two out, and an inverter injecting vars raises the voltage too) over V_low, as no
+      current is above S/V_low. EXPORT_SCREEN_V is an absolute margin for the rest; the tests
+      find the bound conservative without it. Both screens keep every hour the export bound
+      cannot place inside the upper limit, as that is where a flow can fail to converge.
+    - Thermal, both sides: the lossless apparent flow over V_low, against the 1 pu rating;
+      SCREEN_FRAC covers the losses the lossless flow leaves out.
+
+    Each term is at least the earlier screen's (which divided by min(vs, 1), left reactive
+    power out of the rise and the negative coefficients out of both), so the candidates now
+    hold the old ones: a result the nonlinear flow confirms changes only where the old screen
+    missed an hour.
+    """
+    def pos(a):
+        return np.clip(a, 0.0, None)
+
+    gen, load = pos(p), pos(-p)
+    dq_up, dq_down = pos(dv_dq), pos(-dv_dq)
+    rise = dv_dp @ gen + dv_dp_cross @ load + dq_up @ pos(q) + dq_down @ pos(-q)
+    drop = dv_dp @ load + dv_dp_cross @ gen + dq_up @ pos(-q) + dq_down @ pos(q)
+    v0 = v_noload_unit[:, None] * vs[None, :]
+    v_lo = v0 - drop * ((1.0 + drop_allowance) / v_min)
+    v_low = np.clip(v_lo.min(axis=0) - import_screen_v, v_min, 1.0)
+    k = 1.0 / v_low
+    return vs, v0 + rise * k[None, :], v_lo, k
+
+
+def outside_voltage_bounds(v_hi: np.ndarray, v_lo: np.ndarray, v_min: float, v_max: float,
+                           import_screen_v: float, export_screen_v: float) -> np.ndarray:
+    """(H,) the hours the linear bounds cannot place inside both voltage limits: both screens
+    keep them, for an hour outside either limit may not converge (a violation on both sides)
+    and below v_min V_low no longer holds."""
+    return (v_lo.min(axis=0) < v_min + import_screen_v) | (v_hi.max(axis=0) > v_max - export_screen_v)
+
+
 class NetModel:
     def __init__(self, vm_slack: float | None = None, tap_pos: int | None = None,
                  trafo_type: str | None = None):
@@ -109,6 +186,7 @@ class NetModel:
         mask = pos_ns >= 0
         dv[mask] = self.pf.dv_dp[pos_ns[mask]]
         self.dv_dp = np.clip(dv[self.check_rows], 0.0, None)   # negative coefficients clipped (conservative)
+        self.dv_dp_cross = np.clip(-dv[self.check_rows], 0.0, None)   # what the clip drops, for the screens
         dq = np.zeros((len(self.net.bus), self.C))
         dq[mask] = self.pf.dv_dq[pos_ns[mask]]
         self.dv_dq = dq[self.check_rows]
@@ -135,39 +213,37 @@ class NetModel:
         self.trafo_s_max_kw = self.pf.trafo_sn_mva * 1000.0 * self.thermal / 100.0
         self.dist_m = self.cust["dist_m"].to_numpy()
 
-    def _screen_terms(self, H: int, vm_slack) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """The MV voltage of each hour, the no-load voltage it gives and the factor 1/min(vs, 1).
-
-        The sensitivities and the kW ratings hold at 1 pu. Below it the same power drives more
-        current (I ~ S/V) and raises or drops the voltage more (dV ~ 1/V), so the thermal terms
-        and the voltage-sensitivity terms are both scaled up by 1/min(vs, 1); above 1 pu they
-        are left as they are, which overestimates. Without the second scaling the screen stops
-        being conservative below 1 pu.
-        """
-        vs = slack_per_hour(vm_slack, self.vm_slack, H)
-        return vs, self.v_noload_unit[:, None] * vs[None, :], 1.0 / np.minimum(vs, 1.0)
+    def _screen_bounds(self, p: np.ndarray, q: np.ndarray, vm_slack
+                       ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """The MV voltage of each hour, the linear bounds both screens judge it by, and 1/V_low:
+        `screen_bounds` on this model's sensitivities (the bound is documented there)."""
+        vs = slack_per_hour(vm_slack, self.vm_slack, p.shape[1])
+        return screen_bounds(self.v_noload_unit, self.dv_dp, self.dv_dp_cross, self.dv_dq, self.v_min,
+                             p, q, vs, IMPORT_SCREEN_V)
 
     @staticmethod
     def _not_finite(p: np.ndarray, q: np.ndarray, vs: np.ndarray) -> np.ndarray:
         """Hours a screen cannot judge, so it keeps them: a NaN passes every comparison."""
         return ~(np.isfinite(p).all(axis=0) & np.isfinite(q).all(axis=0) & np.isfinite(vs))
 
-    def screen_export(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.006,
-                      screen_frac: float = 0.06, vm_slack=None) -> np.ndarray:
+    def screen_export(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = EXPORT_SCREEN_V,
+                      screen_frac: float = SCREEN_FRAC, vm_slack=None) -> np.ndarray:
         """Hours that *may* have an export-side violation (conservative linear screen).
 
-        Voltage: no-load voltage plus the rise from positive injections only (loads and reactive
-        power ignored, which can only overestimate the rise). Thermal: apparent power from the
-        linear (lossless) active and reactive flows. Hours within the screening margins of a
-        limit are returned for a full nonlinear check; the margins are validated in the tests.
-        `vm_slack` (scalar or per hour, default the model's) is the MV voltage the hours run at;
-        hours with non-finite input are always returned.
+        Voltage: no-load voltage plus the rise from every injection that raises it (export, and
+        reactive power of the sign that raises the voltage; loads ignored, which can only
+        overestimate the rise), over the hour's lower voltage bound. Thermal: apparent power
+        from the linear (lossless) active and reactive flows over the same bound. Hours within
+        the screening margins of a limit are returned for a full nonlinear check; the bound is
+        documented in `screen_bounds` and tested across the MV band. `vm_slack` (scalar or per
+        hour, default the model's) is the MV voltage the hours run at; hours with non-finite
+        input are always returned.
         """
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
-        v_lin = v0 + (self.dv_dp @ np.clip(p, 0.0, None)) * k[None, :]
-        cand = v_lin.max(axis=0) > self.v_max - screen_v
+        vs, v_hi, v_lo, k = self._screen_bounds(p, q, vm_slack)
+        cand = v_hi.max(axis=0) > self.v_max - screen_v
+        cand |= outside_voltage_bounds(v_hi, v_lo, self.v_min, self.v_max, IMPORT_SCREEN_V, EXPORT_SCREEN_V)
         pl = self.phi @ p
         ql = self.phi @ q
         sl = np.hypot(pl, ql) / self.line_s_max_kw[:, None] * k[None, :]
@@ -191,19 +267,21 @@ class NetModel:
         return self._confirm(p_kw, q_kvar, self.screen_export(p_kw, q_kvar, vm_slack=vm_slack), vm_slack,
                              "export_side")
 
-    def screen_import(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.008,
-                      screen_frac: float = 0.06, vm_slack=None) -> np.ndarray:
+    def screen_import(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = IMPORT_SCREEN_V,
+                      screen_frac: float = SCREEN_FRAC, vm_slack=None) -> np.ndarray:
         """Hours that *may* have an import-side violation (conservative linear screen).
 
-        Voltage drop from consumption only (generation ignored, which can only deepen the drop);
-        thermal check on the forward (import) apparent power. `vm_slack` as in `screen_export`.
+        Voltage drop from every injection that lowers the voltage (consumption, and reactive
+        power of the sign that lowers it; generation ignored, which can only deepen the drop),
+        taken at the lower voltage limit (`screen_bounds`); thermal check on the forward
+        (import) apparent power over the hour's lower voltage bound. `vm_slack` as in
+        `screen_export`.
         """
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
-        v_lin = (v0 - (self.dv_dp @ np.clip(-p, 0.0, None)) * k[None, :]
-                 + (self.dv_dq @ np.clip(q, None, 0.0)) * k[None, :])
-        cand = v_lin.min(axis=0) < self.v_min + screen_v
+        vs, v_hi, v_lo, k = self._screen_bounds(p, q, vm_slack)
+        cand = v_lo.min(axis=0) < self.v_min + screen_v
+        cand |= outside_voltage_bounds(v_hi, v_lo, self.v_min, self.v_max, IMPORT_SCREEN_V, EXPORT_SCREEN_V)
         pl = self.phi @ p
         ql = self.phi @ q
         sl = np.hypot(pl, ql) / self.line_s_max_kw[:, None] * k[None, :]

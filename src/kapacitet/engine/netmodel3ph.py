@@ -23,10 +23,16 @@ from ..cache import memo
 from ..config import A
 from ..grid.builder import load_net, load_tables
 from ..paths import processed
-from .netmodel import Violations, at_hours, slack_per_hour, unsolved
+from .netmodel import Violations, at_hours, outside_voltage_bounds, screen_bounds, slack_per_hour, unsolved
 from .phases import THREE_PHASE, phase_of
 from .powerflow import require_finite
-from .powerflow3ph import PF3Result, PowerFlow3Ph
+from .powerflow3ph import A_OP, PF3Result, PowerFlow3Ph
+
+
+# The unbalanced screens keep wider margins than the balanced ones: one phase can carry a
+# single-phase house's whole current, and the neutral shift moves the other phases.
+IMPORT_SCREEN_V_3PH = 0.012    # pu, absolute margin of the import voltage screen
+EXPORT_SCREEN_V_3PH = 0.010    # pu, absolute margin of the export voltage screen
 
 
 def inverter_kw() -> np.ndarray | None:
@@ -82,19 +88,30 @@ class NetModel3Ph:
 
     # ---------------------------------------------------------------------- linear model
     def _customer_columns(self) -> np.ndarray:
-        """Column of Z for each customer, averaged over phases for three-phase services."""
+        """Column of Z for each customer, in the frame of each row's own phase, averaged over
+        phases for three-phase services.
+
+        A kW injected on phase a draws a current in phase with a's voltage; the voltage it moves
+        on phase b is Z_ba times that current, read along b's voltage. So the column is turned by
+        the angle between the two no-load voltages (120 degrees across phases, plus the
+        transformer's shift on both): the real part is then the change in b's voltage magnitude
+        per kW, the imaginary part per kvar. Without the turn, the real part of a cross-phase
+        entry is the wrong projection, and the neutral shift a single-phase house causes on the
+        other two phases (a rise under load, a drop under generation) is lost from the screens."""
         pf = self.pf
+        w = -(pf.Z @ (pf.Yns @ np.array([1.0, A_OP ** 2, A_OP])))      # no-load voltage at 1 pu
+        turn = np.exp(1j * np.angle(w))
         cols = np.zeros((len(pf.ns), self.C), dtype=complex)
         single = self.phase >= 0
         if single.any():
             rows = pf.pos_in_ns[3 * pf.customer_ppc[single] + self.phase[single]]
-            cols[:, single] = pf.Z[:, rows]
+            cols[:, single] = pf.Z[:, rows] * turn[rows][None, :]
         if (~single).any():
             idx = np.flatnonzero(~single)
             for ph in range(3):
                 rows = pf.pos_in_ns[3 * pf.customer_ppc[idx] + ph]
-                cols[:, idx] += pf.Z[:, rows] / 3.0
-        return cols
+                cols[:, idx] += pf.Z[:, rows] * turn[rows][None, :] / 3.0
+        return cols / turn[:, None]
 
     def _build_sensitivities(self) -> None:
         pf = self.pf
@@ -108,6 +125,7 @@ class NetModel3Ph:
         # map from ppc rows to pandapower bus rows, then keep the checked ones
         order = (3 * pf.bus_ppc[:, None] + np.arange(3)).ravel()
         self.dv_dp = np.clip(dv[order][self.check_rows], 0.0, None)   # conservative
+        self.dv_dp_cross = np.clip(-dv[order][self.check_rows], 0.0, None)   # the neutral shift, for the screens
         self.dv_dq = dq[order][self.check_rows]
 
         self.v_noload = self._no_load_voltage()
@@ -151,26 +169,27 @@ class NetModel3Ph:
         return (np.einsum("plc,ch->plh", self.phi_phase, p),
                 np.einsum("plc,ch->plh", self.phi_phase, q))
 
-    def _screen_terms(self, H: int, vm_slack) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """As `NetModel._screen_terms`: the MV voltage of each hour, the no-load voltage it gives
-        (exactly linear in the MV voltage, so `v_noload` is rescaled) and 1/min(vs, 1), which
-        scales the thermal and the voltage-sensitivity terms below 1 pu."""
-        vs = slack_per_hour(vm_slack, self.vm_slack, H)
-        return vs, self.v_noload_unit[:, None] * vs[None, :], 1.0 / np.minimum(vs, 1.0)
+    def _screen_bounds(self, p: np.ndarray, q: np.ndarray, vm_slack):
+        """As `NetModel._screen_bounds`, per phase: `netmodel.screen_bounds` on the per-phase
+        sensitivities, with this model's own import margin in V_low."""
+        vs = slack_per_hour(vm_slack, self.vm_slack, p.shape[1])
+        return screen_bounds(self.v_noload_unit, self.dv_dp, self.dv_dp_cross, self.dv_dq, self.v_min,
+                             p, q, vs, IMPORT_SCREEN_V_3PH)
 
     @staticmethod
     def _not_finite(p: np.ndarray, q: np.ndarray, vs: np.ndarray) -> np.ndarray:
         return ~(np.isfinite(p).all(axis=0) & np.isfinite(q).all(axis=0) & np.isfinite(vs))
 
-    def screen_export(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.010,
+    def screen_export(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = EXPORT_SCREEN_V_3PH,
                       screen_frac: float = 0.08, vm_slack=None) -> np.ndarray:
         """Hours that may have an export-side violation. Never skips one that has; keeps every
         hour with non-finite input. `vm_slack` (scalar or per hour) as in `NetModel.screen_export`."""
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
-        v_lin = v0 + (self.dv_dp @ np.clip(p, 0.0, None)) * k[None, :]
-        cand = v_lin.max(axis=0) > self.v_max - screen_v
+        vs, v_hi, v_lo, k = self._screen_bounds(p, q, vm_slack)
+        cand = v_hi.max(axis=0) > self.v_max - screen_v
+        cand |= outside_voltage_bounds(v_hi, v_lo, self.v_min, self.v_max, IMPORT_SCREEN_V_3PH,
+                                       EXPORT_SCREEN_V_3PH)
         pl, ql = self._phase_flows(p, q)
         sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None] * k[None, None, :]
         cand |= ((sl > 1.0 - screen_frac) & (pl > 0)).any(axis=(0, 1))
@@ -181,14 +200,14 @@ class NetModel3Ph:
         cand |= self._not_finite(p, q, vs)
         return np.flatnonzero(cand)
 
-    def screen_import(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.012,
+    def screen_import(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = IMPORT_SCREEN_V_3PH,
                       screen_frac: float = 0.08, vm_slack=None) -> np.ndarray:
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
-        v_lin = (v0 - (self.dv_dp @ np.clip(-p, 0.0, None)) * k[None, :]
-                 + (self.dv_dq @ np.clip(q, None, 0.0)) * k[None, :])
-        cand = v_lin.min(axis=0) < self.v_min + screen_v
+        vs, v_hi, v_lo, k = self._screen_bounds(p, q, vm_slack)
+        cand = v_lo.min(axis=0) < self.v_min + screen_v
+        cand |= outside_voltage_bounds(v_hi, v_lo, self.v_min, self.v_max, IMPORT_SCREEN_V_3PH,
+                                       EXPORT_SCREEN_V_3PH)
         pl, ql = self._phase_flows(p, q)
         sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None] * k[None, None, :]
         cand |= ((sl > 1.0 - screen_frac) & (pl < 0)).any(axis=(0, 1))
