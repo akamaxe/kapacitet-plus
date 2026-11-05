@@ -1,0 +1,53 @@
+# Weekly update proposals for everything the build pins: the actions' commit SHAs in the workflows,
+# the interface's npm lockfile, the Python pins in constraints.txt and the Dockerfile's base images
+# (their digests). Each one is a pull request that CI checks; nothing merges by itself.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: npm
+    directory: /web
+    schedule:
+      interval: weekly
+    groups:
+      web-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-minor:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    # the ceilings constraints.txt explains: pandapower 2.14 predates numpy 2 and supports scipy
+    # below 1.14 only, pandas 3's copy-on-write breaks how it writes results, and pandapower 3 is a
+    # migration of its own
+    ignore:
+      - dependency-name: numpy
+        versions: [">=2"]
+      - dependency-name: scipy
+        versions: [">=1.14"]
+      - dependency-name: pandas
+        versions: [">=3"]
+      - dependency-name: pandapower
+        versions: [">=3"]
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+    # new digests of the same line; a new Node or Python line is a decision, not a weekly update
+    ignore:
+      - dependency-name: node
+        versions: [">=25"]
+      - dependency-name: python
+        versions: [">=3.13"]

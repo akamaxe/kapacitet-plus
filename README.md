@@ -135,8 +135,15 @@ derived from OpenStreetMap, are published separately under ODbL ([DATA-LICENSE.m
 A lite bundle shows every result but cannot evaluate new requests, and the request screen says so.
 
 A container runs the same thing with the data mounted (`docker build -t kapacitet .`, then
-`docker run -p 8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
-Without data, the interface opens on a page that lists the commands to run.
+`docker run -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
+The port is published on 127.0.0.1 only, because the API has no login: whoever reaches the port
+can use all of it, approvals included. Inside the container the server listens on 0.0.0.0, which is
+what Docker needs to forward the port; reaching it from another machine needs a reverse proxy with
+TLS and a login in front. The server runs as an unprivileged user (uid 10001) and writes only to
+`/app/data`, so a folder mounted from the host must be writable by that uid: add
+`--user "$(id -u):$(id -g)"` to run it as yourself, or mount a named volume instead
+(`-v kapacitet-data:/app/data`). Without data, the interface opens on a page that lists the
+commands to run.
 
 A copy without results can also take the data file from its setup page, in the browser, when
 its server allows it (`KAPACITET_SETUP_UPLOAD=1`): only on the reference network and while the copy
