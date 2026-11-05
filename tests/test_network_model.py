@@ -10,6 +10,7 @@ import numpy as np
 import pandapower as pp
 import pandapower.topology as top
 import pytest
+from conftest import on_tiny
 
 
 def test_network_is_radial_and_fully_connected(grid_model):
@@ -58,26 +59,41 @@ def test_zbus_matches_pandapower(grid_model):
         assert np.abs(res.line_loading[:, h] - net.res_line["loading_percent"].to_numpy()).max() < 1e-6
 
 
+def _per_house_kw(model) -> float:
+    """The transformer's rating shared out per house: the draws below scale with it, so they
+    stress a grid of any size alike (on the reference network, 400 kVA over 120 houses, they are
+    the 2-11 kW and 2-12 kW the screens were first tested with)."""
+    return model.trafo_s_max_kw / model.C
+
+
 @pytest.mark.parametrize("seed", [0, 1, 2])
-def test_export_screen_never_misses_a_violation(grid_model, seed):
+def test_export_screen_never_misses_a_violation(grid_model, seed, request):
     """The linear screen is conservative: every violating hour must be in its candidate set."""
     rng = np.random.default_rng(seed)
-    H = 400
-    p = rng.uniform(0.0, 1.0, size=(grid_model.C, H)) * rng.uniform(2.0, 11.0, size=(grid_model.C, 1))
+    H, per = 400, _per_house_kw(grid_model)
+    p = rng.uniform(0.0, 1.0, size=(grid_model.C, H)) * rng.uniform(0.6, 3.3, size=(grid_model.C, 1)) * per
     q = -0.05 * p
     cand = set(grid_model.screen_export(p, q).tolist())
-    viol = grid_model.violations(grid_model.solve(p, q), p).export_side
+    found = grid_model.violations(grid_model.solve(p, q), p)
+    viol = found.export_side
+    assert viol.any(), "the draw must produce violating hours, or the test checks nothing"
+    if on_tiny(request):
+        assert found.over_v.any() and found.trafo_rev.any(), "on the tiny grid both voltage and transformer"
     assert set(np.flatnonzero(viol).tolist()) <= cand
 
 
 @pytest.mark.parametrize("seed", [0, 1, 2])
-def test_import_screen_never_misses_a_violation(grid_model, seed):
+def test_import_screen_never_misses_a_violation(grid_model, seed, request):
     rng = np.random.default_rng(100 + seed)
-    H = 400
-    p = -rng.uniform(0.0, 1.0, size=(grid_model.C, H)) * rng.uniform(2.0, 12.0, size=(grid_model.C, 1))
+    H, per = 400, _per_house_kw(grid_model)
+    p = -rng.uniform(0.0, 1.0, size=(grid_model.C, H)) * rng.uniform(0.6, 3.6, size=(grid_model.C, 1)) * per
     q = 0.1 * p
     cand = set(grid_model.screen_import(p, q).tolist())
-    viol = grid_model.violations(grid_model.solve(p, q), p).import_side
+    found = grid_model.violations(grid_model.solve(p, q), p)
+    viol = found.import_side
+    assert viol.any(), "the draw must produce violating hours, or the test checks nothing"
+    if on_tiny(request):
+        assert found.under_v.any() and (found.trafo & ~found.trafo_rev).any(), "on the tiny grid both voltage and transformer"
     assert set(np.flatnonzero(viol).tolist()) <= cand
 
 

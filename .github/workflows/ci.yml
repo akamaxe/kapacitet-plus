@@ -1,6 +1,8 @@
 # Checks that run on every push without the pipeline output (data/ is not in the repository):
 # the interface typechecks, passes its unit tests and builds; the Python tests pass, those that
-# need data skipping themselves (tests/conftest.py); the interface explains a fresh clone end to end.
+# need data skipping themselves (tests/conftest.py), while the solver, screen and envelope safety
+# tests run on the committed tiny grid (tests/fixtures/grid_tiny); the interface explains a fresh
+# clone end to end.
 name: ci
 
 on:

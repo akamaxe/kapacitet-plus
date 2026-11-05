@@ -24,6 +24,7 @@ from datetime import datetime, timezone
 import numpy as np
 
 from .. import seals
+from ..cache import on_clear
 from ..config import A, settings
 from ..paths import DATA
 from . import request as rq
@@ -78,6 +79,7 @@ def approved(q: dict) -> list[dict]:
 
 
 _CACHE: dict = {"version": None, "states": None, "overrides": None}
+on_clear(lambda: _CACHE.update(version=None, states=None, overrides=None))
 
 
 def context() -> rq.Context | None:

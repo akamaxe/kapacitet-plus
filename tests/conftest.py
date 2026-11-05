@@ -11,12 +11,16 @@ tests/fixtures/synthetic_profiles.py, and on the reference network as well when 
 from __future__ import annotations
 
 import contextlib
+import functools
+import importlib
 import importlib.util
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
+import numpy as np
 import pytest
 
 # The inbox's worker decides applications in the real queue; tests drive `inbox.process` themselves.
@@ -84,34 +88,70 @@ def fixture_module(path: Path, name: str):
 synthetic_profiles = fixture_module(FIXTURES / "synthetic_profiles.py", "synthetic_profiles")
 
 
+# `from .paths import DATA` copies the folder into the importing module, so moving `paths.DATA`
+# does not move it there. Such imports are found in the package's source, so a new one is patched
+# without anyone adding it to a list.
+_BY_VALUE = re.compile(r"^from \.+paths import (\([^)]*\)|.+)$", re.M)
+
+
+@functools.cache
+def bound_by_value() -> dict[str, frozenset[str]]:
+    """Every kapacitet module that binds `DATA` or `PROCESSED` at import, with the names it binds."""
+    import kapacitet
+
+    root = Path(kapacitet.__file__).resolve().parent
+    out: dict[str, frozenset[str]] = {}
+    for path in sorted(root.rglob("*.py")):
+        for match in _BY_VALUE.finditer(path.read_text(encoding="utf-8")):
+            names = set(re.split(r"[\s,()]+", match.group(1))) & {"DATA", "PROCESSED"}
+            if names:
+                module = ".".join(path.relative_to(root.parent).with_suffix("").parts)
+                out[module] = frozenset(names)
+    return out
+
+
 @contextlib.contextmanager
 def processed_at(folder: Path, weather_years: tuple[int, ...] | None = None):
-    """Read `folder` as data/processed for the duration, with every cache emptied on both ends.
+    """Read `folder` as data/processed, and its parent as the data folder, for the duration, with
+    every cache emptied on both ends.
 
     `kapacitet.paths.processed()` reads `PROCESSED` when it is called, so patching that one name
-    moves every engine reader; the modules that imported the value itself are patched too.
+    moves every engine reader. The modules that copied `DATA` or `PROCESSED` at import
+    (`bound_by_value`) are imported first and patched after, so the patch is undone on exit even for
+    a module whose first import would otherwise have happened inside the context. What the engine
+    writes under DATA (the request's injection cache, the queue, the records, the DSO's settings)
+    therefore lands next to `folder`, never in the real data folder. RAW stays where it is: an
+    imported network shares the reference network's downloads too.
+
     `weather_years` replaces the span in config/site.toml, so a folder with profiles for fewer
-    years than the reference network is still read whole.
+    years than the reference network is still read whole; the reference year becomes its last.
+    The span is a first and a last year, so the years must be contiguous. The TOML reader is
+    patched, not `config.settings`, because about twenty modules import `settings` by value.
     """
     from kapacitet import cache, config, paths
 
     folder = Path(folder)
+    assert folder.name == "processed", f"{folder} is not the processed/ folder of a data folder"
+    moved = {"PROCESSED": folder, "DATA": folder.parent}
+    modules = {importlib.import_module(name): names for name, names in bound_by_value().items()}
+    if weather_years:
+        years = tuple(sorted(weather_years))
+        assert years == tuple(range(years[0], years[-1] + 1)), f"site.toml holds a span, not these years: {years}"
     with pytest.MonkeyPatch.context() as mp:
         cache.clear_all()
-        mp.setattr(paths, "PROCESSED", folder)
-        for name in ("kapacitet.api.main", "kapacitet.seals"):
-            module = sys.modules.get(name)
-            if module is not None and hasattr(module, "PROCESSED"):
-                mp.setattr(module, "PROCESSED", folder)
+        for name, value in moved.items():
+            mp.setattr(paths, name, value)
+        for module, names in modules.items():
+            for name in names:
+                mp.setattr(module, name, moved[name])
         if weather_years:
             read = config._read_toml
 
             def site_with_years(name: str) -> dict:
                 cfg = read(name)
                 if name == "site.toml":
-                    cfg = {**cfg, "time": {**cfg["time"], "weather_first_year": min(weather_years),
-                                           "weather_last_year": max(weather_years),
-                                           "reference_year": max(weather_years)}}
+                    cfg = {**cfg, "time": {**cfg["time"], "weather_first_year": years[0],
+                                           "weather_last_year": years[-1], "reference_year": years[-1]}}
                 return cfg
 
             mp.setattr(config, "_read_toml", site_with_years)
@@ -165,3 +205,42 @@ def grid_model(request):
         return
     with tiny_grid(request.getfixturevalue("tiny_processed")):
         yield get_model()
+
+
+def on_tiny(request) -> bool:
+    """Whether a test parametrized by `grid_model` is running on the tiny grid."""
+    return request.node.callspec.params.get("grid_model") == "tiny"
+
+
+# ------------------------------------------------------------------ shared engine scenarios
+
+def stress_instance(model, seed: int = 42, hours: int = 150):
+    """A stressed scenario for `doe.compute` on `model`'s grid: every customer wants 25-100 % of
+    its rating against 0.2-2.5 kW of load, and the last third of them are non-firm.
+
+    Returns (arrays, nonfirm, cap). test_doe_safety.py and test_grid_tiny.py both use it, so
+    what one asserts about the stress is about the scenario the other runs.
+    """
+    from kapacitet.engine import doe
+
+    rng = np.random.default_rng(seed)
+    cap = doe.customer_caps()
+    want = cap[:, None] * rng.uniform(0.25, 1.0, size=(model.C, hours))
+    load = rng.uniform(0.2, 2.5, size=(model.C, hours))
+    p_net = want - load
+    q = -0.05 * np.clip(p_net, 0.0, None)
+    nonfirm = np.arange(model.C)[int(model.C * 2 / 3):]
+    return {"p_net": p_net, "q": q}, nonfirm, cap
+
+
+def violations_beyond_firm(model, arrays: dict, nonfirm: np.ndarray, r) -> int:
+    """The independent re-check of a `DoeResult`: apply the published envelope in every hour,
+    solve again with the nonlinear power flow and count the hours with an export violation that
+    the firm state alone does not have (envelopes cannot fix those)."""
+    p = arrays["p_net"].copy()
+    p[nonfirm] = np.minimum(p[nonfirm], r.envelope(p.shape[1]))
+    viol = model.violations(model.solve(p, arrays["q"]), p).export_side
+    p_firm = arrays["p_net"].copy()
+    p_firm[nonfirm] = np.minimum(p_firm[nonfirm], 0.0)
+    firm_bad = model.violations(model.solve(p_firm, arrays["q"]), p_firm).export_side
+    return int((viol & ~firm_bad).sum())

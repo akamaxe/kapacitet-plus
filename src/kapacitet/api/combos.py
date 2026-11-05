@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 
 from fastapi import HTTPException
 
 from .. import dso
+from ..cache import memo
 from ..paths import processed_ro
 
 BASES = ("foresight", "dayahead")
@@ -48,7 +48,7 @@ class Combo:
         return self.ui / f"state_doe.{suffix}"
 
 
-@lru_cache(maxsize=2)
+@memo(maxsize=2)
 def _index(stamp: float) -> dict:
     return json.loads(processed_ro("results", "operation", "index.json").read_text(encoding="utf-8"))
 

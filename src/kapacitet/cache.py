@@ -1,10 +1,12 @@
-"""One registry for the in-process caches of what was read from data/processed.
+"""One registry for the in-process caches of what was read from the data folder.
 
-Several engine functions keep what they read (the network, the customers, a weather year's
-profiles, the bounds built from them) for the life of the process. That is right for a server
-and for `compute`, which read one processed folder from start to finish, and wrong as soon as
-the same process reads another one: a test's own tiny grid, or a tool that walks several
-networks. A cache missed there does not fail, it answers about the wrong grid.
+Several functions keep what they read from data/processed (the network, the customers, a weather
+year's profiles, the bounds built from them, the API's parsed results) or from data/requests (the
+queue's state) for the life of the process. That is right for a server and for `compute`, which
+read one data folder from start to finish, and wrong as soon as the same process reads another
+one: a test's own tiny grid, or a tool that walks several networks. A cache missed there does not
+fail, it answers about the wrong grid. tests/test_grid_tiny.py fails on a plain
+`functools.lru_cache` in the package, so a new cache cannot bypass the registry unnoticed.
 
 `memo` is `functools.lru_cache` that also registers itself, and `on_clear` registers the reset
 of a cache that `lru_cache` cannot express (one keyed on arrays, or a module global), so
@@ -32,12 +34,12 @@ def memo(maxsize: int | None = 128) -> Callable[[F], F]:
 
 
 def on_clear(reset: Callable[[], None]) -> Callable[[], None]:
-    """Register a function that empties a cache of processed data; returns it unchanged."""
+    """Register a function that empties a cache of the data folder; returns it unchanged."""
     _CLEARERS.append(reset)
     return reset
 
 
 def clear_all() -> None:
-    """Forget everything read from data/processed, so the next read sees the folder in use."""
+    """Forget everything read from the data folder, so the next read sees the folder in use."""
     for reset in _CLEARERS:
         reset()

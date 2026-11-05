@@ -21,7 +21,6 @@ import uuid
 import warnings
 from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
-from functools import lru_cache
 from typing import Any
 
 import httpx
@@ -34,12 +33,13 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .. import __version__
+from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from . import records
 from .. import seals
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
-from ..paths import PROCESSED, RAW, WEB_DIST
+from ..paths import RAW, WEB_DIST
 from ..paths import processed_ro as processed
 
 # The engine's libraries announce API changes on every call; the server log is for requests and
@@ -183,7 +183,7 @@ def _read(name: str) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@lru_cache(maxsize=64)
+@memo(maxsize=64)
 def _cached(name: str, mtime: float) -> Any:
     return _read(name)
 
@@ -248,7 +248,7 @@ def health() -> dict:
             "setup_upload": setup_closed_because() is None}
 
 
-@lru_cache(maxsize=2)
+@memo(maxsize=2)
 def _showcase_hour(stamp: float) -> int | None:
     """Hour of the reference year with the highest transformer loading without control (the demo's opening hour)."""
     p = processed("ui", "state_uncontrolled.json")
@@ -359,7 +359,7 @@ def get_contract() -> dict:
     }
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def _example_files(stamp: float) -> dict[str, str]:
     from ..importer.contract import TABLES
     from ..importer.export import export_tables
@@ -543,7 +543,7 @@ def _line_geometry(coords) -> dict | None:
     return {"type": "LineString", "coordinates": pts}
 
 
-@lru_cache(maxsize=2)
+@memo(maxsize=2)
 def _network(stamp: tuple) -> dict:
     import pandas as pd
 
@@ -651,7 +651,7 @@ def state_header(name: str, basis: str | None = Query(None, pattern=BASIS_PATTER
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@lru_cache(maxsize=12)
+@memo(maxsize=12)
 def _state_gz(path: str, stamp: float) -> bytes:
     """Gzip the uint8 grid state once per file version (4 MB raw, ~1.8 MB compressed)."""
     return gzip.compress(open(path, "rb").read(), 6)
@@ -806,7 +806,7 @@ def compliance_text(basis: str | None = Query(None, pattern=BASIS_PATTERN),
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}-{combo.basis}-{combo.policy}.txt"'})
 
 
-@lru_cache(maxsize=4)
+@memo(maxsize=4)
 def _audit_table(path: str, stamp: float) -> tuple[list[str], list[dict]]:
     with open(path, encoding="utf-8", newline="") as fh:
         reader = csv.DictReader(fh)
@@ -896,6 +896,13 @@ class RequestIn(BaseModel):
 _ENGINE: dict[str, Any] = {}
 _ENGINE_LOCK = threading.Lock()
 _JOBS: dict[str, dict] = {}
+
+
+@on_clear
+def _forget_engine() -> None:
+    """The network model and masks are read from data/processed: cache.clear_all() drops them."""
+    with _ENGINE_LOCK:
+        _ENGINE.clear()
 
 
 def _engine() -> dict:

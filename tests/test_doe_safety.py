@@ -12,25 +12,19 @@ from __future__ import annotations
 
 import numpy as np
 import pytest
+from conftest import on_tiny, stress_instance, violations_beyond_firm
 
 from kapacitet.engine import doe
+from kapacitet.engine.compliance import CONSTRAINT
 
-# What `DoeResult.binding` says bound each critical hour.
-VOLTAGE, CABLE, TRANSFORMER = 0, 1, 2
+# What `DoeResult.binding` says bound each critical hour, by name.
+CODE = {name: code for code, name in CONSTRAINT.items()}
 
 
 @pytest.fixture(scope="module")
 def instance(grid_model):
-    """A stressed scenario: the last third of the customers are non-firm."""
-    rng = np.random.default_rng(42)
-    H = 150
-    cap = doe.customer_caps()
-    want = cap[:, None] * rng.uniform(0.25, 1.0, size=(grid_model.C, H))
-    load = rng.uniform(0.2, 2.5, size=(grid_model.C, H))
-    p_net = want - load
-    q = -0.05 * np.clip(p_net, 0.0, None)
-    nonfirm = np.arange(grid_model.C)[int(grid_model.C * 2 / 3):]
-    return {"p_net": p_net, "q": q}, nonfirm, cap
+    """The stressed scenario of conftest.stress_instance: the last third of the customers are non-firm."""
+    return stress_instance(grid_model)
 
 
 @pytest.mark.parametrize("policy", ["maxmin", "prorata"])
@@ -42,21 +36,12 @@ def test_envelopes_verify_with_the_nonlinear_power_flow(grid_model, instance, po
     # The tiny grid is shaped so the stress reaches both limits: the voltage at the end of its
     # long feeder in some hours, the transformer in others. The reference network is
     # transformer-bound: the same stress never makes its voltage the tightest limit.
-    bound = np.bincount(r.binding, minlength=3)
-    assert bound[TRANSFORMER] > 0
-    if request.node.callspec.params["grid_model"] == "tiny":
-        assert bound[VOLTAGE] > 0, f"the stress must bind the voltage too: {bound.tolist()}"
-
+    bound = np.bincount(r.binding, minlength=len(CONSTRAINT))
+    assert bound[CODE["transformer"]] > 0
+    if on_tiny(request):
+        assert bound[CODE["voltage"]] > 0, f"the stress must bind the voltage too: {bound.tolist()}"
     # independent re-check: apply the published envelope in every hour and solve again
-    p = arrays["p_net"].copy()
-    env = r.envelope(p.shape[1])
-    p[nonfirm] = np.minimum(p[nonfirm], env)
-    viol = grid_model.violations(grid_model.solve(p, arrays["q"]), p).export_side
-    # the firm state alone may violate in some hours; envelopes cannot fix those
-    p_firm = arrays["p_net"].copy()
-    p_firm[nonfirm] = np.minimum(p_firm[nonfirm], 0.0)
-    firm_bad = grid_model.violations(grid_model.solve(p_firm, arrays["q"]), p_firm).export_side
-    assert not (viol & ~firm_bad).any()
+    assert violations_beyond_firm(grid_model, arrays, nonfirm, r) == 0
 
 
 def test_envelopes_stay_within_what_the_customer_asked_for(grid_model, instance):
