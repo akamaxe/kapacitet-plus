@@ -1,9 +1,9 @@
-"""Every sentence the engine or the API hands the interface has words in all three languages.
+"""Every sentence the engine or the API hands the interface has words in both languages.
 
 The engine keeps its English wording next to a code (`importer/validate.py` MESSAGES, the queue's
 ERRORS, the API's API_ERRORS, the request's reasons); the interface says it with `chk.msg.<code>`,
-`err.<code>` and `req.reason.<code>` in web/src/lib/i18n/{en,es,sv}.ts. A new code without its
-three translations, or a translation that drops one of the sentence's values, fails here.
+`err.<code>` and `req.reason.<code>` in web/src/lib/i18n/{en,sv}.ts. A new code without both
+translations, or a translation that drops one of the sentence's values, fails here.
 Standard library and the package only: no data needed.
 """
 
@@ -17,7 +17,7 @@ import pytest
 
 I18N = Path(__file__).resolve().parents[1] / "web" / "src" / "lib" / "i18n"
 ENTRY = re.compile(r'^  "([^"]+)": "((?:[^"\\]|\\.)*)",\s*(//.*)?$')
-LANGS = ("en", "es", "sv")
+LANGS = ("en", "sv")
 
 
 def _dict(lang: str) -> dict[str, str]:
@@ -53,7 +53,7 @@ def _codes() -> list[tuple[str, str]]:
 
 
 @pytest.mark.parametrize("lang", LANGS)
-def test_every_engine_message_code_has_a_label_in_three_languages(lang):
+def test_every_engine_message_code_has_a_label_in_each_language(lang):
     words = _dict(lang)
     missing = [key for key, _ in _codes() if key not in words]
     assert not missing, f"{lang}: no words for {missing}"

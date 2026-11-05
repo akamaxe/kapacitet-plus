@@ -16,8 +16,6 @@ import { useStore } from "../lib/store";
 interface Input {
   key: string;
   label: string;
-  label_es?: string;
-  note_es?: string;
   label_sv?: string;
   note_sv?: string;
   value: number | string | (number | string)[];

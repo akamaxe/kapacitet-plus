@@ -352,7 +352,7 @@ Weights: 400 body, 500 labels, buttons and values, 600 headings, 700 only for th
 
 ### Numbers and units
 - `font-variant-numeric: tabular-nums` is set on the body and restated on every reading, so values do not jitter while the hour moves.
-- Every number goes through `lib/format.ts`: thousands are grouped with a narrow no-break space in all three languages (`2 503 kWh`), the decimal mark follows the language (en-GB, es-ES and sv-SE formatting through `locale()` in `lib/i18n/core.ts`), and decimals are fixed per figure (power 0–1, percentages 1, voltage 3 in pu, prices 2–3). Never more precision than the data supports. A missing value is an en dash.
+- Every number goes through `lib/format.ts`: thousands are grouped with a narrow no-break space in both languages (`2 503 kWh`), the decimal mark follows the language (en-GB and sv-SE formatting through `locale()` in `lib/i18n/core.ts`), and decimals are fixed per figure (power 0–1, percentages 1, voltage 3 in pu, prices 2–3). Never more precision than the data supports. A missing value is an en dash.
 - On the request answer and its printed record, shares read to one decimal (`pct1` in `lib/format.ts`), the risk figures included; a non-zero share that would round to 0.0 reads `< 0.1` instead. Only a histogram's bin edges keep two decimals, since neighbouring bins can sit closer than 0.1.
 - The unit sits beside the value at caption size in `--text-muted` (`kW`, `%`, `pu`, `kWp`); on a chart it appears once, in the axis name.
 - Inside a sentence the figure and its unit never part: when a dictionary loads, `lib/i18n/core.ts` binds every placeholder to the unit after it (`{mean} %`, `{h} h`, `{kw} kW`, `{x} SEK`, `{v} pu`) with a no-break space, so no line starts with a unit. Strings are written with an ordinary space; the binding is automatic.
@@ -362,7 +362,7 @@ Weights: 400 body, 500 labels, buttons and values, 600 headings, 700 only for th
 - A figure is said once per view: if the heading says it, the chart does not.
 
 ### Named Rules
-**The SEK Rule.** Money is SEK, never "kr": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, "SEK/año" in Spanish, "SEK/år" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.
+**The SEK Rule.** Money is SEK, never "kr": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, "SEK/år" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.
 
 **The One Date Rule.** Every real-time date on screen and on paper goes through `format.dateTime`, and every time of day through `format.clock`. No screen builds its own date string.
 
@@ -575,7 +575,7 @@ MapLibre on all four map views: the opening network map, the Neighbourhood, the 
 - **Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.
 - **Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.
 - **Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.
-- **Do** write every string in `lib/i18n/{en,es,sv}.ts`, in English, Spanish and Swedish, with the terms of `docs/glossary.md`.
+- **Do** write every string in `lib/i18n/{en,sv}.ts`, in English and Swedish, with the terms of `docs/glossary.md`.
 - **Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such.
 
 ### Don't:
@@ -611,7 +611,7 @@ Short, factual, sentence case. Plain words first: a viewer who has never heard o
 - [ ] Real and synthetic marked with their filled and dashed squares and sources
 - [ ] Status shown as mark + word; contrast measured, not assumed
 - [ ] No boxed cards, tile grids, kickers, uppercase labels or in-page shadows
-- [ ] New strings in English, Spanish and Swedish
+- [ ] New strings in English and Swedish
 - [ ] Motion: presses 0.97, colour 120 ms, nothing on keyboard dialogs or screen changes, reduced motion keeps colour and opacity only
 - [ ] Keyboard path complete, focus visible, hit targets 40/44 px
 - [ ] Alpha over a channel token written `rgba(var(--token), a)`

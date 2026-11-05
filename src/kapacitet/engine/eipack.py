@@ -79,7 +79,7 @@ def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict
         else:  # a condition added to the file without an assessment here
             state, fact = "not_met", {"code": "unassessed", "params": {}}
         rows.append({"key": key, "evidence": c["evidence"], "state": state, "fact": fact, "source": c["source"],
-                     "label": c["label"], "label_es": c["label_es"], "label_sv": c["label_sv"]})
+                     "label": c["label"], "label_sv": c["label_sv"]})
     counts = {s: sum(1 for r in rows if r["state"] == s) for s in STATES}
     return {"basis": basis, "policy": policy, "year": index.get("year"), "source": cfg["source"],
             "conditions": rows, "counts": counts}

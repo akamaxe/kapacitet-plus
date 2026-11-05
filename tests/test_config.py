@@ -11,8 +11,6 @@ def test_every_assumption_is_labelled_and_sourced():
         assert a.tag, f"{key} has no tag"
         assert a.source, f"{key} has no source"
         assert a.label, f"{key} has no label"
-        assert a.label_es, f"{key} has no Spanish label (label_es)"
-        assert bool(a.note) == bool(a.note_es), f"{key}: a note needs its Spanish note_es, and only then"
         assert a.label_sv, f"{key} has no Swedish label (label_sv)"
         assert bool(a.note) == bool(a.note_sv), f"{key}: a note needs its Swedish note_sv, and only then"
         if a.tag in ("sourced", "regulation", "library"):
@@ -29,3 +27,18 @@ def test_every_assumption_has_a_unit_field():
     for key, entry in raw.items():
         assert "unit" in entry, f"{key} has no unit field"
         assert "value" in entry, f"{key} has no value"
+
+
+def test_no_input_carries_a_spanish_label():
+    """The interface speaks English and Swedish only: a `label_es` or `note_es` left in the file
+    would be served by /assumptions and read by nobody."""
+    import tomllib
+
+    from kapacitet.paths import CONFIG
+
+    for name in ("assumptions.toml", "ei_conditions.toml"):
+        raw = tomllib.loads((CONFIG / name).read_text(encoding="utf-8"))
+        entries = raw.get("condition", []) if name == "ei_conditions.toml" else raw.values()
+        for entry in entries:
+            stray = [k for k in entry if k.endswith("_es")]
+            assert not stray, f"{name}: {entry.get('key', entry.get('label'))} still has {stray}"

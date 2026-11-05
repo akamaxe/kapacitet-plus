@@ -1,13 +1,13 @@
 import en from "./en";
 
 export type Dict = Record<string, string>;
-export type Lang = "en" | "es" | "sv";
+export type Lang = "en" | "sv";
 
 /** The interface's languages, in the order the language control shows them. */
-export const LANGS: readonly Lang[] = ["en", "es", "sv"];
+export const LANGS: readonly Lang[] = ["en", "sv"];
 
 /** Each language named in itself, as a language control writes it. */
-export const LANG_NAMES: Record<Lang, string> = { en: "English", es: "Español", sv: "Svenska" };
+export const LANG_NAMES: Record<Lang, string> = { en: "English", sv: "Svenska" };
 
 export function isLang(value: unknown): value is Lang {
   return typeof value === "string" && (LANGS as readonly string[]).includes(value);
@@ -24,14 +24,13 @@ function bindUnits(dict: Dict): Dict {
 }
 
 /**
- * The dictionaries loaded so far. English ships with the page; Spanish and Swedish are their own
- * chunks, loaded before the interface switches to them (store.setLang, and main.tsx for the
- * stored language), so no screen ever flashes in the wrong language.
+ * The dictionaries loaded so far. English ships with the page; Swedish is its own chunk, loaded
+ * before the interface switches to it (store.setLang, and main.tsx for the stored language), so
+ * no screen ever flashes in the wrong language.
  */
 export const DICTS: Record<string, Dict> = { en: bindUnits(en) };
 
 const LOADERS: Record<string, () => Promise<{ default: Dict }>> = {
-  es: () => import("./es"),
   sv: () => import("./sv"),
 };
 
@@ -62,5 +61,5 @@ export function tFor(lang: string): TFn {
 }
 
 export function locale(lang: string): string {
-  return lang === "es" ? "es-ES" : lang === "sv" ? "sv-SE" : "en-GB";
+  return lang === "sv" ? "sv-SE" : "en-GB";
 }

@@ -1,7 +1,7 @@
 """Conventions of the web interface that a reviewer would otherwise check by eye.
 
 Standard library only, so it runs on a fresh clone without Node or the pipeline output:
-- every interface string exists in English, Spanish and Swedish (lib/i18n/{en,es,sv}.ts), and
+- every interface string exists in English and Swedish (lib/i18n/{en,sv}.ts), and
   every literal key a component asks for exists;
 - every screen has its tab label;
 - numbers are formatted through lib/format.ts (no `.toFixed(` for display);
@@ -21,7 +21,7 @@ WEB = Path(__file__).resolve().parents[1] / "web" / "src"
 SOURCES = [p for p in WEB.rglob("*") if p.suffix in (".ts", ".tsx") and ".test." not in p.name]
 
 
-LANGS = ("en", "es", "sv")
+LANGS = ("en", "sv")
 
 
 def _dict_keys(name: str) -> set[str]:

@@ -790,7 +790,6 @@ const sv: Dict = {
   "keys.single": "Kortkommandon med en tangent",
   "keys.singleNote": "1–{n}, N, F, / och ?. Stäng av dem om du använder röstinmatning eller skriver på sidan med ett hjälpmedel.",
   "lang.en": "English",
-  "lang.es": "Español",
   "lang.sv": "Svenska",
   "req.find": "Hitta ett hus",
   "req.findPlaceholder": "Skriv en adress…",

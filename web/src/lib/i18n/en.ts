@@ -790,7 +790,6 @@ const en: Dict = {
   "keys.single": "Single-key shortcuts",
   "keys.singleNote": "1–{n}, N, F, / and ?. Turn them off if you use speech input or type into the page with an assistive tool.",
   "lang.en": "English",
-  "lang.es": "Español",
   "lang.sv": "Svenska",
   "req.find": "Find a house",
   "req.findPlaceholder": "Type an address…",

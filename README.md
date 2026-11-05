@@ -177,7 +177,8 @@ prices can be fetched from the source for all 11 weather years.
 
 Start `python -m kapacitet serve`, open `http://127.0.0.1:8000`, press **F** for fullscreen and
 **N** for the presenter notes. **1**–**8** jump straight to a screen, Ctrl + arrow keys or
-PageUp/PageDown step through them, **ES** switches language, and **?** lists every key.
+PageUp/PageDown step through them, **EN**/**SV** in the top bar switch language, and **?** lists
+every key.
 
 **Ctrl + K** is the way in if you know what you are looking for: it searches the eight screens,
 all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
@@ -260,7 +261,7 @@ engine/     Z-bus power flow, static and time-series hosting capacity, envelopes
               schedules and the inverter's file (CSIP-AUS), the shadow season, meter checks
 api/        FastAPI: precomputed payloads, SSE for live requests and approvals, the saved
               assessments (data/requests/), serves web/dist
-web/        React + MapLibre + ECharts: 8 screens in English, Spanish and Swedish (docs/glossary.md)
+web/        React + MapLibre + ECharts: 8 screens in English and Swedish (docs/glossary.md)
 ```
 
 **Power flow.** A batched Z-bus fixed point `V = w + Z·conj(S/V)` on pandapower's exact model
@@ -468,7 +469,7 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
 
 Ei's position paper on conditional agreements (Ei2025:01, version 1.1, June 2026) sets the
 conditions a DSO must meet; `config/ei_conditions.toml` lists them with their sections (and the
-paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in three languages.
+paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in English and Swedish.
 `GET /api/v1/eipack?basis=&policy=` sets each one beside what this prototype can show for it:
 **shown by the model** (with its figures), **stated by the DSO** (three statements only the DSO
 can make, kept in its settings and sealed on change), **awaiting the DSO** (one of those statements

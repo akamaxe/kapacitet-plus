@@ -25,7 +25,7 @@ def _state(pack, key):
     return next(c for c in pack["conditions"] if c["key"] == key)
 
 
-def test_every_condition_has_its_source_in_three_languages():
+def test_every_condition_has_its_source_in_both_languages():
     from kapacitet.engine.eipack import conditions
 
     cfg = conditions()
@@ -34,7 +34,8 @@ def test_every_condition_has_its_source_in_three_languages():
     assert len(keys) == len(set(keys)) >= 6
     for c in cfg["condition"]:
         assert c["evidence"] in ("model", "declaration"), c["key"]
-        assert c["source"] and all(c[f] for f in ("label", "label_es", "label_sv")), c["key"]
+        assert c["source"] and all(c[f] for f in ("label", "label_sv")), c["key"]
+        assert not [f for f in c if f.endswith("_es")], f"{c['key']}: the interface has no Spanish"
 
 
 def test_an_empty_statement_is_never_met_and_waits_for_the_dso_instead_of_failing():

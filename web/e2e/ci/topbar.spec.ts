@@ -4,7 +4,7 @@ import { expect, test } from "@playwright/test";
 // (Swedish runs longest). At every width, either the screens or the menu button show, never
 // both and never neither, and nothing spills out of the bar.
 const WIDTHS = [1600, 1366, 1280, 1100, 800];
-const LANGS = ["en", "es", "sv"];
+const LANGS = ["en", "sv"];
 
 for (const lang of LANGS) {
   for (const width of WIDTHS) {

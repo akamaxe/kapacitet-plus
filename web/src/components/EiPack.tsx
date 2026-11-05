@@ -22,7 +22,7 @@ type F = (v: number | null | undefined, d?: number) => string;
 const KIND = { evidence: "good", not_met: "critical" } as const;
 
 function labelOf(c: any, lang: string): string {
-  return (lang === "es" ? c.label_es : lang === "sv" ? c.label_sv : c.label) || c.label;
+  return (lang === "sv" ? c.label_sv : c.label) || c.label;
 }
 
 /** A condition's facts, in the reader's language and format. */

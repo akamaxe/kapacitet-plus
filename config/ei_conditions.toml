@@ -6,7 +6,7 @@
 #   declaration  only the DSO can state it (DSO settings); an empty statement never counts as met
 #
 # Evidence, never a legal conclusion: whether a condition is met in law is Ei's and a court's to say.
-# Every condition has its label in three languages and its source; tests/test_eipack.py holds them.
+# Every condition has its label in English and Swedish and its source; tests/test_eipack.py holds them.
 
 [source]
 title = "Energimarknadsinspektionen, Ställningstagande Villkorade avtal Ei2025:01, version 1.1 (26 June 2026)"
@@ -16,7 +16,6 @@ url = "https://ei.se/om-oss/publikationer/publikationer/stallningstagande/stalln
 key = "capacity_shortage"
 evidence = "model"
 label = "Signed only where the grid has little or no capacity left"
-label_es = "Solo se firma donde la red tiene poca o ninguna capacidad libre"
 label_sv = "Tecknas endast där nätet har begränsad eller ingen kvarvarande kapacitet"
 source = "Ei2025:01 §2.4; ellagen 4 kap. 1 och 2 §§"
 
@@ -24,7 +23,6 @@ source = "Ei2025:01 §2.4; ellagen 4 kap. 1 och 2 §§"
 key = "market_first"
 evidence = "declaration"
 label = "Market-based alternatives investigated first and found lacking"
-label_es = "Antes se han estudiado las alternativas de mercado y no bastan"
 label_sv = "Marknadsbaserade alternativ har utretts först och visat sig otillräckliga"
 source = "Ei2025:01 §2.3; artikel 13.3, förordning (EU) 2019/943"
 
@@ -32,7 +30,6 @@ source = "Ei2025:01 §2.3; artikel 13.3, förordning (EU) 2019/943"
 key = "method_approved"
 evidence = "declaration"
 label = "The method for the agreements' terms approved by Ei before any agreement"
-label_es = "El método de las condiciones de los acuerdos aprobado por Ei antes de firmar ninguno"
 label_sv = "Metoden för avtalsvillkoren godkänd av Ei innan något avtal tecknas"
 source = "Ei2025:01 §2.2; ellagen 4 kap. 46 §"
 
@@ -40,7 +37,6 @@ source = "Ei2025:01 §2.2; ellagen 4 kap. 46 §"
 key = "terms_how_when"
 evidence = "model"
 label = "The terms say how and when transfer may be limited, and when the limit ends"
-label_es = "Las condiciones dicen cómo y cuándo puede limitarse la transferencia, y cuándo termina el límite"
 label_sv = "Villkoren anger hur och när överföringen får begränsas och när begränsningen upphör"
 source = "Ei2025:01 §2.2"
 
@@ -48,7 +44,6 @@ source = "Ei2025:01 §2.2"
 key = "only_when_overloaded"
 evidence = "model"
 label = "Limited only when the grid would otherwise be overloaded"
-label_es = "Solo se limita cuando la red se sobrecargaría si no"
 label_sv = "Begränsas endast när nätet annars skulle överbelastas"
 source = "Ei2025:01 §2.3"
 
@@ -56,7 +51,6 @@ source = "Ei2025:01 §2.3"
 key = "after_market_result"
 evidence = "model"
 label = "Activated only once the market result shows an overload"
-label_es = "Solo se activa cuando el resultado del mercado muestra una sobrecarga"
 label_sv = "Aktiveras endast när marknadsutfallet visar en överbelastning"
 source = "Ei2025:01 §2.3"
 
@@ -64,7 +58,6 @@ source = "Ei2025:01 §2.3"
 key = "annual_report"
 evidence = "model"
 label = "The use of non-market redispatch analysed and reported to Ei every year"
-label_es = "El uso de la redistribución no basada en el mercado analizado y comunicado a Ei cada año"
 label_sv = "Användningen av icke marknadsbaserad omdirigering analyseras och rapporteras till Ei varje år"
 source = "Ei2025:01 §2.1; artikel 13.4, förordning (EU) 2019/943"
 
@@ -72,6 +65,5 @@ source = "Ei2025:01 §2.1; artikel 13.4, förordning (EU) 2019/943"
 key = "review_when_changed"
 evidence = "model"
 label = "Each agreement reviewed when the grid's capacity or the market changes"
-label_es = "Cada acuerdo se revisa cuando cambia la capacidad de la red o el mercado"
 label_sv = "Varje avtal prövas på nytt när nätets kapacitet eller marknaden förändras"
 source = "Ei2025:01 §2.3"

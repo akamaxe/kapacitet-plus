@@ -6,8 +6,8 @@ const THIN = " "; // the thousands separator every language shares (DESIGN.md)
 describe("fmt", () => {
   it("groups thousands with a narrow space and keeps each language's decimal mark", () => {
     expect(fmt("en", 1234.5, 1)).toBe(`1${THIN}234.5`);
-    expect(fmt("es", 1234.5, 1)).toBe(`1${THIN}234,5`);
-    expect(fmt("es", 1234)).toBe(`1${THIN}234`);
+    expect(fmt("sv", 1234.5, 1)).toBe(`1${THIN}234,5`);
+    expect(fmt("sv", 1234)).toBe(`1${THIN}234`);
   });
 
   it("writes Swedish with a decimal comma and a true minus sign", () => {
@@ -61,7 +61,7 @@ describe("dates", () => {
 
   it("writes a dash for anything that is not a date", () => {
     expect(dateTime("en", "not a date")).toBe("–");
-    expect(clock("es", "nope")).toBe("–");
+    expect(clock("sv", "nope")).toBe("–");
   });
 });
 

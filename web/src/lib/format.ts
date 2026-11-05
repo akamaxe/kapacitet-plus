@@ -11,8 +11,8 @@ function formatter(lang: string, digits: number): Intl.NumberFormat {
   const key = `${lang}:${digits}`;
   let nf = formatters.get(key);
   if (!nf) {
-    // "always": Spanish otherwise leaves four-digit numbers ungrouped, and the two
-    // languages have to read the same
+    // "always": some locales leave four-digit numbers ungrouped by default, and every figure
+    // has to group the same way in both languages
     nf = new Intl.NumberFormat(locale(lang), {
       minimumFractionDigits: digits,
       maximumFractionDigits: digits,
@@ -25,7 +25,7 @@ function formatter(lang: string, digits: number): Intl.NumberFormat {
 
 export function fmt(lang: string, value: number | null | undefined, digits = 0): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return "–";
-  // Intl groups thousands with a comma in English and a dot in Spanish; every group
+  // Intl groups thousands with a comma in English and a no-break space in Swedish; every group
   // separator becomes a thin space, so a value reads the same in either language and the
   // decimal mark is never touched.
   return formatter(lang, digits)
@@ -54,7 +54,6 @@ export function useFmt() {
 
 const MONTHS = {
   en: ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"],
-  es: ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"],
   sv: ["jan", "feb", "mar", "apr", "maj", "jun", "jul", "aug", "sep", "okt", "nov", "dec"],
 };
 

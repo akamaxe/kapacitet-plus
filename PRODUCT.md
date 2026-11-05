@@ -76,7 +76,7 @@ non-firm offer.
   - Synthetic: the cable network, the transformer, household behaviour.
 - **Attribution is mandatory:** OpenStreetMap (ODbL), SMHI (CC BY), and "Elpriser tillhandahålls av Elpriset
   just nu.se".
-- Every interface string goes through `web/src/lib/i18n/` in English, Spanish and Swedish, with the terms of `docs/glossary.md`; nobody on the team reviews the Swedish, and the glossary says so.
+- Every interface string goes through `web/src/lib/i18n/` in English and Swedish, with the terms of `docs/glossary.md`; nobody on the team reviews the Swedish, and the glossary says so.
 - MIT licence for the code. The computed data are never committed; they are published separately as the
   `data` release's archive, under ODbL (`DATA-LICENSE.md`).
 - Stack: React 19, Vite, TypeScript, zustand, react-query, ECharts (modular), MapLibre GL, plain CSS. FastAPI
@@ -98,7 +98,7 @@ non-firm offer.
 ## Brand Commitments
 
 - The name **Kapacitet+**. The "+" sign and its colour are open to redesign.
-- English, Spanish and Swedish throughout; the sentences the engine and the API return carry a code, so they are said in all three too.
+- English and Swedish throughout; the sentences the engine and the API return carry a code, so they are said in both too.
 
 ## Evidence on Hand
 

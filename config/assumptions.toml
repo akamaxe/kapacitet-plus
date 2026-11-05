@@ -4,9 +4,8 @@
 #         library          standard component data (pandapower standard types, pvlib defaults)
 #         derived          computed from real data in this project (see note)
 #         team-assumption  our modelling choice, to be validated (always listed as such)
-# label_es/note_es and label_sv/note_sv say the same in Spanish and Swedish (the interface speaks
-# three languages, docs/glossary.md); sources stay in the
-# language they were published in.
+# label_sv/note_sv say the same in Swedish (the interface speaks English and Swedish,
+# docs/glossary.md); sources stay in the language they were published in.
 
 # ---------------------------------------------------------------- voltage and thermal limits
 [v_max_pu]
@@ -14,12 +13,10 @@ value = 1.10
 unit = "pu"
 tag = "regulation"
 label = "Upper voltage limit at customer connection"
-label_es = "Límite superior de tensión en la acometida del cliente"
 label_sv = "Övre spänningsgräns vid kundens anslutningspunkt"
 source = "Ei EIFS 2023:3 (slow voltage variations within ±10 % of the reference voltage, 10-min means); EN 50160"
 url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
 note = "Applied to hourly values; hourly means hide sub-hourly peaks (see v_margin_pu)."
-note_es = "Se aplica a valores horarios; las medias horarias ocultan los picos de menos de una hora (ver v_margin_pu)."
 note_sv = "Gäller timvärden; timmedelvärden döljer toppar som varar kortare än en timme (se v_margin_pu)."
 
 [v_min_pu]
@@ -27,24 +24,20 @@ value = 0.90
 unit = "pu"
 tag = "regulation"
 label = "Lower voltage limit at customer connection"
-label_es = "Límite inferior de tensión en la acometida del cliente"
 label_sv = "Nedre spänningsgräns vid kundens anslutningspunkt"
 source = "Ei EIFS 2023:3; EN 50160"
 url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
 note = ""
-note_es = ""
 
 [v_margin_pu]
 value = 0.01
 unit = "pu"
 tag = "team-assumption"
 label = "Planning margin on voltage limits"
-label_es = "Margen de planificación sobre los límites de tensión"
 label_sv = "Planeringsmarginal på spänningsgränserna"
 source = "Covers the gap between hourly simulation and the 10-minute means of EIFS 2023:3"
 url = ""
 note = "Same margin for every method (static, time series, DOE). Varied in the tornado chart."
-note_es = "El mismo margen para todos los métodos (estático, serie temporal, envolventes). Se varía en el tornado."
 note_sv = "Samma marginal för alla metoder (statisk, tidsserie, dynamiska exportgränser). Varieras i tornadodiagrammet."
 
 [thermal_limit_pct]
@@ -52,12 +45,10 @@ value = 100.0
 unit = "%"
 tag = "team-assumption"
 label = "Maximum loading of cables and transformer"
-label_es = "Carga máxima de cables y transformador"
 label_sv = "Högsta belastning för kablar och transformator"
 source = "Continuous rating of the pandapower standard types"
 url = ""
 note = "Reverse power flow through the transformer is allowed up to its rating."
-note_es = "Se permite flujo inverso por el transformador hasta su potencia nominal."
 note_sv = "Bakmatning genom transformatorn tillåts upp till dess märkeffekt."
 
 [mv_voltage_pu]
@@ -65,12 +56,10 @@ value = 1.00
 unit = "pu"
 tag = "team-assumption"
 label = "MV (10 kV) voltage at the secondary substation"
-label_es = "Tensión de MT (10 kV) en la subestación secundaria"
 label_sv = "Mellanspänning (10 kV) vid nätstationen"
 source = "No measurement available; planning value, identical for every method"
 url = ""
 note = "Varied 0.98–1.03 pu in the tornado chart."
-note_es = "Se varía entre 0,98 y 1,03 pu en el tornado."
 note_sv = "Varieras 0,98–1,03 pu i tornadodiagrammet."
 
 [trafo_tap_pos]
@@ -78,12 +67,10 @@ value = 0
 unit = "step"
 tag = "team-assumption"
 label = "Off-load tap position of the 10/0.4 kV transformer"
-label_es = "Toma en vacío del transformador 10/0,4 kV"
 label_sv = "Läge för den spänningslösa lindningskopplaren på transformatorn 10/0,4 kV"
 source = "Neutral tap (pandapower standard type, ±2.5 %/step)"
 url = ""
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- network components
 [main_cable_type]
@@ -91,12 +78,10 @@ value = "NAYY 4x150 SE"
 unit = ""
 tag = "library"
 label = "Main (feeder) cable type"
-label_es = "Tipo de cable principal (alimentador)"
 label_sv = "Typ av huvudkabel (utgående ledning)"
 source = "pandapower standard types: R = 0.208 Ω/km, X = 0.080 Ω/km, Imax = 270 A"
 url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
 note = "Swedish mains are typically N1XE-AL 4x150/4x240; the NAYY type has comparable impedance."
-note_es = "Los cables principales suecos suelen ser N1XE-AL 4x150/4x240; el tipo NAYY tiene una impedancia comparable."
 note_sv = "Svenska huvudkablar är vanligen N1XE-AL 4x150/4x240; typen NAYY har jämförbar impedans."
 
 [service_cable_type]
@@ -104,24 +89,20 @@ value = "NAYY 4x50 SE"
 unit = ""
 tag = "library"
 label = "Service cable type (cabinet to house)"
-label_es = "Tipo de cable de acometida (del armario a la casa)"
 label_sv = "Typ av servisledning (från kabelskåp till hus)"
 source = "pandapower standard types: R = 0.642 Ω/km, X = 0.083 Ω/km, Imax = 142 A"
 url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
 note = ""
-note_es = ""
 
 [trafo_types]
 value = ["0.25 MVA 10/0.4 kV", "0.4 MVA 10/0.4 kV", "0.63 MVA 10/0.4 kV"]
 unit = ""
 tag = "library"
 label = "Candidate 10/0.4 kV transformers"
-label_es = "Transformadores candidatos de 10/0,4 kV"
 label_sv = "Valbara transformatorer 10/0,4 kV"
 source = "pandapower standard types (vk = 4 %)"
 url = "https://pandapower.readthedocs.io/en/latest/std_types/basic.html"
 note = "The smallest unit covering trafo_design_margin × Velander peak is chosen."
-note_es = "Se elige la unidad más pequeña que cubre trafo_design_margin × la punta de Velander."
 note_sv = "Den minsta transformatorn som täcker trafo_design_margin × toppeffekten enligt Velander väljs."
 
 [trafo_design_margin]
@@ -129,24 +110,20 @@ value = 1.5
 unit = "×"
 tag = "team-assumption"
 label = "Transformer sizing margin over the Velander peak"
-label_es = "Margen de dimensionado del transformador sobre la punta de Velander"
 label_sv = "Dimensioneringsmarginal för transformatorn över toppeffekten enligt Velander"
 source = "Growth margin chosen by us; transformer size is varied in the tornado chart"
 url = ""
 note = ""
-note_es = ""
 
 [velander_k1]
 value = 0.000249
 unit = "kW/kWh"
 tag = "sourced"
 label = "Velander constant, energy term (småhus ej elvärme)"
-label_es = "Constante de Velander, término de energía (vivienda sin calefacción eléctrica)"
 label_sv = "Velanders konstant, energiterm (småhus ej elvärme)"
 source = "Persson & Jonsson (2018), Utvärdering av Velanders formel för toppeffektberäkning i eldistributionsnät, MDU / Mälarenergi Elnät, Tabell 4 (EL340)"
 url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
 note = "Velander (1952): P[kW] = k1·W + k2·√W, W in kWh/yr. Used to size cables and the transformer."
-note_es = "Velander (1952): P[kW] = k1·W + k2·√W, con W en kWh/año. Se usa para dimensionar los cables y el transformador."
 note_sv = "Velander (1952): P[kW] = k1·W + k2·√W, W i kWh/år. Används för att dimensionera kablarna och transformatorn."
 
 [velander_k2]
@@ -154,72 +131,60 @@ value = 0.0497
 unit = "kW/√kWh"
 tag = "sourced"
 label = "Velander constant, square-root term (småhus ej elvärme)"
-label_es = "Constante de Velander, término de raíz cuadrada (vivienda sin calefacción eléctrica)"
 label_sv = "Velanders konstant, kvadratrotsterm (småhus ej elvärme)"
 source = "Persson & Jonsson (2018), MDU / Mälarenergi Elnät, Tabell 4 (EL340)"
 url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
 note = ""
-note_es = ""
 
 [cable_design_utilisation]
 value = 0.7
 unit = "p.u. of Imax"
 tag = "team-assumption"
 label = "Maximum design utilisation of a main cable at the Velander peak"
-label_es = "Utilización máxima de diseño de un cable principal en la punta de Velander"
 label_sv = "Högsta dimensionerande utnyttjandegrad för en huvudkabel vid toppeffekten enligt Velander"
 source = "Design rule chosen by us: parallel cables are added above this utilisation"
 url = ""
 note = ""
-note_es = ""
 
 [cabinet_max_services]
 value = 6
 unit = "services"
 tag = "team-assumption"
 label = "Services per cable cabinet (kabelskåp)"
-label_es = "Acometidas por armario de cables (kabelskåp)"
 label_sv = "Servisledningar per kabelskåp"
 source = "Modelling choice for the synthetic topology"
 url = ""
 note = ""
-note_es = ""
 
 [cabinet_reach_m]
 value = 45.0
 unit = "m"
 tag = "team-assumption"
 label = "Maximum street distance from a cabinet to the houses it serves"
-label_es = "Distancia máxima por calle de un armario a las casas que alimenta"
 label_sv = "Största avstånd längs gatan från ett kabelskåp till de hus det försörjer"
 source = "Modelling choice for the synthetic topology"
 url = ""
 note = ""
-note_es = ""
 
 [house_levels_default]
 value = 1.5
 unit = "storeys"
 tag = "team-assumption"
 label = "Storeys when OSM has no building:levels tag"
-label_es = "Plantas cuando OSM no tiene la etiqueta building:levels"
 label_sv = "Antal våningar när OSM saknar taggen building:levels"
 source = "Typical 1920s–1930s Bromma villa (1 storey + attic); OSM value used when present"
 url = ""
 note = ""
-note_es = ""
 
 [fuse_thresholds_m2]
 value = [110.0, 170.0]
 unit = "m² floor area"
 tag = "team-assumption"
 label = "Main fuse by floor area: 16 A below, 20 A between, 25 A above"
-label_es = "Fusible principal según la superficie: 16 A por debajo, 20 A entre medias, 25 A por encima"
 label_sv = "Huvudsäkring efter golvyta: 16 A under, 20 A däremellan, 25 A över"
 source = "Ellevio: 16–25 A most common; 16 A smaller villas, 20 A normal villas, 25 A larger loads"
 url = "https://www.ellevio.se/privat/om-din-el/elen-i-hemmet/valj-ratt-sakring/"
 note = "Fuse caps both import and export of each customer: 3 × 230 V × I (11.0 / 13.8 / 17.3 kVA)."
-note_es = "El fusible limita la importación y la exportación de cada cliente: 3 × 230 V × I (11,0 / 13,8 / 17,3 kVA)."
 note_sv = "Säkringen begränsar både import och export för varje kund: 3 × 230 V × I (11,0 / 13,8 / 17,3 kVA)."
 
 [main_fuse_sizes_a]
@@ -227,12 +192,10 @@ value = [16, 20, 25, 35, 50, 63]
 unit = "A"
 tag = "sourced"
 label = "Main fuse subscriptions a house can move up to"
-label_es = "Fusibles principales que una casa puede contratar"
 label_sv = "Säkringsabonnemang som ett hus kan byta till"
 source = "Ellevio, Välj rätt säkring: 16, 20, 25, 35, 50 and 63 A (11, 14, 17, 24, 35 and 44 kW)"
 url = "https://www.ellevio.se/privat/om-din-el/elen-i-hemmet/valj-ratt-sakring/"
 note = "A connection request that would overload the house's main fuse names the smallest of these that carries it."
-note_es = "Una solicitud que sobrecargaría el fusible principal de la casa indica el menor de estos que la soporta."
 note_sv = "En ansökan som skulle överbelasta husets huvudsäkring anger den minsta av dessa som klarar den."
 
 [vuf_limit_pct]
@@ -240,12 +203,10 @@ value = 2.0
 unit = "%"
 tag = "regulation"
 label = "Voltage unbalance limit (negative over positive sequence)"
-label_es = "Límite de desequilibrio de tensión (secuencia inversa sobre directa)"
 label_sv = "Gräns för spänningsobalans (minusföljd genom plusföljd)"
 source = "Ei EIFS 2023:3; EN 50160 (95 % of 10-min means within 2 %)"
 url = "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"
 note = "Held against the static study's worst-case hour, which is stricter than a week of 10-minute means."
-note_es = "Se compara con la peor hora del estudio estático, más exigente que una semana de medias de 10 minutos."
 note_sv = "Jämförs med den statiska studiens värsta timme, vilket är strängare än en veckas 10-minutersmedelvärden."
 
 [mv_short_circuit_min_factor]
@@ -253,12 +214,10 @@ value = 0.8
 unit = "×"
 tag = "team-assumption"
 label = "Minimum short-circuit power of the 10 kV network, as a share of the maximum"
-label_es = "Potencia de cortocircuito mínima de la red de 10 kV, como fracción de la máxima"
 label_sv = "Lägsta kortslutningseffekt i 10 kV-nätet, som andel av den högsta"
 source = "Modelling choice for the minimum-current case of IEC 60909"
 url = ""
 note = "Barely matters at low voltage: the transformer's own impedance dominates a fault in the neighbourhood."
-note_es = "Apenas influye en baja tensión: la impedancia del propio transformador domina una falta en el barrio."
 note_sv = "Spelar knappt roll på lågspänning: transformatorns egen impedans dominerar ett fel i området."
 
 [line_sc_end_temperature_c]
@@ -266,12 +225,10 @@ value = 80.0
 unit = "°C"
 tag = "team-assumption"
 label = "Cable conductor temperature at the end of a fault, for the minimum fault current"
-label_es = "Temperatura del conductor al final de una falta, para la corriente de falta mínima"
 label_sv = "Ledartemperatur i slutet av ett fel, för den lägsta felströmmen"
 source = "IEC 60909-0: minimum short-circuit currents use the conductor resistance at its end-of-fault temperature"
 url = ""
 note = "A hotter conductor lowers the fault current; 80 °C is the warm end of normal operation, not the insulation's short-circuit limit."
-note_es = "Un conductor más caliente reduce la corriente de falta; 80 °C es el extremo cálido del servicio normal, no el límite del aislamiento en cortocircuito."
 note_sv = "En varmare ledare sänker felströmmen; 80 °C är den varma änden av normal drift, inte isolationens kortslutningsgräns."
 
 [protection_max_disconnect_s]
@@ -279,7 +236,6 @@ value = 5.0
 unit = "s"
 tag = "regulation"
 label = "Longest disconnection time for a fault on a distribution circuit (TN system)"
-label_es = "Tiempo máximo de desconexión de una falta en un circuito de distribución (sistema TN)"
 label_sv = "Längsta frånkopplingstid vid fel i en distributionskrets (TN-system)"
 source = "IEC 60364-4-41:2005+A1:2017, 411.3.2.3 (in Sweden through SS 436 40 00)"
 url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-41%7Bed5.1%7Db.pdf"
@@ -290,12 +246,10 @@ value = [25, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630]
 unit = "A"
 tag = "sourced"
 label = "gG fuse ratings with a published 5-second gate"
-label_es = "Calibres de fusible gG con una puerta de 5 segundos publicada"
 label_sv = "Märkströmmar för gG-säkringar med en publicerad 5-sekundersgräns"
 source = "Enel GSCL004 (2016), table 7, reproducing the gates of IEC 60269 for gG fuse-links"
 url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
 note = "Feeder head fuses are chosen from these; a house's 16 or 20 A fuse takes the 25 A gate as a bound, since it melts sooner."
-note_es = "Los fusibles de cabecera se eligen entre estos; el fusible de 16 o 20 A de una casa toma la puerta de 25 A como cota, porque funde antes."
 note_sv = "Ledningarnas huvudsäkringar väljs bland dessa; ett hus 16- eller 20-amperessäkring använder 25 A-gränsen som övre gräns, eftersom den smälter tidigare."
 
 [fuse_gg_imax_5s_a]
@@ -303,12 +257,10 @@ value = [110, 190, 250, 320, 425, 580, 715, 950, 1250, 1650, 2200, 2840, 3800, 5
 unit = "A"
 tag = "sourced"
 label = "Current at which a gG fuse of each rating melts within 5 s (Imax at 5 s)"
-label_es = "Corriente a la que un fusible gG de cada calibre funde en 5 s (Imax a 5 s)"
 label_sv = "Ström vid vilken en gG-säkring av varje märkström smälter inom 5 s (Imax vid 5 s)"
 source = "Enel GSCL004 (2016), table 7 (IEC 60269 gates); the 25, 80 and 250 A rows also in Mersen TM-104"
 url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
 note = "One value per rating in fuse_gg_ratings_a, in the same order."
-note_es = "Un valor por calibre de fuse_gg_ratings_a, en el mismo orden."
 note_sv = "Ett värde per märkström i fuse_gg_ratings_a, i samma ordning."
 
 [fuse_conventional_factor]
@@ -316,7 +268,6 @@ value = 1.6
 unit = "× In"
 tag = "regulation"
 label = "Conventional fusing current of a gG fuse"
-label_es = "Corriente convencional de fusión de un fusible gG"
 label_sv = "Konventionell smältström för en gG-säkring"
 source = "IEC 60269-1, as reproduced in Enel GSCL004 (2016), table 6: If = 1.6 In for gG fuse-links from 16 A"
 url = "https://www.enel.com.br/content/dam/enel-br/normas-t%C3%A9cnicas-rio/normas-corporativas/Global%20Standard%20-%20Low%20Voltage%20Fuses.pdf"
@@ -327,7 +278,6 @@ value = 1.45
 unit = "× Iz"
 tag = "regulation"
 label = "Overload rule: a fuse's conventional current within this multiple of the cable's rating"
-label_es = "Regla de sobrecarga: la corriente convencional del fusible dentro de este múltiplo de la del cable"
 label_sv = "Överlastregel: säkringens konventionella ström inom denna multipel av kabelns märkström"
 source = "IEC 60364-4-43:2008, 433.1 (coordination between conductors and overload protective devices)"
 url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-43%7Bed3.0%7Db.pdf"
@@ -338,12 +288,10 @@ value = 250
 unit = "W"
 tag = "sourced"
 label = "A meter reading counts as a breach of its export limit above this much"
-label_es = "Una lectura de contador cuenta como incumplimiento de su límite por encima de esto"
 label_sv = "En mätaravläsning räknas som överträdelse av exportgränsen över detta värde"
 source = "SA Power Networks, Flexible Exports for Solar PV trial, final report v1.3 (ARENA, 2023), 4.3.1: a breach is a deviation of more than 250 W above an issued envelope"
 url = "https://arena.gov.au/assets/2024/01/SA-Power-Networks-Flexible-Exports-for-Solar-PV-Trial-Final-Report.pdf"
 note = "The same trial found its limits kept in more than 99.97 % of 5-minute intervals."
-note_es = "El mismo ensayo encontró sus límites respetados en más del 99,97 % de los intervalos de 5 minutos."
 note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
 
 [ev_unserved_limit_pct]
@@ -351,7 +299,6 @@ value = 1.0
 unit = "% of requested charging energy"
 tag = "team-assumption"
 label = "Charging an envelope may leave unserved and still serve the charger"
-label_es = "Carga que una envolvente puede dejar sin servir y aun así servir al cargador"
 label_sv = "Laddning som en exportgräns får lämna oförsörjd och ändå räknas som att laddaren försörjs"
 source = "Team assumption, used by the 2030 scenarios and as the default threshold of automatic decisions"
 url = ""
@@ -362,7 +309,6 @@ value = [5, 8]
 unit = "month"
 tag = "team-assumption"
 label = "Season replayed in shadow operation (first and last month)"
-label_es = "Temporada que se reproduce en la operación en sombra (primer y último mes)"
 label_sv = "Säsong som spelas upp i skuggdriften (första och sista månad)"
 source = "The May–August window of the static study's summer snapshot (engine/hosting.py)"
 url = ""
@@ -373,24 +319,20 @@ value = 150.0
 unit = "MVA"
 tag = "team-assumption"
 label = "Short-circuit power of the 10 kV network at the substation"
-label_es = "Potencia de cortocircuito de la red de 10 kV en la subestación"
 label_sv = "Kortslutningseffekt för 10 kV-nätet vid nätstationen"
 source = "Typical urban 10 kV value; only used for the fault-current check"
 url = ""
 note = ""
-note_es = ""
 
 [load_power_factor]
 value = 0.97
 unit = "cos φ"
 tag = "team-assumption"
 label = "Power factor of household load (inductive)"
-label_es = "Factor de potencia del consumo doméstico (inductivo)"
 label_sv = "Effektfaktor för hushållslast (induktiv)"
 source = "Modelling choice; PV inverters at unity power factor (Q(U) not enabled)"
 url = ""
 note = ""
-note_es = ""
 
 # ------------------------------------------------------- phase of each connection (unbalance)
 [pv_single_phase_max_kva]
@@ -398,12 +340,10 @@ value = 4.6
 unit = "kVA"
 tag = "team-assumption"
 label = "Inverter rating at or below which rooftop PV is connected to a single phase"
-label_es = "Potencia de inversor hasta la que la solar en tejado se conecta en una sola fase"
 label_sv = "Växelriktarens märkeffekt upp till och med vilken takmonterade solceller ansluts enfasigt"
 source = "The single-phase infeed limit used across Europe (VDE-AR-N 4105 caps the unbalance a single-phase generator may cause at 4.6 kVA); EN 50549-1 leaves the figure to national rules"
 url = ""
 note = "To be confirmed against the Swedish connection rules (Energiforetagen AMP) before this leaves a demonstration. Above the limit the inverter is three-phase and contributes no unbalance."
-note_es = "Hay que confirmarlo con las reglas suecas de conexión (Energiföretagen AMP) antes de salir de una demostración. Por encima del límite el inversor es trifásico y no aporta desequilibrio."
 note_sv = "Behöver bekräftas mot de svenska anslutningsreglerna (Energiföretagen AMP) innan detta används utanför en demonstration. Över gränsen är växelriktaren trefasig och bidrar inte till någon obalans."
 
 [phase_allocation]
@@ -411,12 +351,10 @@ value = "round_robin"
 unit = "-"
 tag = "team-assumption"
 label = "How single-phase connections are spread over the three phases"
-label_es = "Cómo se reparten las conexiones monofásicas entre las tres fases"
 label_sv = "Hur enfasiga anslutningar fördelas på de tre faserna"
 source = "Modelling choice: an installer working along a street balances the phases as it goes, which is the favourable case"
 url = ""
 note = "The alternative value is 'random', the unfavourable case where nobody keeps track. The gap between the two is the cost of not recording the phase of each service, and it is worth reporting."
-note_es = "El valor alternativo es 'random', el caso desfavorable en que nadie lleva la cuenta. La diferencia entre ambos es lo que cuesta no registrar la fase de cada acometida, y merece la pena contarlo."
 note_sv = "Det alternativa värdet är 'random', det ogynnsamma fallet där ingen håller reda på faserna. Skillnaden mellan de två är kostnaden för att inte registrera fasen för varje servisledning, och den är värd att redovisa."
 
 # ------------------------------------------------- zero sequence (unbalanced three-phase model)
@@ -425,12 +363,10 @@ value = 4.0
 unit = "-"
 tag = "team-assumption"
 label = "Zero- to positive-sequence resistance ratio of the four-core LV cables"
-label_es = "Relación entre resistencia homopolar y directa de los cables de BT de cuatro conductores"
 label_sv = "Förhållande mellan resistans i nollföljd och i plusföljd hos lågspänningskablar med fyra ledare"
 source = "Z0 = Z1 + 3*Zn for a cable whose neutral has the same cross-section as the phases; NAYY 4x150 SE and 4x50 SE are four-core of equal section, so Zn = Z1 and the ratio is 4"
 url = ""
 note = "The IEEE European LV Test Feeder, whose cable data is measured rather than derived, gives 3.4 for its own cables."
-note_es = "El IEEE European LV Test Feeder, cuyos datos de cable son medidos y no deducidos, da 3,4 para sus propios cables."
 note_sv = "IEEE European LV Test Feeder, vars kabeldata är uppmätta och inte härledda, ger 3,4 för sina egna kablar."
 
 [cable_x0_x1_ratio]
@@ -438,12 +374,10 @@ value = 4.0
 unit = "-"
 tag = "team-assumption"
 label = "Zero- to positive-sequence reactance ratio of the four-core LV cables"
-label_es = "Relación entre reactancia homopolar y directa de los cables de BT de cuatro conductores"
 label_sv = "Förhållande mellan reaktans i nollföljd och i plusföljd hos lågspänningskablar med fyra ledare"
 source = "Same four-wire derivation as the resistance ratio"
 url = ""
 note = "Weaker than the resistance ratio, because the zero-sequence reactance depends on conductor geometry and on the earth return path. The IEEE European LV Test Feeder gives 1.2 for its cables. This is the dominant uncertainty of the unbalanced model and has to be swept once it drives the engine."
-note_es = "Más incierta que la de resistencias, porque la reactancia homopolar depende de la geometría de los conductores y del retorno por tierra. El IEEE European LV Test Feeder da 1,2 para sus cables. Es la incertidumbre dominante del modelo desequilibrado y habrá que barrerla cuando sea ese modelo el que mueva el motor."
 note_sv = "Svagare underbyggt än resistansförhållandet, eftersom nollföljdsreaktansen beror på ledarnas geometri och på returvägen genom jord. IEEE European LV Test Feeder ger 1,2 för sina kablar. Det är den dominerande osäkerheten i den obalanserade modellen och måste varieras i ett parametersvep när den väl styr beräkningsmotorn."
 
 [trafo_vk0_vk_ratio]
@@ -451,12 +385,10 @@ value = 1.0
 unit = "-"
 tag = "team-assumption"
 label = "Zero- to positive-sequence short-circuit voltage of the Dyn transformer"
-label_es = "Tensión de cortocircuito homopolar frente a la directa del transformador Dyn"
 label_sv = "Förhållande mellan kortslutningsspänning i nollföljd och i plusföljd hos Dyn-transformatorn"
 source = "Follows the Dyn unit of pandapower's IEEE European LV Test Feeder, which sets vk0 = vk and scales vkr0 with it"
 url = ""
 note = "A Dyn transformer keeps zero-sequence current on the LV side, so this ratio sets how stiff that path is."
-note_es = "Un transformador Dyn mantiene la corriente homopolar en el lado de BT, así que esta relación fija la rigidez de ese camino."
 note_sv = "En Dyn-transformator håller kvar nollföljdsströmmen på lågspänningssidan, så förhållandet avgör hur styv den vägen är."
 
 [trafo_mag0_percent]
@@ -464,12 +396,10 @@ value = 100.0
 unit = "%"
 tag = "team-assumption"
 label = "Zero-sequence magnetising impedance of the transformer, over its short-circuit impedance"
-label_es = "Impedancia magnetizante homopolar del transformador, sobre su impedancia de cortocircuito"
 label_sv = "Transformatorns magnetiseringsimpedans i nollföljd, i förhållande till dess kortslutningsimpedans"
 source = "Set high on purpose, so the delta winding provides the zero-sequence path and the magnetising branch does not"
 url = ""
 note = "pandapower's split of the zero-sequence impedance between windings (si0_hv_partial) is kept at the 0.9 its own Dyn examples use."
-note_es = "El reparto de la impedancia homopolar entre devanados de pandapower (si0_hv_partial) se mantiene en el 0,9 que usan sus propios ejemplos Dyn."
 note_sv = "Fördelningen av nollföljdsimpedansen mellan lindningarna i pandapower (si0_hv_partial) hålls kvar på de 0,9 som bibliotekets egna Dyn-exempel använder."
 
 # ---------------------------------------------------------------- households
@@ -478,12 +408,10 @@ value = 5000.0
 unit = "kWh/yr"
 tag = "sourced"
 label = "Household electricity of a villa without electric heating"
-label_es = "Electricidad doméstica de una vivienda sin calefacción eléctrica"
 label_sv = "Hushållsel i en villa utan elvärme"
 source = "Konsumenternas Energimarknadsbyrå: 'ofta omkring 5 000 kWh per år' when heating and hot water are not electric"
 url = "https://www.energimarknadsbyran.se/el/dina-elavtal-och-kostnader/elhandelsavtalet/elforbrukning/normal-elforbrukning-och-elkostnad-for-villa/"
 note = "Mean of the household base load; individual households vary (stochastic generator). Heat pumps are modelled separately."
-note_es = "Media del consumo base de los hogares; cada hogar varía (generador estocástico). Las bombas de calor se modelan aparte."
 note_sv = "Medelvärde för hushållens baslast; enskilda hushåll varierar (stokastisk generator). Värmepumpar modelleras separat."
 
 [feeder_max_customers]
@@ -491,12 +419,10 @@ value = 25
 unit = "customers"
 tag = "team-assumption"
 label = "Maximum customers per LV feeder cable"
-label_es = "Clientes máximos por cable alimentador de BT"
 label_sv = "Högsta antal kunder per utgående ledning (lågspänningskabel)"
 source = "Design rule for the synthetic topology: each feeder is a separate cable from the substation busbar (feeders may share trenches)"
 url = ""
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- rooftop PV
 [pv_roof_tilt_deg]
@@ -504,12 +430,10 @@ value = 35.0
 unit = "°"
 tag = "team-assumption"
 label = "Roof pitch of the villas (pitched roofs)"
-label_es = "Inclinación de los tejados de las viviendas (tejados a dos aguas)"
 label_sv = "Taklutning på villorna (lutande tak)"
 source = "Typical pitch of 1920s–1930s Swedish villa roofs; OSM rarely maps roof pitch"
 url = ""
 note = "Roof azimuth is real: derived from each OSM footprint (ridge along the long side)."
-note_es = "La orientación del tejado es real: sale de la huella de cada edificio en OSM (cumbrera en el lado largo)."
 note_sv = "Takets orientering (azimut) är verklig: den härleds från varje byggnads kontur i OSM (nock längs långsidan)."
 
 [pv_flat_roof_tilt_deg]
@@ -517,96 +441,80 @@ value = 15.0
 unit = "°"
 tag = "team-assumption"
 label = "Racking tilt on flat roofs (roof:shape=flat)"
-label_es = "Inclinación de la estructura en tejados planos (roof:shape=flat)"
 label_sv = "Lutning på monteringsställningen på platta tak (roof:shape=flat)"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [pv_flat_roof_usable_fraction]
 value = 0.5
 unit = "share of footprint"
 tag = "team-assumption"
 label = "Usable share of a flat roof"
-label_es = "Parte aprovechable de un tejado plano"
 label_sv = "Användbar andel av ett platt tak"
 source = "Modelling choice (row spacing, setbacks)"
 url = ""
 note = ""
-note_es = ""
 
 [pv_east_west_threshold_deg]
 value = 60.0
 unit = "°"
 tag = "team-assumption"
 label = "Deviation from south above which both roof faces (east–west) are used"
-label_es = "Desviación respecto al sur a partir de la cual se usan los dos faldones (este–oeste)"
 label_sv = "Avvikelse från söder över vilken båda takfallen (öst–väst) används"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [pv_usable_roof_fraction]
 value = 0.6
 unit = "share of roof face"
 tag = "team-assumption"
 label = "Usable share of the chosen roof face"
-label_es = "Parte aprovechable del faldón elegido"
 label_sv = "Användbar andel av det valda takfallet"
 source = "Modelling choice (chimneys, windows, setbacks)"
 url = ""
 note = ""
-note_es = ""
 
 [pv_power_density_kwp_m2]
 value = 0.20
 unit = "kWp/m²"
 tag = "team-assumption"
 label = "Module power per roof area"
-label_es = "Potencia de módulo por superficie de tejado"
 label_sv = "Moduleffekt per takyta"
 source = "Corresponds to ~20 % module efficiency (current mono-Si modules)"
 url = ""
 note = ""
-note_es = ""
 
 [pv_min_kwp]
 value = 3.0
 unit = "kWp"
 tag = "team-assumption"
 label = "Smallest PV system"
-label_es = "Instalación solar más pequeña"
 label_sv = "Minsta solcellsanläggning"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [pv_max_kwp]
 value = 20.0
 unit = "kWp"
 tag = "team-assumption"
 label = "Largest PV system on a villa"
-label_es = "Instalación solar más grande en una vivienda"
 label_sv = "Största solcellsanläggning på en villa"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [pv_dc_ac_ratio]
 value = 1.2
 unit = "kWp/kW"
 tag = "team-assumption"
 label = "DC/AC ratio (inverter loading ratio)"
-label_es = "Relación CC/CA (carga del inversor)"
 label_sv = "DC/AC-kvot (växelriktarens belastningsförhållande)"
 source = "Common design value; the inverter is also capped at the main-fuse capacity"
 url = ""
 note = "Varied in the tornado chart."
-note_es = "Se varía en el tornado."
 note_sv = "Varieras i tornadodiagrammet."
 
 [pv_gamma_pdc_per_c]
@@ -614,48 +522,40 @@ value = -0.0035
 unit = "1/°C"
 tag = "sourced"
 label = "Power temperature coefficient"
-label_es = "Coeficiente de temperatura de la potencia"
 label_sv = "Temperaturkoefficient för effekten"
 source = "Dobos (2014), PVWatts Version 5 Manual, NREL/TP-6A20-62641 ('premium' module: −0.35 %/°C)"
 url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
 note = ""
-note_es = ""
 
 [pv_system_losses_pct]
 value = 14.08
 unit = "%"
 tag = "library"
 label = "DC system losses (soiling, shading, mismatch, wiring, LID, nameplate, availability)"
-label_es = "Pérdidas del sistema en CC (suciedad, sombras, desajuste, cableado, LID, placa, disponibilidad)"
 label_sv = "Systemförluster på DC-sidan (nedsmutsning, skuggning, missanpassning, kablage, LID, märkeffektsavvikelse, tillgänglighet)"
 source = "PVWatts v5 default losses (pvlib.pvsystem.pvwatts_losses)"
 url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
 note = ""
-note_es = ""
 
 [pv_inverter_eff]
 value = 0.96
 unit = ""
 tag = "library"
 label = "Nominal inverter efficiency"
-label_es = "Rendimiento nominal del inversor"
 label_sv = "Nominell verkningsgrad för växelriktaren"
 source = "PVWatts v5 default (pvlib.inverter.pvwatts)"
 url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
 note = ""
-note_es = ""
 
 [pv_albedo]
 value = 0.2
 unit = ""
 tag = "library"
 label = "Ground albedo"
-label_es = "Albedo del suelo"
 label_sv = "Markens albedo"
 source = "PVWatts v5 manual (NREL): default ground reflectance"
 url = "https://www.nrel.gov/docs/fy14osti/62641.pdf"
 note = "Snow cover would raise it in winter; negligible for summer hosting capacity."
-note_es = "La nieve lo subiría en invierno; no influye en la capacidad de acogida de verano."
 note_sv = "Snötäcke skulle höja värdet på vintern; försumbart för acceptansgränsen på sommaren."
 
 [pv_wind_speed_ms]
@@ -663,12 +563,10 @@ value = 1.0
 unit = "m/s"
 tag = "team-assumption"
 label = "Wind speed for cell temperature"
-label_es = "Velocidad del viento para la temperatura de célula"
 label_sv = "Vindhastighet för celltemperaturen"
 source = "Constant low wind (conservative for module temperature)"
 url = ""
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- heat pumps
 [hp_specific_heat_kwh_m2]
@@ -676,12 +574,10 @@ value = 110.0
 unit = "kWh/m²·yr"
 tag = "sourced"
 label = "Energy for space heating and hot water, småhus built ≤1940"
-label_es = "Energía para calefacción y agua caliente, viviendas construidas hasta 1940"
 label_sv = "Energi för uppvärmning och varmvatten, småhus byggda ≤1940"
 source = "Energimyndigheten, Energistatistik för småhus 2024 (news 2025): 110 kWh/m² for houses built 1940 or earlier"
 url = "https://www.energimyndigheten.se/nyhetsarkiv/2025/ny-energistatistik-for-smahus/"
 note = "Used as heat-demand proxy (it is purchased energy averaged over heating systems, so it tends to underestimate heat demand). Varied ±30 % in the tornado chart."
-note_es = "Se usa como aproximación de la demanda de calor (es energía comprada promediada entre sistemas de calefacción, así que tiende a quedarse corta). Se varía ±30 % en el tornado."
 note_sv = "Används som approximation av värmebehovet (det är köpt energi, i medeltal över uppvärmningssystemen, och tenderar därför att underskatta värmebehovet). Varieras ±30 % i tornadodiagrammet."
 
 [hp_dhw_share]
@@ -689,24 +585,20 @@ value = 0.20
 unit = "share"
 tag = "team-assumption"
 label = "Hot-water share of the annual heat demand"
-label_es = "Parte de agua caliente en la demanda anual de calor"
 label_sv = "Varmvattnets andel av det årliga värmebehovet"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [hp_balance_temp_c]
 value = 17.0
 unit = "°C"
 tag = "sourced"
 label = "Base temperature for degree-hours"
-label_es = "Temperatura base de los grados-hora"
 label_sv = "Bastemperatur för gradtimmar"
 source = "SMHI graddagar (degree days): base temperature +17 °C (SS-EN ISO 15927-6)"
 url = "https://www.smhi.se/professionella-tjanster/hallbara-stader/smhi-energi-index-och-graddagar---normalarskorrigering-varme"
 note = "Space heating ∝ max(0, 17 °C − T_air) per hour with the real Bromma temperature."
-note_es = "Calefacción ∝ max(0, 17 °C − T_aire) en cada hora, con la temperatura real de Bromma."
 note_sv = "Rumsuppvärmning ∝ max(0, 17 °C − T_air) per timme, med den verkliga temperaturen i Bromma."
 
 [hp_ground_source_share]
@@ -714,24 +606,20 @@ value = 0.5
 unit = "share"
 tag = "team-assumption"
 label = "Share of ground-source (vs air-to-water) heat pumps"
-label_es = "Parte de bombas de calor geotérmicas (frente a aire-agua)"
 label_sv = "Andel berg- och markvärmepumpar (jämfört med luft/vatten-värmepumpar)"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [hp_cop_model]
 value = "when2heat"
 unit = ""
 tag = "sourced"
 label = "COP regression (air: 6.08 − 0.0941·ΔT + 0.000464·ΔT²; ground: 10.29 − 0.2084·ΔT + 0.001322·ΔT²; ×0.85)"
-label_es = "Regresión del COP (aire: 6,08 − 0,0941·ΔT + 0,000464·ΔT²; geotérmica: 10,29 − 0,2084·ΔT + 0,001322·ΔT²; ×0,85)"
 label_sv = "COP-regression (luft: 6,08 − 0,0941·ΔT + 0,000464·ΔT²; mark: 10,29 − 0,2084·ΔT + 0,001322·ΔT²; ×0,85)"
 source = "Ruhnau, Hirth & Praktiknjo (2019), Time series of heat demand and heat pump efficiency for energy system modeling, Scientific Data 6:189 (CC BY 4.0); coefficients from the when2heat code"
 url = "https://github.com/oruhnau/when2heat"
 note = "Radiator sink temperature 40 − T_air, hot water 50 °C, ΔT ≥ 15 K."
-note_es = "Temperatura de impulsión de radiadores 40 − T_aire, agua caliente 50 °C, ΔT ≥ 15 K."
 note_sv = "Framledningstemperatur för radiatorer 40 − T_air, varmvatten 50 °C, ΔT ≥ 15 K."
 
 [hp_capacity_share]
@@ -739,12 +627,10 @@ value = 0.8
 unit = "share of design load"
 tag = "team-assumption"
 label = "Heat-pump thermal capacity relative to the design heat load"
-label_es = "Potencia térmica de la bomba de calor respecto a la carga de diseño"
 label_sv = "Värmepumpens värmeeffekt i förhållande till den dimensionerande värmelasten"
 source = "Modelling choice; an electric backup heater (COP 1) covers the rest"
 url = ""
 note = "Design temperature = coldest hour at Bromma in the weather record."
-note_es = "Temperatura de diseño = la hora más fría en Bromma del registro meteorológico."
 note_sv = "Dimensionerande temperatur = Brommas kallaste timme i väderdata."
 
 # ---------------------------------------------------------------- electric vehicles
@@ -753,60 +639,50 @@ value = 11410.0
 unit = "km/yr"
 tag = "sourced"
 label = "Average annual mileage of a passenger car"
-label_es = "Kilometraje anual medio de un turismo"
 label_sv = "Genomsnittlig årlig körsträcka för en personbil"
 source = "Trafikanalys, Körsträckor 2024: 1 141 mil per car"
 url = "https://prod.trafa.se/globalassets/statistik/vagtrafik/korstrackor/2024/korstrackor-2024.pdf"
 note = ""
-note_es = ""
 
 [ev_kwh_per_km]
 value = 0.20
 unit = "kWh/km"
 tag = "sourced"
 label = "Electricity use of an electric car"
-label_es = "Consumo eléctrico de un coche eléctrico"
 label_sv = "Elförbrukning för en elbil"
 source = "Energimyndigheten, Drivmedel 2022 (ER 2023:19): 20 kWh per 100 km"
 url = "https://energimyndigheten.a-w2m.se/Arkitektkopia/GetTemplateResource/121?id=f65b4be60c404a1c85a6e8c772e31946&res=073093186b7a4fcbbb7c2ed6f6da23b1&lr=False&fn=ER+2023_19webb.pdf&elp=portal&elt=t&eloid=f65b4be60c404a1c85a6e8c772e31946"
 note = ""
-note_es = ""
 
 [ev_charging_efficiency]
 value = 0.90
 unit = ""
 tag = "team-assumption"
 label = "Charging efficiency (grid to battery)"
-label_es = "Rendimiento de la carga (de la red a la batería)"
 label_sv = "Verkningsgrad vid laddning (från nät till batteri)"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_charger_kw]
 value = 11.0
 unit = "kW"
 tag = "team-assumption"
 label = "Home wallbox power (three-phase 16 A)"
-label_es = "Potencia del cargador doméstico (trifásico 16 A)"
 label_sv = "Effekt för laddbox i hemmet (trefas 16 A)"
 source = "3 × 230 V × 16 A ≈ 11 kW"
 url = ""
 note = ""
-note_es = ""
 
 [ev_charger_single_phase_kw]
 value = 3.7
 unit = "kW"
 tag = "team-assumption"
 label = "Single-phase home charger power (16 A)"
-label_es = "Potencia del cargador doméstico monofásico (16 A)"
 label_sv = "Effekt för enfasig elbilsladdare i hemmet (16 A)"
 source = "1 × 230 V × 16 A ≈ 3.7 kW"
 url = ""
 note = "The smaller of the two charger sizes a connection request can ask for."
-note_es = "El menor de los dos tamaños de cargador que puede pedir una solicitud de conexión."
 note_sv = "Den mindre av de två laddarstorlekar som en anslutningsansökan kan begära."
 
 [ev_daily_km_sigma]
@@ -814,84 +690,70 @@ value = 0.7
 unit = "log-sd"
 tag = "team-assumption"
 label = "Day-to-day spread of driven distance (lognormal)"
-label_es = "Dispersión diaria de la distancia recorrida (lognormal)"
 label_sv = "Spridning i körsträcka från dag till dag (lognormal)"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_drive_probability]
 value = 0.85
 unit = "share of days"
 tag = "team-assumption"
 label = "Share of days the car is used"
-label_es = "Parte de los días en que se usa el coche"
 label_sv = "Andel dagar då bilen används"
 source = "Modelling choice; the mean annual mileage is preserved by scaling"
 url = ""
 note = ""
-note_es = ""
 
 [ev_arrival_weekday_h]
 value = 17.5
 unit = "h"
 tag = "team-assumption"
 label = "Mean arrival time at home, weekdays"
-label_es = "Hora media de llegada a casa, días laborables"
 label_sv = "Genomsnittlig ankomsttid hem, vardagar"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_arrival_weekend_h]
 value = 15.0
 unit = "h"
 tag = "team-assumption"
 label = "Mean arrival time at home, weekends"
-label_es = "Hora media de llegada a casa, fines de semana"
 label_sv = "Genomsnittlig ankomsttid hem, helger"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_arrival_sd_h]
 value = 1.5
 unit = "h"
 tag = "team-assumption"
 label = "Spread of arrival time"
-label_es = "Dispersión de la hora de llegada"
 label_sv = "Spridning i ankomsttid"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_departure_weekday_h]
 value = 7.5
 unit = "h"
 tag = "team-assumption"
 label = "Departure time next morning, weekdays"
-label_es = "Hora de salida a la mañana siguiente, días laborables"
 label_sv = "Avresetid nästa morgon, vardagar"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 [ev_departure_weekend_h]
 value = 10.0
 unit = "h"
 tag = "team-assumption"
 label = "Departure time next morning, weekends"
-label_es = "Hora de salida a la mañana siguiente, fines de semana"
 label_sv = "Avresetid nästa morgon, helger"
 source = "Modelling choice"
 url = ""
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- scenarios
 [today_hp_share]
@@ -899,12 +761,10 @@ value = 0.30
 unit = "share of houses"
 tag = "team-assumption"
 label = "Houses with a heat pump today"
-label_es = "Viviendas con bomba de calor hoy"
 label_sv = "Hus med värmepump idag"
 source = "Scenario assumption (heat pumps are the most common heating in Swedish småhus; Bromma also has district heating)"
 url = ""
 note = "Background demand in the PV analyses; varied in the 2030 scenarios."
-note_es = "Demanda de fondo en los análisis de solar; se varía en los escenarios de 2030."
 note_sv = "Bakgrundslast i solcellsanalyserna; varieras i scenarierna för 2030."
 
 [today_ev_share]
@@ -912,12 +772,10 @@ value = 0.15
 unit = "share of houses"
 tag = "team-assumption"
 label = "Houses with an electric car today"
-label_es = "Viviendas con coche eléctrico hoy"
 label_sv = "Hus med elbil idag"
 source = "Scenario assumption"
 url = ""
 note = "Background demand in the PV analyses; varied in the 2030 scenarios."
-note_es = "Demanda de fondo en los análisis de solar; se varía en los escenarios de 2030."
 note_sv = "Bakgrundslast i solcellsanalyserna; varieras i scenarierna för 2030."
 
 [z_star_pct]
@@ -925,12 +783,10 @@ value = 3.0
 unit = "% of annual PV energy"
 tag = "regulation"
 label = "Acceptable curtailment for non-firm customers (headline threshold)"
-label_es = "Recorte aceptable para clientes no firmes (umbral del titular)"
 label_sv = "Acceptabel nedreglering för kunder med villkorad anslutning (tröskel för huvudresultatet)"
 source = "Anchor: German EnWG §11(2) 'Spitzenkappung' lets DSOs plan with up to 3 % curtailment of the annual energy of each PV/wind installation"
 url = "https://www.gesetze-im-internet.de/enwg_2005/__11.html"
 note = "The full hosting-capacity vs curtailment curve is shown; 3 % is only the headline point."
-note_es = "Se muestra la curva completa de capacidad frente a recorte; el 3 % es solo el punto del titular."
 note_sv = "Hela kurvan för acceptansgräns mot nedreglering visas; 3 % är bara punkten för huvudresultatet."
 
 # ---------------------------------------------------------------- sensitivity factors (1 = base case)
@@ -939,24 +795,20 @@ value = 1.0
 unit = "×"
 tag = "team-assumption"
 label = "Scaling of the minimum load used in the static summer snapshot"
-label_es = "Escala del consumo mínimo usado en la instantánea estática de verano"
 label_sv = "Skalning av minimilasten som används i den statiska ögonblicksbilden för sommaren"
 source = "Base case 1.0 = lowest simulated daytime summer load; varied 0–2 in the tornado chart"
 url = ""
 note = ""
-note_es = ""
 
 [household_load_factor]
 value = 1.0
 unit = "×"
 tag = "team-assumption"
 label = "Scaling of all household base loads"
-label_es = "Escala de todos los consumos base de los hogares"
 label_sv = "Skalning av alla hushålls baslaster"
 source = "Base case 1.0 = 5 000 kWh/yr mean; varied ±20 % in the tornado chart"
 url = ""
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- home batteries (connection requests)
 [battery_ac2bat_eff]
@@ -964,12 +816,10 @@ value = 0.943
 unit = ""
 tag = "sourced"
 label = "Battery charging efficiency, AC to battery (AC-coupled home system)"
-label_es = "Rendimiento de carga de la batería, de CA a batería (sistema doméstico acoplado en CA)"
 label_sv = "Batteriets laddningsverkningsgrad, från AC till batteri (AC-kopplat hemsystem)"
 source = "Orth et al. (2023), Efficiency characterization of 26 residential photovoltaic battery storage systems, J. Energy Storage 65, 107299: median average AC2BAT path efficiency of the nine AC-coupled systems measured"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = "A retrofitted battery sits next to the existing inverter, so it is AC-coupled."
-note_es = "Una batería añadida a posteriori va junto al inversor existente, así que se acopla en CA."
 note_sv = "Ett eftermonterat batteri sitter bredvid den befintliga växelriktaren och är därför AC-kopplat."
 
 [battery_bat2ac_eff]
@@ -977,24 +827,20 @@ value = 0.945
 unit = ""
 tag = "sourced"
 label = "Battery discharging efficiency, battery to AC (AC-coupled home system)"
-label_es = "Rendimiento de descarga de la batería, de batería a CA (sistema doméstico acoplado en CA)"
 label_sv = "Batteriets urladdningsverkningsgrad, från batteri till AC (AC-kopplat hemsystem)"
 source = "Orth et al. (2023), J. Energy Storage 65, 107299: median average BAT2AC path efficiency of the nine AC-coupled systems measured"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
-note_es = ""
 
 [battery_dc_eff]
 value = 0.96
 unit = ""
 tag = "sourced"
 label = "Round-trip efficiency of the battery cells (DC side)"
-label_es = "Rendimiento de ida y vuelta de las celdas (lado de CC)"
 label_sv = "Verkningsgrad tur och retur för battericellerna (DC-sidan)"
 source = "Orth et al. (2023), J. Energy Storage 65, 107299: mean battery efficiency of the lithium-ion batteries measured, 96.0 %"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = "Split evenly between charging and discharging; standby consumption is not modelled."
-note_es = "Repartido a partes iguales entre carga y descarga; el consumo en reposo no se modela."
 note_sv = "Delas lika mellan laddning och urladdning; förbrukning i viloläge modelleras inte."
 
 [battery_kw_per_kwh]
@@ -1002,24 +848,20 @@ value = 0.5
 unit = "kW/kWh"
 tag = "team-assumption"
 label = "Battery power per kWh of usable capacity"
-label_es = "Potencia de la batería por kWh de capacidad útil"
 label_sv = "Batteriets effekt per kWh användbar kapacitet"
 source = "Chosen inside the 0.3–1.0 kW/kWh range of the 26 systems measured by Orth et al. (2023)"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
-note_es = ""
 
 [battery_max_kwh]
 value = 15
 unit = "kWh"
 tag = "team-assumption"
 label = "Largest battery a connection request can ask for"
-label_es = "Batería más grande que puede pedir una solicitud de conexión"
 label_sv = "Största batteri som en anslutningsansökan kan begära"
 source = "Close to the largest usable capacity measured by Orth et al. (2023), 16.7 kWh"
 url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- reinforcement, Ei norm values (price level 2022)
 [reinforce_trafo_500_sek]
@@ -1027,12 +869,10 @@ value = 156126
 unit = "SEK"
 tag = "sourced"
 label = "Standard cost of a 500 kVA 12/0.4 kV distribution transformer"
-label_es = "Coste normalizado de un transformador de distribución de 500 kVA 12/0,4 kV"
 label_sv = "Normvärde för en distributionstransformator på 500 kVA, 12/0,4 kV"
 source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15922, normvärde 2022"
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = "Ei's norm values price the grid companies' assets for the revenue cap; they are standard costs, not quotes."
-note_es = "Los valores normativos de Ei valoran los activos de las distribuidoras para el tope de ingresos; son costes normalizados, no ofertas."
 note_sv = "Ei:s normvärden används för att värdera nätbolagens tillgångar i intäktsramen; de är standardkostnader, inte offerter."
 
 [reinforce_trafo_800_sek]
@@ -1040,12 +880,10 @@ value = 209053
 unit = "SEK"
 tag = "sourced"
 label = "Standard cost of an 800 kVA 12/0.4 kV distribution transformer"
-label_es = "Coste normalizado de un transformador de distribución de 800 kVA 12/0,4 kV"
 label_sv = "Normvärde för en distributionstransformator på 800 kVA, 12/0,4 kV"
 source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15921, normvärde 2022"
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = "The list has no 630 kVA unit, so a 0.63 MVA upgrade is bracketed between the 500 and 800 kVA codes."
-note_es = "La lista no tiene una unidad de 630 kVA, así que una mejora a 0,63 MVA queda acotada entre los códigos de 500 y 800 kVA."
 note_sv = "Listan saknar transformator på 630 kVA, så en uppgradering till 0,63 MVA avgränsas av koderna för 500 och 800 kVA."
 
 [reinforce_station_800_sek]
@@ -1053,12 +891,10 @@ value = 280564
 unit = "SEK"
 tag = "sourced"
 label = "Standard cost of an 800 kVA secondary substation, sheet metal, without transformer"
-label_es = "Coste normalizado de una subestación secundaria de 800 kVA de chapa, sin transformador"
 label_sv = "Normvärde för en nätstation av plåt på 800 kVA, utan transformator"
 source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15223, normvärde 2022"
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = "Only if the existing station cannot take the larger transformer."
-note_es = "Solo si la estación existente no admite el transformador mayor."
 note_sv = "Endast om den befintliga stationen inte kan ta emot den större transformatorn."
 
 [reinforce_urban_supplement_sek]
@@ -1066,12 +902,10 @@ value = 126861
 unit = "SEK"
 tag = "sourced"
 label = "Supplement for a secondary substation inside an urban area"
-label_es = "Suplemento para una subestación secundaria dentro de un núcleo urbano"
 label_sv = "Tillägg för en nätstation inom tätort"
 source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1, code NG15271 (city- och tätortstillägg), normvärde 2022"
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = "Smedslätten lies inside Stockholm's urban area on Statistics Sweden's map."
-note_es = "Smedslätten está dentro del núcleo urbano de Estocolmo en el mapa de Estadísticas de Suecia."
 note_sv = "Smedslätten ligger inom Stockholms tätort på SCB:s karta."
 
 [reinforce_price_level_year]
@@ -1079,12 +913,10 @@ value = 2022
 unit = "year"
 tag = "sourced"
 label = "Price level of the Ei norm values"
-label_es = "Nivel de precios de los valores normativos de Ei"
 label_sv = "Prisnivå för Ei:s normvärden"
 source = "Energimarknadsinspektionen, Normvärdeslista elnät 2024–2027 v1.1: column 'Normvärde 2022 [SEK]'"
 url = "https://ei.se/download/18.61d7efeb18b048db98c4e48/1697184391450/Normv%C3%A4rdeslista-2024-2027.xlsx"
 note = ""
-note_es = ""
 
 # ---------------------------------------------------------------- the business case (summaries.business, economics.retail)
 [ei_wacc_real_pct]
@@ -1092,12 +924,10 @@ value = 4.53
 unit = "% per year, real"
 tag = "regulation"
 label = "Ei's allowed return on grid assets (real kalkylränta), 2024–2027"
-label_es = "Rentabilidad permitida por Ei sobre los activos de red (kalkylränta real), 2024–2027"
 label_sv = "Ei:s tillåtna avkastning på nätets kapital (real kalkylränta), 2024–2027"
 source = "Energimarknadsinspektionen, decision on the revenue caps 2024–2027 (3 April 2024): 'den tillåtna avkastningen (reala kalkylräntan) har fastställts till 4,53 procent'"
 url = "https://ei.se/om-oss/nyheter/2024/2024-04-03-nu-har-ei-beslutat-om-elnatsforetagens-intaktsramar-for-perioden-2024-2027"
 note = "Real, so it discounts costs at a fixed price level, such as Ei's norm values at 2022 prices."
-note_es = "Real, así que descuenta costes a un nivel de precios fijo, como los valores normativos de Ei a precios de 2022."
 note_sv = "Real, så den diskonterar kostnader i fast prisnivå, som Ei:s normvärden i 2022 års priser."
 
 [regulatory_period_years]
@@ -1105,7 +935,6 @@ value = 4
 unit = "years"
 tag = "regulation"
 label = "Length of a regulatory period, the DSO's default deferral horizon"
-label_es = "Duración de un periodo regulatorio, el horizonte de aplazamiento por defecto de la distribuidora"
 label_sv = "Längden på en tillsynsperiod, nätbolagets förvalda horisont för uppskjutning"
 source = "Energimarknadsinspektionen: revenue caps are decided for the period 2024–2027, four years"
 url = "https://ei.se/om-oss/nyheter/2024/2024-04-03-nu-har-ei-beslutat-om-elnatsforetagens-intaktsramar-for-perioden-2024-2027"
@@ -1116,12 +945,10 @@ value = 0.360
 unit = "SEK/kWh, excl. VAT"
 tag = "regulation"
 label = "Energy tax on electricity from 1 January 2026"
-label_es = "Impuesto sobre la electricidad desde el 1 de enero de 2026"
 label_sv = "Energiskatt på el från den 1 januari 2026"
 source = "Energimarknadsbyrån, Sänkt energiskatt på el 2026: 36.0 öre per kWh excluding VAT (45.0 including) for most consumers, after the Riksdag's decision in November 2025"
 url = "https://www.energimarknadsbyran.se/nyheter/nyhetsarkiv/2025/sankt-energiskatt-pa-el-2026/"
 note = "A house in the north pays less; Smedslätten is in Stockholm and pays the full rate."
-note_es = "Una casa del norte paga menos; Smedslätten está en Estocolmo y paga la tarifa completa."
 note_sv = "Ett hus i norra Sverige betalar mindre; Smedslätten ligger i Stockholm och betalar full skatt."
 
 [vat_rate]
@@ -1129,7 +956,6 @@ value = 0.25
 unit = "share"
 tag = "regulation"
 label = "VAT on electricity and grid fees"
-label_es = "IVA sobre la electricidad y las tarifas de red"
 label_sv = "Moms på el och nätavgifter"
 source = "Ellevio, Säkringsabonnemang from 1 June 2026: 'I priser inklusive moms ingår moms med 25 %'"
 url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/sakring/sakringsabonnemang-16-63a_260601.pdf"
@@ -1140,12 +966,10 @@ value = 0.208
 unit = "SEK/kWh, excl. VAT"
 tag = "sourced"
 label = "Grid transfer fee for a house, the part solar used at home avoids"
-label_es = "Tarifa de transporte de red de una casa, la parte que evita la solar que se usa en casa"
 label_sv = "Överföringsavgift för ett hus, den del som egenanvänd solel undviker"
 source = "Ellevio, Säkringsabonnemang 16–63 A from 1 June 2026: överföringsavgift 20.8 öre/kWh excluding VAT (26.0 including); Ellevio is the DSO of the City of Stockholm, Bromma included"
 url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/sakring/sakringsabonnemang-16-63a_260601.pdf"
 note = "The fixed monthly fee depends on the main fuse, not on the energy, so solar does not change it."
-note_es = "La cuota fija mensual depende del fusible principal, no de la energía, así que la solar no la cambia."
 note_sv = "Den fasta månadsavgiften beror på huvudsäkringen, inte på energin, så solel ändrar den inte."
 
 [feed_in_peak_sek_kwh]
@@ -1153,12 +977,10 @@ value = 0.044
 unit = "SEK/kWh"
 tag = "sourced"
 label = "DSO's compensation for exported solar (nätnytta), peak-load time"
-label_es = "Compensación de la distribuidora por la solar exportada (nätnytta), horas punta"
 label_sv = "Nätbolagets ersättning för inmatad solel (nätnytta), höglasttid"
 source = "Ellevio, Mikroproduktion 16–25 A from 1 January 2026, price area Stockholm: 4.40 öre/kWh in peak-load time (Monday to Friday 06–22, 1 November to 31 March), excluding VAT, paid without VAT to private persons"
 url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/produktion/prislista_mikro_16-25a_260101.pdf"
 note = "Public holidays in that window count as off-peak in Ellevio's list; the model treats them as peak (a few hours of winter export)."
-note_es = "Los festivos de esa franja cuentan como horas valle en la lista de Ellevio; el modelo los trata como punta (unas pocas horas de exportación de invierno)."
 note_sv = "Helgdagar i det fönstret räknas som låglasttid i Ellevios lista; modellen räknar dem som höglasttid (några timmar vinterexport)."
 
 [feed_in_offpeak_sek_kwh]
@@ -1166,7 +988,6 @@ value = 0.033
 unit = "SEK/kWh"
 tag = "sourced"
 label = "DSO's compensation for exported solar (nätnytta), other time"
-label_es = "Compensación de la distribuidora por la solar exportada (nätnytta), resto del tiempo"
 label_sv = "Nätbolagets ersättning för inmatad solel (nätnytta), låglasttid"
 source = "Ellevio, Mikroproduktion 16–25 A from 1 January 2026, price area Stockholm: 3.30 öre/kWh outside peak-load time, excluding VAT"
 url = "https://www.ellevio.se/globalassets/content/priserabonnemang-pdf/2026/produktion/prislista_mikro_16-25a_260101.pdf"
@@ -1177,12 +998,10 @@ value = 0.60
 unit = "SEK/kWh"
 tag = "regulation"
 label = "Tax reduction for exported solar (until 31 December 2025)"
-label_es = "Reducción fiscal por la solar exportada (hasta el 31 de diciembre de 2025)"
 label_sv = "Skattereduktion för inmatad solel (till och med den 31 december 2025)"
 source = "Skatteverket, Mikroproduktion av förnybar el: 60 öre per kWh fed in, at most 30 000 kWh a year; 'Från och med 1 januari 2026 får du ingen skattereduktion för den el du matar in på elnätet'"
 url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
 note = "Abolished from 1 January 2026, so a connection made now never receives it."
-note_es = "Suprimida desde el 1 de enero de 2026, así que una conexión hecha ahora nunca la recibe."
 note_sv = "Slopad från den 1 januari 2026, så en anslutning som görs nu får den aldrig."
 
 [micro_tax_reduction_cap_kwh]
@@ -1190,7 +1009,6 @@ value = 30000
 unit = "kWh per year"
 tag = "regulation"
 label = "Most exported energy a year the tax reduction counted"
-label_es = "Energía exportada máxima al año que contaba la reducción fiscal"
 label_sv = "Mest inmatad energi per år som skattereduktionen räknade"
 source = "Skatteverket, Mikroproduktion av förnybar el: 'Underlaget kan heller aldrig bli större än 30 000 kilowattimmar'"
 url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
@@ -1201,7 +1019,6 @@ value = 2025
 unit = "year"
 tag = "regulation"
 label = "Last year the tax reduction for exported solar applied"
-label_es = "Último año en que se aplicó la reducción fiscal por la solar exportada"
 label_sv = "Sista året skattereduktionen för inmatad solel gällde"
 source = "Skatteverket, Mikroproduktion av förnybar el: none from 1 January 2026"
 url = "https://www.skatteverket.se/privat/fastigheterochbostad/inkomsterfranbostad/mikroproduktionavfornybarelprivatbostad.4.12815e4f14a62bc048f41a7.html"
@@ -1212,7 +1029,6 @@ value = 3.0
 unit = "% per year, real"
 tag = "team-assumption"
 label = "A household's discount rate for the value of its solar over the years"
-label_es = "Tasa de descuento de un hogar para el valor de su solar a lo largo de los años"
 label_sv = "Ett hushålls diskonteringsränta för värdet av dess solel över åren"
 source = "Team assumption, not a published figure; the owner's case shows the undiscounted sum beside it"
 url = ""

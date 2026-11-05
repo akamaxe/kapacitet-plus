@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it } from "vitest";
-import { DICTS, LANGS, loadLang, locale, translate } from "./i18n/core";
+import { DICTS, LANGS, isLang, loadLang, locale, translate } from "./i18n/core";
 
 beforeAll(async () => {
   for (const lang of LANGS) await loadLang(lang);
@@ -56,7 +56,18 @@ describe("translate", () => {
 
   it("names each language's own locale", () => {
     expect(locale("en")).toBe("en-GB");
-    expect(locale("es")).toBe("es-ES");
     expect(locale("sv")).toBe("sv-SE");
+  });
+});
+
+describe("languages", () => {
+  it("speaks English and Swedish only", () => {
+    expect([...LANGS]).toEqual(["en", "sv"]);
+  });
+
+  it("does not know Spanish any more, so a stored 'es' opens in English", () => {
+    // store.ts falls back to English for any value isLang refuses
+    expect(isLang("es")).toBe(false);
+    expect(isLang("sv")).toBe(true);
   });
 });

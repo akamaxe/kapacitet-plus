@@ -141,7 +141,7 @@ _WRITTEN_BY = {
 
 
 # Refusals the interface translates: `{code, message, params}` in the detail, `err.<code>` in
-# web/src/lib/i18n. tests/test_messages.py holds the three languages to these templates.
+# web/src/lib/i18n. tests/test_messages.py holds both languages to these templates.
 API_ERRORS = {
     "not_in_contract": "not part of the contract: {tables}",
     "too_large": "larger than {mb} MB: {tables}",

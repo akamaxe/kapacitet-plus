@@ -11,7 +11,7 @@ knowing that costs nothing.
 
 Every finding carries a `code` and its `params` next to the English `message`, so the interface
 can say it in any of its languages (`chk.msg.<code>` in web/src/lib/i18n); `MESSAGES` is the one
-place the English wording lives, and tests/test_messages.py holds the three languages to it.
+place the English wording lives, and tests/test_messages.py holds both languages to it.
 """
 
 from __future__ import annotations

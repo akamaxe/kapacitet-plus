@@ -1,6 +1,6 @@
 // Screenshots of every screen, for looking at a change in each language, theme and width.
 //
-//   node scripts/shots.mjs [--lang en,es,sv] [--theme light,dark] [--width 1536,390] [--screens a,b]
+//   node scripts/shots.mjs [--lang en,sv] [--theme light,dark] [--width 1536,390] [--screens a,b]
 //                          [--base http://127.0.0.1:8130] [--out test-results/shots]
 //
 // Needs a running `python -m kapacitet serve` (port 8130 by default) and the system's Chrome.

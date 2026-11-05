@@ -625,7 +625,7 @@
       },
       {
         "name": "The SEK Rule",
-        "body": "Money is SEK, never \"kr\": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, \"SEK/año\" in Spanish, \"SEK/år\" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.",
+        "body": "Money is SEK, never \"kr\": `SEK/kWh` for prices, `SEK/yr` for a yearly sum (through `unit.sekYr` in `lib/i18n/`, \"SEK/år\" in Swedish), and `kSEK` or `kSEK/yr` (`unit.ksekYr`) when a figure is shown in thousands.",
         "section": "typography"
       },
       {
@@ -659,7 +659,7 @@
       "**Do** keep thin-space thousands, fixed decimals and the unit beside the value, through `lib/format.ts`.",
       "**Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.",
       "**Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.",
-      "**Do** write every string in `lib/i18n/{en,es,sv}.ts`, in English, Spanish and Swedish, with the terms of `docs/glossary.md`.",
+      "**Do** write every string in `lib/i18n/{en,sv}.ts`, in English and Swedish, with the terms of `docs/glossary.md`.",
       "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such."
     ],
     "donts": [

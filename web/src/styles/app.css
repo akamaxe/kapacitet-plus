@@ -1181,7 +1181,7 @@ svg { flex-shrink: 0; }
 .top-search kbd { margin-left: auto; border-color: var(--chrome-rule); color: var(--chrome-ink-2); }
 .topbar :focus-visible { outline-color: var(--chrome-ink); }
 .theme-select.top-tool { appearance: auto; color-scheme: dark; background: none; max-width: 104px; }
-/* three languages, each named by its code; the pressed one sits on the bar's hover tone */
+/* the two languages, each named by its code; the pressed one sits on the bar's hover tone */
 .top-lang { display: inline-flex; align-items: center; }
 .top-lang .top-tool { min-width: 32px; padding: 0 var(--space-1); letter-spacing: 0.02em; }
 .theme-select.top-tool option { color: var(--text-primary); background: var(--bg-elevated); }
@@ -1281,7 +1281,7 @@ main:focus { outline: none; }
 /* the panels narrow before split screens stack (the top bar's own steps are with the eight screens, below) */
 @media (min-width: 1101px) and (max-width: 1350px) {
   :root { --panel-w: 390px; --panel-w-wide: 450px; }
-  /* three Spanish scenario names fit the narrower panel on one row only with tighter sides */
+  /* the three scenario names fit the narrower panel on one row only with tighter sides */
   .panel .seg button { padding-inline: var(--space-2); }
   .overview-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 }

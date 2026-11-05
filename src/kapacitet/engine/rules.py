@@ -20,7 +20,7 @@ from dataclasses import dataclass
 OUTCOMES = ("firm", "nonfirm", "review")
 
 # Why an application went to a person. The interface says it with `inbox.reason.<code>` in each
-# language (tests/test_messages.py holds the three dictionaries to these sentences).
+# language (tests/test_messages.py holds both dictionaries to these sentences).
 REASONS = {
     "fuse": "the house's main fuse is too small for what it asks for",
     "phases": "the charger would unbalance its phase beyond the limit",
