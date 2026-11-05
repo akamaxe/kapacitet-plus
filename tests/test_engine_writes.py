@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 
 import numpy as np
-from conftest import tiny_grid
+from conftest import synthetic_profiles, tiny_grid
 
 # The modules that write results/ and ui/. queue.py and request.py write the queue, the request
 # baselines and the injection cache, and are not listed here.
@@ -47,29 +47,35 @@ def test_the_engine_writes_no_file_in_place():
     assert _in_place("np.save(fh, a)\ns = df.to_csv(index=False)\n") == []
 
 
-def test_the_writers_leave_whole_files_and_no_temporary_one(tiny_processed, tmp_path):
-    """A results file, a map state (binary and header), a .npy and protection.json written on a
-    copy of the tiny grid's folder: each reads back as written, and no temporary file is left."""
-    from kapacitet.engine import protection, run
-    from kapacitet.paths import processed
+def test_the_stages_leave_whole_files_and_no_temporary_one(tiny_processed, tmp_path):
+    """The showcase, the operation stage (one rule, both bases), the forecast ladder and the
+    protection check, run on a copy of the tiny grid's folder: every file they write reads back,
+    each map state is as long as its header says, and no temporary file is left behind."""
+    from kapacitet.engine import forecast, hosting, operation, protection, run
+    from kapacitet.engine.scenario import adoption_order
 
     folder = tmp_path / "processed"
     shutil.copytree(tiny_processed, folder)
     with tiny_grid(folder):
         m = run.model()
-        p = np.linspace(-2.0, 5.0, m.C * 3).reshape(m.C, 3)
-        q = np.zeros_like(p)
-        res = m.solve(p, q)
-        run.write_state("check", res, m.violations(res, p), p, np.clip(p, 0, None), np.clip(-p, 0, None), None)
-        run.save_npy(processed("ui", "check.npy"), np.arange(4, dtype=np.float16))
-        run._write("check.json", {"n": np.int64(3), "v": np.arange(3, dtype=float)})
-        out = protection.write()
-
-        assert json.loads(processed("results", "check.json").read_text(encoding="utf-8")) == {"n": 3, "v": [0, 1, 2]}
-        assert np.array_equal(np.load(processed("ui", "check.npy")), np.arange(4))
-        header = json.loads(processed("ui", "state_check.json").read_text(encoding="utf-8"))
-        blob = processed("ui", "state_check.bin").read_bytes()
-        assert header["hours"] == 3 and len(blob) == 3 * (header["n_bus"] + header["n_line"] + header["n_cust"])
-        written = json.loads(processed("results", "protection.json").read_text(encoding="utf-8"))
-        assert written == json.loads(json.dumps(out))
+        hp, ev = run.background_masks(m.C)
+        ms = hosting.static_adopters(m, adoption_order(0, m.C), hp, ev)
+        run.showcase(0, ms, ms, m.C, synthetic_profiles.YEARS, quick=True)
+        operation.build(only_policies=("maxmin",))
+        forecast.write()
+        protection.write()
+    written = [f for f in folder.rglob("*") if f.is_file() and {"results", "ui"} & set(f.relative_to(folder).parts)]
+    assert len(written) > 30
+    for f in written:
+        if f.suffix == ".json":
+            json.loads(f.read_text(encoding="utf-8"))
+        elif f.suffix == ".npy":
+            np.load(f)
+        elif f.suffix == ".npz":
+            with np.load(f) as z:
+                assert all(z[key].size for key in z.files), f
+    for f in folder.rglob("state_*.json"):
+        header = json.loads(f.read_text(encoding="utf-8"))
+        n = header["n_bus"] + header["n_line"] + header["n_cust"]
+        assert len(f.with_suffix(".bin").read_bytes()) == header["hours"] * n, f
     assert not [f.name for f in folder.rglob("*.tmp")]
