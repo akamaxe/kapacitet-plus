@@ -9,16 +9,22 @@ The measurement rests on one property. Call a planning state **dominating** if, 
 hour, it assumes at least as much generation and at most as much load as actually occurs.
 Every export-side constraint is monotone in those two quantities, so an envelope feasible
 against a dominating state is feasible against what happens — including in the hours the
-planner never flagged as critical, which is where a point forecast fails. Safety then needs
-no forecast skill at all. What it costs is how loose the bound is.
+planner never flagged as critical, which is where a point forecast fails. That implication
+is exact. Whether a state issued the day before does dominate is not, and cannot be known
+when it is issued: what it costs is how loose the bound is, and what it risks is how often
+the year beats it.
 
 Two planning states are measured, and they bracket any real operator.
 
 **Climatological** (`climatological`): the extremes the same fortnight reached in the other
 weather years — generation at its highest, demand at its lowest, hour of the day by hour of
-the day. It is weather-blind — a clock and eleven years of history, no forecast — so it is
-the pessimistic end of the bracket. It is a bound in all but a handful of hours, and
-`exceedance_audit` counts those rather than claiming otherwise.
+the day — widened by two margins, `dayahead_pv_margin_pct` above the generation and
+`dayahead_load_margin_pct` below the demand. It is weather-blind — a clock and eleven years
+of history, no forecast — so it is the pessimistic end of the bracket. It is an empirical
+bound, not a guarantee: a year can beat the other ten by more than the margin. So every
+issue audits itself against what happened (`plan_exceedance`, in `issue`), and
+`exceedance_audit` does the same for the neighbourhood's record; both counts are published,
+never assumed to be zero.
 
 The climatology leaves the operated year out, which keeps it honest about the year it
 plans. For the reference year that is also strictly causal, since every other weather year
@@ -53,6 +59,9 @@ from .scenario import Scenario, customers, year_profiles
 
 WINDOW_DAYS = 14        # calendar half-window of the climatological envelope
 SCHEMES = ("static", "climatological", "persistence", "foresight")
+EXCEED_TOL_KW = 1e-4         # one customer-hour beats its plan above this: float32 rounding is below
+EXCEED_AGG_TOL_KW = 1e-3     # the neighbourhood total, summed over every house
+FIRST_HOURS = 5              # how many of the first exceeding hours an audit names
 
 
 @dataclass
@@ -66,6 +75,7 @@ class Issued:
     curtailed_share_pct: float   # of the non-firm customers' export
     export_kwh: float
     hours_limited: int           # hours in which somebody was actually cut
+    exceedance: dict | None = None   # where what happened beat the plan (plan_exceedance)
 
     @property
     def safe(self) -> bool:
@@ -155,32 +165,56 @@ def _total_load(year: int, hp: np.ndarray, ev: np.ndarray) -> np.ndarray:
             + np.where(ev[:, None], prof["ev"], 0.0)).astype(np.float32)
 
 
-def exceedance_audit(year: int, hp: np.ndarray | None = None, ev: np.ndarray | None = None,
-                     window_days: int = WINDOW_DAYS) -> dict:
-    """How often the year beat its own history, which is the one way this bound can fail.
+def day_ahead_margins(pv_margin: float | None = None,
+                      load_margin: float | None = None) -> tuple[float, float]:
+    """The two margins of the day-ahead bound, as fractions (0.03 is 3 %).
 
-    Both sides are audited on the neighbourhood total, because that is what the transformer
-    sees and the transformer is what binds on this grid.
+    Left out, each comes from the assumptions (`dayahead_pv_margin_pct`,
+    `dayahead_load_margin_pct`); passing 0 gives the bare record of the other years.
     """
+    pv = A("dayahead_pv_margin_pct") / 100.0 if pv_margin is None else float(pv_margin)
+    load = A("dayahead_load_margin_pct") / 100.0 if load_margin is None else float(load_margin)
+    if pv < 0 or not 0 <= load < 1:
+        raise ValueError(f"day-ahead margins out of range: pv {pv}, load {load} (fractions)")
+    return pv, load
+
+
+def exceedance_audit(year: int, hp: np.ndarray | None = None, ev: np.ndarray | None = None,
+                     window_days: int = WINDOW_DAYS, *, pv_margin: float | None = None,
+                     load_margin: float | None = None) -> dict:
+    """How often the year beat the bound it is planned against, the one way this bound fails.
+
+    The bound is the record of the other years widened by the same margins `climatological`
+    applies (the assumptions unless given). Both sides are audited on the neighbourhood total,
+    because that is what the transformer sees and the transformer is what binds on this grid.
+    `pv_worst_aggregate_ratio_unmargined` keeps the ratio against the bare record, which is
+    the evidence the PV margin is sized on.
+    """
+    pm, lm = day_ahead_margins(pv_margin, load_margin)
     cust = customers()
     kwp = cust["kwp"].to_numpy()
     actual = load_ac_per_kwp(year)
-    bound = pv_upper_bound(year, window_days)
+    record = pv_upper_bound(year, window_days)
+    bound = record * (1.0 + pm)
     agg_a = (actual * kwp[:, None]).sum(axis=0)
-    agg_b = (bound * kwp[:, None]).sum(axis=0)
+    agg_r = (record * kwp[:, None]).sum(axis=0)
+    agg_b = agg_r * (1.0 + pm)
     over = agg_a > agg_b + 1e-6
-    day = agg_b > 0.5
+    day = agg_r > 0.5
     out = {
         "year": year, "window_days": window_days,
+        "pv_margin_pct": round(pm * 100.0, 6), "load_margin_pct": round(lm * 100.0, 6),
         "pv_bound_over_measured_energy": float(bound.sum() / actual.sum()),
         "pv_customer_hours_over": int((actual > bound + 1e-6).sum()),
         "pv_aggregate_hours_over": int(over.sum()),
         "pv_worst_aggregate_ratio": float((agg_a[day] / agg_b[day]).max()) if day.any() else 0.0,
+        "pv_worst_aggregate_ratio_unmargined": float((agg_a[day] / agg_r[day]).max()) if day.any() else 0.0,
         "pv_worst_aggregate_kw": float((agg_a - agg_b)[over].max()) if over.any() else 0.0,
     }
     if hp is None or ev is None:
         return out
-    la, lb = _total_load(year, hp, ev), load_lower_bound(year, hp, ev, window_days)
+    la = _total_load(year, hp, ev)
+    lb = load_lower_bound(year, hp, ev, window_days) * (1.0 - lm)
     sa, sb = la.sum(axis=0), lb.sum(axis=0)
     under = sa < sb - 1e-6
     out.update({
@@ -212,15 +246,21 @@ def _inverter_capped(pv_mask: np.ndarray, per_kwp: np.ndarray) -> np.ndarray:
 
 
 def climatological(year: int, pv_mask: np.ndarray, hp: np.ndarray, ev: np.ndarray,
-                   window_days: int = WINDOW_DAYS) -> dict:
-    """A dominating state: both sides at the extreme the same fortnight has reached before.
+                   window_days: int = WINDOW_DAYS, *, pv_margin: float | None = None,
+                   load_margin: float | None = None) -> dict:
+    """A state meant to dominate: both sides past the extreme the same fortnight has reached.
 
     This differs from the static worst case in exactly one respect: it follows the calendar
     instead of assuming nameplate generation against minimum load all year round. That
     difference is what the time dimension is worth, with no weather forecast in it.
+
+    The margins (fractions; the assumptions unless given, see `day_ahead_margins`) widen the
+    record: the PV one before the inverter cap, so the plan never assumes more than a house
+    can inject, the load one on the floor. The cached bounds stay the bare record.
     """
-    pv = _inverter_capped(pv_mask, pv_upper_bound(year, window_days))
-    load = load_lower_bound(year, hp, ev, window_days)
+    pm, lm = day_ahead_margins(pv_margin, load_margin)
+    pv = _inverter_capped(pv_mask, pv_upper_bound(year, window_days) * (1.0 + pm))
+    load = load_lower_bound(year, hp, ev, window_days) * (1.0 - lm)
     return _arrays(pv, load)
 
 
@@ -275,6 +315,87 @@ def forecast_error(actual: dict[str, np.ndarray], predicted: dict[str, np.ndarra
     }
 
 
+def _beaten(plan: dict[str, np.ndarray], actual: dict[str, np.ndarray]):
+    """(C, H) kW the actual PV ran above the plan and the actual load below it, and (H,) kW the
+    neighbourhood's net injection ran above the plan's. Positive is where the plan was beaten."""
+    g = lambda d, k: np.asarray(d[k], dtype=float)  # noqa: E731
+    pv = g(actual, "pv") - g(plan, "pv")
+    load = g(plan, "load") - g(actual, "load")
+    net = g(actual, "p_net").sum(axis=0) - g(plan, "p_net").sum(axis=0)
+    return pv, load, net
+
+
+def exceedance_hours(plan: dict[str, np.ndarray], actual: dict[str, np.ndarray]) -> dict[str, np.ndarray]:
+    """Hour by hour (H,), what `plan_exceedance` counts: the houses whose PV beat the plan, the
+    houses whose load came in under it, and whether the neighbourhood total was not dominated."""
+    pv, load, net = _beaten(plan, actual)
+    return {"pv_customers": (pv > EXCEED_TOL_KW).sum(axis=0),
+            "load_customers": (load > EXCEED_TOL_KW).sum(axis=0),
+            "pv_aggregate": pv.sum(axis=0) > EXCEED_AGG_TOL_KW,
+            "load_aggregate": load.sum(axis=0) > EXCEED_AGG_TOL_KW,
+            "net_aggregate": net > EXCEED_AGG_TOL_KW}
+
+
+def plan_exceedance(plan: dict[str, np.ndarray], actual: dict[str, np.ndarray],
+                    nonfirm: np.ndarray | None = None) -> dict:
+    """Where what happened beat the plan an envelope was issued against: the audit of one issue.
+
+    Domination is what makes an envelope issued ahead safe, and for a state issued the day
+    before it is a bet on the record, so every issue counts where it lost: customer-hours with
+    more PV than planned or less load, the same on the neighbourhood total, and hours whose
+    total net injection the plan did not dominate (the one the transformer sees), with the
+    worst kW of each and the first hours (indices into the year, interval start in UTC).
+    With `nonfirm`, the customer-hour counts are also given for the houses holding envelopes.
+    A perfect-foresight plan counts zero everywhere.
+    """
+    pv, load, net = _beaten(plan, actual)
+    pv_c, load_c = pv > EXCEED_TOL_KW, load > EXCEED_TOL_KW
+    pv_a, load_a = pv.sum(axis=0), load.sum(axis=0)
+    pv_ah, load_ah, net_h = pv_a > EXCEED_AGG_TOL_KW, load_a > EXCEED_AGG_TOL_KW, net > EXCEED_AGG_TOL_KW
+
+    def worst(x: np.ndarray, mask: np.ndarray) -> float:
+        return round(float(x[mask].max()), 4) if mask.any() else 0.0
+
+    def first(mask: np.ndarray) -> list[int]:
+        return np.flatnonzero(mask)[:FIRST_HOURS].tolist()
+
+    out = {
+        "pv_customer_hours_over": int(pv_c.sum()),
+        "pv_aggregate_hours_over": int(pv_ah.sum()),
+        "pv_worst_customer_kw": worst(pv, pv_c),
+        "pv_worst_aggregate_kw": worst(pv_a, pv_ah),
+        "load_customer_hours_under": int(load_c.sum()),
+        "load_aggregate_hours_under": int(load_ah.sum()),
+        "load_worst_customer_kw": worst(load, load_c),
+        "load_worst_aggregate_kw": worst(load_a, load_ah),
+        "net_aggregate_hours_not_dominated": int(net_h.sum()),
+        "net_worst_aggregate_kw": worst(net, net_h),
+        "first_hours": {"pv": first(pv_c.any(axis=0)), "load": first(load_c.any(axis=0)),
+                        "net": first(net_h)},
+    }
+    if nonfirm is not None:
+        nf = np.asarray(nonfirm, dtype=int)
+        out["nonfirm_pv_customer_hours_over"] = int(pv_c[nf].sum())
+        out["nonfirm_load_customer_hours_under"] = int(load_c[nf].sum())
+    return out
+
+
+def total_exceedance(audits: list[dict | None]) -> dict | None:
+    """Several audits as one: counts added, worst kW the worst of them, the year and the first
+    hours dropped (they index different years). None when there was nothing to audit."""
+    rows = [a for a in audits if a]
+    if not rows:
+        return None
+    out: dict = {}
+    for key in rows[0]:
+        if key in ("first_hours", "year"):
+            continue
+        vals = [r.get(key, 0) for r in rows]
+        out[key] = max(vals) if key.endswith("_kw") else int(sum(vals))
+    out["audits"] = int(sum(r.get("audits", 1) for r in rows))
+    return out
+
+
 # --------------------------------------------------------------------------------- issuing
 
 def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np.ndarray],
@@ -290,6 +411,9 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
     the year and the envelopes are verified in full against the planning state too. A capacity
     search, which only reads the curtailment, passes False: the envelopes are verified on their
     critical hours and reality is checked through the linear screen.
+
+    Either way the issue audits its own premise: `exceedance` (`plan_exceedance`) counts where
+    what happened beat the planning state, which is how a state issued ahead can fail.
     """
     r = doe.compute(model, planning, nonfirm, policy=policy, verify="full" if check_safety else "critical")
     H = actual["p_net"].shape[1]
@@ -318,6 +442,7 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
         curtailed_share_pct=float(curtailed.sum() / export * 100.0) if export else 0.0,
         export_kwh=export,
         hours_limited=int((curtailed.sum(axis=0) > 1e-3).sum()),
+        exceedance=plan_exceedance(planning, actual, nonfirm),
     )
 
 
@@ -340,6 +465,9 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
 
     `check_safety` goes to `issue`: off inside the capacity search, on for the point it
     publishes, whose violation hours then come from a full nonlinear solve of every year.
+
+    Every year issued against a planning state carries its audit (`plan_exceedance`) in
+    `per_year`, and `exceedance` adds them up; the static rung issues nothing, so has none.
     """
     C = model.C
     nf = order[ms:k]
@@ -352,7 +480,7 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
         pot_y = float(actual["pv"][nf].sum())
         if len(nf) == 0:
             per_year.append({"year": y, "curtailed_kwh": 0.0, "potential_kwh": pot_y,
-                             "violation_hours": 0})
+                             "violation_hours": 0, "exceedance": None})
             continue
         if scheme == "static":
             p_s, q_s = _static_snapshot(order, ms, C)
@@ -360,19 +488,21 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
             cap = doe.customer_caps()[nf]
             c_y = float(np.maximum(np.clip(actual["p_net"][nf], 0, None) - kappa * cap[:, None], 0).sum())
             v_y = 0                     # worst-case feasible by construction
+            ex_y = None
         else:
             plan = planning_state(scheme, y, pvm, hp, ev, actual, window_days)
             r = issue(model, plan, actual, nf, scheme, policy=policy, check_safety=check_safety)
-            c_y, v_y = r.curtailed_kwh, r.violation_hours
+            c_y, v_y, ex_y = r.curtailed_kwh, r.violation_hours, r.exceedance
         curt += c_y
         pot += pot_y
         violations += v_y
         per_year.append({"year": y, "curtailed_kwh": c_y, "potential_kwh": pot_y,
-                         "violation_hours": v_y})
+                         "violation_hours": v_y, "exceedance": ex_y})
     return {"scheme": scheme, "adopters": int(k), "non_firm": int(len(nf)),
             "curtailed_kwh": curt, "potential_kwh": pot,
             "z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
             "violation_hours": violations if (check_safety or scheme != "static") else 0,
+            "exceedance": total_exceedance([p["exceedance"] for p in per_year]),
             "per_year": per_year}
 
 
@@ -386,32 +516,47 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
              policy: str = "maxmin", hi: int | None = None) -> tuple[int, dict]:
     """The most adopters this scheme carries inside the curtailment budget, and the cost there.
 
-    `lo` is a count already known to be acceptable — the published search starts the DOE case
-    from the time-series capacity — so the bisection never has to prove the trivial end.
+    `lo` is where the search starts: the published one passes the time-series capacity, the
+    count that needs no curtailment with perfect foresight. A planning state issued ahead can
+    curtail there, and on this grid often more than the budget, so `lo` is tested first rather
+    than assumed. If it fails, the search goes down instead, towards `ms`, where nobody holds
+    an envelope and the curtailment is zero by definition; so the count returned is always
+    one the search measured inside the budget, or `ms`.
 
-    `hi` saves the expensive end the same way. A dominating state is critical in every hour
-    the real one is, and allocates from less headroom when it is, so its envelope is never
-    above the perfect-foresight envelope and its capacity is never above the published one.
-    Passing that as the ceiling keeps the bisection out of a region it cannot reach, which on
-    this grid is most of the search.
+    `hi` saves the expensive end. A dominating state is critical in every hour the real one
+    is, and allocates from less headroom when it is, so its envelope is never above the
+    perfect-foresight envelope and its capacity is never above the published one. Passing
+    that as the ceiling keeps the bisection out of a region it cannot reach, which on this
+    grid is most of the search. Each count is evaluated once.
     """
-    def ok(k: int) -> bool:
-        return multiyear(model, order, ms, k, years, hp, ev, scheme,
-                         window_days=window_days, policy=policy)["z_pct"] <= z_star
+    z: dict[int, float] = {int(ms): 0.0}
 
-    hi = model.C if hi is None else min(int(hi), model.C)
-    if hi <= lo:
-        return lo, multiyear(model, order, ms, lo, years, hp, ev, scheme,
-                             window_days=window_days, policy=policy, check_safety=True)
-    k = hi if ok(hi) else lo
-    if k != hi:
-        while hi - lo > 1:
-            mid = (lo + hi) // 2
+    def ok(k: int) -> bool:
+        if k not in z:
+            z[k] = multiyear(model, order, ms, k, years, hp, ev, scheme,
+                             window_days=window_days, policy=policy)["z_pct"]
+        return z[k] <= z_star
+
+    def largest(good: int, bad: int) -> int:
+        """The largest count that passes, between one that does and one that does not."""
+        while bad - good > 1:
+            mid = (good + bad) // 2
             if ok(mid):
-                lo = mid
+                good = mid
             else:
-                hi = mid
+                bad = mid
+        return good
+
+    lo = max(int(lo), int(ms))
+    hi = model.C if hi is None else min(int(hi), model.C)
+    if not ok(lo):
+        k = largest(int(ms), lo)
+    elif hi <= lo:
         k = lo
+    elif ok(hi):
+        k = hi
+    else:
+        k = largest(lo, hi)
     return k, multiyear(model, order, ms, k, years, hp, ev, scheme,
                         window_days=window_days, policy=policy, check_safety=True)
 

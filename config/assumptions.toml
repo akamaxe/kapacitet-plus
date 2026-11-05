@@ -789,6 +789,29 @@ url = "https://www.gesetze-im-internet.de/enwg_2005/__11.html"
 note = "The full hosting-capacity vs curtailment curve is shown; 3 % is only the headline point."
 note_sv = "Hela kurvan för acceptansgräns mot nedreglering visas; 3 % är bara punkten för huvudresultatet."
 
+# ---------------------------------------------------------------- envelopes issued the day before
+[dayahead_pv_margin_pct]
+value = 3.0
+unit = "% of the climatological PV bound"
+tag = "team-assumption"
+label = "Margin above the climatological PV bound of day-ahead envelopes"
+label_sv = "Marginal över den klimatologiska solcellsgränsen för exportgränser utfärdade dagen före"
+source = "Modelling assumption: covers the worst aggregate ratio of 1.0278 by which 2025 beat the record of the other weather years (foresight.json, exceedance, before the margin)"
+url = ""
+note = "Applied before the inverter cap, in the published and the issued day-ahead figures. The bound stays empirical: every issue counts the hours the year still beat it."
+note_sv = "Läggs på före växelriktarens tak, både i de publicerade och i de utfärdade siffrorna för dagen före. Gränsen förblir empirisk: varje utfärdande räknar de timmar då året ändå slog den."
+
+[dayahead_load_margin_pct]
+value = 3.0
+unit = "% of the climatological load floor"
+tag = "team-assumption"
+label = "Margin below the climatological load floor of day-ahead envelopes"
+label_sv = "Marginal under det klimatologiska lastgolvet för exportgränser utfärdade dagen före"
+source = "Modelling assumption, set equal to the PV margin; the load floor was not beaten on the neighbourhood total in 2025 (foresight.json, exceedance)"
+url = ""
+note = "Applied in the published and the issued day-ahead figures. The bound stays empirical: every issue counts the hours the year still came in under it."
+note_sv = "Används både i de publicerade och i de utfärdade siffrorna för dagen före. Gränsen förblir empirisk: varje utfärdande räknar de timmar då året ändå låg under den."
+
 # ---------------------------------------------------------------- sensitivity factors (1 = base case)
 [static_min_load_factor]
 value = 1.0

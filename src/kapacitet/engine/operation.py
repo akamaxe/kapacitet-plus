@@ -3,7 +3,8 @@
 The published capacity figures use perfect foresight (`foresight`): each hour's envelope knows
 that hour's load and sun, which is the bound a real operator works towards. An envelope that can
 actually be sent the day before (`dayahead`) has to hold against any day the same fortnight has
-seen, the dominating state of `forecast.climatological`: safe without a forecast, and dearer.
+seen, the state of `forecast.climatological` meant to dominate it: no forecast in it, dearer, and
+an empirical bound, so each issue counts the hours the real year beat it.
 
 For the published deployment (showcase.json: the reference year, its firm and non-firm houses)
 this stage computes every combination of the four sharing rules of `doe.allocate` and the two
@@ -13,9 +14,12 @@ bases, and for each one writes, under results/operation/<basis>/<rule>/:
                    non-firm house held to it (only a combination with zero violation hours may be
                    served), the binding components, and the control a house falls back to when it
                    hears nothing: the lower of its static share and the lowest limit it was issued;
+                   on the day-ahead basis also `exceedance`, where the real year beat the planning
+                   state (`forecast.plan_exceedance`);
 - audit_trail.csv  the evidence row by row, with whether each hour needed limiting at all;
 - compliance.json/.txt  the filing derived from that trail;
-- days.json, days.npz   per-day aggregates and per-house days, for the season's replay;
+- days.json, days.npz   per-day aggregates and per-house days, for the season's replay (day-ahead:
+                   with the exceedance counted per day);
 
 and under ui/operation/<basis>/<rule>/ the envelopes and a map state in the binary layout of
 engine/stateblob.py. results/operation/agreements.json holds the static evidence of each
@@ -119,6 +123,15 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
              "necessary_hours": int(len(necessary)), "combos": {}}
     for basis in only_bases:
         plan = arr if basis == "foresight" else forecast.planning_state(SCHEME[basis], y, pv, hp, ev, arr)
+        # a state issued ahead is a bet on the record: audit where the real year beat it (it does
+        # not depend on the rule, so once per basis); perfect foresight has nothing to audit
+        exceedance = exceed_days = None
+        if basis != "foresight":
+            exceedance = forecast.plan_exceedance(plan, arr, nf)
+            hourly = forecast.exceedance_hours(plan, arr)
+            exceed_days = {"exceedance_pv_customer_hours": _days(hourly["pv_customers"], H),
+                           "exceedance_load_customer_hours": _days(hourly["load_customers"], H),
+                           "exceedance_net_hours": _days(hourly["net_aggregate"].astype(int), H)}
         index["combos"][basis] = {}
         for pol in only_policies:
             t0 = time.perf_counter()
@@ -155,6 +168,7 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
                 "hours_unnecessary_limited": _days((limited & ~necessary_mask).astype(int), H),
                 "violation_hours": _days(v.export_side.astype(int), H),
                 "houses_limited_max": (curtailed > 1e-3).sum(axis=0)[: (H // 24) * 24].reshape(-1, 24).max(axis=1),
+                **(exceed_days or {}),
             }
             _write_json(folder / "days.json", {"year": y, "days": H // 24, "tz": "UTC+1", **per_day})
             np.savez_compressed(folder / "days.npz", curtailed=_days(curtailed, H).astype(np.float32),
@@ -176,6 +190,7 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
                                  "max_line_loading_pct": full["max_line_loading_pct"],
                                  "pf_nonconverged_hours": full["nonconverged_hours"]},
                 "verified": violations == 0,
+                **({"exceedance": exceedance} if exceedance is not None else {}),
                 "binding_hours": {compliance.CONSTRAINT[int(k)]: int(n) for k, n in
                                   zip(*np.unique(r.binding, return_counts=True))} if r.binding is not None and len(r.hours) else {},
                 "default_control": {"kappa": float(kappa), "rule": "min(static share, lowest issued limit)",

@@ -152,9 +152,14 @@ def annual_report(trail: Trail, result: DoeResult, cids: np.ndarray | None = Non
     total_exported = float(exported.sum())
     activations = {}
     if len(events) and "necessary" in events:
-        by_hour = events.groupby("hour")["necessary"].first()
+        by_hour = events.groupby("hour")["necessary"].first().astype(bool)
+        needed = events[events["necessary"].astype(bool)]
+        # the binding component of the hours that did need limiting: the last-resort evidence,
+        # which on a day-ahead basis is fewer hours than the binding count above
         activations = {"activations_necessary_hours": int(by_hour.sum()),
-                       "activations_unnecessary_hours": int((~by_hour.astype(bool)).sum())}
+                       "activations_unnecessary_hours": int((~by_hour).sum()),
+                       "binding_constraint_necessary_hours": {
+                           k: int(v) for k, v in needed.groupby("binding_constraint")["hour"].nunique().items()}}
     return {
         "year": trail.year,
         "basis": basis,
@@ -194,21 +199,34 @@ def report_text(report: dict) -> str:
         f"Allocation policy              {report['allocation_policy']}",
         "",
     ]
+    binding = sorted(report["binding_constraint_hours"].items(), key=lambda kv: -kv[1])
+    needed = report.get("binding_constraint_necessary_hours")
     if report.get("activations_unnecessary_hours"):
         lines += [
             f"Envelopes issued the day before limited {report['hours_with_curtailment']} hours. In "
             f"{report.get('activations_necessary_hours', 0)} of them a component would have been loaded",
             f"beyond its rating had no envelope been issued; in {report['activations_unnecessary_hours']} the "
             "grid would have coped: the price of issuing without a forecast.",
-            "The component that bound each limited hour:",
+            f"Curtailment was a last resort in those {report.get('activations_necessary_hours', 0)} hours only. "
+            "The component that bound",
+            "each limited hour in the plan, and in how many of its hours the limit was needed:",
         ]
+        for name, hours in binding:
+            lines.append(f"   {name:<14} {hours} hours, {(needed or {}).get(name, 0)} of them needed")
+    elif needed is not None:
+        lines += [
+            "Curtailment was a last resort: in every hour above a component would have been loaded",
+            "beyond its rating had no envelope been issued. The component that bound each of them:",
+        ]
+        for name, hours in sorted(needed.items(), key=lambda kv: -kv[1]):
+            lines.append(f"   {name:<14} {hours} hours")
     else:
         lines += [
             "Curtailment was a last resort. The hours above are the hours in which a component",
             "would have been loaded beyond its rating had no envelope been issued:",
         ]
-    for name, hours in sorted(report["binding_constraint_hours"].items(), key=lambda kv: -kv[1]):
-        lines.append(f"   {name:<14} {hours} hours")
+        for name, hours in binding:
+            lines.append(f"   {name:<14} {hours} hours")
     worst = report["worst_uncontrolled"]
     if worst:
         lines += ["", f"Worst case without envelopes: {worst['element']} at "

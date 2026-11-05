@@ -160,3 +160,39 @@ def test_the_api_serves_a_rule_and_a_basis():
         assert ahead["curtailed_kwh"] > default["curtailed_kwh"]
         rows = c.get("/api/v1/audit", params={"basis": "dayahead", "limit": 5}).json()["rows"]
         assert all(isinstance(r["necessary"], bool) for r in rows)
+
+
+OPERATION = "run: python -m kapacitet compute --stage extra --only operation"
+
+
+@needs_operation
+def test_the_needed_hours_add_up_by_component():
+    idx = json.loads(_read("index.json").read_text(encoding="utf-8"))
+    first = json.loads(_read("dayahead", "maxmin", "compliance.json").read_text(encoding="utf-8"))
+    if "binding_constraint_necessary_hours" not in first:
+        pytest.skip(f"the filings predate the binding component of the needed hours; {OPERATION}")
+    for basis, rules in idx["combos"].items():
+        for rule in rules:
+            report = json.loads(_read(basis, rule, "compliance.json").read_text(encoding="utf-8"))
+            if "activations_necessary_hours" not in report:          # nothing was limited
+                continue
+            needed = report["binding_constraint_necessary_hours"]
+            assert sum(needed.values()) == report["activations_necessary_hours"], (basis, rule)
+            assert all(n <= report["binding_constraint_hours"][k] for k, n in needed.items()), (basis, rule)
+
+
+@needs_operation
+def test_the_day_ahead_issue_audits_where_the_year_beat_its_plan():
+    idx = json.loads(_read("index.json").read_text(encoding="utf-8"))
+    for rule in idx["combos"].get("dayahead", {}):
+        issued = json.loads(_read("dayahead", rule, "issued.json").read_text(encoding="utf-8"))
+        if "exceedance" not in issued:
+            pytest.skip(f"issued.json predates the exceedance audit; {OPERATION}")
+        ex = issued["exceedance"]
+        assert {"pv_customer_hours_over", "pv_aggregate_hours_over", "load_customer_hours_under",
+                "load_aggregate_hours_under", "net_aggregate_hours_not_dominated", "first_hours"} <= set(ex)
+        days = json.loads(_read("dayahead", rule, "days.json").read_text(encoding="utf-8"))
+        for key, total in (("exceedance_pv_customer_hours", "pv_customer_hours_over"),
+                           ("exceedance_load_customer_hours", "load_customer_hours_under"),
+                           ("exceedance_net_hours", "net_aggregate_hours_not_dominated")):
+            assert len(days[key]) == days["days"] and sum(days[key]) == ex[total], (rule, key)

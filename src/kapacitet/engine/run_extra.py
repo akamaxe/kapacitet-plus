@@ -121,6 +121,9 @@ def _foresight_case(args) -> dict:
                                window_days=window, hi=yd)
     return {"order": o, "adopters": int(k), "kw_ac": float(cap[order[:k]].sum()),
             "z_pct": det["z_pct"], "violation_hours": det["violation_hours"],
+            "at_floor": bool(k <= mts),
+            "exceedance": det["exceedance"],
+            "exceedance_per_year": [{"year": p["year"], **p["exceedance"]} for p in det["per_year"] if p["exceedance"]],
             "seconds": time.perf_counter() - t0}
 
 
@@ -128,16 +131,21 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
     """What the published capacity owes to perfect foresight, measured rather than caveated.
 
     The published envelopes are allocated knowing the hour they apply to. This stage repeats
-    the same capacity search against a *dominating* planning state — generation at the
-    highest the same fortnight reached in the other weather years, load at the static
-    method's minimum — which needs no weather forecast at all and is therefore the
-    pessimistic end of what any operator could do. The published figure and this one bracket
-    real day-ahead practice.
+    the same capacity search against the day-ahead planning state of
+    `forecast.climatological` — generation at the highest, and load at the lowest, the same
+    fortnight reached in the other weather years, each widened by its day-ahead margin —
+    which needs no weather forecast at all and is therefore the pessimistic end of what any
+    operator could do. The published figure and this one bracket real day-ahead practice.
+
+    That state is meant to dominate the year, and the record says how often it did not: every
+    year of every order is audited (`forecast.plan_exceedance`), per order and per year here.
+    Per order, `at_floor` says the day-ahead search ended at or below the time-series capacity
+    it starts from, and `kw_minus_timeseries` by how much it rose above it (or fell below).
     """
     from concurrent.futures import ProcessPoolExecutor
 
     from . import forecast
-    from .run import _init_worker, background_masks
+    from .run import _init_worker, background_masks, spread
     window = forecast.WINDOW_DAYS if window_days is None else window_days
     summary = json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8"))
     cap_total = summary["total_cap_kw"]
@@ -152,18 +160,32 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
     published = {m: med([r[m]["kw_ac"] for r in summary["per_order"]])
                  for m in ("static", "timeseries", "fixed_cap", "doe")}
     climatological_kw = med([r["kw_ac"] for r in rows])
+    pv_margin, load_margin = forecast.day_ahead_margins()
+    by_year = {y: forecast.total_exceedance([next((p for p in r["exceedance_per_year"] if p["year"] == y), None)
+                                             for r in rows]) for y in years}
+    per_order = []
+    for r in summary["per_order"]:
+        row = {k: v for k, v in by_order[r["order"]].items() if k != "exceedance_per_year"}
+        per_order.append({**row, "doe_kw": r["doe"]["kw_ac"], "static_kw": r["static"]["kw_ac"],
+                          "timeseries_kw": r["timeseries"]["kw_ac"],
+                          "kw_minus_timeseries": row["kw_ac"] - r["timeseries"]["kw_ac"]})
     _write("foresight.json", {
         "years": list(years), "z_star_pct": z_star, "window_days": window,
+        "margins": {"pv_pct": round(pv_margin * 100.0, 6), "load_pct": round(load_margin * 100.0, 6)},
         "n_orders": len(rows), "total_cap_kw": cap_total,
         "exceedance": forecast.exceedance_audit(settings().reference_year, hp, ev, window),
+        "plan_exceedance": {"total": forecast.total_exceedance([r["exceedance"] for r in rows]),
+                            "by_year": {str(y): ex for y, ex in by_year.items()}},
         "median_kw": {**published, "climatological": climatological_kw},
+        "kw_ac_stats": {"climatological": spread([r["kw_ac"] for r in rows])},
         "median_adopters": {"climatological": med([r["adopters"] for r in rows]),
                             "doe": med([r["doe"]["adopters"] for r in summary["per_order"]]),
                             "static": med([r["static"]["adopters"] for r in summary["per_order"]])},
         "foresight_premium_kw": published["doe"] - climatological_kw,
         "violation_hours": int(sum(r["violation_hours"] for r in rows)),
-        "per_order": [{**by_order[r["order"]], "doe_kw": r["doe"]["kw_ac"],
-                       "static_kw": r["static"]["kw_ac"]} for r in summary["per_order"]],
+        "within_budget_orders": int(sum(r["z_pct"] <= z_star + 1e-9 for r in rows)),
+        "at_floor_orders": int(sum(r["at_floor"] for r in rows)),
+        "per_order": per_order,
     })
     log.info("foresight: climatological %.0f kW vs published %.0f kW (%.0f kW of the gain is "
              "the forecast), %d violation hours", climatological_kw, published["doe"],

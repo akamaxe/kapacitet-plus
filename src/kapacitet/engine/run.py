@@ -58,6 +58,14 @@ def _write(name: str, obj) -> None:
     processed("results", name).write_text(json.dumps(obj, indent=1, default=_default), encoding="utf-8")
 
 
+def spread(values) -> dict:
+    """Median, 10th and 90th percentile, minimum and maximum: how a figure spreads over the
+    adoption orders, in the shape every summary of them uses."""
+    v = np.asarray(values, dtype=float)
+    return {"median": float(np.median(v)), "p10": float(np.percentile(v, 10)),
+            "p90": float(np.percentile(v, 90)), "min": float(v.min()), "max": float(v.max())}
+
+
 def _default(o):
     if isinstance(o, (np.integer,)):
         return int(o)
@@ -276,9 +284,7 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
     log.info("orders done (%.0f s)", time.perf_counter() - t0)
 
     def stats(key: str, field: str) -> dict:
-        v = np.array([r[key][field] for r in per_order], dtype=float)
-        return {"median": float(np.median(v)), "p10": float(np.percentile(v, 10)),
-                "p90": float(np.percentile(v, 90)), "min": float(v.min()), "max": float(v.max())}
+        return spread([r[key][field] for r in per_order])
 
     summary = {
         **(extra or {}),

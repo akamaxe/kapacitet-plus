@@ -60,6 +60,13 @@ def test_the_exceedances_are_counted_on_both_sides(case):
     assert audit["pv_aggregate_hours_over"] <= 5, audit
     assert audit["pv_worst_aggregate_ratio"] < 1.1, audit
     assert audit["load_aggregate_hours_under"] == 0, audit
+    # the margins only ever remove exceedances, and the bare record's ratio stays published
+    bare = forecast.exceedance_audit(show["year"], hp, ev, pv_margin=0.0, load_margin=0.0)
+    assert bare["pv_margin_pct"] == 0 and audit["pv_margin_pct"] == A("dayahead_pv_margin_pct")
+    assert audit["pv_aggregate_hours_over"] <= bare["pv_aggregate_hours_over"]
+    assert audit["pv_customer_hours_over"] <= bare["pv_customer_hours_over"]
+    assert audit["load_customer_hours_under"] <= bare["load_customer_hours_under"]
+    assert audit["pv_worst_aggregate_ratio_unmargined"] == pytest.approx(bare["pv_worst_aggregate_ratio"])
 
 
 @needs_results
@@ -96,6 +103,7 @@ def test_envelopes_issued_against_the_bound_keep_the_limits(case):
     assert r.violation_hours == 0, "a dominating state leaves no hour unguarded"
     assert r.curtailed_kwh > 0, "and it is not free"
     assert 0 < r.curtailed_share_pct < 100
+    assert r.exceedance["net_aggregate_hours_not_dominated"] == 0, r.exceedance
 
 
 @needs_results
@@ -111,6 +119,7 @@ def test_a_point_forecast_does_not(case):
     r = forecast.issue(model, forecast.persistence(show["year"], pv, hp, ev), actual, nonfirm,
                        "persistence")
     assert r.violation_hours > 0
+    assert r.exceedance["net_aggregate_hours_not_dominated"] > 0, "and its audit says why"
     err = forecast.forecast_error(actual, forecast.persistence(show["year"], pv, hp, ev))
     assert err["p95_underprediction_kw"] > 0, "it under-predicts export, which is the dangerous way"
 
@@ -179,3 +188,196 @@ def test_the_published_ladder_is_ordered(results):
     assert kw["static"] < kw["climatological"] <= kw["doe"]
     assert f["foresight_premium_kw"] == pytest.approx(kw["doe"] - kw["climatological"], abs=1e-6)
     assert f["violation_hours"] == 0, "every rung of the ladder is verified, not just the published one"
+
+
+FORESIGHT = "run: python -m kapacitet compute --stage extra --only foresight"
+
+
+def _foresight_with_margins(results) -> dict:
+    """foresight.json, once it carries the floor guard and the margins; skipped before that."""
+    try:
+        f = results("foresight")
+    except FileNotFoundError:
+        pytest.skip(f"no foresight.json ({FORESIGHT})")
+    if "within_budget_orders" not in f or "margins" not in f:
+        pytest.skip(f"foresight.json predates the floor guard and the day-ahead margins; {FORESIGHT}")
+    return f
+
+
+@needs_results
+def test_every_published_day_ahead_order_is_inside_the_budget(results):
+    """The search used to assume its floor was acceptable; now it measures it."""
+    f = _foresight_with_margins(results)
+    over = [(r["order"], r["z_pct"]) for r in f["per_order"] if r["z_pct"] > f["z_star_pct"] + 1e-9]
+    assert not over, over
+    assert f["within_budget_orders"] == f["n_orders"]
+
+
+@needs_results
+def test_the_day_ahead_capacity_sits_between_static_and_foresight(results):
+    f = _foresight_with_margins(results)
+    for r in f["per_order"]:
+        assert r["static_kw"] - 1e-9 <= r["kw_ac"] <= r["doe_kw"] + 1e-9, r["order"]
+        assert r["kw_minus_timeseries"] == pytest.approx(r["kw_ac"] - r["timeseries_kw"], abs=1e-9)
+        assert r["at_floor"] == (r["kw_ac"] <= r["timeseries_kw"] + 1e-9), r["order"]
+    stats = f["kw_ac_stats"]["climatological"]
+    assert stats["median"] == pytest.approx(f["median_kw"]["climatological"])
+    assert stats["min"] <= stats["p10"] <= stats["median"] <= stats["p90"] <= stats["max"]
+
+
+@needs_results
+def test_the_margins_cover_the_record_of_the_reference_year(results):
+    f = _foresight_with_margins(results)
+    assert f["exceedance"]["pv_margin_pct"] == f["margins"]["pv_pct"]
+    if f["margins"]["pv_pct"] > 0:
+        assert f["exceedance"]["pv_aggregate_hours_over"] == 0, f["exceedance"]
+    audit = f["plan_exceedance"]
+    assert audit["total"] is not None and audit["total"]["audits"] > 0, "every issue is audited"
+    assert set(audit["by_year"]) == {str(y) for y in f["years"]}
+    assert sum(ex["audits"] for ex in audit["by_year"].values() if ex) == audit["total"]["audits"]
+
+
+# ------------------------------------------------------------------- the search, without data
+
+class _Grid:
+    C = 120
+
+
+MS = 50
+
+
+def _z(k: int) -> float:
+    """Curtailment by adopter count, as order 2 published it: z(72) = 2.96 and z(73) = 3.35
+    around a 3 % budget, z(96) = 10 at the perfect-foresight ceiling, and zero at `MS`."""
+    if k <= 72:
+        return 2.96 * (k - MS) / (72 - MS)
+    if k == 73:
+        return 3.35
+    return 3.35 + (10.0 - 3.35) * (k - 73) / (96 - 73)
+
+
+@pytest.fixture
+def searched(monkeypatch):
+    calls: list[tuple[int, bool]] = []
+
+    def multiyear(model, order, ms, k, years, hp, ev, scheme, *, window_days, policy,
+                  check_safety=False):
+        calls.append((int(k), bool(check_safety)))
+        return {"adopters": int(k), "z_pct": _z(k), "violation_hours": 0}
+
+    monkeypatch.setattr(forecast, "multiyear", multiyear)
+    return calls
+
+
+def _search(lo: int, hi: int | None):
+    return forecast.adopters(_Grid(), np.arange(_Grid.C), MS, lo, (2025,), None, None,
+                             "climatological", 3.0, hi=hi)
+
+
+def test_the_search_measures_its_floor_and_goes_down_when_it_fails(searched):
+    k, det = _search(73, 96)
+    assert k == 72 and det["adopters"] == 72
+    trial = [n for n, full in searched if not full]
+    assert trial[0] == 73, "the floor is measured first, never assumed"
+    assert 96 not in trial, "a floor over the budget never pays for the ceiling"
+    assert MS not in trial, "nobody holds an envelope at ms, so z(ms) = 0 needs no run"
+    assert len(trial) == len(set(trial)), "each count is evaluated once"
+    assert searched[-1] == (72, True), "the point returned is checked in full"
+
+
+def test_the_floor_guard_holds_when_the_ceiling_is_no_higher(searched):
+    assert _search(73, 73)[0] == 72
+    assert _search(73, 60)[0] == 72
+    assert _search(72, 60)[0] == 72, "a floor inside the budget stays, whatever the ceiling"
+
+
+def test_a_floor_inside_the_budget_still_climbs(searched):
+    assert _search(60, 96)[0] == 72
+    assert _search(60, 70)[0] == 70, "and stops at the ceiling when the ceiling passes"
+
+
+# ------------------------------------------------------------------- the margins, without data
+
+@pytest.fixture
+def record(monkeypatch):
+    """A six-house record in place of eleven years of profiles."""
+    import pandas as pd
+
+    rng = np.random.default_rng(4)
+    C, H = 6, 48
+    ilr = A("pv_dc_ac_ratio")
+    kwp = np.array([3.0, 5.0, 8.0, 10.0, 12.0, 4.0])
+    per = rng.uniform(0.0, 1.0 / ilr, (C, H))
+    per[:, :6] = 0.0                       # night
+    per[0, 10] = 1.0 / ilr                 # a house at its inverter rating
+    floor = rng.uniform(0.2, 3.0, (C, H)).astype(np.float32)
+    kept = per.copy(), floor.copy()
+    monkeypatch.setattr(forecast, "customers",
+                        lambda: pd.DataFrame({"kwp": kwp, "fuse_kva": np.full(C, 11.0)}))
+    monkeypatch.setattr(forecast, "pv_upper_bound", lambda year, window_days=14: per)
+    monkeypatch.setattr(forecast, "load_lower_bound", lambda year, hp, ev, window_days=14: floor)
+    mask = np.ones(C, dtype=bool)
+    mask[5] = False
+    return mask, kwp, per, floor, kept
+
+
+def test_the_margins_dominate_the_bare_record(record):
+    mask, kwp, per, floor, kept = record
+    bare = forecast.climatological(2025, mask, None, None, pv_margin=0.0, load_margin=0.0)
+    wide = forecast.climatological(2025, mask, None, None, pv_margin=0.03, load_margin=0.03)
+    assert (wide["pv"] >= bare["pv"]).all() and (wide["load"] <= bare["load"]).all()
+    assert (wide["p_net"] >= bare["p_net"]).all(), "more generation and less load: more export"
+    assert (wide["pv"] > bare["pv"]).any() and (wide["load"] < bare["load"]).all()
+    inv = np.minimum(kwp / A("pv_dc_ac_ratio"), 11.0)
+    assert (wide["pv"] <= inv[:, None] + 1e-6).all(), "the margin goes on before the inverter cap"
+    assert wide["pv"][0, 10] == pytest.approx(bare["pv"][0, 10]), "a house at its rating stays there"
+    assert (wide["pv"][5] == 0).all(), "and a house without solar has none"
+    assert np.array_equal(per, kept[0]) and np.array_equal(floor, kept[1]), "the cached record is untouched"
+    default = forecast.climatological(2025, mask, None, None)
+    pm, lm = A("dayahead_pv_margin_pct") / 100, A("dayahead_load_margin_pct") / 100
+    explicit = forecast.climatological(2025, mask, None, None, pv_margin=pm, load_margin=lm)
+    assert np.array_equal(default["pv"], explicit["pv"]) and np.array_equal(default["load"], explicit["load"])
+    assert forecast.day_ahead_margins() == (pm, lm)
+    with pytest.raises(ValueError):
+        forecast.day_ahead_margins(load_margin=1.0)
+
+
+# ------------------------------------------------------------------- the audit, without data
+
+def _state(pv: np.ndarray, load: np.ndarray) -> dict:
+    return {"pv": pv, "load": load, "p_net": pv - load}
+
+
+def test_plan_exceedance_counts_where_the_year_beat_the_plan():
+    C, H = 3, 6
+    plan = _state(np.full((C, H), 2.0), np.full((C, H), 1.0))
+    pv, load = plan["pv"].copy(), plan["load"].copy()
+    pv[0, 1] = 2.5                          # one house 0.5 over: so is the total
+    pv[1, 3], pv[2, 3] = 2.2, 1.5           # one house over, the total under
+    load[2, 4] = 0.6                        # one house 0.4 under: so is the total
+    load[0, 5], load[1, 5] = 0.9, 1.3       # one house under, the total over
+    actual = _state(pv, load)
+    ex = forecast.plan_exceedance(plan, actual, nonfirm=[0])
+    assert (ex["pv_customer_hours_over"], ex["pv_aggregate_hours_over"]) == (2, 1)
+    assert ex["pv_worst_customer_kw"] == pytest.approx(0.5) and ex["pv_worst_aggregate_kw"] == pytest.approx(0.5)
+    assert (ex["load_customer_hours_under"], ex["load_aggregate_hours_under"]) == (2, 1)
+    assert ex["load_worst_customer_kw"] == pytest.approx(0.4) and ex["load_worst_aggregate_kw"] == pytest.approx(0.4)
+    assert ex["net_aggregate_hours_not_dominated"] == 2 and ex["net_worst_aggregate_kw"] == pytest.approx(0.5)
+    assert ex["first_hours"] == {"pv": [1, 3], "load": [4, 5], "net": [1, 4]}
+    assert ex["nonfirm_pv_customer_hours_over"] == 1 and ex["nonfirm_load_customer_hours_under"] == 1
+
+    hourly = forecast.exceedance_hours(plan, actual)
+    assert hourly["pv_customers"].tolist() == [0, 1, 0, 1, 0, 0]
+    assert hourly["load_customers"].tolist() == [0, 0, 0, 0, 1, 1]
+    assert hourly["net_aggregate"].tolist() == [False, True, False, False, True, False]
+    assert int(hourly["pv_customers"].sum()) == ex["pv_customer_hours_over"]
+
+    same = forecast.plan_exceedance(actual, actual)
+    assert all(v == 0 for k, v in same.items() if k != "first_hours"), "perfect foresight counts nothing"
+    assert same["first_hours"] == {"pv": [], "load": [], "net": []}
+
+    total = forecast.total_exceedance([ex, None, {**ex, "year": 2024}])
+    assert total["pv_customer_hours_over"] == 4 and total["net_aggregate_hours_not_dominated"] == 4
+    assert total["pv_worst_customer_kw"] == pytest.approx(0.5) and total["audits"] == 2
+    assert "first_hours" not in total and "year" not in total
+    assert forecast.total_exceedance([None, None]) is None
