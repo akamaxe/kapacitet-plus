@@ -150,3 +150,29 @@ def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> d
         procs.lock_path(folder).unlink(missing_ok=True)
     return {"status": rec["status"], "code": code, "seconds": round(time.perf_counter() - t0, 1),
             "error": rec.get("error")}
+
+
+def validate(study: Study, stations: list[str] | None = None, allow_git: bool = False,
+             timeout: float | None = None) -> dict:
+    """`kapacitet station validate <sid>` for each built station, one after another, each in its
+    own process with the station's environment (env_for); its output goes to the station's
+    build.log. Returns {sid: {"code", "seconds"}}."""
+    out = {}
+    for sid in stations or study.station_ids():
+        if study.record(sid).get("status") != "ready":
+            continue
+        cmd = [sys.executable, "-m", "kapacitet", "station", "validate", sid, "--study", str(study.root)]
+        if allow_git:
+            cmd.append("--allow-git")
+        folder = study.station_dir(sid)
+        t0 = time.perf_counter()
+        with open(folder / procs.LOG, "ab") as log:
+            log.write(f"\n=== {procs.now()} {' '.join(cmd)}\n".encode("utf-8"))
+            log.flush()
+            try:
+                code = subprocess.run(cmd, env=env_for(study, sid), cwd=str(paths.ROOT), stdout=log,
+                                      stderr=subprocess.STDOUT, stdin=subprocess.DEVNULL, timeout=timeout).returncode
+            except subprocess.TimeoutExpired:
+                code = None
+        out[sid] = {"code": code, "seconds": round(time.perf_counter() - t0, 1)}
+    return out

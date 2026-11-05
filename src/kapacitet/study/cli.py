@@ -1,5 +1,6 @@
-"""The study commands: `kapacitet study init|demo|fetch|import|check|build|status <dir>`, and the
-hidden `kapacitet station build <sid> --study <dir>` that a study's build starts once per station.
+"""The study commands: `kapacitet study init|demo|fetch|import|check|build|status|collect|validate
+<dir>`, and the hidden `kapacitet station build|validate <sid> --study <dir>` that a study's build
+and validation start once per station.
 
 pipeline.py registers them with one call to `register`; nothing heavy is imported until a command
 runs.
@@ -48,10 +49,14 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
     q = add("status", "what each station is and how its last build went")
     q.add_argument("--json", action="store_true", help="the records as JSON")
+    q = add("collect", "every station's capacity, upstream caps applied, into runs/<quarter>/stations.parquet")
+    q.add_argument("--quarter", default=None, help="the run's quarter, as 2026Q4 (default: this quarter)")
+    q = add("validate", "replay each station's metered hours and compare with the measurements and dpPower")
+    q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
-    p.add_argument("action", choices=["build"])
+    p.add_argument("action", choices=["build", "validate"])
     p.add_argument("sid")
     p.add_argument("--study", required=True)
     p.add_argument("--quick", action="store_true")
@@ -69,7 +74,7 @@ def cmd_study(args: argparse.Namespace) -> None:
 
     try:
         {"init": _init, "demo": _demo, "fetch": _fetch, "import": _import, "check": _check, "build": _build,
-         "status": _status}[args.study_command](args)
+         "status": _status, "collect": _collect, "validate": _validate}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -204,15 +209,41 @@ def _status(args) -> None:
             print(f"      {rec['error']}")
 
 
+def _collect(args) -> None:
+    from . import open_study
+    from .collect import collect
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = collect(study, args.quarter)
+    print(f"{out['rows']} stations in {out['path']}")
+    for sid in out["rewritten"]:
+        print(f"  {sid}: capacity.json takes the current upstream caps")
+
+
+def _validate(args) -> None:
+    from . import open_study
+    from .portfolio import validate
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = validate(study, stations=args.station, allow_git=args.allow_git)
+    for sid, r in out.items():
+        print(f"  {sid}: {'done' if r['code'] == 0 else 'failed (see build.log)'} in {r['seconds']:.0f} s")
+    if any(r["code"] != 0 for r in out.values()):
+        sys.exit(1)
+
+
 def cmd_station(args: argparse.Namespace) -> None:
-    """One station's build, in this process (started by `study build`)."""
+    """One station's build or validation, in this process (started by `study build|validate`)."""
     import logging
 
     from . import StudyError, open_study
-    from .station import build
+    from .station import build, validate
 
     try:
         study = open_study(args.study, allow_git=args.allow_git)
+        if args.action == "validate":
+            validate(study, args.sid)
+            sys.exit(0)
         rec = build(study, args.sid, quick=args.quick)
     except StudyError as err:
         _fail(err)

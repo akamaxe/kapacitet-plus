@@ -147,6 +147,27 @@ source = "Persson & Jonsson (2018), MDU / Mälarenergi Elnät, Tabell 4 (EL340)"
 url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
 note = ""
 
+[velander_elvarme_k1]
+value = 0.000332
+unit = "kW/kWh"
+tag = "sourced"
+label = "Velander constant, energy term (småhus med elvärme)"
+label_sv = "Velanders konstant, energiterm (småhus med elvärme)"
+source = "Persson & Jonsson (2018), Utvärdering av Velanders formel för toppeffektberäkning i eldistributionsnät, MDU / Mälarenergi Elnät, Bilaga 6 (EL350)"
+url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
+note = "Used by a study's peak check (peak_check.json) for a station whose customers are mostly electrically heated."
+note_sv = "Används av en studies toppeffektkontroll (peak_check.json) för en station vars kunder mest har elvärme."
+
+[velander_elvarme_k2]
+value = 0.052119
+unit = "kW/√kWh"
+tag = "sourced"
+label = "Velander constant, square-root term (småhus med elvärme)"
+label_sv = "Velanders konstant, kvadratrotsterm (småhus med elvärme)"
+source = "Persson & Jonsson (2018), MDU / Mälarenergi Elnät, Bilaga 6 (EL350)"
+url = "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"
+note = ""
+
 [cable_design_utilisation]
 value = 0.7
 unit = "p.u. of Imax"

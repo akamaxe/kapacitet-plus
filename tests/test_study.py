@@ -648,9 +648,14 @@ def test_the_demo_builds_end_to_end_with_the_existing_pipeline(demo):
         assert [s["status"] for s in rec["steps"]] == ["done"] * len(station.STEPS)
         assert rec["summary"]["customers"] == len((demo.station_dir(sid) / "import" / "customers.csv")
                                                   .read_text(encoding="utf-8").splitlines()) - 1
-        summary = json.loads((demo.station_dir(sid) / "processed" / "results" / "hosting_summary.json").read_text())
-        static, doe = (summary["measures"][k]["kw_ac"]["median"] for k in ("static", "doe"))
-        assert 0 < static <= doe and summary["method"] == "provisional"
+        from test_station_capacity import check_capacity
+
+        cap = json.loads((demo.station_dir(sid) / "processed" / "results" / "capacity.json").read_text())
+        check_capacity(cap)
+        assert cap["station"] == sid and cap["mv_band_pu"] == [0.98, 1.06] and cap["orders"] == 5
+        gen = cap["generation"]
+        assert gen["status"] != "ok" or 0 <= gen["static_kw"] <= gen["kw"] + 1e-9
+        assert rec["summary"]["generation_kw"] == gen.get("kw")
         synthetic = " ".join(rec["provenance"]["synthetic"])
         assert "weather: the reference site's SMHI years" in synthetic and "network: pandapower" in synthetic
         assert not rec["provenance"]["real"]

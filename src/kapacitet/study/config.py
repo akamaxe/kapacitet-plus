@@ -9,7 +9,9 @@ an unknown section or key is an error rather than a setting silently ignored. Th
                    area. Without lat/lon the study has no place of its own: `study fetch` refuses,
                    and its stations reuse the reference network's weather, labelled synthetic
     [time]         reference_year and the weather years, when they differ from config/site.toml
-    [method]       percentile = 50, budget = "aggregate" | "installation", consumption_device = "ev"
+    [method]       percentile = 50, budget = "aggregate" | "installation", consumption_device = "ev" |
+                   "heat_pump", approval_reference (the DSO's approval of the envelope method: without
+                   it no envelope capacity is published)
     [mv]           band_low_pu, band_high_pu, source: generation is computed at the high end and
                    consumption at the low end
     [disclosure]   level = "station" | "grid" | "zone", grid_m, min_customers = 5, hidden stations
@@ -37,8 +39,7 @@ METHOD_VERSION = "1.0.0"
 # network builder on OpenStreetMap (grid/builder.build), which a study's stations never run since
 # their networks are imported, and those no code reads, which document a value fixed in the code.
 BUILDER_ONLY = ("cabinet_max_services", "cabinet_reach_m", "cable_design_utilisation", "feeder_max_customers",
-                "fuse_thresholds_m2", "main_cable_type", "trafo_design_margin", "trafo_tap_pos", "trafo_types",
-                "velander_k1", "velander_k2")
+                "fuse_thresholds_m2", "main_cable_type", "trafo_design_margin", "trafo_tap_pos", "trafo_types")
 DOCUMENTED_ONLY = ("hp_cop_model", "pv_system_losses_pct")
 NOT_IN_A_STUDY = BUILDER_ONLY + DOCUMENTED_ONLY
 
@@ -106,6 +107,7 @@ class Method(_Section):
     percentile: float = Field(50.0, ge=0.0, le=100.0)
     budget: Literal["aggregate", "installation"] = "aggregate"
     consumption_device: Literal["ev", "heat_pump"] = "ev"
+    approval_reference: str = ""
 
 
 class Mv(_Section):
@@ -279,6 +281,8 @@ def template(name: str = "", site: dict | None = None) -> str:
         "percentile = 50                 # of the adoption orders, per station",
         'budget = "aggregate"            # or "installation": the curtailment budget\'s basis',
         'consumption_device = "ev"       # or "heat_pump": what a consumption capacity is for',
+        '# approval_reference = "..."     # the DSO\'s approval of the envelope method; without it no',
+        '#                                # envelope capacity is published',
         "",
         "[mv]",
         "band_low_pu = 0.98              # consumption is computed here",

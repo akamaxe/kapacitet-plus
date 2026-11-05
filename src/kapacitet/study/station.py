@@ -18,9 +18,10 @@ them), so every step is the existing pipeline's and writes only into `stations/<
     load        the metered customers' load, temperature-corrected and laid over every weather
                 year (profiles/metered.py), in place of the pool's profile for them
     profiles    PV, heat pumps and EV charging on that weather (profiles.build)
-    compute     static, hourly and envelope capacity per adoption order, and the nodal maps, with
-                the engine's own stages in this process (workers = 1); provisional, since the
-                study's MV band and [method] are not applied yet
+    compute     Module 1 (engine/station.py): the generation capacity at both ends of the MV band,
+                the lower one published; the consumption capacity at the low end; the weakest
+                connection point; the peak check; the "existing" request baseline; and the upstream
+                caps applied (study/upstream.py), into processed/results/capacity.json
 
 Nothing a later step rewrites is ever a link to the reference network's files: a write to a
 linked file is a write to the original. Each step's outcome, the inputs' digests and what is real,
@@ -40,14 +41,12 @@ from pathlib import Path
 from typing import Callable
 
 from .. import paths, procs
-from . import PROVENANCE, SCHEMA, Study, StudyError, code_version
+from . import PROVENANCE, SCHEMA, Study, StudyError, code_version, value_digest
 from .config import METHOD_VERSION
 
 log = logging.getLogger("kapacitet.study")
 STEPS = ("import", "equipment", "meters", "weather", "households", "load", "profiles", "compute")
 POOL_NOTE = "household load: the CREST profile pool (richardsonpy), not metered"
-# what hosting_summary.json says about a station's figures until the study's method is applied
-PROVISIONAL = {"method": "provisional", "not_applied": ["mv_band", "percentile", "budget", "consumption_device"]}
 
 
 def isolated(study: Study, sid: str) -> bool:
@@ -306,15 +305,15 @@ def _real_steps(study: Study, sid: str, rec: dict, quick: bool) -> dict:
 
     def do_compute():
         mv, method = study.config.mv, study.config.method
-        note("assumed", f"MV voltage: the engine's 1.00 pu; the study's band {mv.band_low_pu:.2f}–"
-                        f"{mv.band_high_pu:.2f} pu ({mv.source}) is not applied by this build")
-        note("assumed", f"method: the median of the adoption orders and the aggregate curtailment budget; "
-                        f"the study's percentile = {method.percentile:g}, budget = {method.budget} and "
-                        f"consumption_device = {method.consumption_device} are not applied by this build, "
-                        "whose figures are provisional")
+        note("assumed", f"MV voltage: the band {mv.band_low_pu:.2f}–{mv.band_high_pu:.2f} pu ({mv.source}); "
+                        "generation is computed at both ends and the lower value published, consumption at "
+                        "the low end")
+        approval = "" if method.approval_reference.strip() else "; no envelope capacity (no approval_reference)"
+        note("assumed", f"method: percentile {method.percentile:g} of the adoption orders, consumption device "
+                        f"{method.consumption_device}, curtailment budget basis {method.budget}{approval}")
         for key, o in study.config.assumptions.items():
             note("assumed", f"{key} = {o.value} {o.unit} ({o.source})")
-        return compute(quick)
+        return compute(study, sid, rec, quick)
 
     return {"import": do_import, "equipment": lambda: place_equipment(study, sid, rec, note),
             "meters": lambda: place_meters(study, sid, rec, note), "weather": lambda: place_weather(study, note),
@@ -378,8 +377,9 @@ def place_equipment(study: Study, sid: str, rec: dict, note: Callable[[str, str]
                  f"heat pumps{said}")
     for what, n in sorted(applied.items()):
         note("assumed", f"existing equipment: {what} ({n})")
-    note("assumed", "existing equipment: recorded in customers.parquet; this build's capacity figures do not "
-                    "count it yet, and only the inverters' recorded phases are used (by the unbalanced model)")
+    note("assumed", "existing equipment: the existing PV is firm in every scenario; a recorded heat pump or EV "
+                    "of a metered customer is taken to be in the metered load; batteries and the chargers' ratings "
+                    "are not modelled, and only the inverters' recorded phases are used (by the unbalanced model)")
     return counts
 
 
@@ -461,17 +461,165 @@ def place_load(rec: dict, note: Callable[[str, str], None]) -> dict:
     return {"fitted": c["fitted"], "too_few_days": c["too_few_days"], "median_r2": report["median"]["r2"]}
 
 
-def compute(quick: bool = False) -> dict:
-    """Capacity per adoption order with the engine's own first stages (engine.run.capacity), in
-    this process: results/nodal.json and results/hosting_summary.json, the summary marked
-    provisional until the study's MV band and [method] are applied."""
-    from ..config import A
-    from ..engine import run
+def capacity_path() -> Path:
+    return paths.PROCESSED / "results" / "capacity.json"
+
+
+def fingerprint(study: Study, rec: dict, quick: bool) -> str:
+    """What a station's figures were computed from: its inputs' digests, the computation's part of
+    study.toml, the method version, the code and the mode."""
+    return value_digest({"inputs": rec.get("inputs"), "computation": study.config.computation(),
+                         "method_version": METHOD_VERSION, "code": code_version(), "quick": bool(quick)})
+
+
+def worst_generation(band: tuple[float, float], years, hp, ev) -> dict:
+    """The weakest point for generation at both ends of the band, the lower one kept (with both)."""
+    from ..engine import station as es
+    from ..engine.netmodel import get_model
+
+    ends = {f"{v:.2f}": es.worst_point(get_model(vm_slack=v), "export", years, hp, ev) for v in sorted(set(band))}
+    ok = [r for r in ends.values() if r["status"] == "ok"]
+    if len(ok) < len(ends):
+        out = dict(next(r for r in ends.values() if r["status"] != "ok"))
+    else:
+        out = dict(min(reversed(ok), key=lambda r: r["kw"]))       # a tie goes to the high end
+    out["by_end"] = {k: {key: r.get(key) for key in ("status", "kw", "cid", "customer_id", "baseline_violation_hours")}
+                     for k, r in ends.items()}
+    return out
+
+
+def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
+    """Module 1 for this station (engine/station.py) into processed/results/capacity.json, with
+    peak_check.json beside it and the "existing" request baseline, the upstream caps of
+    inputs/upstream.csv applied (study/upstream.py). Quick: the reference year and fewer orders."""
+    import pandas as pd
+
+    from ..atomic import write_json_atomic
+    from ..engine import request, run
+    from ..engine import station as es
+    from ..engine.netmodel import get_model
+    from . import upstream
 
     warnings.filterwarnings("ignore")
+    cfg = study.config
+    method, band = cfg.method, (cfg.mv.band_low_pu, cfg.mv.band_high_pu)
     years = _years(quick)
-    n_orders = run.N_ORDERS if not quick else 4
-    _per_order, summary = run.capacity(years, n_orders, A("z_star_pct"), workers=1, extra=PROVISIONAL)
-    measures = summary["measures"]
-    return {"years": list(years), "orders": n_orders,
-            "median_kw_ac": {k: round(measures[k]["kw_ac"]["median"], 1) for k in measures}}
+    n_orders = es.QUICK_ORDERS if quick else es.STUDY_ORDERS
+    m = run.model()
+    hp, ev = run.background_masks(m.C)
+    gen = es.generation_capacity(band, years, n_orders, method.percentile, hp, ev,
+                                 approval_reference=method.approval_reference, budget=method.budget)
+    low = get_model(vm_slack=band[0])
+    cons = es.consumption_capacity(low, es.engine_device(method.consumption_device), years, n_orders,
+                                   method.percentile, hp, ev)
+    cons["consumption_device"] = method.consumption_device
+    worst = {"generation": worst_generation(band, years, hp, ev),
+             "consumption": es.worst_point(low, "import", years, hp, ev)}
+    hourly = paths.PROCESSED / "meters" / "hourly.parquet"
+    peak = es.peak_check(pd.read_parquet(hourly) if hourly.is_file() else None, years, hp, ev)
+    write_json_atomic(paths.PROCESSED / "results" / "peak_check.json", peak, default=run._default)
+    request.precompute(m, "existing", years, hp, ev)
+    up, published = upstream.apply(upstream.read(study), sid, gen.get("kw"), cons.get("kw"))
+    checks = [x["verification"] for x in (gen, cons) if "verification" in x]
+    out = {
+        "schema": es.SCHEMA, "station": sid, "computed_at": procs.now(), "method_version": METHOD_VERSION,
+        "fingerprint": fingerprint(study, rec, quick), "mv_band_pu": [float(band[0]), float(band[1])],
+        "years": list(years), "orders": n_orders, "percentile": float(method.percentile),
+        "generation": gen, "consumption": cons, "worst_point": worst, "upstream": up, "published": published,
+        "peak_check": peak,
+        "verification": {"full_year_violations": sum(c["full_year_violations"] for c in checks),
+                         "nonconverged_hours": sum(c["nonconverged_hours"] for c in checks),
+                         "hours_checked": sum(c["hours_checked"] for c in checks)},
+    }
+    write_json_atomic(capacity_path(), out, default=run._default)
+    rec.setdefault("summary", {}).update(generation_kw=gen.get("kw"), consumption_kw=cons.get("kw"),
+                                         binding_mv_pu=gen.get("binding_mv_pu"))
+    return {"years": list(years), "orders": n_orders, "generation_kw": gen.get("kw"),
+            "generation_status": gen["status"], "binding_mv_pu": gen.get("binding_mv_pu"),
+            "consumption_kw": cons.get("kw"), "consumption_status": cons["status"]}
+
+
+# ---------------------------------------------------------------- measured validation
+
+def validate(study: Study, sid: str) -> dict:
+    """The station's model against the DSO's measurements and static results
+    (engine/validation_measured.py) into processed/results/validation_measured.json: the metered
+    hours replayed at the measured MV (inputs/mv/<sid>.csv) or at the band's ends, the dpPower
+    snapshot (inputs/dppower/snapshot.csv) by mRID, and the DSO's static results
+    (inputs/dppower/static.csv) against this model's. Runs in the station's own process."""
+    import pandas as pd
+
+    from ..atomic import write_json_atomic
+    from ..engine import hosting, run
+    from ..engine import validation_measured as vm
+    from ..engine.netmodel import get_model
+    from ..importer.build import bus_index
+
+    if not isolated(study, sid):
+        raise StudyError("not_isolated", id=sid, study=str(study.root))
+    warnings.filterwarnings("ignore")
+    cfg = study.config
+    band = (cfg.mv.band_low_pu, cfg.mv.band_high_pu)
+    years = _years(False)
+    m = run.model()
+    hp, ev = run.background_masks(m.C)
+    out: dict = {"station": sid, "computed_at": procs.now(), "method_version": METHOD_VERSION, "band_pu": list(band)}
+    hourly = paths.PROCESSED / "meters" / "hourly.parquet"
+    volt_file = paths.PROCESSED / "meters" / "voltage_15min.parquet"
+    mv_file = study.inputs / "mv" / f"{sid}.csv"
+    mv = vm.read_mv(mv_file) if mv_file.is_file() else None
+    trafo_kva = float(m.net.trafo["sn_mva"].iloc[0]) * 1000.0
+    meters = pd.read_parquet(hourly) if hourly.is_file() else None
+    if meters is not None and len(meters):
+        volt = pd.read_parquet(volt_file) if volt_file.is_file() else None
+        out["measured"] = vm.validate(lambda v: get_model(vm_slack=v), meters, years, hp, ev, band, volt=volt, mv=mv,
+                                      trafo_kva=trafo_kva)
+    else:
+        out["measured"] = {"status": "no meter readings"}
+    snap_file = study.inputs / "dppower" / "snapshot.csv"
+    if snap_file.is_file():
+        out["dppower"] = _snapshot(study, sid, vm, snap_file, meters, mv, hp, ev, band, bus_index)
+    static_file = study.inputs / "dppower" / "static.csv"
+    if static_file.is_file():
+        dso = pd.read_csv(static_file, sep=None, engine="python", dtype=str, encoding="utf-8-sig")
+        out["calibrate_static"] = vm.calibrate_static(dso, hosting.nodal_pv_hc(get_model(vm_slack=band[1])),
+                                                      hosting.nodal_import_hc(get_model(vm_slack=band[0]), hp, ev))
+        out["calibrate_static"]["mv_pu"] = {"gen_kw": band[1], "load_kw": band[0]}
+    write_json_atomic(paths.PROCESSED / "results" / "validation_measured.json", out, default=run._default)
+    return out
+
+
+def _snapshot(study: Study, sid: str, vm, path: Path, meters, mv, hp, ev, band, bus_index) -> dict:
+    """The dpPower snapshot's hours, each solved with that hour's replayed injection."""
+    import numpy as np
+    import pandas as pd
+
+    from ..engine.netmodel import get_model
+    from ..timeindex import local_standard, year_index
+
+    snap = pd.read_csv(path, sep=None, engine="python", dtype=str, encoding="utf-8-sig")
+    snap.columns = [c.strip().lower() for c in snap.columns]
+    for c in ("vm_pu", "loading_pct"):
+        if c in snap.columns:
+            snap[c] = pd.to_numeric(snap[c].str.replace(",", ".", regex=False), errors="coerce")
+    folder = study.station_dir(sid) / "import"
+    buses = pd.read_csv(folder / "buses.csv", dtype=str)
+    trafo = pd.read_csv(folder / "transformer.csv", dtype=str).iloc[0]
+    lines = pd.read_csv(folder / "lines.csv", dtype=str)["line_id"].astype(str).tolist()
+    index = bus_index(buses, str(trafo["lv_bus"]))
+    origin = (study.record(sid).get("origin") or {})
+    start = pd.to_datetime(snap["start"], utc=True, errors="coerce", format="ISO8601").dt.floor("h")
+    out = {}
+    for t, rows in snap.groupby(start):
+        year = int(local_standard(pd.DatetimeIndex([t])).year[0])
+        r = vm.replay(year, meters if meters is not None else pd.DataFrame(columns=["customer_id", "year", "hour",
+                                                                               "kwh_import", "kwh_export"]), hp, ev)
+        h = int((t - year_index(year)[0]) // pd.Timedelta(hours=1))
+        vm_h, _ = vm.mv_on(mv, year)
+        level = float(vm_h[h]) if np.isfinite(vm_h[h]) else None
+        runs = {"measured": level} if level is not None else {"band_low": band[0], "band_high": band[1]}
+        out[t.isoformat()] = {name: vm.compare_snapshot(get_model(vm_slack=v), rows, index, lines,
+                                                        origin.get("trafo_mrid"), r["p"][:, h], r["q"][:, h], None)
+                              for name, v in runs.items()}
+        out[t.isoformat()]["metered_injection"] = bool(r["complete"][h])
+    return out

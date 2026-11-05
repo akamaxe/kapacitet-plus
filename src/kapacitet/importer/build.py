@@ -60,8 +60,8 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
             applied[key] = applied.get(key, 0) + int(n)
 
     lv_id = str(trafo_in["lv_bus"])
-    ids = [lv_id] + [b for b in buses_in["bus_id"].astype(str) if b != lv_id]
-    index = {b: i + 1 for i, b in enumerate(ids)}          # 0 is reserved for the MV bus
+    index = bus_index(buses_in, lv_id)
+    ids = list(index)
 
     net = pp.create_empty_network()
     vn_lv = float(trafo_in["vn_lv_kv"])
@@ -142,6 +142,14 @@ def _get(row, key, default, note, label):
         note(label, 1)
         return default
     return float(value)
+
+
+def bus_index(buses_in: pd.DataFrame, lv_bus: str) -> dict[str, int]:
+    """The contract's bus_id -> the bus of the built network (pandapower's index, the row of a
+    power-flow result): the transformer's LV bus first, at 1, then the others in file order; 0 is
+    the MV bus. The lines keep the contract's row order, so line i is lines.csv's row i."""
+    ids = [str(lv_bus)] + [b for b in buses_in["bus_id"].astype(str) if b != str(lv_bus)]
+    return {b: i + 1 for i, b in enumerate(ids)}
 
 
 def _create_lines(net, lines_in, index, note) -> list[dict]:

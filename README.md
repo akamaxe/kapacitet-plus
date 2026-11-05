@@ -489,6 +489,8 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study check nb-2026     # the contract's report, per station
 .venv/Scripts/python -m kapacitet study build nb-2026 --quick
 .venv/Scripts/python -m kapacitet study status nb-2026
+.venv/Scripts/python -m kapacitet study collect nb-2026   # every station's figures, caps applied: runs/<quarter>/stations.parquet
+.venv/Scripts/python -m kapacitet study validate nb-2026  # the model against the meters, dpPower and the DSO's static results
 ```
 
 `study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
@@ -505,8 +507,7 @@ step, the digests of the inputs, the code's version and commit, and what is real
 assumed. A study without a place of its own, or that has not fetched its weather, reuses copies of
 the reference network's weather years, and says so; fetching makes its stations stale. The
 household load is the synthetic profile pool, scaled when the study overrides
-`household_kwh_per_year`, for every customer without enough meter readings (below). The capacity figures of a station are marked
-provisional: the study's MV band and method choices are not applied yet. The demo's networks are
+`household_kwh_per_year`, for every customer without enough meter readings (below). The demo's networks are
 built by pandapower at run time and written through `importer/from_pandapower.py`, which turns the
 LV island behind any pandapower transformer into the contract.
 
@@ -515,7 +516,9 @@ What is already connected goes in `inputs/equipment.csv`, the contract's optiona
 source and date; `docs/network-export-contract.md`); a station takes the rows of its customers,
 checked like the rest of the contract, into the `existing_*` columns of its customers, and an
 inverter's recorded phase, like a single-phase service's, wins over the phase allocation rule.
-Nothing else counts the existing equipment yet. Quarter-hour meter readings go in
+The existing PV is firm in every scenario, at its own kWp and AC rating, and a recorded heat pump
+or charger of a metered customer is taken to be in the metered load rather than added to it; the
+batteries and the chargers' ratings are not modelled yet. Quarter-hour meter readings go in
 `inputs/meters/` as CSV files (`customer_id` or `meter_id`, `start` in ISO 8601 with its UTC
 offset, `kwh_import`, and optionally `kwh_export` and `v_l1`–`v_l3`), comma or semicolon separated.
 They are read with DuckDB (`ingest/meters.py`) and checked: a time without its offset is refused,
@@ -526,6 +529,40 @@ metered customer's load is fitted as `a + b·max(17 °C − T, 0)` per hour and 
 (`profiles/metered.py`) and laid over every weather year with the residual of the nearest metered
 day of the same kind; `processed/validation/metered_fit.json` reports the fit. `study fetch` also
 brings the SMHI station's latest months, which the corrected archive does not have yet.
+
+A station's figures (Module 1, `engine/station.py`) go to `processed/results/capacity.json`
+(`kapacitet.capacity/1`, method 1.0.0):
+
+- **Generation**: adoption orders drawn only from the houses without existing PV and with a roof;
+  per order, the static and the hourly count (every candidate firm, nobody curtailed); the
+  station's value is the study's percentile of the orders by numpy's "lower" method, so it is one
+  actual order's deployment (21 orders, so the 50th is the median). Capacity is not monotone in the
+  MV voltage (at a low MV the transformer binds, at a high MV the voltage), so it is computed at
+  both ends of the band and the lower value published, with `binding_mv_pu` and the limit the next
+  adopter breaks. An envelope column appears only with `[method] approval_reference` set and its
+  envelopes verified on every hour.
+- **Consumption**: the study's device (EV charger or heat pump), house by house, at the low end of
+  the band, with the static winter count as a reference. A grid that already breaks an import
+  limit today is a finding with its hours, never 0 kW.
+- **Weakest point**: every customer's linear headroom on today's grid, the five lowest searched
+  and confirmed with the nonlinear flow on every hour.
+- **Verification**: each published deployment is solved on every hour of every year; a count the
+  searches' linear screens accepted but the full check does not is stepped down until it passes.
+- **Upstream caps** (`inputs/upstream.csv`: `level` feeder, substation or regional, `id`,
+  `parent_id`, `gen_headroom_kw`, `load_headroom_kw`, `source`, `as_of`; a station's `feeder_id`
+  and `hidden` in `inputs/stations.csv`): the published value is the minimum over the levels, with
+  `limited_by` and `shared_by`; a blank headroom is "not entered", never guessed. They apply after
+  the computation, so `study collect` applies the current file without building anything again.
+- **Peak check** (`peak_check.json`): Velander's peak (Persson & Jonsson 2018, with or without
+  electric heating), the measured maximum of the metered customers and the modelled peak.
+
+`study validate` replays each station's metered hours through the power flow at the measured MV of
+`inputs/mv/<id>.csv` (`start`, `vm_pu`, optionally `trafo_p_kw`, `trafo_q_kvar`) or at both ends
+of the band, and reports bias, MAE, RMSE, p95 and max for the voltages and the transformer's
+loading; a dpPower snapshot (`inputs/dppower/snapshot.csv`: `start`, `mrid`, `kind`, `vm_pu`,
+`loading_pct`) is compared element by element by mRID, and the DSO's static results
+(`inputs/dppower/static.csv`: `customer_id`, `gen_kw`, `load_kw`) with this model's
+(`processed/results/validation_measured.json`).
 
 A DSO that exports CGMES 2.4.15 (EQ, TP, SSH and, for the map, GL) puts the files in
 `inputs/network/cgmes/` and `inputs/cim_customers.csv` beside them, which CGMES cannot carry:
