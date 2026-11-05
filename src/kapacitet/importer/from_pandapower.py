@@ -35,10 +35,11 @@ Electrical data are written as they are in the network, so the built network is 
 from __future__ import annotations
 
 import math
-from functools import lru_cache
 from typing import Any, Mapping
 
 import pandas as pd
+
+from ..cache import memo
 
 CUSTOMER_FIELDS = ("customer_id", "fuse_a", "phase", "footprint_m2", "annual_kwh")
 # the transformer tap build.py creates: steps of this many percent on the HV side, neutral 0
@@ -225,7 +226,7 @@ def _lonlat(net) -> tuple[dict[int, float], dict[int, float]] | None:
     return {int(i): float(v) for i, v in x.items()}, {int(i): float(v) for i, v in y.items()}
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def _library_lines() -> pd.DataFrame:
     """pandapower's own line types: the ones build.py looks a std_type up in."""
     import pandapower as pp

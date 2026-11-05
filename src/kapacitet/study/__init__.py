@@ -28,12 +28,12 @@ import os
 import re
 import subprocess
 from dataclasses import dataclass
-from functools import lru_cache
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .. import procs
 from ..paths import ROOT
+from ..cache import memo
 
 if TYPE_CHECKING:
     from .config import StudyConfig
@@ -164,7 +164,7 @@ def value_digest(obj) -> str:
     return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def code_version() -> dict:
     """The Kapacitet+ version and commit a station was computed with."""
     from .. import __version__
