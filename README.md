@@ -173,10 +173,10 @@ November 2022 — attribution: *Elpriser tillhandahålls av Elpriset just nu.se*
 ENTSO-E Transparency token in `.env` (`ENTSOE_API_TOKEN=...`, see `.env.example`) the same
 prices can be fetched from the source for all 11 weather years.
 
-### Demo in five minutes
+### Getting around
 
-Start `python -m kapacitet serve`, open `http://127.0.0.1:8000` and press **F** for fullscreen.
-**1**–**8** jump straight to a screen, Ctrl + arrow keys or PageUp/PageDown step through them,
+Start `python -m kapacitet serve` and open `http://127.0.0.1:8000`. **1**–**8** jump straight to
+a screen, Ctrl + arrow keys or PageUp/PageDown step through them, **F** toggles full screen,
 **EN**/**SV** in the top bar switch language, and **?** lists every key.
 
 **Ctrl + K** is the way in if you know what you are looking for: it searches the eight screens,

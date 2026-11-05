@@ -3,7 +3,7 @@
 #         regulation       legal/standard limit
 #         library          standard component data (pandapower standard types, pvlib defaults)
 #         derived          computed from real data in this project (see note)
-#         team-assumption  our modelling choice, to be validated (always listed as such)
+#         team-assumption  a modelling choice, to be validated (always listed as such)
 # label_sv/note_sv say the same in Swedish (the interface speaks English and Swedish,
 # docs/glossary.md); sources stay in the language they were published in.
 
@@ -111,7 +111,7 @@ unit = "×"
 tag = "team-assumption"
 label = "Transformer sizing margin over the Velander peak"
 label_sv = "Dimensioneringsmarginal för transformatorn över toppeffekten enligt Velander"
-source = "Growth margin chosen by us; transformer size is varied in the tornado chart"
+source = "Modelling choice: growth margin; transformer size is varied in the tornado chart"
 url = ""
 note = ""
 
@@ -142,7 +142,7 @@ unit = "p.u. of Imax"
 tag = "team-assumption"
 label = "Maximum design utilisation of a main cable at the Velander peak"
 label_sv = "Högsta dimensionerande utnyttjandegrad för en huvudkabel vid toppeffekten enligt Velander"
-source = "Design rule chosen by us: parallel cables are added above this utilisation"
+source = "Modelling choice for the synthetic topology: parallel cables are added above this utilisation"
 url = ""
 note = ""
 

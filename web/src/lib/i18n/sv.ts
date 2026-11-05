@@ -764,8 +764,6 @@ const sv: Dict = {
   "keys.page": "Föregående eller nästa vy",
   "keys.single": "Kortkommandon med en tangent",
   "keys.singleNote": "1–{n}, F, / och ?. Stäng av dem om du använder röstinmatning eller skriver på sidan med ett hjälpmedel.",
-  "lang.en": "English",
-  "lang.sv": "Svenska",
   "req.find": "Hitta ett hus",
   "req.findPlaceholder": "Skriv en adress…",
   "src.smhi_strang.name": "Solstrålningsmodellen STRÅNG",

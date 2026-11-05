@@ -27,7 +27,7 @@ def _mean_priced(point: dict, key: str, priced: set[int], value: str | None = No
 
 
 def overinstallation_summary(d: dict) -> dict:
-    """The value curve of over-installation, as overinstallation_summary computes it.
+    """The value curve of over-installation.
 
     Mean over the years that have prices, net spot value (negative-price hours count against).
     Returns the curve, the figures at the static limit, at the curtailment budget and at full

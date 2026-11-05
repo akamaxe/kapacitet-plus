@@ -30,8 +30,9 @@ def test_every_assumption_has_a_unit_field():
 
 
 def test_no_input_carries_a_spanish_label():
-    """The interface speaks English and Swedish only: a `label_es` or `note_es` left in the file
-    would be served by /assumptions and read by nobody."""
+    """The interface speaks English and Swedish only. A `label_es` or `note_es` left in either
+    file would never reach the API (config.assumptions() and the Ei pack copy named fields only):
+    it would sit there unused, kept up by nobody and at odds with the two-language rule."""
     import tomllib
 
     from kapacitet.paths import CONFIG

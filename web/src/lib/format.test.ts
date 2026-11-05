@@ -1,18 +1,27 @@
 import { describe, expect, it } from "vitest";
-import { clock, dateTime, fmt, hourToDate, hoursInYear, median, monthStarts, pct1 } from "./format";
+import { clock, dateTime, fmt, hourToDate, hoursInYear, median, monthStarts, numberOptions, pct1 } from "./format";
 
 const THIN = " "; // the thousands separator every language shares (DESIGN.md)
 
 describe("fmt", () => {
-  it("groups thousands with a narrow space and keeps each language's decimal mark", () => {
-    expect(fmt("en", 1234.5, 1)).toBe(`1${THIN}234.5`);
-    expect(fmt("sv", 1234.5, 1)).toBe(`1${THIN}234,5`);
+  it("groups thousands with a narrow space in both languages", () => {
+    expect(fmt("en", 1234)).toBe(`1${THIN}234`);
     expect(fmt("sv", 1234)).toBe(`1${THIN}234`);
+    expect(fmt("en", 1234.5, 1)).toBe(`1${THIN}234.5`);
   });
 
   it("writes Swedish with a decimal comma and a true minus sign", () => {
     expect(fmt("sv", 1234.5, 1)).toBe(`1${THIN}234,5`);
     expect(fmt("sv", -2.5, 1)).toBe("\u22122,5");
+  });
+
+  it("groups four digits even in a locale that would not", () => {
+    // pl-PL leaves 1234 ungrouped by default; the options make it group, so a language
+    // added later cannot write 1234 next to 12 345
+    const grouped = (options?: Intl.NumberFormatOptions) =>
+      new Intl.NumberFormat("pl-PL", options).formatToParts(1234).some((p) => p.type === "group");
+    expect(grouped()).toBe(false);
+    expect(grouped(numberOptions(0))).toBe(true);
   });
 
   it("writes a dash for a value that is not a number", () => {

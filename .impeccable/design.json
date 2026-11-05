@@ -358,11 +358,6 @@
         "purpose": "Everything that responds."
       },
       {
-        "name": "ease-in-out",
-        "value": "cubic-bezier(0.77, 0, 0.175, 1)",
-        "purpose": "Things that travel on screen."
-      },
-      {
         "name": "dur-micro",
         "value": "120ms",
         "purpose": "Colour changes and presses."
@@ -376,11 +371,6 @@
         "name": "dur-panel",
         "value": "200ms",
         "purpose": "Toasts, meters, the request answer rising in, the tour card rising 8 px, a chart's first draw."
-      },
-      {
-        "name": "dur-exit",
-        "value": "140ms",
-        "purpose": "Exits, faster than entrances."
       },
       {
         "name": "press",
@@ -577,7 +567,7 @@
   ],
   "narrative": {
     "northStar": "The Network on the Map, in Stockholm's Colours",
-    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the eight screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in an inbox and a queue, issues each day's limits and files the year's report, and for the applicant on the other side of the same connection, who has a page of their own. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads from a projector in a lit room and on a 1536×730 laptop, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
+    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the eight screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in an inbox and a queue, issues each day's limits and files the year's report, and for the applicant on the other side of the same connection, who has a page of their own. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads on a 1536×730 laptop and projected in a lit meeting room, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
     "keyCharacteristics": [
       "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
       "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",

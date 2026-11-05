@@ -123,7 +123,7 @@ def test_the_audit_trail_adds_up_to_the_filing(results):
         assert abs(mine["kwh"] - c["curtailed_kwh"]) < 0.1, c["customer_id"]
 
 
-def test_the_overinstallation_summary_repeats_the_report_arithmetic(results):
+def test_the_overinstallation_summary_matches_an_independent_sum(results):
     """An independent recomputation of overinstallation_summary's sums from overinstallation.json."""
     from kapacitet.engine.summaries import overinstallation_summary
 

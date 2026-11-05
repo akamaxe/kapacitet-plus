@@ -3,9 +3,7 @@
  * and confirm dialogs and the imported networks all use it, so keyboard behaviour cannot drift
  * between them.
  *
- * Not `<dialog>`: its `::backdrop` and top layer sit outside the token system, and a layer
- * without a scrim (useDismissable with `modal` false) needs the same Escape and focus handling
- * without a modal trap.
+ * Not `<dialog>`: its `::backdrop` and top layer sit outside the token system.
  */
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
@@ -15,21 +13,18 @@ const FOCUSABLE =
 
 /**
  * Open layers, newest last. Escape closes only the newest, so a dialog opened over another
- * closes alone; and while any modal layer is open the global shortcuts stay quiet, so a digit
+ * closes alone; and while any layer is open the global shortcuts stay quiet, so a digit
  * typed under the key sheet does not change the screen behind it.
  */
-const layers: { id: number; modal: boolean }[] = [];
+const layers: { id: number }[] = [];
 let nextLayer = 0;
 
 export function modalOpen(): boolean {
-  return layers.some((l) => l.modal);
+  return layers.length > 0;
 }
 
-/**
- * Escape closes, and focus goes back where it came from. `modal` additionally keeps Tab
- * inside the panel. Used on its own by anything that opens without a scrim.
- */
-export function useDismissable(open: boolean, onClose: () => void, modal: boolean) {
+/** Escape closes, Tab stays inside the panel, and focus goes back where it came from. */
+function useDismissable(open: boolean, onClose: () => void) {
   const panel = useRef<HTMLDivElement>(null);
   const returnTo = useRef<HTMLElement | null>(null);
   // Callers pass an inline arrow, so a dependency on it would tear this effect down and
@@ -40,7 +35,7 @@ export function useDismissable(open: boolean, onClose: () => void, modal: boolea
 
   useEffect(() => {
     if (!open) return;
-    const layer = { id: ++nextLayer, modal };
+    const layer = { id: ++nextLayer };
     layers.push(layer);
     returnTo.current = document.activeElement as HTMLElement | null;
     const first = panel.current?.querySelector<HTMLElement>(FOCUSABLE) ?? panel.current;
@@ -53,7 +48,7 @@ export function useDismissable(open: boolean, onClose: () => void, modal: boolea
         close.current();
         return;
       }
-      if (!modal || e.key !== "Tab" || !panel.current) return;
+      if (e.key !== "Tab" || !panel.current) return;
       const items = [...panel.current.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
         (el) => el.offsetParent !== null,
       );
@@ -76,7 +71,7 @@ export function useDismissable(open: boolean, onClose: () => void, modal: boolea
       const back = returnTo.current;
       if (loose && back?.isConnected) back.focus();
     };
-  }, [open, modal]);
+  }, [open]);
 
   return panel;
 }
@@ -96,7 +91,7 @@ export function Dialog({
   width?: number;
   children: ReactNode;
 }) {
-  const panel = useDismissable(open, onClose, true);
+  const panel = useDismissable(open, onClose);
   const onScrim = useCallback(
     (e: React.MouseEvent) => {
       if (e.target === e.currentTarget) onClose();

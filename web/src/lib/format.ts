@@ -6,18 +6,25 @@ const THIN = " ";
 
 const formatters = new Map<string, Intl.NumberFormat>();
 
+/**
+ * The options every figure is formatted with. "always" changes nothing for en-GB and sv-SE,
+ * which group four-digit numbers anyway; it is a guard for a language added later, since some
+ * locales (es, pl) leave 1234 ungrouped by default and every figure has to group the same way.
+ */
+export function numberOptions(digits: number): Intl.NumberFormatOptions {
+  return {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+    useGrouping: "always",
+  } as unknown as Intl.NumberFormatOptions; // "always" is ES2023; the lib here is ES2022
+}
+
 /** One formatter per language and precision, kept for the session (js-cache-function-results). */
 function formatter(lang: string, digits: number): Intl.NumberFormat {
   const key = `${lang}:${digits}`;
   let nf = formatters.get(key);
   if (!nf) {
-    // "always": some locales leave four-digit numbers ungrouped by default, and every figure
-    // has to group the same way in both languages
-    nf = new Intl.NumberFormat(locale(lang), {
-      minimumFractionDigits: digits,
-      maximumFractionDigits: digits,
-      useGrouping: "always",
-    } as unknown as Intl.NumberFormatOptions); // "always" is ES2023; the lib here is ES2022
+    nf = new Intl.NumberFormat(locale(lang), numberOptions(digits));
     formatters.set(key, nf);
   }
   return nf;

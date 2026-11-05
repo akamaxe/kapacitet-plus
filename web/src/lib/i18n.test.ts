@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { DICTS, LANGS, isLang, loadLang, locale, translate } from "./i18n/core";
 
 beforeAll(async () => {
@@ -65,9 +65,22 @@ describe("languages", () => {
     expect([...LANGS]).toEqual(["en", "sv"]);
   });
 
-  it("does not know Spanish any more, so a stored 'es' opens in English", () => {
-    // store.ts falls back to English for any value isLang refuses
+  it("does not know Spanish any more, so a stored 'es' opens in English", async () => {
     expect(isLang("es")).toBe(false);
     expect(isLang("sv")).toBe(true);
+    // the store reads the saved choice once, when it is created: build it afresh for each value
+    const opensIn = async (stored: string) => {
+      localStorage.setItem("kap.lang", stored);
+      vi.resetModules();
+      const { useStore } = await import("./store");
+      return useStore.getState().lang;
+    };
+    try {
+      expect(await opensIn("sv")).toBe("sv");
+      expect(await opensIn("es")).toBe("en");
+    } finally {
+      localStorage.removeItem("kap.lang");
+      vi.resetModules();
+    }
   });
 });

@@ -763,8 +763,6 @@ const en: Dict = {
   "keys.page": "Previous or next screen",
   "keys.single": "Single-key shortcuts",
   "keys.singleNote": "1–{n}, F, / and ?. Turn them off if you use speech input or type into the page with an assistive tool.",
-  "lang.en": "English",
-  "lang.sv": "Svenska",
   "req.find": "Find a house",
   "req.findPlaceholder": "Type an address…",
   "src.smhi_strang.name": "STRÅNG solar radiation model",

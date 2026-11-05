@@ -42,9 +42,9 @@ for _name, _value in _ALIASES.items():
     if not hasattr(np, _name):
         setattr(np, _name, _value)
 
-# cvxpy probes every installed solver; the installed FICO Xpress build fails under NumPy 2.5
-# and prints the whole PATH while doing so. It is not used here, so skip it.
+# cvxpy probes every installed solver, and Xpress and CBC (cylp) builds compiled against
+# NumPy 1.x fail to import on NumPy 2.x. Neither is used here, so skip both.
 import sys as _sys
 
 _sys.modules.setdefault("xpress", None)
-_sys.modules.setdefault("cylp", None)  # CBC bindings: binary-incompatible with NumPy 2.5, unused
+_sys.modules.setdefault("cylp", None)
