@@ -9,7 +9,8 @@ import tomllib
 import pytest
 
 from kapacitet import config
-from kapacitet.study.config import METHOD_VERSION, StudyConfigError, load, parse, template
+from kapacitet.study.config import (BUILDER_ONLY, DOCUMENTED_ONLY, METHOD_VERSION, StudyConfigError, load, parse,
+                                    template)
 
 
 @pytest.fixture()
@@ -40,10 +41,15 @@ def test_an_empty_study_toml_holds_the_owners_defaults():
 
 
 def test_the_template_parses_to_the_defaults():
-    data = tomllib.loads(template("Nätbolaget AB"))
-    cfg = parse(data)
+    text = template("Nätbolaget AB")
+    cfg = parse(tomllib.loads(text))
     assert cfg.dso.name == "Nätbolaget AB"
     assert cfg.model_dump(exclude={"dso"}) == parse({}).model_dump(exclude={"dso"})
+    for line in ("[time]", "# reference_year = ", "# weather_first_year = ", "# metering_grid_area = ",
+                 "# temperature_station = "):
+        assert line in text                                          # every key there is, stated
+    placed = parse(tomllib.loads(template("X", {"lat": 63.8, "lon": 20.3, "temperature_station": 140480})))
+    assert (placed.site.lat, placed.site.temperature_station) == (63.8, 140480) and placed.site.given
 
 
 @pytest.mark.parametrize("data, where", [
@@ -53,6 +59,8 @@ def test_the_template_parses_to_the_defaults():
     ({"method": {"percentile": 120}}, "percentile"),
     ({"mv": {"band_low_pu": 1.04, "band_high_pu": 1.0}}, "band_low_pu"),
     ({"site": {"lat": 59.3}}, "lat"),                              # lat without lon
+    ({"site": {"lat": 59.3, "lon": 18.0}}, "temperature_station"),  # a place without its own station
+    ({"site": {"strang_lat": 59.3, "strang_lon": 18.0}}, "strang_lat"),   # a STRÅNG point and no place
     ({"site": {"zone": "SE5"}}, "zone"),
     ({"time": {"weather_first_year": 2020, "weather_last_year": 2018}}, "weather_first_year"),
     ({"disclosure": {"min_customers": 0}}, "min_customers"),
@@ -75,12 +83,54 @@ def test_an_override_names_a_known_key_its_unit_and_a_source():
         with pytest.raises(StudyConfigError) as err:
             parse({"assumptions": {key: entry}})
         assert key in str(err.value)
-    for entry, word in (({"value": 6000, "unit": "kWh/yr", "source": "  "}, "source"),
-                        ({"value": 6000, "unit": "MWh/yr", "source": "x"}, "unit"),
-                        ({"value": "a lot", "unit": "kWh/yr", "source": "x"}, "value")):
+    for entry, words in (({"value": 6000, "unit": "kWh/yr", "source": "  "}, ("needs its source",)),
+                         ({"value": 6000, "unit": "MWh/yr", "source": "x"}, ("unit", "'MWh/yr'")),
+                         ({"value": "a lot", "unit": "kWh/yr", "source": "x"}, ("takes a value like", "'a lot'"))):
         with pytest.raises(StudyConfigError) as err:
             parse({"assumptions": {"household_kwh_per_year": entry}})
-        assert word in str(err.value) or "kWh" in str(err.value)
+        for word in words:
+            assert word in str(err.value)
+
+
+def test_an_override_that_would_change_nothing_in_a_station_is_refused():
+    for key, unit, words in (("cabinet_reach_m", "m", "network builder"), ("pv_system_losses_pct", "%", "fixed")):
+        with pytest.raises(StudyConfigError) as err:
+            parse({"assumptions": {key: {"value": 80.0, "unit": unit, "source": "x"}}})
+        assert key in str(err.value) and words in str(err.value) and "change nothing" in str(err.value)
+
+
+def test_the_keys_refused_in_a_study_are_those_no_station_step_reads():
+    """BUILDER_ONLY is every assumption named only by grid/builder.build and what it calls, the
+    OSM build a station never runs; DOCUMENTED_ONLY every one no code names. A key named anywhere
+    else (the importer, the profiles, the engine, the builder's add_zero_sequence that every
+    network is loaded with) takes effect in a station's build."""
+    import ast
+    from pathlib import Path
+
+    src = Path(config.__file__).parent
+    keys = set(config.assumptions())
+
+    def named(*nodes) -> set[str]:
+        return {n.value for node in nodes for n in ast.walk(node)
+                if isinstance(n, ast.Constant) and isinstance(n.value, str) and n.value in keys}
+
+    elsewhere: set[str] = set()
+    for f in src.rglob("*.py"):
+        rel = f.relative_to(src).as_posix()
+        if rel not in ("study/config.py", "grid/builder.py"):
+            elsewhere |= named(ast.parse(f.read_text(encoding="utf-8")))
+    tree = ast.parse((src / "grid" / "builder.py").read_text(encoding="utf-8"))
+    funcs = {n.name: n for n in tree.body if isinstance(n, ast.FunctionDef)}
+    closure, todo = {"build"}, ["build"]                         # build() and what it calls, there
+    while todo:
+        for c in ast.walk(funcs[todo.pop()]):
+            if isinstance(c, ast.Call) and isinstance(c.func, ast.Name) and c.func.id in set(funcs) - closure:
+                closure.add(c.func.id)
+                todo.append(c.func.id)
+    in_build = named(*(funcs[name] for name in closure))
+    rest_of_builder = named(*(n for n in tree.body if not (isinstance(n, ast.FunctionDef) and n.name in closure)))
+    assert set(BUILDER_ONLY) == in_build - rest_of_builder - elsewhere
+    assert set(DOCUMENTED_ONLY) == keys - in_build - rest_of_builder - elsewhere
 
 
 def test_a_missing_or_broken_file_says_so(tmp_path):
@@ -155,5 +205,15 @@ def test_the_fingerprint_covers_the_study(study_env):
     root = study_env("[method]\npercentile = 50\n")
     fp = seals.fingerprint()
     assert "study/study.toml" in fp["files"]
-    (root / "study.toml").write_text("[method]\npercentile = 40\n", encoding="utf-8")
+    # another length too: the hashes are cached by size and mtime, and an mtime can be coarse
+    (root / "study.toml").write_text("[method]\npercentile = 40.0\n", encoding="utf-8")
     assert seals.fingerprint()["digest"] != fp["digest"]
+
+
+def test_a_station_process_sees_the_settings_its_parent_digests(study_env, tmp_path):
+    from kapacitet.study.config import load
+
+    root = study_env('[site]\nlat = 63.8\nlon = 20.3\ntemperature_station = 140480\nzone = "SE1"\n'
+                     '[time]\nreference_year = 2024\nweather_first_year = 2020\nweather_last_year = 2024\n')
+    here = config.study_settings(load(root / "study.toml"), root)
+    assert here == config.settings()

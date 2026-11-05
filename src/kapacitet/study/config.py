@@ -4,8 +4,10 @@ Every section has defaults (the owner's study defaults), so a study.toml of one 
 an unknown section or key is an error rather than a setting silently ignored. The sections:
 
     [dso]          name, method_version (the method the study is pinned to)
-    [site]         where the weather comes from: lat/lon, the SMHI temperature station, the STRÅNG
-                   point (defaults to lat/lon), the bidding zone and the eSett metering grid area
+    [site]         where the weather comes from: lat/lon with the SMHI temperature station, the
+                   STRÅNG point (defaults to lat/lon), the bidding zone and the eSett metering grid
+                   area. Without lat/lon the study has no place of its own: `study fetch` refuses,
+                   and its stations reuse the reference network's weather, labelled synthetic
     [time]         reference_year and the weather years, when they differ from config/site.toml
     [method]       percentile = 50, budget = "aggregate" | "installation", consumption_device = "ev"
     [mv]           band_low_pu, band_high_pu, source: generation is computed at the high end and
@@ -14,7 +16,8 @@ an unknown section or key is an error rather than a setting silently ignored. Th
     [cases]        processing_days, protection = "dppower" | "kapacitet"
     [output]       csv_dialect = "sv-excel" (beside the machine copy, always written), retention_days
     [assumptions]  key = {value, unit, source}: an override of config/assumptions.toml. The key must
-                   exist there, the unit must be the one it has, and the source must be stated.
+                   exist there and take effect in a station (NOT_IN_A_STUDY lists those that do
+                   not), the unit must be the one it has, and the source must be stated.
 """
 
 from __future__ import annotations
@@ -28,7 +31,16 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 # The version of the station method this code computes. A study pins one in [dso]; a study pinned
 # to another version is computed by the code that implements it, never silently by this one.
 METHOD_VERSION = "1.0.0"
-ZONES = ("SE1", "SE2", "SE3", "SE4")
+
+# Assumptions an override of which would change nothing in a station, so it is refused
+# (tests/test_study_config.py keeps both lists in step with the code): those read only by the
+# network builder on OpenStreetMap (grid/builder.build), which a study's stations never run since
+# their networks are imported, and those no code reads, which document a value fixed in the code.
+BUILDER_ONLY = ("cabinet_max_services", "cabinet_reach_m", "cable_design_utilisation", "feeder_max_customers",
+                "fuse_thresholds_m2", "main_cable_type", "trafo_design_margin", "trafo_tap_pos", "trafo_types",
+                "velander_k1", "velander_k2")
+DOCUMENTED_ONLY = ("hp_cop_model", "pv_system_losses_pct")
+NOT_IN_A_STUDY = BUILDER_ONLY + DOCUMENTED_ONLY
 
 
 class StudyConfigError(ValueError):
@@ -60,11 +72,16 @@ class Site(_Section):
         for a, b in (("lat", "lon"), ("strang_lat", "strang_lon")):
             if (getattr(self, a) is None) != (getattr(self, b) is None):
                 raise ValueError(f"[site] {a} and {b} go together")
+        if self.lat is not None and self.temperature_station is None:
+            # otherwise the reference site's station would stand in, with nothing to say so
+            raise ValueError("[site] lat and lon need the temperature_station of that place")
+        if self.strang_lat is not None and self.lat is None:
+            raise ValueError("[site] strang_lat and strang_lon need the study's lat and lon")
         return self
 
     @property
     def given(self) -> bool:
-        """The study names a place of its own (otherwise config/site.toml's is used)."""
+        """The study names a place of its own; without one it fetches no weather."""
         return self.lat is not None
 
 
@@ -174,8 +191,16 @@ def check_overrides(overrides: dict[str, Override]) -> list[str]:
         if a is None:
             out.append(f"[assumptions] {key} is not an assumption of config/assumptions.toml")
             continue
+        if key in BUILDER_ONLY:
+            out.append(f"[assumptions] {key} is read only by the network builder on OpenStreetMap, which a "
+                       "study's imported networks never run: an override would change nothing")
+            continue
+        if key in DOCUMENTED_ONLY:
+            out.append(f"[assumptions] {key} documents a value fixed in the code, which reads no other: "
+                       "an override would change nothing")
+            continue
         if o.unit != a.unit:
-            out.append(f"[assumptions] {key} is in {a.unit!r}, not {o.unit!r}")
+            out.append(f"[assumptions] {key} has the unit {a.unit!r} there, not {o.unit!r}")
         if not _same_kind(o.value, a.value):
             out.append(f"[assumptions] {key} takes a value like {a.value!r}, not {o.value!r}")
     return out
@@ -227,15 +252,28 @@ def template(name: str = "", site: dict | None = None) -> str:
         f'method_version = "{METHOD_VERSION}"     # the method the study is pinned to',
         "",
         "[site]",
-        "# Where the weather comes from. Without lat/lon, config/site.toml's place is used.",
+        "# Where the weather comes from: lat/lon and the SMHI metobs station with hourly air temperature",
+        "# there (temperature_station). Without them the study has no place of its own: `study fetch`",
+        "# refuses, and the stations reuse the reference network's weather, labelled synthetic.",
     ]
-    for key in ("name", "lat", "lon", "temperature_station", "zone", "metering_grid_area"):
-        if key in site and site[key] is not None:
+    examples = (("name", '"the area"', ""), ("lat", "59.32", ""), ("lon", "17.96", ""),
+                ("temperature_station", "97200", "needed with lat/lon"),
+                ("strang_lat", "59.32", "the STRÅNG point, when it is not lat/lon"), ("strang_lon", "17.96", ""),
+                ("zone", '"SE3"', "the bidding zone"),
+                ("metering_grid_area", '"STH"', "the eSett metering grid area"))
+    for key, example, why in examples:
+        if site.get(key) is not None:
             lines.append(f"{key} = {_toml(site[key])}")
+        else:
+            line = f"# {key} = {example}"
+            lines.append(f"{line.ljust(32)}# {why}" if why else line)
     lines += [
-        "# temperature_station = 97200   # SMHI metobs station, hourly air temperature",
-        "# strang_lat = 59.32            # the STRÅNG point, when it is not lat/lon",
-        "# strang_lon = 17.96",
+        "",
+        "[time]",
+        "# The years of config/site.toml unless set; the reference year is one of the weather years.",
+        "# reference_year = 2025",
+        "# weather_first_year = 2015",
+        "# weather_last_year = 2025",
         "",
         "[method]",
         "percentile = 50                 # of the adoption orders, per station",

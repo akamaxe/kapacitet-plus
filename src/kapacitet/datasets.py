@@ -210,25 +210,9 @@ def launch(ds_id: str, workers: int = 2) -> int:
 
 
 def _copy_households(dest_processed: Path) -> int:
-    """The reference network's household profile pool, linked where the disk allows, else copied."""
-    src = HOME / "processed" / "households"
-    if not src.exists():
-        return 0
-    dst = dest_processed / "households"
-    dst.mkdir(parents=True, exist_ok=True)
-    n = 0
-    for f in src.iterdir():
-        if not f.is_file():
-            continue
-        target = dst / f.name
-        if target.exists():
-            continue
-        try:
-            os.link(f, target)
-        except OSError:
-            shutil.copy2(f, target)
-        n += 1
-    return n
+    """The reference network's household profile pool, linked where the disk allows, else copied
+    (a file already there is kept; nothing rewrites the pool in place)."""
+    return procs.link_files(HOME / "processed" / "households", dest_processed / "households", replace=False)
 
 
 def _annual_check(year: int) -> dict | None:

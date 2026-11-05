@@ -38,7 +38,8 @@ KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "sc
 
 # What an answer depends on, besides the engine's code: the network, the profiles behind it, the
 # published results and the inputs. A change to any of these changes the fingerprint. The "study"
-# root is the study folder (KAPACITET_STUDY) of a station's process, and is absent elsewhere.
+# root is the study folder (KAPACITET_STUDY) of a station's process, and is absent elsewhere;
+# "{station}" is that station's id (the name of its data folder).
 FINGERPRINT_FILES = (
     ("processed", "grid/net.json"),
     ("processed", "grid/customers.parquet"),
@@ -47,6 +48,7 @@ FINGERPRINT_FILES = (
     ("processed", "results/meta.json"),
     ("processed", "results/showcase.json"),
     ("processed", "results/operation/index.json"),
+    ("processed", "meters/hourly.parquet"),
     ("raw", "manifest.json"),
     ("config", "assumptions.toml"),
     ("config", "site.toml"),
@@ -54,6 +56,7 @@ FINGERPRINT_FILES = (
     ("study", "inputs/stations.csv"),
     ("study", "inputs/equipment.csv"),
     ("study", "inputs/upstream.csv"),
+    ("study", "inputs/mv/{station}.csv"),
 )
 
 
@@ -106,6 +109,7 @@ def fingerprint() -> dict:
     for root, rel in FINGERPRINT_FILES:
         if root not in roots:
             continue
+        rel = rel.format(station=DATA.name) if root == "study" else rel
         path = roots[root] / rel
         if not path.exists():
             continue

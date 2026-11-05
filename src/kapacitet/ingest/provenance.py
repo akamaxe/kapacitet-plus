@@ -128,6 +128,11 @@ def http(method: str, url: str, *, params: dict | None = None, data: dict | None
     raise FetchError(f"{method} {redact(url)} failed after {retries} attempts: {redact(last)}")
 
 
-def cached(entry_id: str, dest: Path, *, refresh: bool = False) -> bool:
-    """True when the file exists and has a manifest entry (so no download is needed)."""
-    return (not refresh) and dest.exists() and entry_id in load_manifest()
+def cached(entry_id: str, dest: Path, *, refresh: bool = False, url: str | None = None) -> bool:
+    """True when the file exists and has a manifest entry (so no download is needed). With `url`,
+    the entry must also have been fetched from that URL: an entry whose id stays the same while
+    what it asks for changes (a study's STRÅNG point) is fetched again."""
+    if refresh or not dest.exists():
+        return False
+    entry = load_manifest().get(entry_id)
+    return entry is not None and (url is None or entry.get("url") == redact(url))

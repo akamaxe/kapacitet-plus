@@ -2,13 +2,15 @@
 
 A station's network arrives in the export contract (importer/contract.py), one folder per station
 under `inputs/network/contract/<sid>/`. `split` copies each into `stations/<sid>/import/` and keeps
-the station's record (station.json) in step with it: where it came from (`origin`) and, when the
-network changed, that what was built from the old one is no longer current. `check` runs the
-contract's data-quality report on every station and keeps it in the record.
+the station's record (station.json) in step with it: where it came from (`origin`); a changed
+network shows as changed inputs (study.digests), the record's status left as the last build set
+it. `check` runs the contract's data-quality report on every station and keeps it in the record.
 
 A folder may carry an `origin.json` beside its CSV files, saying what produced it:
 `{"format": "pandapower", "name": ..., "synthetic": true, "synthetic_parts": [...]}` for the
-demo's networks; without it, the folder is the DSO's own export.
+demo's networks, `{"format": "contract", "synthetic": false}` for a DSO's own export. It travels
+with the files into the station's import folder. Without one, the network is taken to be the
+DSO's export, and the provenance says that is unverified.
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ from __future__ import annotations
 import csv
 import json
 import shutil
+import tempfile
 from pathlib import Path
 
 from ..importer.contract import TABLES
@@ -30,25 +33,42 @@ def contract_dir(study: Study) -> Path:
 
 
 def add_contract(study: Study, src: str | Path, sid: str | None = None, origin: dict | None = None) -> str:
-    """Copy one station's contract CSV files (and nothing else) into the study's inputs."""
+    """Copy one station's contract CSV files and its origin.json (nothing else) into the study's
+    inputs. The copy is made beside and then moved in, so a failure never leaves the station's
+    folder half replaced; a folder that already is the station's input is left as it is."""
     src = Path(src)
     sid = sid or src.name
     study.station_dir(sid)                                   # the id is checked here
+    other = study.same_but_case(sid)
+    if other is not None:
+        raise StudyError("station_case", id=sid, other=other)
     found = [f for f in CONTRACT_FILES if (src / f).is_file()]
     if not found:
         raise FileNotFoundError(f"no contract files ({', '.join(CONTRACT_FILES)}) in {src}")
     dst = contract_dir(study) / sid
-    dst.mkdir(parents=True, exist_ok=True)
-    for f in CONTRACT_FILES:
-        (dst / f).unlink(missing_ok=True)
-    for f in found:
-        shutil.copyfile(src / f, dst / f)
     given = origin if origin is not None else _read_origin(src)
-    if given is not None:
-        (dst / "origin.json").write_text(json.dumps(given, indent=1, ensure_ascii=False), encoding="utf-8")
-    else:
-        (dst / "origin.json").unlink(missing_ok=True)
+    if dst.is_dir() and src.resolve() == dst.resolve():
+        if origin is not None:
+            _write_origin(dst, origin)
+        return sid
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=dst.parent, prefix=f".{sid}-") as tmp:
+        staged = Path(tmp)
+        for f in found:
+            shutil.copyfile(src / f, staged / f)
+        if given is not None:
+            _write_origin(staged, given)
+        dst.mkdir(exist_ok=True)
+        for f in (*CONTRACT_FILES, "origin.json"):
+            if (staged / f).is_file():
+                (staged / f).replace(dst / f)
+            else:
+                (dst / f).unlink(missing_ok=True)
     return sid
+
+
+def _write_origin(folder: Path, origin: dict) -> None:
+    (folder / "origin.json").write_text(json.dumps(origin, indent=1, ensure_ascii=False), encoding="utf-8")
 
 
 def _read_origin(folder: Path) -> dict | None:
@@ -76,9 +96,21 @@ def split(study: Study) -> list[str]:
     cgmes = study.inputs / "network" / "cgmes"
     if cgmes.is_dir() and any(p.is_file() for p in cgmes.rglob("*")):
         raise StudyError("cgmes_pending")
-    folders = sorted(p for p in contract_dir(study).glob("*") if p.is_dir()) if contract_dir(study).is_dir() else []
+    folders = (sorted(p for p in contract_dir(study).glob("*") if p.is_dir() and not p.name.startswith("."))
+               if contract_dir(study).is_dir() else [])
     if not folders:
         raise StudyError("no_network", path=str(study.root))
+    seen: dict[str, str] = {}
+    for folder in folders:
+        study.station_dir(folder.name)                       # the id is checked here
+        twin = seen.get(folder.name.lower())
+        if twin is not None:
+            raise StudyError("station_case", id=folder.name, other=twin)
+        seen[folder.name.lower()] = folder.name
+        if study.stations_dir.is_dir():
+            for p in study.stations_dir.iterdir():
+                if p.is_dir() and p.name != folder.name and p.name.lower() == folder.name.lower():
+                    raise StudyError("station_case", id=folder.name, other=p.name)
     names = _names(study)
     out = []
     for folder in folders:
@@ -87,20 +119,21 @@ def split(study: Study) -> list[str]:
             raise StudyError("building", id=sid)
         dst = study.station_dir(sid) / "import"
         dst.mkdir(parents=True, exist_ok=True)
-        for f in CONTRACT_FILES:
+        for f in (*CONTRACT_FILES, "origin.json"):
             (dst / f).unlink(missing_ok=True)
             if (folder / f).is_file():
                 shutil.copyfile(folder / f, dst / f)
-        given = _read_origin(folder) or {}
+        declared = _read_origin(folder)
+        given = declared or {}
         origin = {"format": given.get("format", "contract"), "trafo_mrid": given.get("trafo_mrid"),
-                  "files": {f: file_digest(dst / f) for f in CONTRACT_FILES if (dst / f).is_file()}}
+                  "files": {f: file_digest(dst / f) for f in CONTRACT_FILES if (dst / f).is_file()},
+                  "declared": declared is not None}
         for key in ("synthetic", "synthetic_parts", "generator"):
             if key in given:
                 origin[key] = given[key]
         name = names.get(sid) or given.get("name") or sid
+        # a changed network keeps the status its last build gave: the digests say it changed
         rec = study.record(sid) if study.has(sid) else study.new_record(sid, name, origin)
-        if rec.get("origin", {}).get("files") != origin["files"] and rec.get("status") not in (None, "imported"):
-            rec["status"] = "imported"                    # what was built is from another network
         rec.update(name=name, origin=origin)
         study.save(rec)
         out.append(sid)
@@ -108,14 +141,18 @@ def split(study: Study) -> list[str]:
 
 
 def check(study: Study, stations: list[str] | None = None) -> dict[str, Report]:
-    """The contract's data-quality report for every station, kept in its record."""
+    """The contract's data-quality report for every station, kept in its record. A station being
+    built keeps its record as its build writes it (the build's import step makes the same report)."""
     out = {}
     for sid in stations or study.station_ids():
-        rec = study.record(sid)
+        study.record(sid)                                    # an unknown station is an error
         report = validate(read_export(study.station_dir(sid) / "import"))
+        out[sid] = report
+        if study.building(sid):
+            continue
+        rec = study.record(sid)                              # read again, just before writing
         rec["quality"] = quality(report)
         study.save(rec)
-        out[sid] = report
     return out
 
 

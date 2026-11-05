@@ -88,10 +88,14 @@ def _demo(args) -> None:
 
 
 def _fetch(args) -> None:
-    """The fetch runs as its own process, so the study's site and folder are in force from the start."""
-    from . import open_study
+    """The fetch runs as its own process, so the study's site and folder are in force from the start.
+    A study without a place of its own has no weather to fetch: the reference site's would come
+    down under the study's name."""
+    from . import StudyError, open_study
 
     study = open_study(args.dir, allow_git=args.allow_git)
+    if not study.config.site.given:
+        raise StudyError("no_site")
     env = {k: v for k, v in os.environ.items() if not k.startswith("KAPACITET_")}
     env.update(KAPACITET_STUDY=str(study.root), KAPACITET_DATA_DIR=str(study.root),
                KAPACITET_HOME=str(study.root), KAPACITET_RAW_DIR=str(study.raw))
@@ -156,9 +160,10 @@ def _status(args) -> None:
         print(json.dumps(recs, indent=1, ensure_ascii=False))
         return
     print(f"Study {study.id} ({study.config.dso.name or 'no DSO name'}), method {study.config.dso.method_version}")
+    shared = study.shared_digests()
     for rec in recs:
         steps = " ".join(f"{s['name']}:{s['status']}" for s in rec.get("steps", []))
-        why = reason(study, rec["id"], quick=bool(rec.get("quick")))
+        why = reason(study, rec["id"], quick=bool(rec.get("quick")), shared=shared)
         stale = "" if why in ("unchanged", "building") else f" [{why}]"
         n = (rec.get("summary") or {}).get("customers")
         print(f"  {rec['id']}: {rec.get('status')}{stale}, {n if n is not None else '?'} customers  {steps}")

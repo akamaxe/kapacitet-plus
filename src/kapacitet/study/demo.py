@@ -91,10 +91,12 @@ def create(path: str | Path, allow_git: bool = False) -> Study:
     from ..config import settings
     from ..importer.from_pandapower import contract_tables, write_contract
 
-    ref = settings().site
+    cfg = settings()
+    ref = cfg.site
     study = init_study(path, NAME, allow_git=allow_git,
                        site={"name": "Synthetic stations near the reference site", "lat": ref.center_lat,
-                             "lon": ref.center_lon, "zone": ref.bidding_zone})
+                             "lon": ref.center_lon, "temperature_station": cfg.temperature_station,
+                             "zone": ref.bidding_zone})
     for k, (sid, name, generator, make) in enumerate(_networks()):
         net = make()
         tables = contract_tables(net, 0, customer_map(net, seed=7100 + k))

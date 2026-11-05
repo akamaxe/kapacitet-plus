@@ -468,6 +468,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--workers", type=_workers, default=None, help="worker processes for the parallel stages (default 6)")
     p.set_defaults(func=cmd_all)
 
+    # the commands as `--help` lists them: the hidden ones (help=SUPPRESS) left out
+    hidden = {a.dest for a in sub._choices_actions if a.help == argparse.SUPPRESS}
+    sub.metavar = "{" + ",".join(name for name in sub.choices if name not in hidden) + "}"
+
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.DEBUG if args.verbose else logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s", datefmt="%H:%M:%S",

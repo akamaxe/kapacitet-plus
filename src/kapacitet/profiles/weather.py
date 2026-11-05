@@ -10,6 +10,8 @@ This keeps the closure GHI = DHI + DNI·cos z at the solar position used for tra
 
 from __future__ import annotations
 
+import os
+
 import numpy as np
 import pandas as pd
 import pvlib
@@ -67,7 +69,12 @@ def build_weather(years) -> dict[int, pd.DataFrame]:
     out = {}
     for y in years:
         df = weather_year(y)
-        df.to_parquet(processed("weather", f"weather_{y}.parquet"))
+        # written beside and moved in, so a file that was a link to another folder's is replaced,
+        # never written through
+        path = processed("weather", f"weather_{y}.parquet")
+        tmp = path.with_name(path.name + ".tmp")
+        df.to_parquet(tmp)
+        os.replace(tmp, path)
         out[y] = df
     return out
 

@@ -40,6 +40,12 @@ if TYPE_CHECKING:
 
 SCHEMA = "kapacitet.station/1"
 STATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+# names Windows keeps for devices: a folder cannot have one
+RESERVED = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
+                      *(f"LPT{i}" for i in range(1, 10))})
+# inputs recorded with a build that do not make it stale: the upstream caps are applied to the
+# published figures, after the computation
+NOT_A_TRIGGER = ("upstream",)
 LAYOUT = ("inputs/network/contract", "inputs/meters", "inputs/mv", "inputs/dppower", "inputs/cases",
           "inputs/sync", "raw", "stations", "evidence", "runs", "cases")
 PROVENANCE = ("real", "synthetic", "assumed")
@@ -62,9 +68,16 @@ ERRORS = {
     "no_study": "no study.toml in {path}: start one with `kapacitet study init {path}`",
     "exists": "{path} already holds a study",
     "config": "{message}",
-    "bad_station": "{id!r} is not a station id (letters, digits, - and _, at most 64)",
+    "bad_station": "{id!r} is not a station id (letters, digits, - and _, at most 64, and not a name "
+                   "Windows keeps for a device, such as CON or NUL)",
+    "station_case": "station {id} differs from station {other} only in letter case: on Windows they are "
+                    "one folder, so give them ids that differ otherwise",
     "unknown_station": "the study has no station {id}",
     "building": "station {id} is being built",
+    "study_building": "the study is being built by another process (PID {pid})",
+    "no_site": "study.toml names no place of its own ([site] lat, lon and temperature_station), so there is "
+               "no weather to fetch for it; without it, the stations reuse the reference network's weather, "
+               "labelled synthetic",
     "method_version": "the study is pinned to method {pinned}; this code computes method {current}",
     "not_isolated": "station {id} is built by its own process, with KAPACITET_DATA_DIR on its folder: "
                     "run `kapacitet study build {study} --station {id}`",
@@ -114,6 +127,11 @@ def guard(path: Path, allow_git: bool = False) -> Path:
 
 
 # ---------------------------------------------------------------- digests
+
+def valid_id(sid) -> bool:
+    """A station id that is also a folder name on every system."""
+    return isinstance(sid, str) and bool(STATION_ID.match(sid)) and sid.upper() not in RESERVED
+
 
 def file_digest(path: Path) -> str | None:
     """sha256 of a file, or None when it is not there."""
@@ -198,7 +216,7 @@ class Study:
         return self.root / "runs"
 
     def station_dir(self, sid: str) -> Path:
-        if not isinstance(sid, str) or not STATION_ID.match(sid):
+        if not valid_id(sid):
             raise StudyError("bad_station", id=sid)
         return self.stations_dir / sid
 
@@ -209,8 +227,7 @@ class Study:
         """Every station with a record, in id order."""
         if not self.stations_dir.is_dir():
             return []
-        return sorted(p.parent.name for p in self.stations_dir.glob("*/station.json")
-                      if STATION_ID.match(p.parent.name))
+        return sorted(p.parent.name for p in self.stations_dir.glob("*/station.json") if valid_id(p.parent.name))
 
     def has(self, sid: str) -> bool:
         return self.station_file(sid).is_file()
@@ -228,20 +245,47 @@ class Study:
     def building(self, sid: str) -> bool:
         return procs.building(self.station_dir(sid))
 
-    def digests(self, sid: str) -> dict:
+    def digests(self, sid: str, shared: dict | None = None) -> dict:
         """The sha256 of everything a station's build reads: when none has changed, and the method
-        and mode are the same, the station is not built again (study/portfolio.py)."""
-        cfg = self.config
-        overrides = cfg.overrides()
+        and mode are the same, the station is not built again (study/portfolio.py). `shared` is
+        shared_digests(), computed once for a whole plan rather than again for every station."""
+        shared = self.shared_digests() if shared is None else shared
         return {
             "network": dir_digest(self.station_dir(sid) / "import", "*.csv"),
+            "mv": file_digest(self.inputs / "mv" / f"{sid}.csv"),
+            **shared,
+        }
+
+    def shared_digests(self) -> dict:
+        """The digests of what every station of the study reads alike: the study's inputs, the
+        computation's part of study.toml, its overrides, and the weather and household profiles
+        its stations start from (the study's own downloads, or the reference network's files)."""
+        from .station import households_source, weather_source
+
+        cfg = self.config
+        overrides = cfg.overrides()
+        weather = weather_source(self)
+        return {
             "equipment": file_digest(self.inputs / "equipment.csv"),
             "meters": dir_digest(self.inputs / "meters"),
             "upstream": file_digest(self.inputs / "upstream.csv"),
-            "mv": file_digest(self.inputs / "mv" / f"{sid}.csv"),
             "study_toml": value_digest(cfg.computation()),
             "overrides": value_digest(overrides) if overrides else None,
+            "weather": value_digest({"source": weather["source"], "point": weather.get("point"),
+                                     "files": {f.name: file_digest(f) for f in weather["files"]}}),
+            "households": dir_digest(households_source()),
         }
+
+    def same_but_case(self, sid: str) -> str | None:
+        """Another station's id that differs from `sid` only in letter case, if there is one."""
+        from .intake import contract_dir
+
+        for parent in (contract_dir(self), self.stations_dir):
+            if parent.is_dir():
+                for p in parent.iterdir():
+                    if p.is_dir() and p.name != sid and p.name.lower() == sid.lower():
+                        return p.name
+        return None
 
     def new_record(self, sid: str, name: str = "", origin: dict | None = None) -> dict:
         """A station's first record: what it is and where it came from; nothing built yet."""
@@ -287,4 +331,4 @@ def init_study(path: str | Path, name: str = "", allow_git: bool = False, site: 
 
 
 __all__ = ["SCHEMA", "Study", "StudyError", "default_root", "file_digest", "dir_digest", "guard", "init_study",
-           "open_study", "resolve"]
+           "open_study", "resolve", "valid_id"]

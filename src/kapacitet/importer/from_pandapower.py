@@ -21,16 +21,30 @@ customer map names the customer. Coordinates are written only when `net.bus_geod
 `phase`, `footprint_m2`, `annual_kwh`). A pandapower load carries none of them; without a map the
 customers table has no fuse rating, which `validate()` reports as the error it is. With a map, a
 load the map does not cover is an error here, never a guess.
+
+Electrical data are written as they are in the network, so the built network is the same one:
+
+- a line's rating is `max_i_ka * df` (the contract has no derating factor) beside `parallel`, and
+  its `std_type` is written only when the line still is that type of pandapower's library, since
+  build.py takes a library type's own values over the given ones;
+- the transformer's tap is written as the contract's position (steps of 2.5 % on the HV side,
+  -2..2, neutral 0) that gives the same ratio, whatever the network's neutral, step and side; a
+  ratio the contract cannot give is an error.
 """
 
 from __future__ import annotations
 
 import math
+from functools import lru_cache
 from typing import Any, Mapping
 
 import pandas as pd
 
 CUSTOMER_FIELDS = ("customer_id", "fuse_a", "phase", "footprint_m2", "annual_kwh")
+# the transformer tap build.py creates: steps of this many percent on the HV side, neutral 0
+CONTRACT_TAP_STEP_PCT = 2.5
+CONTRACT_TAP_RANGE = (-2, 2)
+LINE_VALUES = ("r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka")
 
 
 class ContractError(ValueError):
@@ -83,14 +97,15 @@ def contract_tables(net, trafo_idx: int = 0,
             continue
         if rep[f] == rep[t]:
             continue
-        std = ln.get("std_type")
+        df = ln.get("df", 1.0)
+        df = float(df) if pd.notna(df) else 1.0
         rows.append({
             "line_id": line_id[idx], "from_bus": bus_id[rep[f]], "to_bus": bus_id[rep[t]],
             "length_m": round(float(ln["length_km"]) * 1000.0, 3),
-            "std_type": std if isinstance(std, str) and std else None,
+            "std_type": _line_type(ln, df),
             "r_ohm_per_km": float(ln["r_ohm_per_km"]), "x_ohm_per_km": float(ln["x_ohm_per_km"]),
             "c_nf_per_km": float(ln["c_nf_per_km"]),
-            "max_i_ka": float(ln["max_i_ka"]) * float(ln.get("df", 1.0) if pd.notna(ln.get("df", 1.0)) else 1.0),
+            "max_i_ka": float(ln["max_i_ka"]) * df,
             "parallel": int(ln.get("parallel", 1) or 1),
         })
     lines = pd.DataFrame(rows, columns=["line_id", "from_bus", "to_bus", "length_m", "std_type", "r_ohm_per_km",
@@ -104,11 +119,45 @@ def contract_tables(net, trafo_idx: int = 0,
         "vk_percent": float(trafo["vk_percent"]),
         "vkr_percent": float(trafo["vkr_percent"]),
         "vector_group": _vector_group(net, trafo),
-        "tap_pos": int(trafo["tap_pos"]) if pd.notna(trafo.get("tap_pos")) else 0,
+        "tap_pos": contract_tap(trafo),
     }])
 
     customers = _customers(net, load, rep, bus_id, customer_map)
     return {"buses": buses, "lines": lines, "transformer": transformer, "customers": customers}
+
+
+def transformer_id(net, trafo_idx: int = 0) -> str | None:
+    """The transformer's own identifier (its mRID when the CIM converter made the network)."""
+    value = net.trafo["origin_id"].get(trafo_idx) if "origin_id" in net.trafo.columns else None
+    return str(value) if isinstance(value, str) and value else None
+
+
+def contract_tap(trafo) -> int:
+    """The contract's tap position with the transformer's voltage ratio: its offset from neutral
+    in the network's own steps and side, as a whole number of 2.5 % steps on the HV side. A tap
+    pandapower itself ignores (no position, step, neutral or side) is 0."""
+    def num(key: str) -> float:
+        value = trafo.get(key)
+        return float(value) if value is not None and pd.notna(value) else math.nan
+
+    pos, neutral, step = num("tap_pos"), num("tap_neutral"), num("tap_step_percent")
+    side = trafo.get("tap_side")
+    if any(math.isnan(v) for v in (pos, neutral, step)) or pos == neutral or step == 0.0 or side not in ("hv", "lv"):
+        return 0                                           # at neutral, or a tap pandapower does not apply
+    degree = num("tap_step_degree")
+    if bool(trafo.get("tap_phase_shifter", False)) or (not math.isnan(degree) and degree != 0.0):
+        raise ContractError("the transformer's tap changer shifts the phase, which the contract cannot express")
+    offset = (pos - neutral) * step / 100.0
+    # a tap on the LV winding raises its voltage, which lowers the ratio
+    ratio = 1.0 + offset if side == "hv" else 1.0 / (1.0 + offset)
+    exact = (ratio - 1.0) * 100.0 / CONTRACT_TAP_STEP_PCT
+    steps = round(exact)
+    lo, hi = CONTRACT_TAP_RANGE
+    if abs(exact - steps) * CONTRACT_TAP_STEP_PCT > 0.25 or not lo <= steps <= hi:
+        raise ContractError(f"the transformer's tap (position {pos:g}, neutral {neutral:g}, {step:g} % per step on "
+                            f"the {side} side) changes the ratio by {(ratio - 1.0) * 100.0:+.2f} %, which the "
+                            f"contract's {lo}..{hi} steps of {CONTRACT_TAP_STEP_PCT:g} % cannot give")
+    return int(steps)
 
 
 def write_contract(tables: dict[str, pd.DataFrame], directory) -> None:
@@ -174,6 +223,30 @@ def _lonlat(net) -> tuple[dict[int, float], dict[int, float]] | None:
     if not (x.between(-180, 180).all() and y.between(-90, 90).all()):
         return None
     return {int(i): float(v) for i, v in x.items()}, {int(i): float(v) for i, v in y.items()}
+
+
+@lru_cache(maxsize=1)
+def _library_lines() -> pd.DataFrame:
+    """pandapower's own line types: the ones build.py looks a std_type up in."""
+    import pandapower as pp
+
+    return pp.available_std_types(pp.create_empty_network(), "line")
+
+
+def _line_type(ln, df: float) -> str | None:
+    """The line's std_type when build.py would rebuild it as written: a name outside pandapower's
+    library (build.py then uses the values), or a library type whose values the line still has.
+    A library name on a derated or edited line is left out, so its own values are used."""
+    std = ln.get("std_type")
+    if not isinstance(std, str) or not std:
+        return None
+    lib = _library_lines()
+    if std not in lib.index:
+        return std
+    entry = lib.loc[std]
+    same = df == 1.0 and all(math.isclose(float(ln[c]), float(entry[c]), rel_tol=1e-6, abs_tol=1e-9)
+                             for c in LINE_VALUES)
+    return std if same else None
 
 
 def _vector_group(net, trafo) -> str | None:

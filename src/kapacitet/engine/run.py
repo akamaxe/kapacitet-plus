@@ -201,43 +201,11 @@ def compute_all(quick: bool = False, workers: int = 6) -> None:
     years = cfg.weather_years if not quick else (cfg.reference_year,)
     n_orders = N_ORDERS if not quick else 4
     z_star = A("z_star_pct")
-    m = model()
-    C = m.C
-    hp, ev = background_masks(C)
+    C = model().C
     t0 = time.perf_counter()
 
-    # 1) nodal hosting capacity maps
-    nodal_pv = hosting.nodal_pv_hc(m)
-    nodal_imp = hosting.nodal_import_hc(m, hp, ev)
-    cust = customers()
-    _write("nodal.json", {
-        "customers": cust["cid"].tolist(),
-        "pv_kw": np.round(nodal_pv, 2), "import_kw": np.round(nodal_imp, 2),
-        "fuse_kva": cust["fuse_kva"].tolist(), "cap_kw": np.round(doe.customer_caps(), 2),
-        "winter_design": {k: v for k, v in hosting.winter_design_load().items()
-                          if k in ("year", "hour", "t_air", "peak_kw")},
-    })
-    log.info("nodal HC done (%.0f s)", time.perf_counter() - t0)
-
-    # 2) hosting capacity per adoption order (parallel)
-    jobs = [(o, tuple(years), z_star) for o in range(n_orders)]
-    with ProcessPoolExecutor(max_workers=min(workers, n_orders), initializer=_init_worker) as ex:
-        per_order = list(ex.map(analyze_order, jobs))
-    log.info("orders done (%.0f s)", time.perf_counter() - t0)
-
-    def stats(key: str, field: str) -> dict:
-        v = np.array([r[key][field] for r in per_order], dtype=float)
-        return {"median": float(np.median(v)), "p10": float(np.percentile(v, 10)),
-                "p90": float(np.percentile(v, 90)), "min": float(v.min()), "max": float(v.max())}
-
-    summary = {
-        "z_star_pct": z_star, "years": list(years), "n_orders": n_orders, "customers": C,
-        "total_cap_kw": float(doe.customer_caps().sum()), "total_kwp": float(cust["kwp"].sum()),
-        "measures": {k: {"kw_ac": stats(k, "kw_ac"), "kwp": stats(k, "kwp"), "adopters": stats(k, "adopters")}
-                     for k in ("static", "timeseries", "fixed_cap", "doe")},
-        "per_order": per_order,
-    }
-    _write("hosting_summary.json", summary)
+    # 1) nodal hosting capacity maps, 2) hosting capacity per adoption order (parallel)
+    per_order, _summary = capacity(years, n_orders, z_star, workers, t0=t0)
 
     # 3) showcase: the order whose DOE capacity is the median
     yd = np.array([r["doe"]["kw_ac"] for r in per_order])
@@ -266,6 +234,53 @@ def compute_all(quick: bool = False, workers: int = 6) -> None:
     write_series(cfg.reference_year)
 
     compute_extra(quick, t0=t0, workers=min(workers, 4))
+
+
+def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | None = None,
+             extra: dict | None = None) -> tuple[list[dict], dict]:
+    """The first two stages of the computation, written to results/: the nodal maps (nodal.json)
+    and the capacity of every adoption order with their spread (hosting_summary.json, with the
+    fields of `extra` added). `workers` > 1 runs the orders in that many processes; with one,
+    they run in this process (a study's station). Returns the orders and the summary."""
+    t0 = t0 if t0 is not None else time.perf_counter()
+    m = model()
+    C = m.C
+    hp, ev = background_masks(C)
+    nodal_pv = hosting.nodal_pv_hc(m)
+    nodal_imp = hosting.nodal_import_hc(m, hp, ev)
+    cust = customers()
+    _write("nodal.json", {
+        "customers": cust["cid"].tolist(),
+        "pv_kw": np.round(nodal_pv, 2), "import_kw": np.round(nodal_imp, 2),
+        "fuse_kva": cust["fuse_kva"].tolist(), "cap_kw": np.round(doe.customer_caps(), 2),
+        "winter_design": {k: v for k, v in hosting.winter_design_load().items()
+                          if k in ("year", "hour", "t_air", "peak_kw")},
+    })
+    log.info("nodal HC done (%.0f s)", time.perf_counter() - t0)
+
+    jobs = [(o, tuple(years), z_star) for o in range(n_orders)]
+    if workers > 1:
+        with ProcessPoolExecutor(max_workers=min(workers, n_orders), initializer=_init_worker) as ex:
+            per_order = list(ex.map(analyze_order, jobs))
+    else:
+        per_order = [analyze_order(job) for job in jobs]
+    log.info("orders done (%.0f s)", time.perf_counter() - t0)
+
+    def stats(key: str, field: str) -> dict:
+        v = np.array([r[key][field] for r in per_order], dtype=float)
+        return {"median": float(np.median(v)), "p10": float(np.percentile(v, 10)),
+                "p90": float(np.percentile(v, 90)), "min": float(v.min()), "max": float(v.max())}
+
+    summary = {
+        **(extra or {}),
+        "z_star_pct": z_star, "years": list(years), "n_orders": n_orders, "customers": C,
+        "total_cap_kw": float(doe.customer_caps().sum()), "total_kwp": float(cust["kwp"].sum()),
+        "measures": {k: {"kw_ac": stats(k, "kw_ac"), "kwp": stats(k, "kwp"), "adopters": stats(k, "adopters")}
+                     for k in ("static", "timeseries", "fixed_cap", "doe")},
+        "per_order": per_order,
+    }
+    _write("hosting_summary.json", summary)
+    return per_order, summary
 
 
 EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "foresight", "overinstallation",

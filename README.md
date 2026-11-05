@@ -414,19 +414,24 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study status nb-2026
 ```
 
-`study.toml` says where the weather comes from, the method's choices (percentile, curtailment
-basis, the consumption device), the MV band, what may be disclosed and how the CSV files are
-written, and overrides of `config/assumptions.toml`; an override must name an existing input, its
-unit and its source. Each station is one contract folder in `inputs/network/contract/<id>/`, split
-into `stations/<id>/`, and is built by `kapacitet station build <id> --study <dir>`, a process of
-its own with `KAPACITET_DATA_DIR` on the station's folder: a failing station marks only its own
-`station.json`, and a station whose inputs, method and mode are unchanged is not built again.
-`station.json` records each step, the digests of the inputs, the code's version and commit, and
-what is real, synthetic or assumed. A study that has fetched no weather reuses the reference
-network's weather years, and says so; the household load is the synthetic profile pool until
-meter data are read. The demo's networks are built by pandapower at run time and written through
-`importer/from_pandapower.py`, which turns the LV island behind any pandapower transformer into
-the contract.
+`study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
+the method's choices (percentile, curtailment basis, the consumption device), the MV band, what may
+be disclosed and how the CSV files are written, and overrides of `config/assumptions.toml`; an
+override must name an existing input that a station's build reads, its unit and its source. Each
+station is one contract folder in `inputs/network/contract/<id>/` (with an `origin.json` that says
+what produced it; without one the network is labelled unverified), split into `stations/<id>/`,
+and is built by `kapacitet station build <id> --study <dir>`, a process of its own with
+`KAPACITET_DATA_DIR` on the station's folder: a failing station marks only its own `station.json`,
+and a station whose inputs (its network, the study's inputs, the weather and household profiles
+it starts from), method and mode are unchanged is not built again. `station.json` records each
+step, the digests of the inputs, the code's version and commit, and what is real, synthetic or
+assumed. A study without a place of its own, or that has not fetched its weather, reuses copies of
+the reference network's weather years, and says so; fetching makes its stations stale. The
+household load is the synthetic profile pool, scaled when the study overrides
+`household_kwh_per_year`, until meter data are read. The capacity figures of a station are marked
+provisional: the study's MV band and method choices are not applied yet. The demo's networks are
+built by pandapower at run time and written through `importer/from_pandapower.py`, which turns the
+LV island behind any pandapower transformer into the contract.
 
 ## The paperwork the agreement leaves behind
 

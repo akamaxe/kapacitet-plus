@@ -95,8 +95,19 @@ def study_config() -> StudyConfig | None:
 
 @lru_cache(maxsize=None)
 def settings(site_key: str | None = None) -> Settings:
+    study = study_config()
+    return _settings(site_key or os.environ.get("KAPACITET_SITE") or "default", study,
+                     os.environ.get("KAPACITET_STUDY", "") if study is not None else "")
+
+
+def study_settings(study: StudyConfig, folder: str | Path = "") -> Settings:
+    """The settings a station process of `study` runs with (what settings() returns there, where
+    KAPACITET_STUDY is set and KAPACITET_SITE is not), read from this process without either."""
+    return _settings("default", study, str(folder))
+
+
+def _settings(site_key: str, study: StudyConfig | None, study_dir: str) -> Settings:
     cfg = _read_toml("site.toml")
-    site_key = site_key or os.environ.get("KAPACITET_SITE") or "default"
     s = dict(cfg["site"])
     if site_key != "default":
         alt = cfg.get("alternatives", {}).get(site_key)
@@ -105,7 +116,6 @@ def settings(site_key: str | None = None) -> Settings:
         s.update(alt)
     t = dict(cfg["time"])
     sm = dict(cfg["smhi"])
-    study = study_config()
     if study is not None:
         site_key = _merge_study(study, s, t, sm)
     site = Site(
@@ -136,7 +146,7 @@ def settings(site_key: str | None = None) -> Settings:
         user_agent=cfg["network"]["http_user_agent"],
         overpass_endpoints=tuple(cfg["network"]["overpass_endpoints"]),
         raw=cfg,
-        study=os.environ.get("KAPACITET_STUDY", "") if study is not None else "",
+        study=study_dir,
     )
 
 

@@ -52,8 +52,8 @@ MESSAGES = {
     "phase_value": "unrecognised phase labels, for example {label}",
     "footprint_column": "no footprint_m2 column, so no rooftop PV potential can be estimated",
     "footprint_blank": "customers without footprint_m2, so no rooftop PV potential can be estimated",
-    "annual_kwh_column": "no annual_kwh column, so consumption will be estimated from the fuse rating",
-    "annual_kwh_blank": "customers without annual_kwh, so consumption will be estimated from the fuse rating",
+    "annual_kwh_column": "no annual_kwh column, so the synthetic household profiles cannot be compared with metered consumption",
+    "annual_kwh_blank": "customers without annual_kwh, whose synthetic household profiles cannot be compared with metered consumption",
     "no_coordinates": "buses.csv has no usable lon/lat, so the map cannot be drawn",
     "empty_export": "no contract files found in {directory}",
 }

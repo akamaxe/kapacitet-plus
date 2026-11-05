@@ -13,7 +13,8 @@ import pandapower.networks as pn
 import pytest
 
 from kapacitet.importer.build import build_from_export
-from kapacitet.importer.from_pandapower import ContractError, contract_tables, write_contract
+from kapacitet.importer.from_pandapower import (ContractError, contract_tables, contract_tap, transformer_id,
+                                                write_contract)
 from kapacitet.importer.validate import ERROR, read_export, validate
 
 warnings.filterwarnings("ignore")
@@ -37,29 +38,95 @@ def test_a_benchmark_network_passes_the_contract_check(make):
     assert tables["transformer"]["lv_bus"].iloc[0] == tables["buses"]["bus_id"].iloc[0]
 
 
-def test_the_round_trip_is_electrically_the_same_network(tmp_path):
-    net = pn.kb_extrem_landnetz_kabel_trafo()
-    tables = contract_tables(net, 0, _map(net))
-    write_contract(tables, tmp_path)
-    network, applied = build_from_export(read_export(tmp_path))
-    assert "cable type assumed" not in applied
-    built = network.net
+def _rebuilt(tables, folder):
+    write_contract(tables, folder)
+    return build_from_export(read_export(folder))
 
-    p = 0.004
+
+def _same_voltages(net, tables, network, p: float = 0.004) -> float:
+    """The largest difference of a bus voltage between the source and the rebuilt network, with the
+    same load on every customer."""
+    built = network.net
     net.load["p_mw"], net.load["q_mvar"] = p, 0.0
     net.ext_grid["vm_pu"] = 1.0
-    net.trafo[["tap_pos", "tap_neutral"]] = 0
     pp.runpp(net)
     built.load["p_mw"], built.load["q_mvar"] = p, 0.0
     pp.runpp(built)
-
     contract_name = dict(zip(tables["buses"]["bus_id"], tables["buses"]["name"]))
     assert len(set(contract_name.values())) == len(contract_name)
     built_bus = dict(zip(network.buses["name"], network.buses["bus"]))
-    diff = [abs(net.res_bus.vm_pu.at[int(bid[1:])] - built.res_bus.vm_pu.at[built_bus[name]])
-            for bid, name in contract_name.items()]
-    assert max(diff) < 1e-3
+    return max(abs(net.res_bus.vm_pu.at[int(bid[1:])] - built.res_bus.vm_pu.at[built_bus[name]])
+               for bid, name in contract_name.items())
+
+
+def _ratings(net) -> list[float]:
+    """Each line's thermal limit, as the engine reads it (powerflow.py), in line order."""
+    return list(np.round(net.line["max_i_ka"] * net.line["df"] * net.line["parallel"], 6))
+
+
+@pytest.mark.parametrize("make", [pn.kb_extrem_landnetz_kabel_trafo, pn.kb_extrem_dorfnetz])
+def test_the_round_trip_is_electrically_the_same_network(tmp_path, make):
+    net = make()                                                     # its taps as they are
+    tables = contract_tables(net, 0, _map(net))
+    network, applied = _rebuilt(tables, tmp_path)
+    assert "cable type assumed" not in applied
+    assert _ratings(network.net) == _ratings(net)
+    assert _same_voltages(net, tables, network) < 1e-3
     assert net.res_bus.vm_pu.min() < 0.97                            # the case is not trivially flat
+
+
+def test_a_derated_line_of_a_library_type_keeps_its_own_rating(tmp_path):
+    net = pn.kb_extrem_dorfnetz()
+    net.line["df"] = 0.8
+    library = net.line["std_type"] == "NAYY 4x50 SE"                  # in pandapower's own library
+    assert library.any()
+    tables = contract_tables(net, 0, _map(net))
+    lines = tables["lines"].set_index("line_id")
+    assert lines.loc[[f"L{i}" for i in net.line.index[library]], "std_type"].isna().all()
+    assert (lines.loc[[f"L{i}" for i in net.line.index[~library]], "std_type"] != "").all()
+    network, _ = _rebuilt(tables, tmp_path)
+    assert _ratings(network.net) == _ratings(net)                    # 0.8 x the type's rating, not the type's
+    assert _same_voltages(net, tables, network) < 1e-3
+
+
+@pytest.mark.parametrize("side, neutral, pos, step, want", [
+    ("hv", 5, 5, 2.5, 0),                                            # at a neutral that is not 0
+    ("hv", 5, 6, 2.5, 1),
+    ("hv", 2, 3, 2.5, 1),
+    ("lv", 5, 6, 2.5, -1),                                           # a raised LV winding lowers the ratio
+    ("hv", 0, -2, 1.25, -1),                                         # another step size
+    ("hv", 5, 9, 2.5, None),                                         # +10 %: beyond -2..2
+    ("hv", 0, 1, 1.5, None),                                         # 1.5 %: between two of the contract's steps
+])
+def test_a_tap_is_written_as_the_contracts_position_with_the_same_ratio(tmp_path, side, neutral, pos, step, want):
+    net = pn.kb_extrem_dorfnetz()
+    net.trafo.loc[0, ["tap_side", "tap_min", "tap_max", "tap_neutral", "tap_pos", "tap_step_percent"]] = \
+        [side, min(neutral, pos) - 1, max(neutral, pos) + 1, neutral, pos, step]
+    if want is None:
+        with pytest.raises(ContractError, match="cannot give"):
+            contract_tables(net, 0, _map(net))
+        return
+    tables = contract_tables(net, 0, _map(net))
+    assert int(tables["transformer"]["tap_pos"].iloc[0]) == want
+    network, _ = _rebuilt(tables, tmp_path)
+    assert _same_voltages(net, tables, network, p=0.0) < 2e-3        # the LV busbar at no load
+
+
+def test_a_tap_pandapower_ignores_is_neutral_and_a_phase_shifting_one_is_refused():
+    net = pn.kb_extrem_landnetz_kabel_trafo()                        # NaN tap: no tap changer
+    assert contract_tap(net.trafo.loc[0]) == 0
+    trafo = pn.kb_extrem_dorfnetz().trafo.loc[0].copy()
+    trafo["tap_pos"] = 1
+    trafo["tap_phase_shifter"] = True
+    with pytest.raises(ContractError, match="phase"):
+        contract_tap(trafo)
+
+
+def test_the_transformers_own_id_is_kept():
+    net = pn.kb_extrem_dorfnetz()
+    assert transformer_id(net, 0) is None
+    net.trafo["origin_id"] = "mrid-trafo-1"
+    assert transformer_id(net, 0) == "mrid-trafo-1"
 
 
 def _hand_made():

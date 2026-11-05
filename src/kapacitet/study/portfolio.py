@@ -12,8 +12,10 @@ runs as its own process, with its own environment:
     KAPACITET_INBOX_WORKER   0
 
 Nothing here touches active.json or a running server. A station is built again only when the
-digests of its inputs, its method version or its mode (quick or not) differ from those of its last
-finished build, or when it is forced. A station whose process fails marks only its own record.
+digests of its inputs (the upstream caps aside, which apply after the computation), its method
+version or its mode (quick or not) differ from those of its last finished build, or when it is
+forced. A station whose process fails marks only its own record. One `study build` at a time:
+it holds the study's build.lock while it runs.
 """
 
 from __future__ import annotations
@@ -23,10 +25,11 @@ import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Callable
 
 from .. import paths, procs
-from . import Study
+from . import NOT_A_TRIGGER, Study, StudyError
 from .config import METHOD_VERSION
 
 MAX_JOBS = 6
@@ -42,8 +45,13 @@ def env_for(study: Study, sid: str) -> dict[str, str]:
     return env
 
 
-def reason(study: Study, sid: str, force: bool = False, quick: bool = False) -> str:
-    """Why a station would be built, or why not ("unchanged", "building")."""
+def _trigger(inputs: dict | None) -> dict:
+    return {k: v for k, v in (inputs or {}).items() if k not in NOT_A_TRIGGER}
+
+
+def reason(study: Study, sid: str, force: bool = False, quick: bool = False, shared: dict | None = None) -> str:
+    """Why a station would be built, or why not ("unchanged", "building"). `shared` is the study's
+    shared_digests(), when the caller asks for many stations at once."""
     if study.building(sid):
         return "building"
     if force:
@@ -56,7 +64,7 @@ def reason(study: Study, sid: str, force: bool = False, quick: bool = False) -> 
         return "interrupted"
     if status != "ready":
         return "never built"
-    if rec.get("inputs") != study.digests(sid):
+    if _trigger(rec.get("inputs")) != _trigger(study.digests(sid, shared)):
         return "inputs changed"
     if rec.get("method_version") != METHOD_VERSION:
         return "method changed"
@@ -66,8 +74,13 @@ def reason(study: Study, sid: str, force: bool = False, quick: bool = False) -> 
 
 
 def plan(study: Study, stations: list[str] | None = None, force: bool = False, quick: bool = False) -> dict[str, str]:
-    """Each station's reason, in id order."""
-    return {sid: reason(study, sid, force, quick) for sid in (stations or study.station_ids())}
+    """Each station's reason, in id order; what the stations share is digested once."""
+    shared = study.shared_digests()
+    return {sid: reason(study, sid, force, quick, shared) for sid in (stations or study.station_ids())}
+
+
+def lock(study: Study) -> Path:
+    return procs.lock_path(study.root)
 
 
 def command(study: Study, sid: str, quick: bool = False, allow_git: bool = False) -> list[str]:
@@ -83,21 +96,28 @@ def run(study: Study, stations: list[str] | None = None, jobs: int | None = None
         quick: bool = False, allow_git: bool = False, timeout: float | None = None,
         make_command: Callable[[Study, str], list[str]] | None = None) -> dict:
     """Build what needs building; returns {"built": {sid: outcome}, "skipped": {sid: reason}}.
-    `make_command` replaces the station process's command line (a test's stand-in)."""
-    why = plan(study, stations, force, quick)
-    todo = [sid for sid, r in why.items() if r in BUILD]
-    skipped = {sid: r for sid, r in why.items() if r not in BUILD}
-    if not todo:
-        return {"built": {}, "skipped": skipped}
-    n = max(1, min(jobs or MAX_JOBS, os.cpu_count() or 1, len(todo)))
+    `make_command` replaces the station process's command line (a test's stand-in). Refused while
+    another process builds the same study."""
+    holder = procs.claim(lock(study))
+    if holder is not None:
+        raise StudyError("study_building", pid=holder)
+    try:
+        why = plan(study, stations, force, quick)
+        todo = [sid for sid, r in why.items() if r in BUILD]
+        skipped = {sid: r for sid, r in why.items() if r not in BUILD}
+        if not todo:
+            return {"built": {}, "skipped": skipped}
+        n = max(1, min(jobs or MAX_JOBS, os.cpu_count() or 1, len(todo)))
 
-    def one(sid: str) -> dict:
-        cmd = make_command(study, sid) if make_command else command(study, sid, quick, allow_git)
-        return _run_one(study, sid, cmd, timeout)
+        def one(sid: str) -> dict:
+            cmd = make_command(study, sid) if make_command else command(study, sid, quick, allow_git)
+            return _run_one(study, sid, cmd, timeout)
 
-    with ThreadPoolExecutor(max_workers=n) as ex:
-        built = dict(zip(todo, ex.map(one, todo)))
-    return {"built": built, "skipped": skipped}
+        with ThreadPoolExecutor(max_workers=n) as ex:
+            built = dict(zip(todo, ex.map(one, todo)))
+        return {"built": built, "skipped": skipped}
+    finally:
+        lock(study).unlink(missing_ok=True)
 
 
 def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> dict:
@@ -115,6 +135,11 @@ def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> d
         except subprocess.TimeoutExpired:
             code, error = None, f"the station process took longer than {timeout:g} s and was stopped"
     rec = study.record(sid)
+    if error and study.building(sid):
+        # another live process holds the station (it refused to start): its build and its lock
+        # are its own, and stay as they are
+        return {"status": "building", "code": code, "seconds": round(time.perf_counter() - t0, 1),
+                "error": f"station {sid} is being built by another process"}
     if error and (rec.get("status") != "failed" or code is None):
         # the process ended before it could say so itself: say it here, in its record only
         rec.update(status="failed", error=error, finished=procs.now(), pid=None)
