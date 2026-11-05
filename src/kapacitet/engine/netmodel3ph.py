@@ -23,8 +23,9 @@ from ..cache import memo
 from ..config import A
 from ..grid.builder import load_net, load_tables
 from ..paths import processed
-from .netmodel import Violations
+from .netmodel import Violations, at_hours, slack_per_hour, unsolved
 from .phases import THREE_PHASE, phase_of
+from .powerflow import require_finite
 from .powerflow3ph import PF3Result, PowerFlow3Ph
 
 
@@ -149,59 +150,80 @@ class NetModel3Ph:
         return (np.einsum("plc,ch->plh", self.phi_phase, p),
                 np.einsum("plc,ch->plh", self.phi_phase, q))
 
+    def _screen_terms(self, H: int, vm_slack) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """As `NetModel._screen_terms`: the MV voltage of each hour, the no-load voltage it gives
+        (exactly linear in the MV voltage, so `v_noload` is rescaled) and 1/min(vs, 1), which
+        scales the thermal and the voltage-sensitivity terms below 1 pu."""
+        vs = slack_per_hour(vm_slack, self.vm_slack, H)
+        return vs, self.v_noload[:, None] * (vs / self.vm_slack)[None, :], 1.0 / np.minimum(vs, 1.0)
+
+    @staticmethod
+    def _not_finite(p: np.ndarray, q: np.ndarray, vs: np.ndarray) -> np.ndarray:
+        return ~(np.isfinite(p).all(axis=0) & np.isfinite(q).all(axis=0) & np.isfinite(vs))
+
     def screen_export(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.010,
-                      screen_frac: float = 0.08) -> np.ndarray:
-        """Hours that may have an export-side violation. Never skips one that has."""
+                      screen_frac: float = 0.08, vm_slack=None) -> np.ndarray:
+        """Hours that may have an export-side violation. Never skips one that has; keeps every
+        hour with non-finite input. `vm_slack` (scalar or per hour) as in `NetModel.screen_export`."""
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        v_lin = self.v_noload[:, None] + self.dv_dp @ np.clip(p, 0.0, None)
+        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
+        v_lin = v0 + (self.dv_dp @ np.clip(p, 0.0, None)) * k[None, :]
         cand = v_lin.max(axis=0) > self.v_max - screen_v
         pl, ql = self._phase_flows(p, q)
-        sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None]
+        sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None] * k[None, None, :]
         cand |= ((sl > 1.0 - screen_frac) & (pl > 0)).any(axis=(0, 1))
         pt = self.phase_share @ p
         qt = self.phase_share @ q
-        st = np.hypot(pt, qt) / self.trafo_s_max_phase_kw
+        st = np.hypot(pt, qt) / self.trafo_s_max_phase_kw * k[None, :]
         cand |= ((st > 1.0 - screen_frac) & (pt > 0)).any(axis=0)
+        cand |= self._not_finite(p, q, vs)
         return np.flatnonzero(cand)
 
     def screen_import(self, p_kw: np.ndarray, q_kvar: np.ndarray, screen_v: float = 0.012,
-                      screen_frac: float = 0.08) -> np.ndarray:
+                      screen_frac: float = 0.08, vm_slack=None) -> np.ndarray:
         p = np.asarray(p_kw, dtype=float)
         q = np.asarray(q_kvar, dtype=float)
-        v_lin = (self.v_noload[:, None] - self.dv_dp @ np.clip(-p, 0.0, None)
-                 + self.dv_dq @ np.clip(q, None, 0.0))
+        vs, v0, k = self._screen_terms(p.shape[1], vm_slack)
+        v_lin = (v0 - (self.dv_dp @ np.clip(-p, 0.0, None)) * k[None, :]
+                 + (self.dv_dq @ np.clip(q, None, 0.0)) * k[None, :])
         cand = v_lin.min(axis=0) < self.v_min + screen_v
         pl, ql = self._phase_flows(p, q)
-        sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None]
+        sl = np.hypot(pl, ql) / self.line_s_max_phase_kw[None, :, None] * k[None, None, :]
         cand |= ((sl > 1.0 - screen_frac) & (pl < 0)).any(axis=(0, 1))
         pt = self.phase_share @ p
         qt = self.phase_share @ q
-        st = np.hypot(pt, qt) / self.trafo_s_max_phase_kw
+        st = np.hypot(pt, qt) / self.trafo_s_max_phase_kw * k[None, :]
         cand |= ((st > 1.0 - screen_frac) & (pt < 0)).any(axis=0)
+        cand |= self._not_finite(p, q, vs)
         return np.flatnonzero(cand)
 
-    def export_critical_hours(self, p_kw: np.ndarray, q_kvar: np.ndarray, vm_slack=None) -> np.ndarray:
-        cand = self.screen_export(p_kw, q_kvar)
+    def _confirm(self, p_kw: np.ndarray, q_kvar: np.ndarray, cand: np.ndarray, vm_slack, side: str) -> np.ndarray:
+        """As `NetModel._confirm`: the candidates the nonlinear flow confirms on `side`."""
         if len(cand) == 0:
             return cand
-        vs = vm_slack if vm_slack is None or np.isscalar(vm_slack) else np.asarray(vm_slack)[cand]
-        res = self.solve(p_kw[:, cand], q_kvar[:, cand], vs)
-        return cand[self.violations(res, p_kw[:, cand]).export_side]
+        require_finite(p_kw, q_kvar, vm_slack)
+        res = self.solve(p_kw[:, cand], q_kvar[:, cand], at_hours(vm_slack, cand))
+        return cand[getattr(self.violations(res, p_kw[:, cand]), side)]
+
+    def export_critical_hours(self, p_kw: np.ndarray, q_kvar: np.ndarray, vm_slack=None) -> np.ndarray:
+        return self._confirm(p_kw, q_kvar, self.screen_export(p_kw, q_kvar, vm_slack=vm_slack), vm_slack,
+                             "export_side")
 
     def import_critical_hours(self, p_kw: np.ndarray, q_kvar: np.ndarray, vm_slack=None) -> np.ndarray:
-        cand = self.screen_import(p_kw, q_kvar)
-        if len(cand) == 0:
-            return cand
-        vs = vm_slack if vm_slack is None or np.isscalar(vm_slack) else np.asarray(vm_slack)[cand]
-        res = self.solve(p_kw[:, cand], q_kvar[:, cand], vs)
-        return cand[self.violations(res, p_kw[:, cand]).import_side]
+        return self._confirm(p_kw, q_kvar, self.screen_import(p_kw, q_kvar, vm_slack=vm_slack), vm_slack,
+                             "import_side")
 
     # --------------------------------------------------------------------------- solving
-    def solve(self, p_kw: np.ndarray, q_kvar: np.ndarray, vm_slack=None, flows: bool = True) -> PF3Result:
+    def solve(self, p_kw: np.ndarray, q_kvar: np.ndarray, vm_slack=None, flows: bool = True,
+              strict: bool = False) -> PF3Result:
+        """As `NetModel.solve`: non-finite input raises ValueError, `strict` raises on an hour
+        that did not converge."""
+        p = np.asarray(p_kw, dtype=float)
+        q = np.asarray(q_kvar, dtype=float)
         vs = self.vm_slack if vm_slack is None else vm_slack
-        return self.pf.solve_chunked(np.asarray(p_kw, dtype=float),
-                                     np.asarray(q_kvar, dtype=float), self.phase, vs, flows=flows)
+        require_finite(p, q, vs)
+        return self.pf.solve_chunked(p, q, self.phase, vs, flows=flows, strict=strict)
 
     def violations(self, res: PF3Result, p_kw: np.ndarray | None = None, tol_v: float = 1e-6,
                    tol_pct: float = 1e-4) -> Violations:
@@ -224,6 +246,7 @@ class NetModel3Ph:
             vmax=vmax, vmin=vmin,
             max_line_loading=res.line_loading.max(axis=0),
             trafo_loading=res.trafo_loading,
+            nonconverged=unsolved(res),
         )
 
     def unbalance(self, res: PF3Result) -> Unbalance:

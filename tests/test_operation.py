@@ -79,6 +79,17 @@ def test_every_published_combination_is_verified_over_the_full_year():
 
 
 @needs_operation
+def test_every_published_combination_converged_in_every_hour():
+    idx = json.loads(_read("index.json").read_text(encoding="utf-8"))
+    for basis, rules in idx["combos"].items():
+        for rule in rules:
+            ver = json.loads(_read(basis, rule, "issued.json").read_text(encoding="utf-8"))["verification"]
+            if "pf_nonconverged_hours" not in ver:
+                pytest.skip("not published yet; run: python -m kapacitet compute --stage extra --only operation")
+            assert ver["pf_nonconverged_hours"] == 0, (basis, rule)
+
+
+@needs_operation
 def test_foresight_maxmin_reproduces_the_published_envelopes_and_filing():
     from kapacitet.paths import processed_ro
 

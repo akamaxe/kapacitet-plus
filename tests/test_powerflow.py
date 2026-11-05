@@ -8,8 +8,9 @@ from __future__ import annotations
 import numpy as np
 import pandapower as pp
 import pytest
+from pandapower.powerflow import LoadflowNotConverged
 
-from kapacitet.engine.powerflow import PowerFlowModel
+from kapacitet.engine.powerflow import PowerFlowModel, PowerFlowNotConverged
 
 N_CUST = 6
 
@@ -77,6 +78,59 @@ def test_converges_and_is_chunk_invariant(feeder):
     # each chunk stops on its own worst column, so results agree to the iteration tolerance
     assert np.abs(np.abs(whole.v) - np.abs(chunked.v)).max() < 1e-11
     assert np.abs(whole.trafo_loading - chunked.trafo_loading).max() < 1e-8
+
+
+def _with_an_overloaded_hour(H: int, bad: int) -> np.ndarray:
+    """Ordinary hours, and in hour `bad` 400 kW of load per customer: 2.4 MW on a 0.4 MVA
+    transformer, a state with no power-flow solution."""
+    rng = np.random.default_rng(5)
+    p = rng.uniform(-10.0, 12.0, size=(N_CUST, H))
+    p[:, bad] = -400.0
+    return p
+
+
+def test_a_column_that_does_not_converge_is_flagged_alone(feeder):
+    """The fixed point used to hand back its last iterate after max_iter as if it were an answer."""
+    model, net, cust_bus = feeder
+    H, bad = 20, 9
+    p = _with_an_overloaded_hour(H, bad)
+    q = np.zeros_like(p)
+    whole = model.solve(p, q, 1.0)
+    assert not whole.converged[bad] and whole.mismatch[bad] > 1e-3
+    assert whole.converged[np.arange(H) != bad].all()
+    assert whole.max_mismatch == whole.mismatch.max()
+
+    # pandapower's Newton-Raphson gives up on the same state
+    net.ext_grid.loc[0, "vm_pu"] = 1.0
+    net.sgen["p_mw"] = 0.0
+    net.sgen["q_mvar"] = 0.0
+    net.load["q_mvar"] = 0.0
+    for i, bus in enumerate(cust_bus):
+        net.load.loc[net.load.index[net.load.bus == bus][0], "p_mw"] = -p[i, bad] / 1000.0
+    with pytest.raises(LoadflowNotConverged):
+        pp.runpp(net, calculate_voltage_angles=False, init="flat", tolerance_mva=1e-10)
+
+    # the flags do not depend on how the hours are cut into chunks, and strict names the hour
+    chunked = model.solve_chunked(p, q, 1.0, chunk=7)
+    assert np.array_equal(chunked.converged, whole.converged)
+    with pytest.raises(PowerFlowNotConverged) as err:
+        model.solve_chunked(p, q, 1.0, chunk=7, strict=True)
+    assert err.value.columns.tolist() == [bad]
+    with pytest.raises(PowerFlowNotConverged):
+        model.solve(p, q, 1.0, strict=True)
+    model.solve(np.delete(p, bad, axis=1), np.delete(q, bad, axis=1), 1.0, strict=True)
+
+
+@pytest.mark.parametrize("nan_at", [2, 9])
+def test_a_non_finite_column_shows_in_the_mismatch_whichever_chunk_it_is_in(feeder, nan_at):
+    """Python's max(1e-11, nan) is 1e-11 and max(nan, 1e-11) is nan: the aggregate must not depend on that."""
+    model, _, _ = feeder
+    rng = np.random.default_rng(13)
+    p = rng.uniform(-10.0, 12.0, size=(N_CUST, 14))
+    p[0, nan_at] = np.nan
+    res = model.solve_chunked(p, np.zeros_like(p), 1.0, chunk=7)
+    assert np.isnan(res.max_mismatch)
+    assert res.converged.tolist() == [h != nan_at for h in range(14)]
 
 
 def test_voltage_sensitivity_sign(feeder):

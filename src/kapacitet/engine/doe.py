@@ -15,6 +15,12 @@ using the nonlinear power flow, and a per-hour scaling back-off guarantees that 
 verified envelopes are published. `desired export` uses perfect foresight of load and PV
 (labelled as such in the UI).
 
+The critical hours come from a linear screen, so the verification above only covers the hours
+the screen kept. `verify_full_year` solves every hour in which a non-firm customer exports, with
+the published envelope held, and `compute` runs it by default (`verify="full"`); the capacity
+searches, which call `compute` many times and publish only the point they settle on, pass
+`verify="critical"`.
+
 Allocation policies:
   maxmin   — lexicographic max-min fairness by progressive filling (exact because the
              constraint matrix is non-negative); every customer gets the same kW unless
@@ -32,7 +38,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from .netmodel import NetModel
+from .netmodel import NetModel, at_hours
+from .powerflow import require_finite
 from .scenario import customers
 
 
@@ -65,6 +72,10 @@ class DoeResult:
                                         # that curtailment was a last resort, not a preference.
     binding_line: np.ndarray | None = None  # (Hc,) pandapower line index when a cable bound, else -1
     info: dict = field(default_factory=dict)
+    # How far the envelopes were checked: "critical" (the critical hours only, which the linear
+    # screen chose) or "full" (every hour in which a non-firm customer exports, verify_full_year).
+    verification: str = "critical"
+    full_year_violations: int | None = None   # export violations in that full check (must be 0)
 
     def envelope(self, H: int) -> np.ndarray:
         """Published export limit (kW) per non-firm customer and hour."""
@@ -166,10 +177,101 @@ def allocate(policy: str, A: np.ndarray, b: np.ndarray, ub: np.ndarray,
 
 # --------------------------------------------------------------------------------- DOE computation
 
+VERIFY = ("full", "critical")
+
+
+def held_injection(arrays: dict[str, np.ndarray], r: DoeResult) -> np.ndarray:
+    """Net injection (C, H) with every non-firm customer of `r` held to its published envelope in
+    every hour: it exports what it wants up to the envelope, and its consumption is untouched."""
+    p_net = np.asarray(arrays["p_net"], dtype=float)
+    p = p_net.copy()
+    nf = np.asarray(r.nonfirm, dtype=int)
+    if len(nf):
+        p[nf] = np.minimum(p_net[nf], 0.0) + np.minimum(np.clip(p_net[nf], 0.0, None), r.envelope(p.shape[1]))
+    return p
+
+
+# the scalar part of verify_full_year's answer, which a DoeResult keeps in info["full_year"]
+FULL_YEAR_SUMMARY = ("hours_checked", "violation_hours", "export_violation_hours", "firm_violation_hours",
+                     "nonconverged_hours", "pf_iterations", "pf_max_mismatch")
+
+
+def verify_full_year(model: NetModel, arrays: dict[str, np.ndarray], r: DoeResult, vm_slack=None, *,
+                     keep_state: bool = False) -> dict:
+    """Solve the year again with the nonlinear power flow, every non-firm customer of `r` held to
+    its published envelope, and count what still breaks an export-side limit.
+
+    `r` may have been computed against another state than `arrays` (a day-ahead planning state
+    checked against what happened). Only the hours in which some non-firm customer wants to
+    export can differ from the firm state, so only those are solved; `keep_state` solves every
+    hour instead and returns the state too ("p", "result", "violations"), for the callers that
+    publish it.
+
+    `violation_hours` counts the solved hours with a non-firm export that break a limit the firm
+    state alone (non-firm customers exporting nothing) does not break, since no envelope can fix
+    those; an hour without a converged, finite answer is never excused. It must be 0.
+    `export_violation_hours` counts every export-side violation of the hours solved, the firm
+    ones included: with `keep_state` that is the whole year.
+    """
+    p_net = np.asarray(arrays["p_net"], dtype=float)
+    q = np.asarray(arrays["q"], dtype=float)
+    H = p_net.shape[1]
+    nf = np.asarray(r.nonfirm, dtype=int)
+    exporting = (p_net[nf] > 0).any(axis=0) if len(nf) else np.zeros(H, dtype=bool)
+    hrs = np.arange(H) if keep_state else np.flatnonzero(exporting)
+    out = dict.fromkeys(FULL_YEAR_SUMMARY, 0)
+    out.update(hours_checked=int(len(hrs)), pf_max_mismatch=0.0, max_voltage_pu=None,
+               max_trafo_loading_pct=None, max_line_loading_pct=None)
+    if len(hrs) == 0:
+        return out
+    p = held_injection(arrays, r)[:, hrs]
+    res = model.solve(p, q[:, hrs], at_hours(vm_slack, hrs))
+    v = model.violations(res, p)
+    bad = v.export_side & exporting[hrs]
+    excused = np.zeros(len(hrs), dtype=bool)
+    ask = np.flatnonzero(bad & ~v.nonconverged)
+    if len(ask):
+        p_firm = p_net[:, hrs[ask]].copy()
+        p_firm[nf] = np.minimum(p_firm[nf], 0.0)
+        vf = model.violations(model.solve(p_firm, q[:, hrs[ask]], at_hours(vm_slack, hrs[ask])), p_firm)
+        excused[ask] = vf.export_side & ~vf.nonconverged
+    out.update(violation_hours=int((bad & ~excused).sum()), export_violation_hours=int(v.export_side.sum()),
+               firm_violation_hours=int(excused.sum()), nonconverged_hours=int(v.nonconverged.sum()),
+               pf_iterations=int(res.iterations), pf_max_mismatch=float(res.max_mismatch),
+               max_voltage_pu=float(np.max(v.vmax)), max_trafo_loading_pct=float(np.max(v.trafo_loading)),
+               max_line_loading_pct=float(np.max(v.max_line_loading)))
+    if out["violation_hours"] or out["nonconverged_hours"]:
+        log.warning("full-year verification: %d violation hours with the envelopes held, %d hours without a "
+                    "converged power flow (of %d checked)", out["violation_hours"], out["nonconverged_hours"],
+                    len(hrs))
+    if keep_state:
+        out.update(p=p, result=res, violations=v)
+    return out
+
+
+def _finish(model: NetModel, arrays: dict[str, np.ndarray], r: DoeResult, vm_slack, verify: str) -> DoeResult:
+    """Record how far `r` was verified, running the full-year check when asked for."""
+    r.verification = verify
+    if verify == "full":
+        full = verify_full_year(model, arrays, r, vm_slack)
+        r.full_year_violations = full["violation_hours"]
+        r.info["full_year"] = {k: full[k] for k in FULL_YEAR_SUMMARY}
+    return r
+
+
 def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray, *, policy: str = "maxmin",
-            max_iter: int = 4, vm_slack=None) -> DoeResult:
-    """Export envelopes for the non-firm customers of a scenario (arrays from Scenario.arrays())."""
+            max_iter: int = 4, vm_slack=None, verify: str = "full") -> DoeResult:
+    """Export envelopes for the non-firm customers of a scenario (arrays from Scenario.arrays()).
+
+    `verify="full"` (the default) checks the result in every hour of the year as well, with
+    `verify_full_year`, and records it in `full_year_violations`. "critical" checks the critical
+    hours only: for the capacity searches, which call this many times and publish only the point
+    they settle on. Non-finite input raises ValueError naming the hours.
+    """
+    if verify not in VERIFY:
+        raise ValueError(f"verify must be one of {VERIFY}, not {verify!r}")
     p_net, q = arrays["p_net"].astype(float), arrays["q"].astype(float)
+    require_finite(p_net, q, vm_slack)
     C, H = p_net.shape
     nonfirm = np.asarray(nonfirm, dtype=int)
     N = len(nonfirm)
@@ -177,7 +279,8 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     desired = np.clip(p_net[nonfirm], 0.0, None)
     cap = kwp_cap[nonfirm]
     if N == 0:
-        return DoeResult(nonfirm, np.zeros(0, int), np.zeros((0, 0)), desired, cap, np.zeros((0, H)))
+        return _finish(model, arrays, DoeResult(nonfirm, np.zeros(0, int), np.zeros((0, 0)), desired, cap,
+                                                np.zeros((0, H))), vm_slack, verify)
 
     # 1) Critical hours: every non-firm customer exporting as desired violates a limit
     #    (linear screen, confirmed with the nonlinear power flow).
@@ -185,14 +288,14 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     Hc = len(hours)
     curtailed = np.zeros((N, H))
     if Hc == 0:
-        return DoeResult(nonfirm, hours, np.zeros((N, 0)), desired, cap, curtailed,
-                         info={"critical_hours": 0})
+        return _finish(model, arrays, DoeResult(nonfirm, hours, np.zeros((N, 0)), desired, cap, curtailed,
+                                                info={"critical_hours": 0}), vm_slack, verify)
 
     # 2) Firm state on critical hours: non-firm customers export nothing.
     p_base = p_net[:, hours].copy()
     p_base[nonfirm] = np.minimum(p_base[nonfirm], 0.0)
     q_c = q[:, hours]
-    vs = vm_slack if vm_slack is None or np.isscalar(vm_slack) else np.asarray(vm_slack)[hours]
+    vs = at_hours(vm_slack, hours)
     res0 = model.solve(p_base, q_c, vs)
     v0 = np.abs(res0.v[model.check_rows])                                 # (Kv, Hc)
     base_viol = model.violations(res0, p_base)
@@ -225,11 +328,20 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     m_l = np.zeros((Kl, Hc))
     m_t = np.zeros((1, Hc))
     ub = np.minimum(desired[:, hours], cap[:, None])
+    # Where the firm state has no converged, finite answer nothing can be verified against it:
+    # the envelope there is zero, and the hour is still counted as a violation below.
+    unsolved0 = base_viol.nonconverged
+    ub[:, unsolved0] = 0.0
+
+    def rhs() -> np.ndarray:
+        b = np.vstack([model.v_max - v0 - m_v, Pbar_l - P0_l - m_l, (Pbar_T - P0_T)[None, :] - m_t])
+        b[:, unsolved0] = 0.0
+        return b
 
     E = np.zeros((N, Hc))
     it = 0
     for it in range(1, max_iter + 1):
-        b = np.vstack([model.v_max - v0 - m_v, Pbar_l - P0_l - m_l, (Pbar_T - P0_T)[None, :] - m_t])
+        b = rhs()
         E = allocate(policy, A, b, ub, weights=cap)
         p_chk = p_base.copy()
         p_chk[nonfirm] += E
@@ -258,8 +370,7 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
             mid = (lo + hi) / 2.0
             p_chk = p_base[:, idx].copy()
             p_chk[nonfirm] += E[:, idx] * mid[None, :]
-            vs_i = vs if vs is None or np.isscalar(vs) else vs[idx]
-            v2 = model.violations(model.solve(p_chk, q_c[:, idx], vs_i), p_chk)
+            v2 = model.violations(model.solve(p_chk, q_c[:, idx], at_hours(vs, idx)), p_chk)
             ok = ~v2.export_side
             lo = np.where(ok, mid, lo)
             hi = np.where(ok, hi, mid)
@@ -269,15 +380,16 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     p_chk = p_base.copy()
     p_chk[nonfirm] += E
     final = model.violations(model.solve(p_chk, q_c, vs), p_chk)
-    firm_bad = base_viol.export_side
+    # An hour the firm state alone breaks is not the envelopes' doing, unless the firm state has
+    # no answer there: a non-converged or non-finite hour is never excused.
+    firm_bad = base_viol.export_side & ~base_viol.nonconverged
     verified_bad = int((final.export_side & ~firm_bad).sum())
 
     curtailed[:, hours] = np.maximum(desired[:, hours] - E, 0.0)
 
     # Which limit bound each critical hour: the row of A E <= b with the least slack. A
     # regulator asking why a customer was curtailed gets the component, not just the fact.
-    b_final = np.vstack([model.v_max - v0 - m_v, Pbar_l - P0_l - m_l, (Pbar_T - P0_T)[None, :] - m_t])
-    slack = b_final - A @ E
+    slack = rhs() - A @ E
     scale = np.concatenate([np.full(Kv, 0.01),                      # pu, so 1 % is "tight"
                             model.line_s_max_kw[line_idx] * 0.01,   # kW, 1 % of the rating
                             [model.trafo_s_max_kw * 0.01]])
@@ -285,12 +397,13 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     binding = np.where(tight < Kv, 0, np.where(tight < Kv + Kl, 1, 2)).astype(np.int8)
     binding_line = np.where(binding == 1, line_idx[np.clip(tight - Kv, 0, max(Kl - 1, 0))], -1)
 
-    return DoeResult(nonfirm=nonfirm, hours=hours, E=E.astype(np.float32), desired=desired.astype(np.float32),
-                     cap=cap.astype(np.float32), curtailed=curtailed.astype(np.float32), iterations=it,
-                     backoff_hours=backoff, base_violation_hours=int(firm_bad.sum()),
-                     verified_violations=verified_bad,
-                     binding=binding, binding_line=binding_line.astype(np.int32),
-                     info={"critical_hours": int(Hc), "policy": policy})
+    r = DoeResult(nonfirm=nonfirm, hours=hours, E=E.astype(np.float32), desired=desired.astype(np.float32),
+                  cap=cap.astype(np.float32), curtailed=curtailed.astype(np.float32), iterations=it,
+                  backoff_hours=backoff, base_violation_hours=int(base_viol.export_side.sum()),
+                  verified_violations=verified_bad,
+                  binding=binding, binding_line=binding_line.astype(np.int32),
+                  info={"critical_hours": int(Hc), "policy": policy})
+    return _finish(model, arrays, r, vm_slack, verify)
 
 
 def fixed_cap(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray, snapshot_p: np.ndarray,

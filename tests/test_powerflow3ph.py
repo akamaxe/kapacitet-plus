@@ -14,6 +14,7 @@ import pandapower.networks as pn
 import pytest
 from conftest import needs_grid
 
+from kapacitet.engine.powerflow import PowerFlowNotConverged
 from kapacitet.engine.powerflow3ph import PHASES, PowerFlow3Ph, phase_frame, sequence_ybus
 
 N_CUST = 4
@@ -186,6 +187,28 @@ def test_unbalance_is_reported_and_zero_when_balanced():
     assert unb[0] < 1e-9                             # the MV source stays balanced
     assert unb[-1] > unb[2], "the far end must be more unbalanced than the first node"
     assert res_unbal.phase("a").max() > res_unbal.phase("b").max()
+
+
+def test_a_column_that_does_not_converge_is_flagged_alone():
+    """The same convergence contract as the balanced solver: one flag per operating point."""
+    net, cust_bus = build_feeder()
+    net.ext_grid["s_sc_max_mva"] = 1e7
+    model = PowerFlow3Ph(net, cust_bus)
+    rng = np.random.default_rng(8)
+    H, bad = 12, 9
+    p = rng.uniform(-6.0, 8.0, size=(N_CUST, H))
+    p[:, bad] = -400.0                               # 1.6 MW on a 0.4 MVA transformer
+    phase_idx = np.array([0, 1, 2, -1])
+    whole = model.solve(p, None, phase_idx, 1.0)
+    assert whole.converged.tolist() == [h != bad for h in range(H)]
+    chunked = model.solve_chunked(p, None, phase_idx, 1.0, chunk=5)
+    assert np.array_equal(chunked.converged, whole.converged)
+    assert chunked.max_mismatch > 1e-3 and whole.mismatch[bad] > 1e-3
+    with pytest.raises(PowerFlowNotConverged) as err:
+        model.solve_chunked(p, None, phase_idx, 1.0, chunk=5, strict=True)
+    assert err.value.columns.tolist() == [bad]
+    p[0, 2] = np.nan                                 # in the first chunk: still shows
+    assert np.isnan(model.solve_chunked(p, None, phase_idx, 1.0, chunk=5).max_mismatch)
 
 
 # --------------------------------------------------------------- the real network, when built

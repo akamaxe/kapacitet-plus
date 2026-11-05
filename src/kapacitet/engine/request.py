@@ -63,9 +63,8 @@ def base_injection(model: NetModel, base: dict, year: int, hp: np.ndarray, ev: n
     p = arr["p_net"].astype(float).copy()
     nonfirm = np.array(base["nonfirm_cids"], dtype=int)
     if len(nonfirm):
-        r = doe.compute(model, arr, nonfirm, policy="maxmin")
-        p[nonfirm] = np.minimum(p[nonfirm], 0.0) + np.minimum(np.clip(arr["p_net"][nonfirm], 0, None),
-                                                              r.envelope(p.shape[1]))
+        # verified in every hour (doe.compute's default), since every hour of it is a baseline
+        p = doe.held_injection(arr, doe.compute(model, arr, nonfirm, policy="maxmin"))
     return p, arr["q"].astype(float)
 
 

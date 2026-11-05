@@ -36,6 +36,8 @@ def _largest_true(pred, lo: int, hi: int) -> int:
 
 
 def _z_doe(m: NetModel, order, ms, k, years, hp, ev) -> float:
+    """Curtailment share of order[ms:k] over `years`: a bisection predicate, so the envelopes are
+    verified on their critical hours only (doe.compute's verify="critical")."""
     C = m.C
     nf = order[ms:k]
     if len(nf) == 0:
@@ -45,7 +47,7 @@ def _z_doe(m: NetModel, order, ms, k, years, hp, ev) -> float:
     curt = pot = 0.0
     for y in years:
         arr = Scenario(year=y, pv=pvm, hp=hp, ev=ev).arrays()
-        r = doe.compute(m, arr, nf)
+        r = doe.compute(m, arr, nf, verify="critical")
         curt += float(r.curtailed.sum())
         pot += float(arr["pv"][nf].sum())
     return 100.0 * curt / pot if pot > 0 else 0.0
@@ -387,7 +389,7 @@ def validation() -> None:
     n = 12
     load = rng.uniform(0, 6, (C, n))
     pv = rng.uniform(0, 12, (C, n)) * (rng.random((C, n)) < 0.7)
-    res = m.pf.solve(pv - load, -load * tanphi, 1.0)
+    res = m.pf.solve(pv - load, -load * tanphi, 1.0, strict=True)   # a comparison needs an answer
     dv = dl = 0.0
     t_nr = 0.0
     for h in range(n):
@@ -415,7 +417,7 @@ def validation() -> None:
     tot = arr["p_net"].sum(axis=0)
     w_idx = np.argsort(tot)[-200:]
     p, q = arr["p_net"][:, w_idx].astype(float), arr["q"][:, w_idx].astype(float)
-    v_nl = np.abs(m.solve(p, q).v[m.check_rows])
+    v_nl = np.abs(m.solve(p, q, strict=True).v[m.check_rows])
     v_lin = m.v_noload[:, None] + m.dv_dp @ np.clip(p, 0, None)
     err = v_lin - v_nl
     out["linearisation"] = {"hours": int(len(w_idx)), "mean_error_pu": float(err.mean()),

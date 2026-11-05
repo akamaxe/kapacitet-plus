@@ -24,6 +24,33 @@ def test_envelopes_are_verified_over_the_whole_year(results):
     assert ver["uncontrolled_violation_hours"] > 0, "the comparison needs a case that does violate"
 
 
+FULL_YEAR = "run: python -m kapacitet compute (the full-year verification fields came after these results)"
+
+
+def _field(d: dict, key: str):
+    if key not in d:
+        pytest.skip(f"{key} not published yet; {FULL_YEAR}")
+    return d[key]
+
+
+def test_every_published_power_flow_converged(results):
+    ver = results("showcase")["verification"]
+    assert _field(ver, "pf_nonconverged_hours") == 0
+    assert ver["pf_max_mismatch"] <= 1e-8
+
+
+def test_every_published_envelope_point_is_verified_in_every_hour(results):
+    """Not only the critical hours the screen picked: doe.compute's full-year check, at every point
+    the interface shows (each sharing rule, each adoption order, the curve, the risk cases)."""
+    show = results("showcase")["policies"]
+    assert all(_field(p, "full_year_violations") == 0 for p in show.values())
+    assert all(_field(o, "doe_full_year_violations") == 0 for o in results("hosting_summary")["per_order"])
+    assert all(_field(p, "full_year_violations") == 0 for p in results("zcurve")["points"])
+    risk = results("risk")
+    assert _field(risk["stats"], "full_year_violations") == 0
+    assert all(c["full_year_violations"] == 0 for c in risk["cases"])
+
+
 def test_curtailment_of_the_headline_point_respects_the_planning_threshold(results):
     h = results("hosting_summary")
     z_star = h["z_star_pct"]

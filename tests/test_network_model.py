@@ -12,6 +12,8 @@ import pandapower.topology as top
 import pytest
 from conftest import on_tiny
 
+from kapacitet.engine.powerflow import PFResult, PowerFlowNotConverged
+
 
 def test_network_is_radial_and_fully_connected(grid_model):
     net = grid_model.net
@@ -104,3 +106,141 @@ def test_sensitivities_are_conservative_for_export(grid_model):
     v_nl = np.abs(grid_model.solve(p, np.zeros_like(p)).v[grid_model.check_rows])
     v_lin = grid_model.v_noload[:, None] + grid_model.dv_dp @ p
     assert (v_lin.max(axis=0) >= v_nl.max(axis=0) - 1e-3).all()
+
+
+# ------------------------------------------------------------------ hours without an answer
+
+def _export_draw(model, seed: int, H: int = 300) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(seed)
+    per = _per_house_kw(model)
+    p = rng.uniform(0.0, 1.0, size=(model.C, H)) * rng.uniform(0.6, 3.3, size=(model.C, 1)) * per
+    return p, -0.05 * p
+
+
+def _import_draw(model, seed: int, H: int = 300) -> tuple[np.ndarray, np.ndarray]:
+    rng = np.random.default_rng(100 + seed)
+    per = _per_house_kw(model)
+    p = -rng.uniform(0.0, 1.0, size=(model.C, H)) * rng.uniform(0.6, 3.6, size=(model.C, 1)) * per
+    return p, 0.1 * p
+
+
+def test_a_state_that_is_not_finite_is_a_violation_on_both_sides(grid_model):
+    """A NaN compares False with every limit, so an all-NaN state used to read as a clean hour."""
+    H = 3
+    nan = np.full(H, np.nan)
+    res = PFResult(v=np.full((len(grid_model.net.bus), H), np.nan + 0j),
+                   i_line_ka=np.full((len(grid_model.net.line), H), np.nan),
+                   line_loading=np.full((len(grid_model.net.line), H), np.nan),
+                   trafo_loading=nan, trafo_p_mw=nan, iterations=60, max_mismatch=np.nan)
+    v = grid_model.violations(res, np.zeros((grid_model.C, H)))
+    assert v.nonconverged.all() and v.export_side.all() and v.import_side.all() and v.any.all()
+
+
+def test_an_hour_that_does_not_converge_is_a_violation_and_strict_raises(grid_model):
+    """Six times the per-house share of the transformer as load: no power-flow solution exists."""
+    per = _per_house_kw(grid_model)
+    p = np.full((grid_model.C, 3), 0.5 * per)
+    p[:, 1] = -6.0 * per
+    q = np.zeros_like(p)
+    res = grid_model.solve(p, q)
+    assert res.converged.tolist() == [True, False, True]
+    v = grid_model.violations(res, p)
+    assert v.nonconverged.tolist() == [False, True, False]
+    assert v.import_side[1] and v.export_side[1] and v.any[1]
+    with pytest.raises(PowerFlowNotConverged) as err:
+        grid_model.solve(p, q, strict=True)
+    assert err.value.columns.tolist() == [1]
+
+
+def test_non_finite_input_is_refused_by_name_and_kept_by_the_screens(grid_model):
+    from kapacitet.engine import doe
+
+    p, q = _export_draw(grid_model, 0, H=20)
+    p[grid_model.C - 1, 7] = np.nan
+    with pytest.raises(ValueError, match=r"columns 7\)"):
+        grid_model.solve(p, q)
+    with pytest.raises(ValueError, match=r"columns 7\)"):     # the hour, not its place among the candidates
+        grid_model.export_critical_hours(p, q)
+    with pytest.raises(ValueError, match=r"columns 7\)"):
+        doe.compute(grid_model, {"p_net": p, "q": q}, np.arange(grid_model.C)[-3:])
+    assert 7 in grid_model.screen_export(p, q) and 7 in grid_model.screen_import(p, q)
+    q2 = q.copy()
+    q2[0, 4] = np.inf
+    with np.errstate(invalid="ignore"):                       # inf times the zeros of the incidence
+        assert 4 in grid_model.screen_export(np.nan_to_num(p), q2)
+
+
+@pytest.mark.parametrize("vm", [0.98, 1.00, 1.06])
+@pytest.mark.parametrize("seed", [0, 1])
+def test_the_screens_follow_the_mv_voltage_they_are_given(grid_model, vm, seed):
+    """At any MV voltage the screen keeps every hour the nonlinear flow finds violating, whether
+    the voltage comes as an argument or as the model default. A model built for 1.00 pu used to
+    screen at 1.00 pu whatever it was told, and missed hours at 1.06."""
+    from kapacitet.engine.netmodel import get_model
+
+    own = get_model(vm_slack=vm)
+    for draw, side, screen, critical in ((_export_draw, "export_side", "screen_export", "export_critical_hours"),
+                                         (_import_draw, "import_side", "screen_import", "import_critical_hours")):
+        p, q = draw(grid_model, seed)
+        truth = set(np.flatnonzero(getattr(grid_model.violations(grid_model.solve(p, q, vm), p), side)).tolist())
+        assert truth, f"the {side} draw must violate at {vm} pu, or the test checks nothing"
+        cand = getattr(grid_model, screen)(p, q, vm_slack=vm)
+        assert truth <= set(cand.tolist())
+        assert np.array_equal(cand, getattr(own, screen)(p, q))
+        got = getattr(grid_model, critical)(p, q, vm)
+        assert set(got.tolist()) == truth
+        assert np.array_equal(got, getattr(own, critical)(p, q))
+
+
+def test_the_screens_take_the_mv_voltage_hour_by_hour(grid_model):
+    rng = np.random.default_rng(21)
+    p, q = _export_draw(grid_model, 2)
+    vm = rng.choice([0.98, 1.0, 1.06], size=p.shape[1])
+    truth = grid_model.violations(grid_model.solve(p, q, vm), p).export_side
+    assert truth.any()
+    assert set(np.flatnonzero(truth).tolist()) <= set(grid_model.screen_export(p, q, vm_slack=vm).tolist())
+    assert np.array_equal(grid_model.export_critical_hours(p, q, vm), np.flatnonzero(truth))
+
+
+# ------------------------------------------------------------------ the same on the unbalanced model
+
+@pytest.fixture(scope="module")
+def model3(grid_model):
+    """The unbalanced model of the same grid, every connection single-phase at random."""
+    from kapacitet.engine.netmodel3ph import NetModel3Ph
+    from kapacitet.engine.phases import phase_of
+
+    return NetModel3Ph(phase=phase_of(grid_model.cust, np.zeros(grid_model.C), rule="random", seed=3))
+
+
+def test_the_unbalanced_model_treats_an_hour_without_an_answer_alike(grid_model, model3):
+    per = _per_house_kw(grid_model)
+    p = np.full((model3.C, 3), 0.3 * per)
+    p[:, 1] = -6.0 * per
+    q = np.zeros_like(p)
+    res = model3.solve(p, q)
+    assert res.converged.tolist() == [True, False, True]
+    v = model3.violations(res, p)
+    assert v.nonconverged.tolist() == [False, True, False] and v.import_side[1] and v.export_side[1]
+    with pytest.raises(PowerFlowNotConverged):
+        model3.solve(p, q, strict=True)
+    p[0, 2] = np.nan
+    with pytest.raises(ValueError, match=r"columns 2\)"):
+        model3.solve(p, q)
+    assert 2 in model3.screen_export(p, q) and 2 in model3.screen_import(p, q)
+
+
+@pytest.mark.parametrize("vm", [0.98, 1.06])
+def test_the_unbalanced_screens_follow_the_mv_voltage(grid_model, model3, vm):
+    from kapacitet.engine.netmodel3ph import NetModel3Ph
+
+    own = NetModel3Ph(phase=model3.phase, vm_slack=vm)
+    for draw, side, screen, critical in ((_export_draw, "export_side", "screen_export", "export_critical_hours"),
+                                         (_import_draw, "import_side", "screen_import", "import_critical_hours")):
+        p, q = draw(grid_model, 0, H=150)
+        truth = set(np.flatnonzero(getattr(model3.violations(model3.solve(p, q, vm), p), side)).tolist())
+        assert truth, f"the {side} draw must violate at {vm} pu, or the test checks nothing"
+        cand = getattr(model3, screen)(p, q, vm_slack=vm)
+        assert truth <= set(cand.tolist())
+        assert np.array_equal(cand, getattr(own, screen)(p, q))
+        assert np.array_equal(getattr(model3, critical)(p, q, vm), getattr(own, critical)(p, q))

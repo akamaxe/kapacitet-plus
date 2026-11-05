@@ -34,6 +34,8 @@ from pandapower.pypower.idx_brch import F_BUS, T_BUS
 from pandapower.pypower.idx_bus import BUS_TYPE, REF
 from pandapower.pypower.makeYbus import makeYbus
 
+from .powerflow import ACCEPT_TOL, check_converged, column_steps
+
 PHASES = ("a", "b", "c")
 A_OP = np.exp(2j * np.pi / 3)                      # 120° rotation
 A_MAT = np.array([[1, 1, 1],
@@ -48,7 +50,9 @@ class PF3Result:
 
     v: np.ndarray                 # complex, (3 · n_bus, H)
     iterations: int
-    max_mismatch: float
+    max_mismatch: float           # largest last step over the columns (pu); NaN if one is not finite
+    converged: np.ndarray = None        # (H,) bool: finite, and the last step at most ACCEPT_TOL
+    mismatch: np.ndarray = None         # (H,) last step per column (pu), NaN where not finite
     i_line_ka: np.ndarray = None        # (3 · n_line, H), magnitude, worst end
     line_loading: np.ndarray = None     # (n_line, H), percent, worst phase
     i_neutral_ka: np.ndarray = None     # (n_line, H), return current in the neutral
@@ -204,12 +208,13 @@ class PowerFlow3Ph:
 
     def solve(self, p_kw: np.ndarray, q_kvar: np.ndarray | None, phase_idx: np.ndarray,
               vm_slack: float | np.ndarray = 1.0, tol: float = 1e-10,
-              max_iter: int = 80, flows: bool = True) -> PF3Result:
+              max_iter: int = 80, flows: bool = True, strict: bool = False) -> PF3Result:
         """Solve H operating points.
 
         p_kw, q_kvar: (n_customers, H), positive = injection into the grid.
         phase_idx: (n_customers,) with 0, 1 or 2 for a single-phase connection, or -1 for a
         balanced three-phase connection, whose power is split equally over the three phases.
+        Each column gets its own convergence flag, as in `powerflow.PowerFlowModel.solve`.
         """
         p_kw = np.atleast_2d(np.asarray(p_kw, dtype=float))
         q_kvar = np.zeros_like(p_kw) if q_kvar is None else np.asarray(q_kvar, dtype=float)
@@ -231,21 +236,25 @@ class PowerFlow3Ph:
         v_ref = np.outer(np.array([1.0, A_OP ** 2, A_OP]), vs)     # (3, H) balanced source
         w = -(self.Z @ (self.Yns @ v_ref))
         v = w.copy()
-        it, err = 0, np.inf
-        for it in range(1, max_iter + 1):
-            v_new = w + self.Z @ np.conj(s / v)
-            err = float(np.max(np.abs(v_new - v)))
-            v = v_new
-            if err < tol:
-                break
+        it, step = 0, np.full(H, np.inf)
+        with np.errstate(invalid="ignore", over="ignore"):   # a diverging column is flagged below
+            for it in range(1, max_iter + 1):
+                v_new = w + self.Z @ np.conj(s / v)
+                step = column_steps(v_new, v)
+                v = v_new
+                if not (step >= tol).any():         # a NaN column does not hold the others back
+                    break
+        converged = np.isfinite(step) & (step <= max(tol, ACCEPT_TOL))
+        err = float(np.max(step)) if H else 0.0
 
         v_all = np.empty((3 * self.n_bus, H), dtype=complex)
         v_all[self.ns] = v
         v_all[self.ref_rows] = v_ref
         rows = (3 * self.bus_ppc[:, None] + np.arange(3)).ravel()
-        res = PF3Result(v=v_all[rows], iterations=it, max_mismatch=err)
+        res = PF3Result(v=v_all[rows], iterations=it, max_mismatch=err, converged=converged, mismatch=step)
         if flows:
             self._add_flows(res, v_all)
+        check_converged(res, strict)
         return res
 
     def _add_flows(self, res: PF3Result, v_all: np.ndarray) -> None:
@@ -280,28 +289,32 @@ class PowerFlow3Ph:
 
     def solve_chunked(self, p_kw: np.ndarray, q_kvar: np.ndarray | None, phase_idx: np.ndarray,
                       vm_slack: float | np.ndarray = 1.0, chunk: int = 2048,
-                      flows: bool = True) -> PF3Result:
+                      flows: bool = True, strict: bool = False) -> PF3Result:
         """Same as solve() but in column chunks, because a year of three-phase state is large."""
         p_kw = np.atleast_2d(np.asarray(p_kw, dtype=float))
         H = p_kw.shape[1]
         if H <= chunk:
-            return self.solve(p_kw, q_kvar, phase_idx, vm_slack, flows=flows)
+            return self.solve(p_kw, q_kvar, phase_idx, vm_slack, flows=flows, strict=strict)
         q_kvar = np.zeros_like(p_kw) if q_kvar is None else np.asarray(q_kvar, dtype=float)
         vs = np.broadcast_to(np.asarray(vm_slack, dtype=float), (H,))
         parts = [self.solve(p_kw[:, a:a + chunk], q_kvar[:, a:a + chunk], phase_idx,
                             vs[a:a + chunk], flows=flows)
                  for a in range(0, H, chunk)]
         cat = lambda name, axis: np.concatenate([getattr(r, name) for r in parts], axis=axis)
-        return PF3Result(
+        res = PF3Result(
             v=cat("v", 1),
             iterations=max(r.iterations for r in parts),
-            max_mismatch=max(r.max_mismatch for r in parts),
+            max_mismatch=float(np.max(np.array([r.max_mismatch for r in parts]))),
+            converged=cat("converged", 0),
+            mismatch=cat("mismatch", 0),
             i_line_ka=cat("i_line_ka", 1) if flows else None,
             line_loading=cat("line_loading", 1) if flows else None,
             i_neutral_ka=cat("i_neutral_ka", 1) if flows else None,
             trafo_loading=cat("trafo_loading", 0) if flows else None,
             trafo_p_mw=cat("trafo_p_mw", 0) if flows else None,
         )
+        check_converged(res, strict)
+        return res
 
 
 def build_model(net: pp.pandapowerNet, customer_bus: np.ndarray) -> PowerFlow3Ph:

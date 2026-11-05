@@ -270,15 +270,20 @@ def forecast_error(actual: dict[str, np.ndarray], predicted: dict[str, np.ndarra
 # --------------------------------------------------------------------------------- issuing
 
 def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np.ndarray],
-          nonfirm: np.ndarray, scheme: str, policy: str = "maxmin") -> Issued:
+          nonfirm: np.ndarray, scheme: str, policy: str = "maxmin", check_safety: bool = True) -> Issued:
     """Allocate against the planning state, publish, then check the result against reality.
 
     Outside the hours the planner called critical the published envelope is the customer's
     own inverter rating, which is what makes domination the whole game: under a dominating
     state those hours cannot be critical in reality either, and under a point forecast they
     very much can.
+
+    With `check_safety` (the default) the check against reality is a full nonlinear solve of
+    the year and the envelopes are verified in full against the planning state too. A capacity
+    search, which only reads the curtailment, passes False: the envelopes are verified on their
+    critical hours and reality is checked through the linear screen.
     """
-    r = doe.compute(model, planning, nonfirm, policy=policy)
+    r = doe.compute(model, planning, nonfirm, policy=policy, verify="full" if check_safety else "critical")
     H = actual["p_net"].shape[1]
     nonfirm = np.asarray(nonfirm, dtype=int)
     published = np.repeat(r.cap[:, None], H, axis=1)
@@ -288,15 +293,19 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
     p = np.asarray(actual["p_net"], dtype=float).copy()
     desired = np.clip(p[nonfirm], 0.0, None)
     granted = np.minimum(desired, published)
-    p[nonfirm] = np.where(desired > 0, granted, p[nonfirm])
-    hours = model.export_critical_hours(p, np.asarray(actual["q"], dtype=float))
+    if check_safety:
+        # every export-side violation of the real year with the envelopes held, the firm ones too
+        violation_hours = doe.verify_full_year(model, actual, r, keep_state=True)["export_violation_hours"]
+    else:
+        p[nonfirm] = np.where(desired > 0, granted, p[nonfirm])
+        violation_hours = len(model.export_critical_hours(p, np.asarray(actual["q"], dtype=float)))
 
     curtailed = desired - granted
     export = float(desired.sum())
     return Issued(
         scheme=scheme,
         critical_hours=int(len(r.hours)),
-        violation_hours=int(len(hours)),
+        violation_hours=int(violation_hours),
         curtailed_kwh=float(curtailed.sum()),
         curtailed_share_pct=float(curtailed.sum() / export * 100.0) if export else 0.0,
         export_kwh=export,
@@ -320,6 +329,9 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
     The denominator is the one the published capacity search uses — the annual PV energy of
     those customers, not their export — so the result can be compared against `z_star_pct`
     without converting anything.
+
+    `check_safety` goes to `issue`: off inside the capacity search, on for the point it
+    publishes, whose violation hours then come from a full nonlinear solve of every year.
     """
     C = model.C
     nf = order[ms:k]
@@ -342,7 +354,7 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
             v_y = 0                     # worst-case feasible by construction
         else:
             plan = planning_state(scheme, y, pvm, hp, ev, actual, window_days)
-            r = issue(model, plan, actual, nf, scheme, policy=policy)
+            r = issue(model, plan, actual, nf, scheme, policy=policy, check_safety=check_safety)
             c_y, v_y = r.curtailed_kwh, r.violation_hours
         curt += c_y
         pot += pot_y

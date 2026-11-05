@@ -130,15 +130,14 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
             curtailed = desired - granted
 
             # the real year with every non-firm house held to what was issued
-            p = arr["p_net"].astype(float).copy()
-            p[nf] = np.where(desired > 0, granted, p[nf])
-            res = m.solve(p, arr["q"])
-            v = m.violations(res, p)
-            violations = int(v.export_side.sum())
+            full = doe.verify_full_year(m, arr, r, keep_state=True)
+            p, res, v = full["p"], full["result"], full["violations"]
+            violations = full["export_violation_hours"]
 
             rr = DoeResult(nonfirm=nf, hours=r.hours, E=published[:, r.hours], desired=desired, cap=r.cap,
                            curtailed=curtailed, verified_violations=violations, binding=r.binding,
-                           binding_line=r.binding_line, info={"policy": pol})
+                           binding_line=r.binding_line, info={"policy": pol},
+                           verification="full", full_year_violations=full["violation_hours"])
             trail = compliance.audit_trail(m, rr, arr, y, cids=cids, necessary_hours=necessary)
             report = compliance.annual_report(trail, rr, cids=cids, basis=basis)
 
@@ -172,9 +171,10 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
                 "necessary_hours": int(len(necessary)),
                 "activations_necessary_hours": int((limited & necessary_mask).sum()),
                 "activations_unnecessary_hours": int((limited & ~necessary_mask).sum()),
-                "verification": {"full_year_violation_hours": violations, "max_voltage_pu": float(v.vmax.max()),
-                                 "max_trafo_loading_pct": float(v.trafo_loading.max()),
-                                 "max_line_loading_pct": float(v.max_line_loading.max())},
+                "verification": {"full_year_violation_hours": violations, "max_voltage_pu": full["max_voltage_pu"],
+                                 "max_trafo_loading_pct": full["max_trafo_loading_pct"],
+                                 "max_line_loading_pct": full["max_line_loading_pct"],
+                                 "pf_nonconverged_hours": full["nonconverged_hours"]},
                 "verified": violations == 0,
                 "binding_hours": {compliance.CONSTRAINT[int(k)]: int(n) for k, n in
                                   zip(*np.unique(r.binding, return_counts=True))} if r.binding is not None and len(r.hours) else {},

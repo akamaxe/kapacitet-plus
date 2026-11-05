@@ -95,8 +95,12 @@ def model() -> NetModel:
 
 
 def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: str = "doe",
-                policy: str = REF_POLICY) -> dict:
-    """Curtailment of the non-firm adopters order[ms:k] summed over `years`."""
+                policy: str = REF_POLICY, verify: str = "full") -> dict:
+    """Curtailment of the non-firm adopters order[ms:k] summed over `years`.
+
+    `verify` goes to doe.compute: the bisections pass "critical", the points they publish are
+    verified in full and report `full_year_violations` (None when not checked).
+    """
     m = model()
     C = m.C
     nf = order[ms:k]
@@ -104,6 +108,7 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
     curt = pot = 0.0
     per_year = []
     kappa = None
+    full = 0 if method == "doe" and verify == "full" else None
     for y in years:
         arr = Scenario(year=y, pv=pvm, hp=hp, ev=ev).arrays()
         pot_y = float(arr["pv"][nf].sum())
@@ -111,8 +116,10 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
             per_year.append({"year": y, "curtailed_kwh": 0.0, "potential_kwh": pot_y})
             continue
         if method == "doe":
-            r = doe.compute(m, arr, nf, policy=policy)
+            r = doe.compute(m, arr, nf, policy=policy, verify=verify)
             c_y = float(r.curtailed.sum())
+            if full is not None:
+                full += r.full_year_violations
         else:
             if kappa is None:
                 p_s, q_s = hosting.summer_snapshot(pv_mask(order, ms, C))
@@ -123,7 +130,7 @@ def curtailment(order: np.ndarray, ms: int, k: int, years, hp, ev, *, method: st
         pot += pot_y
         per_year.append({"year": y, "curtailed_kwh": c_y, "potential_kwh": pot_y})
     return {"curtailed_kwh": curt, "potential_kwh": pot, "z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
-            "kappa": kappa, "per_year": per_year}
+            "kappa": kappa, "per_year": per_year, "full_year_violations": full}
 
 
 def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
@@ -138,7 +145,8 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     ms = hosting.static_adopters(m, order, hp, ev)
     mts = hosting.ts_adopters(m, order, hp, ev, years, lo=ms)
     yf = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev, method="fixed")["z_pct"] <= z_star, ms, C)
-    yd = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev)["z_pct"] <= z_star, mts, C)
+    yd = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev, verify="critical")["z_pct"] <= z_star,
+                      mts, C)
     z_at_yd = curtailment(order, ms, yd, years, hp, ev)
     z_at_yf = curtailment(order, ms, yf, years, hp, ev, method="fixed")
 
@@ -147,6 +155,7 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
 
     return {"order": o, "static": kw(ms), "timeseries": kw(mts), "fixed_cap": kw(yf), "doe": kw(yd),
             "z_doe_pct": z_at_yd["z_pct"], "z_fixed_pct": z_at_yf["z_pct"], "kappa": z_at_yf["kappa"],
+            "doe_full_year_violations": z_at_yd["full_year_violations"],
             "seconds": time.perf_counter() - t0}
 
 
@@ -159,7 +168,7 @@ def _curve_point(args) -> dict:
     f = curtailment(order, ms, k, years, hp, ev, method="fixed")
     cap = doe.customer_caps()
     return {"adopters": k, "kw_ac": float(cap[order[:k]].sum()), "z_doe_pct": d["z_pct"],
-            "z_fixed_pct": f["z_pct"], "kappa": f["kappa"],
+            "z_fixed_pct": f["z_pct"], "kappa": f["kappa"], "full_year_violations": d["full_year_violations"],
             "z_doe_by_year": [100 * p["curtailed_kwh"] / p["potential_kwh"] if p["potential_kwh"] else 0
                               for p in d["per_year"]]}
 
@@ -175,7 +184,7 @@ def _risk_case(args) -> dict:
     pot = arr["pv"][nf].sum(axis=1)
     return {"year": year, "seed": seed, "curtailed_kwh": r.curtailed.sum(axis=1).astype(float).tolist(),
             "potential_kwh": pot.astype(float).tolist(), "critical_hours": r.info.get("critical_hours", 0),
-            "verified_violations": r.verified_violations}
+            "verified_violations": r.verified_violations, "full_year_violations": r.full_year_violations}
 
 
 # ------------------------------------------------------------------------------------ orchestration
@@ -383,7 +392,8 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
             "jain_index": jain,
             "corr_distance_curtailment": float(np.corrcoef(dist, frac)[0, 1]) if frac.std() > 0 else 0.0,
             "economics": econ, "iterations": r.iterations, "backoff_hours": r.backoff_hours,
-            "verified_violations": r.verified_violations, "seconds": time.perf_counter() - t0,
+            "verified_violations": r.verified_violations, "full_year_violations": r.full_year_violations,
+            "seconds": time.perf_counter() - t0,
             "per_customer": {"cid": cust["cid"].to_numpy()[nf].tolist(), "curtailed_kwh": np.round(curt, 1),
                              "z_pct": np.round(100 * frac, 3), "hours_limited": limited_h,
                              "dist_m": np.round(dist, 1)},
@@ -392,12 +402,9 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
                  policies[pol]["critical_hours"], policies[pol]["seconds"])
 
     r = results[REF_POLICY]
-    # Full-year nonlinear verification with the envelopes applied.
-    p_doe = arr["p_net"].astype(float).copy()
-    p_doe[nf] = np.minimum(p_doe[nf], 0.0)
-    p_doe[nf] += np.minimum(np.clip(arr["p_net"][nf], 0, None), r.envelope(H))
-    res_doe = m.solve(p_doe, arr["q"])
-    v_doe = m.violations(res_doe, p_doe)
+    # Full-year nonlinear verification with the envelopes applied, kept for the map.
+    full = doe.verify_full_year(m, arr, r, keep_state=True)
+    p_doe, res_doe, v_doe = full["p"], full["result"], full["violations"]
     res_unc = m.solve(arr["p_net"], arr["q"])
     v_unc = m.violations(res_unc, arr["p_net"])
     p_static = Scenario(year=y, pv=pv_mask(order, ms, C), hp=hp, ev=ev).arrays()
@@ -432,7 +439,7 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
         "kw_ac_firm": float(doe.customer_caps()[firm].sum()), "kw_ac_total": float(doe.customer_caps()[order[:k]].sum()),
         "policies": {pol: {kk: vv for kk, vv in d.items()} for pol, d in policies.items()},
         "verification": {
-            "doe_full_year_violations": int(v_doe.export_side.sum()),
+            "doe_full_year_violations": full["export_violation_hours"],
             "doe_max_voltage_pu": float(v_doe.vmax.max()), "doe_max_trafo_loading_pct": float(v_doe.trafo_loading.max()),
             "doe_max_line_loading_pct": float(v_doe.max_line_loading.max()),
             "uncontrolled_violation_hours": int(v_unc.export_side.sum()),
@@ -443,7 +450,9 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
             "uncontrolled_max_trafo_loading_pct": float(v_unc.trafo_loading.max()),
             "static_violation_hours": int(v_st.export_side.sum()),
             "screen_missed_hours": missed, "screen_candidate_hours": len(screened),
-            "pf_iterations": int(res_doe.iterations),
+            "pf_iterations": full["pf_iterations"],
+            "pf_nonconverged_hours": full["nonconverged_hours"],
+            "pf_max_mismatch": full["pf_max_mismatch"],
         },
         "energy": {
             "pv_kwh": float(arr["pv"].sum()), "load_kwh": float(arr["load"].sum()),
@@ -497,8 +506,10 @@ def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:
         c, p = np.array(r["curtailed_kwh"]), np.array(r["potential_kwh"])
         rows.append({"year": r["year"], "seed": r["seed"], "z_pct": 100 * c.sum() / p.sum() if p.sum() else 0.0,
                      "curtailed_kwh": float(c.sum()), "potential_kwh": float(p.sum()),
-                     "critical_hours": r["critical_hours"], "verified_violations": r["verified_violations"]})
+                     "critical_hours": r["critical_hours"], "verified_violations": r["verified_violations"],
+                     "full_year_violations": r.get("full_year_violations")})
     z = np.array([row["z_pct"] for row in rows])
+    full = [row["full_year_violations"] for row in rows]
     tail = np.sort(z)[-max(1, int(np.ceil(0.05 * len(z)))):]
     # per-customer annual curtailment share across all cases
     cust_z = np.array([np.divide(np.array(r["curtailed_kwh"]), np.array(r["potential_kwh"]),
@@ -511,7 +522,9 @@ def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:
     _write("risk.json", {
         "order": o, "firm": ms, "adopters": k, "cases": rows,
         "stats": {"mean_z_pct": float(z.mean()), "p90_z_pct": float(np.percentile(z, 90)),
-                  "worst_z_pct": float(z.max()), "cvar95_z_pct": float(tail.mean()), "n_cases": int(len(z))},
+                  "worst_z_pct": float(z.max()), "cvar95_z_pct": float(tail.mean()), "n_cases": int(len(z)),
+                  # every case verified in every hour with the envelopes held (doe.verify_full_year)
+                  "full_year_violations": int(sum(full)) if None not in full else None},
         "customer_z_pct": {"mean": np.round(cust_z.mean(axis=0), 3), "p90": np.round(np.percentile(cust_z, 90, axis=0), 3),
                            "max": np.round(cust_z.max(axis=0), 3)},
         "ghi_kwh_m2": ghi,
