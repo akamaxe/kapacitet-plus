@@ -316,7 +316,11 @@ conservativeness of the linear screens (they may never miss a violating hour), t
 envelopes verify with the nonlinear power flow, that a planning state issued a day ahead
 dominates the year it plans, the radiality of the built network, the parsers
 on offline fixtures, the API contract, and that the published results are internally consistent.
-Tests that need pipeline output skip themselves on a fresh clone.
+The solver, screen and envelope tests run on a tiny synthetic grid committed in
+`tests/fixtures/grid_tiny` (twenty houses, a 0.1 MVA transformer, a feeder long enough for the
+voltage to bind), with synthetic profiles written at test time, so they run on a fresh clone and
+in CI; where the pipeline output exists they run on the reference network as well. The other tests
+that need pipeline output skip themselves on a fresh clone.
 
 The interface has its own, in `web/`:
 

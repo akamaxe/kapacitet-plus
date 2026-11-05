@@ -2,3 +2,5 @@
 * text=auto
 # the codespace runs these in Linux: they keep LF even in a Windows checkout
 *.sh text eol=lf
+# make.py writes these byte for byte, and a test compares them: they keep LF in every checkout
+tests/fixtures/grid_tiny/*.csv text eol=lf

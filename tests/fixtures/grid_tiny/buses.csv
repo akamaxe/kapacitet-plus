@@ -1,0 +1,30 @@
+bus_id,kind,name,lon,lat
+SS,substation,Substation,18.000000,59.300000
+KA1,cabinet,Cabinet KA1,18.000000,59.300362
+S01,service,House 1,18.000264,59.300362
+S02,service,House 2,17.999613,59.300362
+S03,service,House 3,18.000317,59.300434
+KA2,cabinet,Cabinet KA2,18.000000,59.300724
+S04,service,House 4,18.000352,59.300724
+S05,service,House 5,17.999718,59.300724
+S06,service,House 6,18.000422,59.300796
+KA3,cabinet,Cabinet KA3,18.000000,59.301040
+S07,service,House 7,18.000334,59.301040
+S08,service,House 8,17.999631,59.301040
+KB1,cabinet,Cabinet KB1,18.001232,59.300000
+S09,service,House 9,18.001232,59.299846
+S10,service,House 10,18.001232,59.300208
+KB2,cabinet,Cabinet KB2,18.003519,59.300000
+S11,service,House 11,18.003519,59.299837
+S12,service,House 12,18.003519,59.300181
+S13,service,House 13,18.003660,59.299855
+KB3,cabinet,Cabinet KB3,18.005806,59.300000
+S14,service,House 14,18.005806,59.299801
+S15,service,House 15,18.005806,59.300172
+KB4,cabinet,Cabinet KB4,18.008094,59.300000
+S16,service,House 16,18.008094,59.299810
+S17,service,House 17,18.008094,59.300154
+S18,service,House 18,18.008235,59.299783
+KB5,cabinet,Cabinet KB5,18.010205,59.300000
+S19,service,House 19,18.010205,59.299819
+S20,service,House 20,18.010205,59.300226
