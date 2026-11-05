@@ -22,8 +22,6 @@ from kapacitet.engine.run import background_masks
 from kapacitet.engine.scenario import Scenario, adoption_order
 from kapacitet.paths import processed
 
-pytestmark = needs_results
-
 
 @pytest.fixture(scope="module")
 def case():
@@ -37,6 +35,7 @@ def case():
     return model, show, pv, hp, ev, actual
 
 
+@needs_results
 def test_the_planning_state_dominates_what_happened(case):
     """The property everything else rests on, on the year the figures describe.
 
@@ -52,6 +51,7 @@ def test_the_planning_state_dominates_what_happened(case):
     assert loose / plan["p_net"].size < 1e-3, f"{loose} customer-hours not dominated"
 
 
+@needs_results
 def test_the_exceedances_are_counted_on_both_sides(case):
     _, show, _, hp, ev, _ = case
     audit = forecast.exceedance_audit(show["year"], hp, ev)
@@ -62,6 +62,7 @@ def test_the_exceedances_are_counted_on_both_sides(case):
     assert audit["load_aggregate_hours_under"] == 0, audit
 
 
+@needs_results
 def test_a_wider_calendar_window_is_a_tighter_bound_on_the_record(case):
     """The window is the whole reason the bound works: one calendar hour has one sample per
     weather year, which bounds nothing."""
@@ -73,6 +74,7 @@ def test_a_wider_calendar_window_is_a_tighter_bound_on_the_record(case):
     assert wide["load_bound_under_measured_energy"] < narrow["load_bound_under_measured_energy"]
 
 
+@needs_results
 def test_the_bound_still_follows_the_calendar(case):
     """A bound that ignored the clock would be the static worst case, which carries nobody."""
     _, show, _, _, _, _ = case
@@ -84,6 +86,7 @@ def test_the_bound_still_follows_the_calendar(case):
     assert hourly.max() > 0.5 / A("pv_dc_ac_ratio"), "and midsummer noon is still noon"
 
 
+@needs_results
 def test_envelopes_issued_against_the_bound_keep_the_limits(case):
     """The claim the scheme lives on, checked with the nonlinear flow on the real year."""
     model, show, pv, hp, ev, actual = case
@@ -95,6 +98,7 @@ def test_envelopes_issued_against_the_bound_keep_the_limits(case):
     assert 0 < r.curtailed_share_pct < 100
 
 
+@needs_results
 def test_a_point_forecast_does_not(case):
     """Documented as a failure because it is the reason for all of the above.
 
@@ -111,6 +115,7 @@ def test_a_point_forecast_does_not(case):
     assert err["p95_underprediction_kw"] > 0, "it under-predicts export, which is the dangerous way"
 
 
+@needs_results
 def test_perfect_foresight_reproduces_the_published_curtailment(case):
     """This module recomputes the published search; if the two drift the comparison is void."""
     from kapacitet.engine import hosting, run
@@ -125,18 +130,42 @@ def test_perfect_foresight_reproduces_the_published_curtailment(case):
     assert mine["z_pct"] == pytest.approx(theirs["z_pct"], rel=1e-6, abs=1e-9)
 
 
+@needs_results
 def test_the_leap_year_bound_covers_the_leap_day():
     leap = next((y for y in settings().weather_years if y % 4 == 0), None)
     if leap is None:
         pytest.skip("no leap year among the weather years")
-    from kapacitet.timeindex import year_index
+    from kapacitet.timeindex import local_standard, year_index
 
     idx = year_index(leap)
     bound = forecast.pv_upper_bound(leap)
     assert bound.shape[1] == len(idx) == 8784
-    feb29 = np.asarray((idx.month == 2) & (idx.day == 29))
+    local = local_standard(idx)
+    feb29 = np.asarray((local.month == 2) & (local.day == 29))
     assert feb29.sum() == 24
     assert np.isfinite(bound[:, feb29]).all()
+    # the leap day is bounded by 28 February hour by hour, not an hour late
+    feb28 = np.asarray((local.month == 2) & (local.day == 28))
+    assert np.array_equal(bound[:, feb29], bound[:, feb28])
+
+
+def test_the_leap_day_is_the_study_calendars_and_keeps_its_hours():
+    """29 February is masked on the UTC+1 calendar, so every hour comes back on its own hour.
+
+    Masked on UTC's calendar instead, the leap day restored from 28 February ran an hour late,
+    and the record at sunrise was the hour before sunrise: 2016 beat it by 91 kW.
+    """
+    from kapacitet.timeindex import hour_of_day, local_standard, year_index
+
+    for year in (2016, 2025):
+        hod = hour_of_day(year_index(year)).astype(float)[None, :]
+        days = forecast._day_shaped(year, hod)
+        assert days.shape == (1, 365, 24) and (days == np.arange(24)).all()
+        assert np.array_equal(forecast._restore_leap(year, days), hod)
+    local = local_standard(year_index(2016))
+    leap = forecast._leap_day(2016)
+    assert leap.sum() == 24 and (local[leap].day == 29).all()
+    assert (local[leap].hour == np.arange(24)).all()
 
 
 @needs_results

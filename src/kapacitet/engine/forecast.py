@@ -46,7 +46,7 @@ from scipy.ndimage import maximum_filter1d, minimum_filter1d
 from ..cache import memo, on_clear
 from ..config import A, settings
 from ..profiles.pv import load_ac_per_kwp
-from ..timeindex import year_index
+from ..timeindex import local_standard, year_index
 from . import doe
 from .netmodel import NetModel
 from .scenario import Scenario, customers, year_profiles
@@ -74,22 +74,30 @@ class Issued:
 
 # ----------------------------------------------------------------- the climatological bound
 
+def _leap_day(year: int) -> np.ndarray:
+    """The hours of 29 February on the study's own calendar (UTC+1), not on UTC's.
+
+    The index is in UTC, and UTC's 29 February starts an hour later than the study's. Masked
+    there, the leap day lost 01:00 to 00:00 of 1 March and was bounded an hour late, so at
+    sunrise its bound was the record of the hour before sunrise.
+    """
+    local = local_standard(year_index(year))
+    return np.asarray((local.month == 2) & (local.day == 29))
+
+
 def _day_shaped(year: int, a: np.ndarray) -> np.ndarray:
     """(C, 365, 24), with 29 February dropped so every year lines up on the calendar."""
-    idx = year_index(year)
-    keep = np.asarray(~((idx.month == 2) & (idx.day == 29)))
-    a = a[:, keep]
+    a = a[:, ~_leap_day(year)]
     return a.reshape(a.shape[0], -1, 24)
 
 
 def _restore_leap(year: int, days: np.ndarray) -> np.ndarray:
     """Flatten (C, 365, 24) back onto the year's own index, repeating 28 February if needed."""
-    idx = year_index(year)
-    leap = np.asarray((idx.month == 2) & (idx.day == 29))
+    leap = _leap_day(year)
     flat = days.reshape(days.shape[0], -1)
     if not leap.any():
         return flat
-    out = np.empty((days.shape[0], len(idx)), dtype=flat.dtype)
+    out = np.empty((days.shape[0], len(leap)), dtype=flat.dtype)
     out[:, ~leap] = flat
     out[:, leap] = days[:, 58, :]            # 0-based 28 February of a 365-day year
     return out
