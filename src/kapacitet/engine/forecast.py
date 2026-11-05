@@ -39,11 +39,11 @@ bound bracket the cost of the forecast rather than guessing at it.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from functools import lru_cache
 
 import numpy as np
 from scipy.ndimage import maximum_filter1d, minimum_filter1d
 
+from ..cache import memo, on_clear
 from ..config import A, settings
 from ..profiles.pv import load_ac_per_kwp
 from ..timeindex import year_index
@@ -113,13 +113,14 @@ def _window_extreme(year: int, per_year, extreme: str, window_days: int) -> np.n
     return _restore_leap(year, hist)
 
 
-@lru_cache(maxsize=16)       # one per weather year; the capacity search walks all of them
+@memo(maxsize=16)            # one per weather year; the capacity search walks all of them
 def pv_upper_bound(year: int, window_days: int = WINDOW_DAYS) -> np.ndarray:
     """Per-kWp AC output (C, H) no higher than the same fortnight of any other year reached."""
     return _window_extreme(year, load_ac_per_kwp, "max", window_days)
 
 
 _LOAD_BOUND: dict[tuple, np.ndarray] = {}
+on_clear(_LOAD_BOUND.clear)
 
 
 def load_lower_bound(year: int, hp: np.ndarray, ev: np.ndarray,

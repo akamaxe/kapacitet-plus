@@ -27,10 +27,10 @@ import json
 import logging
 import time
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 import numpy as np
 
+from ..cache import memo, on_clear
 from ..config import A, settings
 from ..paths import DATA, processed
 from ..profiles.ev import EvSessions
@@ -87,18 +87,19 @@ def precompute(model: NetModel, name: str, years, hp: np.ndarray, ev: np.ndarray
     processed("request", f"{name}.json").write_text(json.dumps(base), encoding="utf-8")
 
 
-@lru_cache(maxsize=32)
+@memo(maxsize=32)
 def _state(name: str, year: int) -> dict[str, np.ndarray]:
     d = np.load(processed("request", f"{name}_{year}.npz"))
     return {k: d[k] for k in d.files}
 
 
-@lru_cache(maxsize=2)
+@memo(maxsize=2)
 def _baseline(name: str) -> dict:
     return json.loads(processed("request", f"{name}.json").read_text(encoding="utf-8"))
 
 
 _PQ_CACHE: dict[tuple[str, int], tuple[np.ndarray, np.ndarray]] = {}
+on_clear(_PQ_CACHE.clear)
 
 
 def baseline_pq(model: NetModel, name: str, year: int, hp: np.ndarray, ev: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -186,7 +187,7 @@ def ev_single_phase(req: Request) -> bool:
     return req.ev_kw <= A("ev_charger_single_phase_kw") + 1e-9
 
 
-@lru_cache(maxsize=16)
+@memo(maxsize=16)
 def _sessions(year: int) -> EvSessions:
     d = np.load(processed("ev", f"ev_sessions_{year}.npz"))
     return EvSessions(d["customer"], d["start"], d["end"], d["energy_kwh"])

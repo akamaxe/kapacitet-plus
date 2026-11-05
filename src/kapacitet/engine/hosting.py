@@ -15,10 +15,10 @@ violation (all customers firm, nobody curtailed).
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 
 import numpy as np
 
+from ..cache import memo
 from ..config import A, settings
 from ..timeindex import local_standard, year_index
 from .netmodel import NetModel
@@ -34,7 +34,7 @@ def min_daytime_load() -> np.ndarray:
     return _min_daytime_load() * A("static_min_load_factor") * A("household_load_factor")
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def _min_daytime_load() -> np.ndarray:
     out = None
     for y in settings().weather_years:
@@ -45,7 +45,7 @@ def _min_daytime_load() -> np.ndarray:
     return out.astype(float)
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def winter_design_load() -> dict[str, np.ndarray]:
     """Per-customer demand at the peak hour of the record (today's heat pumps and EVs)."""
     from ..profiles.weather import load_weather

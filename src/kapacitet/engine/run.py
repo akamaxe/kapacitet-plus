@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from .. import __version__
+from ..cache import on_clear
 from ..config import A, settings
 from ..paths import processed
 from ..timeindex import day_of_year, hour_of_day, year_index
@@ -78,6 +79,12 @@ def _init_worker() -> None:
     except Exception:  # pragma: no cover
         pass
     _MODEL = NetModel()
+
+
+@on_clear
+def _forget_model() -> None:
+    global _MODEL
+    _MODEL = None
 
 
 def model() -> NetModel:

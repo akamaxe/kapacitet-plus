@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from functools import lru_cache
 
 import numpy as np
 import pandas as pd
 
+from ..cache import memo
 from ..config import A
 from ..grid.builder import load_tables
 from ..paths import processed
@@ -15,14 +15,14 @@ from ..profiles import household
 from ..profiles.pv import load_ac_per_kwp
 
 
-@lru_cache(maxsize=1)
+@memo(maxsize=1)
 def customers() -> pd.DataFrame:
     _, _, cust = load_tables()
     roofs = pd.read_parquet(processed("pv", "roofs.parquet"))
     return cust.merge(roofs, on="cid", how="left")
 
 
-@lru_cache(maxsize=16)
+@memo(maxsize=16)
 def year_profiles(year: int, load_seed: int = 0) -> dict[str, np.ndarray]:
     """Per-customer hourly arrays (kW) for one weather year: base load, HP, EV, PV per kWp."""
     C = len(customers())

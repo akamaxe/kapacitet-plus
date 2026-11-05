@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
 
 import numpy as np
 import pandapower as pp
 import pandas as pd
 
+from ..cache import memo
 from ..config import A
 from ..grid.builder import load_net, load_tables
 from .powerflow import PFResult, PowerFlowModel
@@ -179,6 +179,6 @@ class NetModel:
         )
 
 
-@lru_cache(maxsize=4)
+@memo(maxsize=4)
 def get_model(vm_slack: float | None = None, tap_pos: int | None = None, trafo_type: str | None = None) -> NetModel:
     return NetModel(vm_slack=vm_slack, tap_pos=tap_pos, trafo_type=trafo_type)
