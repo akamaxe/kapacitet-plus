@@ -445,6 +445,7 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study demo  demo        # three synthetic stations, from pandapower's LV benchmarks
 .venv/Scripts/python -m kapacitet study init  nb-2026     # an empty study with a study.toml of defaults
 .venv/Scripts/python -m kapacitet study import nb-2026 --contract <folder> --station <id>
+.venv/Scripts/python -m kapacitet study import nb-2026 --cim   # CGMES files instead: one station per LV transformer
 .venv/Scripts/python -m kapacitet study fetch nb-2026     # SMHI weather and spot prices for the study's site
 .venv/Scripts/python -m kapacitet study check nb-2026     # the contract's report, per station
 .venv/Scripts/python -m kapacitet study build nb-2026 --quick
@@ -469,6 +470,19 @@ household load is the synthetic profile pool, scaled when the study overrides
 provisional: the study's MV band and method choices are not applied yet. The demo's networks are
 built by pandapower at run time and written through `importer/from_pandapower.py`, which turns the
 LV island behind any pandapower transformer into the contract.
+
+A DSO that exports CGMES 2.4.15 (EQ, TP, SSH and, for the map, GL) puts the files in
+`inputs/network/cgmes/` and `inputs/cim_customers.csv` beside them, which CGMES cannot carry:
+`energyconsumer_mrid, customer_id, fuse_a`, and optionally `phase`, `footprint_m2` and
+`annual_kwh`. `study import --cim` reads them with pandapower's converter (`importer/cim.py`) and
+makes every in-service transformer that steps down to 1 kV or less one station: the LV network
+behind it, with the switch states of the SSH profile (closed switches joined, an open switch an open
+point; fuses count as switches) and the mRIDs as the contract's ids. An EnergyConsumer in a station
+that the mapping does not name is an error, and an error writes nothing; LV consumers that no
+transformer reaches are reported. `inputs/stations.csv` (`station_id, name, trafo_mrid`) names the
+stations; without it a station is called by its transformer's mRID. The CGMES files are never
+skipped: changed since the last conversion, or with their mapping changed, they stop the import
+until it is run again with `--cim`.
 
 ## The paperwork the agreement leaves behind
 

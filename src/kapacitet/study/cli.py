@@ -33,7 +33,11 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = add("fetch", "download the study's SMHI weather and spot prices into <dir>/raw")
     q.add_argument("--refresh", action="store_true", help="ignore what is already downloaded")
     q = add("import", "split inputs/network into one import folder per station")
-    q.add_argument("--contract", default=None, help="add a station from a contract folder first")
+    how = q.add_mutually_exclusive_group()
+    how.add_argument("--contract", default=None, help="add a station from a contract folder first")
+    how.add_argument("--cim", action="store_true",
+                     help="convert inputs/network/cgmes (CGMES 2.4.15) first, one station per LV transformer, "
+                          "with inputs/cim_customers.csv naming each EnergyConsumer's customer_id and fuse_a")
     q.add_argument("--station", default=None, help="with --contract: the station's id (the folder's name by default)")
     q = add("check", "data-quality report on every station's network")
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
@@ -77,6 +81,8 @@ def _init(args) -> None:
     print(f"Study {study.id} in {study.root}")
     print("Next: put one contract folder per station in inputs/network/contract/<station>, then")
     print(f"  kapacitet study import {study.root}")
+    print("or CGMES files in inputs/network/cgmes with inputs/cim_customers.csv beside them, then")
+    print(f"  kapacitet study import {study.root} --cim")
 
 
 def _demo(args) -> None:
@@ -113,12 +119,39 @@ def _import(args) -> None:
     if args.contract:
         sid = add_contract(study, args.contract, args.station)
         print(f"Added station {sid} from {args.contract}")
+    if args.cim:
+        from .intake import import_cim
+
+        conversion, removed = import_cim(study)
+        _print_conversion(conversion, removed)
+        if conversion.blocked:
+            print("Nothing written: correct the errors above and run the import again.")
+            sys.exit(1)
     sids = split(study)
     reports = check(study, sids)
     for sid in sids:
         r = reports[sid]
         print(f"  {sid}: {'usable' if r.usable else 'NOT usable'}, completeness {r.score}/100")
     print(f"{len(sids)} stations imported. Next: kapacitet study build {study.root}")
+
+
+def _findings(findings, indent: str) -> None:
+    for f in sorted(findings, key=lambda f: (f.severity != "error", f.severity != "warning")):
+        tail = f" ({f.count})" if f.count else ""
+        print(f"{indent}[{f.severity:<7}] {f.check}: {f.message}{tail}")
+
+
+def _print_conversion(conversion, removed: list[str]) -> None:
+    files = ", ".join(f.name for f in conversion.files)
+    print(f"CGMES: {len(conversion.stations)} low-voltage stations in {files}")
+    _findings(conversion.findings.findings, "  ")
+    for st in conversion.stations:
+        n = len(st.tables["customers"]) if st.tables is not None else None
+        what = f"{n} customers" if n is not None else "not written"
+        print(f"  {st.sid}: {st.name}, transformer {st.trafo_mrid}, {what}")
+        _findings(st.findings.findings, "      ")
+    for sid in removed:
+        print(f"  {sid}: no longer in the CGMES files, its contract folder removed")
 
 
 def _check(args) -> None:

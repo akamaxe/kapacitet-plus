@@ -56,6 +56,14 @@ MESSAGES = {
     "annual_kwh_blank": "customers without annual_kwh, whose synthetic household profiles cannot be compared with metered consumption",
     "no_coordinates": "buses.csv has no usable lon/lat, so the map cannot be drawn",
     "empty_export": "no contract files found in {directory}",
+    # a CGMES network's conversion (importer/cim.py), before there is a contract to check
+    "cim_unmapped_consumer": "EnergyConsumers that cim_customers.csv does not name, for example {mrid}: each needs a customer_id and a fuse_a",
+    "cim_shared_island": "the low-voltage network is also fed by transformer {mrid}; a station has one transformer, so the open point between them has to be open in the SSH profile",
+    "cim_contract": "the network cannot be written as the contract: {message}",
+    "cim_converter": "the CGMES converter reports: {message}",
+    "cim_no_station": "no in-service transformer steps down to {kv} kV or less",
+    "cim_unreached_consumer": "low-voltage EnergyConsumers that no transformer reaches, for example {mrid}, so they are in no station",
+    "cim_mapping_unused": "rows of cim_customers.csv whose EnergyConsumer is in no station, for example {mrid}",
 }
 
 

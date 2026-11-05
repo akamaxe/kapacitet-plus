@@ -53,23 +53,17 @@ class ContractError(ValueError):
 
 
 def contract_tables(net, trafo_idx: int = 0,
-                    customer_map: Mapping[int, Mapping[str, Any]] | pd.DataFrame | None = None
-                    ) -> dict[str, pd.DataFrame]:
-    """The LV island behind transformer `trafo_idx` as {buses, lines, transformer, customers}."""
-    import networkx as nx
-    import pandapower.topology as top
-
+                    customer_map: Mapping[int, Mapping[str, Any]] | pd.DataFrame | None = None,
+                    graph=None) -> dict[str, pd.DataFrame]:
+    """The LV island behind transformer `trafo_idx` as {buses, lines, transformer, customers}.
+    `graph` is lv_graph(net), when the caller writes several transformers of one network."""
     if trafo_idx not in net.trafo.index:
         raise ContractError(f"no transformer {trafo_idx} in the network")
     trafo = net.trafo.loc[trafo_idx]
     if not bool(trafo.get("in_service", True)):
         raise ContractError(f"transformer {trafo_idx} is out of service")
     lv = int(trafo["lv_bus"])
-
-    graph = top.create_nxgraph(net, respect_switches=True, include_trafos=False, include_trafo3ws=False,
-                               include_impedances=False, include_dclines=False, include_tcsc=False,
-                               multi=True)
-    island = set(nx.node_connected_component(graph, lv)) if lv in graph else {lv}
+    island = lv_island(net, trafo_idx, graph)
 
     rep = _fused(net, island)
     root = rep[lv]
@@ -92,7 +86,8 @@ def contract_tables(net, trafo_idx: int = 0,
         buses["lat"] = [lonlat[1].get(b, math.nan) for b in keep]
 
     rows = []
-    for idx, ln in net.line.iterrows():
+    near = net.line["from_bus"].isin(island) & net.line["to_bus"].isin(island)    # a region has many stations
+    for idx, ln in net.line[near].iterrows():
         f, t = int(ln["from_bus"]), int(ln["to_bus"])
         if not bool(ln["in_service"]) or idx in open_lines or f not in island or t not in island:
             continue
@@ -125,6 +120,25 @@ def contract_tables(net, trafo_idx: int = 0,
 
     customers = _customers(net, load, rep, bus_id, customer_map)
     return {"buses": buses, "lines": lines, "transformer": transformer, "customers": customers}
+
+
+def lv_graph(net):
+    """The network as pandapower's topology graph, switch states respected and no transformer
+    crossed: what lv_island walks."""
+    import pandapower.topology as top
+
+    return top.create_nxgraph(net, respect_switches=True, include_trafos=False, include_trafo3ws=False,
+                              include_impedances=False, include_dclines=False, include_tcsc=False, multi=True)
+
+
+def lv_island(net, trafo_idx: int = 0, graph=None) -> set[int]:
+    """The buses reachable from transformer `trafo_idx`'s LV bus without crossing a transformer or
+    an open switch (out-of-service elements are not in the graph either)."""
+    import networkx as nx
+
+    graph = lv_graph(net) if graph is None else graph
+    lv = int(net.trafo.at[trafo_idx, "lv_bus"])
+    return set(nx.node_connected_component(graph, lv)) if lv in graph else {lv}
 
 
 def transformer_id(net, trafo_idx: int = 0) -> str | None:

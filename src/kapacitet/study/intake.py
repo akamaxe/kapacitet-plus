@@ -6,6 +6,14 @@ the station's record (station.json) in step with it: where it came from (`origin
 network shows as changed inputs (study.digests), the record's status left as the last build set
 it. `check` runs the contract's data-quality report on every station and keeps it in the record.
 
+Or the network arrives as CGMES 2.4.15 files in `inputs/network/cgmes/`, with
+`inputs/cim_customers.csv` naming each EnergyConsumer's customer and main fuse. `import_cim`
+converts them (importer/cim.py) into one contract folder per LV transformer, written only when no
+station has an error the contract cannot carry, and leaves a note of what it converted
+(`.cgmes.json`); `split` refuses CGMES files changed since, so they are never skipped silently.
+A station's id is the one `inputs/stations.csv` gives its transformer (`station_id, name,
+trafo_mrid`), else the transformer's mRID.
+
 A folder may carry an `origin.json` beside its CSV files, saying what produced it:
 `{"format": "pandapower", "name": ..., "synthetic": true, "synthetic_parts": [...]}` for the
 demo's networks, `{"format": "contract", "synthetic": false}` for a DSO's own export. It travels
@@ -16,20 +24,33 @@ DSO's export, and the provenance says that is unverified.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import re
 import shutil
 import tempfile
 from pathlib import Path
 
+from .. import procs
 from ..importer.contract import TABLES
 from ..importer.validate import Report, read_export, validate
-from . import Study, StudyError, file_digest
+from . import Study, StudyError, dir_digest, file_digest, valid_id
 
 CONTRACT_FILES = tuple(f"{t.name}.csv" for t in TABLES)
+CGMES_MARK = ".cgmes.json"
+CGMES_SCHEMA = "kapacitet.cgmes-import/1"
 
 
 def contract_dir(study: Study) -> Path:
     return study.inputs / "network" / "contract"
+
+
+def cgmes_dir(study: Study) -> Path:
+    return study.inputs / "network" / "cgmes"
+
+
+def mapping_file(study: Study) -> Path:
+    return study.inputs / "cim_customers.csv"
 
 
 def add_contract(study: Study, src: str | Path, sid: str | None = None, origin: dict | None = None) -> str:
@@ -78,24 +99,119 @@ def _read_origin(folder: Path) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _names(study: Study) -> dict[str, str]:
-    """Station names from inputs/stations.csv (station_id, name), when it has them."""
+def _station_rows(study: Study) -> list[dict]:
+    """The rows of inputs/stations.csv (station_id, name, and trafo_mrid for a CGMES network)."""
     path = study.inputs / "stations.csv"
     if not path.is_file():
-        return {}
+        return []
     with path.open(encoding="utf-8-sig", newline="") as fh:
         sample = fh.read(4096)
         fh.seek(0)
         dialect = csv.Sniffer().sniff(sample, delimiters=",;") if sample else csv.excel
         rows = list(csv.DictReader(fh, dialect=dialect))
-    return {r["station_id"]: r["name"] for r in rows if r.get("station_id") and r.get("name")}
+    return [{str(k).strip().lower(): (v or "").strip() for k, v in r.items() if k is not None} for r in rows]
+
+
+def _names(study: Study) -> dict[str, str]:
+    """Station names from inputs/stations.csv (station_id, name), when it has them."""
+    return {r["station_id"]: r["name"] for r in _station_rows(study) if r.get("station_id") and r.get("name")}
+
+
+# ---------------------------------------------------------------- a CGMES network
+
+def cgmes_state(study: Study) -> dict:
+    """The digests of what a CGMES import is made from."""
+    return {"cgmes": dir_digest(cgmes_dir(study)), "mapping": file_digest(mapping_file(study)),
+            "stations": file_digest(study.inputs / "stations.csv")}
+
+
+def _cgmes_pending(study: Study) -> bool:
+    """CGMES files that were never converted, or changed (or their mapping did) since."""
+    folder = cgmes_dir(study)
+    if not folder.is_dir() or not any(p.is_file() for p in folder.rglob("*")):
+        return False
+    try:
+        mark = json.loads((contract_dir(study) / CGMES_MARK).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return True
+    state = cgmes_state(study)
+    return {k: mark.get(k) for k in state} != state
+
+
+def derived_id(trafo_mrid: str) -> str:
+    """A station id from a transformer's mRID: the mRID without CGMES's underscore, or a digest of
+    it when that is not a folder name."""
+    from ..importer.cim import mrid_key
+
+    sid = re.sub(r"[^A-Za-z0-9_-]+", "-", mrid_key(trafo_mrid)).strip("-_")
+    return sid if valid_id(sid) else "trafo-" + hashlib.sha256(trafo_mrid.encode("utf-8")).hexdigest()[:12]
+
+
+def _assign_ids(study: Study, conversion) -> None:
+    from ..importer.cim import mrid_key
+
+    given = {mrid_key(r["trafo_mrid"]): r for r in _station_rows(study)
+             if r.get("trafo_mrid") and r.get("station_id")}
+    seen: dict[str, str] = {}
+    for st in conversion.stations:
+        row = given.get(mrid_key(st.trafo_mrid))
+        sid = row["station_id"] if row else derived_id(st.trafo_mrid or f"trafo {st.trafo}")
+        if row and row.get("name"):
+            st.name = row["name"]
+        study.station_dir(sid)                               # the id is checked here
+        twin = seen.get(sid.lower())
+        if twin is not None:
+            raise StudyError("cim_station_twice", id=sid, a=twin, b=st.trafo_mrid)
+        seen[sid.lower()] = st.trafo_mrid
+        st.sid = sid
+
+
+def import_cim(study: Study):
+    """inputs/network/cgmes and inputs/cim_customers.csv as one contract folder per LV transformer
+    (importer/cim.py). Returns (the conversion, the ids of the stations an earlier conversion wrote
+    and this one no longer has, whose folders are removed). When the conversion is blocked nothing
+    is written; a folder that did not come from a conversion is never written over."""
+    from ..importer import cim
+    from ..importer.from_pandapower import write_contract
+
+    files = cim.cgmes_files(cgmes_dir(study))
+    if not files:
+        raise StudyError("no_cgmes", path=str(cgmes_dir(study)))
+    try:
+        conversion = cim.convert(files, mapping_file(study))
+    except cim.CimError as err:
+        raise StudyError("cim", message=str(err)) from None
+    _assign_ids(study, conversion)
+    if conversion.blocked:
+        return conversion, []
+    folder = contract_dir(study)
+    for st in conversion.stations:
+        dst = folder / st.sid
+        if dst.is_dir() and (_read_origin(dst) or {}).get("format") != "cgmes" \
+                and any((dst / f).is_file() for f in CONTRACT_FILES):
+            raise StudyError("cim_overwrites", id=st.sid)
+    state = cgmes_state(study)
+    source = {"files": {f.relative_to(cgmes_dir(study)).as_posix(): file_digest(f) for f in files},
+              "mapping": state["mapping"]}
+    for st in conversion.stations:
+        origin = {"format": "cgmes", "name": st.name, "trafo_mrid": st.trafo_mrid, "source": source}
+        with tempfile.TemporaryDirectory() as tmp:
+            write_contract(st.tables, tmp)
+            add_contract(study, tmp, st.sid, origin=origin)
+    keep = {st.sid for st in conversion.stations}
+    removed = sorted(p.name for p in folder.iterdir() if p.is_dir() and p.name not in keep
+                     and (_read_origin(p) or {}).get("format") == "cgmes")
+    for sid in removed:
+        shutil.rmtree(folder / sid)
+    procs.write_json(folder / CGMES_MARK, {"schema": CGMES_SCHEMA, **state,
+                                           "converted": {st.sid: st.trafo_mrid for st in conversion.stations}})
+    return conversion, removed
 
 
 def split(study: Study) -> list[str]:
     """One import folder per station from inputs/network; returns the station ids, in order."""
-    cgmes = study.inputs / "network" / "cgmes"
-    if cgmes.is_dir() and any(p.is_file() for p in cgmes.rglob("*")):
-        raise StudyError("cgmes_pending")
+    if _cgmes_pending(study):
+        raise StudyError("cgmes_pending", path=str(study.root))
     folders = (sorted(p for p in contract_dir(study).glob("*") if p.is_dir() and not p.name.startswith("."))
                if contract_dir(study).is_dir() else [])
     if not folders:
@@ -128,7 +244,7 @@ def split(study: Study) -> list[str]:
         origin = {"format": given.get("format", "contract"), "trafo_mrid": given.get("trafo_mrid"),
                   "files": {f: file_digest(dst / f) for f in CONTRACT_FILES if (dst / f).is_file()},
                   "declared": declared is not None}
-        for key in ("synthetic", "synthetic_parts", "generator"):
+        for key in ("synthetic", "synthetic_parts", "generator", "source"):
             if key in given:
                 origin[key] = given[key]
         name = names.get(sid) or given.get("name") or sid

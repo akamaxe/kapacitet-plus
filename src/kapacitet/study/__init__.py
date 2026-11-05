@@ -81,8 +81,16 @@ ERRORS = {
     "method_version": "the study is pinned to method {pinned}; this code computes method {current}",
     "not_isolated": "station {id} is built by its own process, with KAPACITET_DATA_DIR on its folder: "
                     "run `kapacitet study build {study} --station {id}`",
-    "cgmes_pending": "inputs/network/cgmes holds files, and the CGMES import is not in this version yet: "
-                     "hand the stations over as contract folders (inputs/network/contract/<sid>)",
+    "cgmes_pending": "inputs/network/cgmes holds CGMES files that are not converted, or that changed "
+                     "(or inputs/cim_customers.csv or inputs/stations.csv did) since the last conversion: "
+                     "run `kapacitet study import {path} --cim`",
+    "no_cgmes": "no CGMES files (.xml, .rdf or .zip) in {path}",
+    "cim": "{message}",
+    "cim_overwrites": "inputs/network/contract/{id} holds a contract folder that did not come from the CGMES "
+                      "files: give its transformer another station id in inputs/stations.csv "
+                      "(station_id, name, trafo_mrid)",
+    "cim_station_twice": "station {id} would be two transformers ({a} and {b}): give them ids of their own in "
+                         "inputs/stations.csv (station_id, name, trafo_mrid)",
     "no_network": "the study has no network: put a contract folder per station in inputs/network/contract/ "
                   "(or run `kapacitet study import {path} --contract <folder>`)",
 }
