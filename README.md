@@ -134,16 +134,30 @@ A bundle is never committed: the code is MIT, and the data,
 derived from OpenStreetMap, are published separately under ODbL ([DATA-LICENSE.md](DATA-LICENSE.md)).
 A lite bundle shows every result but cannot evaluate new requests, and the request screen says so.
 
-A container runs the same thing with the data mounted (`docker build -t kapacitet .`, then
-`docker run -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet`); CI builds it on every push.
+A container runs the same thing with the data mounted, from a folder of the host or from a named
+volume; CI builds it on every push:
+
+```bash
+docker build -t kapacitet .
+mkdir -p data
+docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet
+docker run -p 127.0.0.1:8000:8000 -v kapacitet-data:/app/data kapacitet   # or a named volume
+```
+
 The port is published on 127.0.0.1 only, because the API has no login: whoever reaches the port
 can use all of it, approvals included. Inside the container the server listens on 0.0.0.0, which is
 what Docker needs to forward the port; reaching it from another machine needs a reverse proxy with
 TLS and a login in front. The server runs as an unprivileged user (uid 10001) and writes only to
-`/app/data`, so a folder mounted from the host must be writable by that uid: add
-`--user "$(id -u):$(id -g)"` to run it as yourself, or mount a named volume instead
-(`-v kapacitet-data:/app/data`). Without data, the interface opens on a page that lists the
-commands to run.
+`/app/data`. A folder of the host keeps its owner there, so the container runs as you (`--user`),
+on a folder made beforehand (Docker would make a missing one as root); without that the server
+reads the data but cannot save an evaluation, the queue or an application. A named volume starts
+owned by uid 10001 and needs neither. A volume written by an image from before uid 10001 is root's:
+hand it over once with `docker run --rm -u 0 -v kapacitet-data:/app/data kapacitet chown -R 10001:10001 /app/data`
+(a folder of the host: `sudo chown -R "$(id -u):$(id -g)" data`). The container cannot tell that a
+mounted folder is inside a git checkout, so it never gives the warning `serve` gives for an
+operator's network there ([Networks in the app](#networks-in-the-app)): for a real network, mount a
+named volume or a folder outside the checkout. Without data, the interface opens on a page that
+lists the commands to run.
 
 A copy without results can also take the data file from its setup page, in the browser, when
 its server allows it (`KAPACITET_SETUP_UPLOAD=1`): only on the reference network and while the copy
@@ -151,6 +165,8 @@ has no results. The container takes it that way with
 `docker run -p 127.0.0.1:8000:8000 -e KAPACITET_SETUP_UPLOAD=1 kapacitet`.
 
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
+`KAPACITET_HOME` (where the imported networks, `datasets/`, and `active.json` live; the data
+folder by default), `KAPACITET_RAW_DIR` (the downloads; `raw/` in the data folder by default),
 `KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
 access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
@@ -403,8 +419,10 @@ its own grid, and the reference network's weather, prices and households (`/meta
 
 An operator's network is the operator's data, and `data/` sits inside the git working tree, where
 only `.gitignore` keeps it out of a commit. For a real network, point `KAPACITET_HOME` (where
-`datasets/` and `active.json` live) and `KAPACITET_DATA_DIR` at a folder outside the checkout:
-`serve` warns when an imported network is in use with its data inside the checkout, and
+`datasets/` and `active.json` live) and `KAPACITET_DATA_DIR` at a folder outside the checkout,
+and move the reference network's data there (or `unbundle` the data release into it), or the
+reference network opens empty. `serve` warns when an imported network is in use with its data
+inside a git working tree, or when one is kept in a `datasets/` folder inside one, in use or not;
 `tests/test_no_data_committed.py` fails when anything under `data/`, or a data file outside
 `tests/fixtures/`, is tracked.
 

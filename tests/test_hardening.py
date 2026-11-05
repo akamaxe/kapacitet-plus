@@ -24,6 +24,7 @@ def test_the_docker_examples_publish_the_port_on_loopback_only():
     for rel in ("README.md", "Dockerfile", ".github/workflows/ci.yml"):
         text = _read(rel)
         assert "-p 8000:8000" not in text, rel
+        text = re.sub(r"\\\n\s*", " ", text)  # a command split over lines is one
         for line in (ln for ln in text.splitlines() if "docker run" in ln):
             for port in re.findall(r"(?:-p|--publish)[ =](\S+)", line):
                 assert port.startswith("127.0.0.1:"), f"{rel}: {line.strip()}"
@@ -54,7 +55,8 @@ def test_the_image_runs_unprivileged_on_pinned_base_images():
     user_at = max(i for i, ln in enumerate(stage) if ln.upper().startswith("USER "))
     assert not any(ln.upper().startswith("CMD") for ln in stage[:user_at]), "the server starts as that user"
     # the server writes only to data/: nothing else becomes its own
-    assert "chown -R" not in text
+    assert "chown -R" not in text and "--chown" not in text
+    assert not re.search(r"chown\s+--recursive", text)
     assert re.findall(r"chown\s+\S+\s+(\S+)", text) == ["/app/data"]
 
 

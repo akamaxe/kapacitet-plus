@@ -5,16 +5,24 @@
 # with the data release's kapacitet-data.zip, at /app/data:
 #
 #   docker build -t kapacitet .
-#   docker run -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet
+#   mkdir -p data
+#   docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet
+#
+# or, with a named volume instead of a folder of the host:
+#
+#   docker run -p 127.0.0.1:8000:8000 -v kapacitet-data:/app/data kapacitet
 #
 # The port is published on 127.0.0.1 only, because the API has no login: whoever reaches the port
 # can use all of it, approvals included. Inside the container the server listens on 0.0.0.0, which
 # is what Docker needs to forward the port; reaching it from another machine needs a reverse proxy
 # with TLS and a login in front.
 #
-# The server runs as an unprivileged user (uid 10001) and writes only to /app/data. A folder mounted
-# from the host must be writable by that uid, or run the container as yourself with
-# `--user "$(id -u):$(id -g)"`; a named volume (`-v kapacitet-data:/app/data`) needs neither.
+# The server runs as an unprivileged user (uid 10001) and writes only to /app/data. A folder of the
+# host keeps its owner there, so the first example runs the container as yourself (`--user`), on a
+# folder made beforehand (Docker would make a missing one as root); without that the server reads
+# the data but cannot save an evaluation, the queue or an application. A named volume starts owned
+# by uid 10001 and needs neither. One written by an image from before uid 10001 is root's: the
+# README says how to hand it over.
 #
 # Without data the interface opens on a setup page that says what to run.
 #

@@ -27,6 +27,7 @@ import os
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 log = logging.getLogger("kapacitet")
 
@@ -242,19 +243,35 @@ def _wait_for_port(host: str, port: int, seconds: float = 15.0) -> None:
         time.sleep(0.3)
 
 
+def git_working_tree(path: Path) -> Path | None:
+    """The git working tree `path` is inside, or None: the nearest folder, itself included, that
+    holds a .git (a folder, or the file of a worktree or a submodule). Any repository counts, not
+    only this project's: one it is vendored into, or another one KAPACITET_DATA_DIR points into.
+    Walked by hand rather than asked of git, which the server does not need."""
+    path = Path(path).resolve()
+    for folder in (path, *path.parents):
+        if (folder / ".git").exists():
+            return folder
+    return None
+
+
 def data_in_checkout_warning() -> str | None:
-    """What to say when an imported network is in use with its data inside the git working tree.
+    """What to say when an operator's network is kept inside a git working tree.
 
-    An imported network is an operator's own data: inside the checkout only .gitignore keeps it
-    out of a commit (a `git add -A` once committed one). Imported means served as a network of the
-    app (datasets.current()) or written over the reference network by `kapacitet import`
-    (grid/summary.json says `imported`). Without a git checkout (the container) there is nothing
-    to commit it to, so nothing is said."""
+    An imported network is an operator's own data: inside a checkout only .gitignore keeps it out
+    of a commit (a `git add -A` once committed one). Two cases are said:
+
+    - the network in use is imported, served as a network of the app (datasets.current()) or
+      written over the reference network by `kapacitet import` (grid/summary.json says
+      `imported`), and its data folder is inside a working tree;
+    - the folder of the app's networks (HOME/datasets) is inside one and holds any network, in
+      use or not: each keeps the operator's four files in its import/.
+
+    Without a git checkout (the container: the image has no .git, and it cannot tell where a
+    mounted folder comes from) nothing is said."""
     from . import datasets
-    from .paths import DATA, ROOT, processed_ro
+    from .paths import DATA, DATASETS, processed_ro
 
-    if not (ROOT / ".git").exists():
-        return None
     imported = datasets.current() != datasets.REFERENCE
     if not imported:
         try:
@@ -262,11 +279,15 @@ def data_in_checkout_warning() -> str | None:
             imported = isinstance(summary, dict) and summary.get("imported") is True
         except (OSError, ValueError):
             pass
-    if not imported or not DATA.resolve().is_relative_to(ROOT.resolve()):
+    places = [DATA] if imported and git_working_tree(DATA) is not None else []
+    if git_working_tree(DATASETS) is not None and any(DATASETS.glob("*/dataset.json")):
+        # a network of the app in use lives in it: one folder says both
+        places = [p for p in places if not p.resolve().is_relative_to(DATASETS.resolve())] + [DATASETS]
+    if not places:
         return None
-    return (f"an imported network is in use and its data are inside the git working tree ({DATA}): "
-            "set KAPACITET_HOME and KAPACITET_DATA_DIR to a folder outside it, so that an "
-            "operator's network cannot end up in a commit")
+    return (f"an operator's network is kept inside a git working tree ({', '.join(map(str, places))}): "
+            "set KAPACITET_HOME and KAPACITET_DATA_DIR to a folder outside it, so that it "
+            "cannot end up in a commit")
 
 
 def _serve_child(args: argparse.Namespace) -> None:

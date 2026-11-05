@@ -4,9 +4,12 @@ __pycache__/
 .pytest_cache/
 .env
 .venv/
-# Downloaded and generated data are reproducible with `python -m kapacitet all`.
-data/raw/
-data/processed/
+# All of data/, whatever lands in it: downloads and results (reproducible with `python -m kapacitet
+# all`, and derived from OpenStreetMap, so ODbL and published apart), assessments, the queue,
+# applications and seals (data/requests/), imported networks and which one is in use (an operator's
+# own data: data/datasets/, data/active.json), and anything a later stage or a crash leaves there.
+# tests/test_no_data_committed.py fails if any of it is tracked all the same.
+/data/
 web/node_modules/
 web/dist/
 web/*.tsbuildinfo
@@ -15,10 +18,6 @@ web/*.tsbuildinfo
 .impeccable/mocks/
 .impeccable/live/
 .impeccable/config.local.json
-data/requests/
-# imported networks and which one is in use (datasets.py): data too, never published
-data/datasets/
-data/active.json
 .impeccable/review/
 # Playwright: the empty data folder of the CI project and the run reports
 web/e2e/.empty-data/
