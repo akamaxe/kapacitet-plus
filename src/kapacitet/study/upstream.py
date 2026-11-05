@@ -4,7 +4,9 @@ published once they are applied.
     inputs/upstream.csv    level (feeder, substation or regional), id, parent_id, gen_headroom_kw,
                            load_headroom_kw, source, as_of: one row per node above the stations; a
                            feeder's parent is a substation, a substation's a regional grid
-    inputs/stations.csv    station_id, feeder_id, hidden (beside name and, for CGMES, trafo_mrid)
+    inputs/stations.csv    station_id, feeder_id, hidden, zone (beside name and, for CGMES, trafo_mrid);
+                           zone is the DSO's own area name, which a publication at the "zone" level
+                           of [disclosure] groups by (study/disclosure.py)
 
 A station's chain is its feeder and every parent above it. The headroom of a node is shared by every
 station under it (`shared_by`), so it is not added up: the published value of a station is the
@@ -48,7 +50,7 @@ def _kw(text: str) -> float | None:
 
 
 def read(study: Study) -> dict:
-    """{"nodes": {id: row}, "stations": {sid: {"feeder_id", "hidden"}}, "findings": [...]}."""
+    """{"nodes": {id: row}, "stations": {sid: {"feeder_id", "hidden", "zone"}}, "findings": [...]}."""
     findings: list[str] = []
     nodes: dict[str, dict] = {}
     for i, r in enumerate(_rows(study.inputs / "upstream.csv"), start=2):
@@ -75,7 +77,8 @@ def read(study: Study) -> dict:
     for r in _rows(study.inputs / "stations.csv"):
         if r.get("station_id"):
             stations[r["station_id"]] = {"feeder_id": r.get("feeder_id") or None,
-                                         "hidden": str(r.get("hidden", "")).strip().lower() in ("1", "true", "yes", "ja", "x")}
+                                         "hidden": str(r.get("hidden", "")).strip().lower() in ("1", "true", "yes", "ja", "x"),
+                                         "zone": r.get("zone") or None}
     return {"nodes": nodes, "stations": stations, "findings": findings}
 
 

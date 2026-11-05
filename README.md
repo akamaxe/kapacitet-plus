@@ -491,7 +491,14 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study status nb-2026
 .venv/Scripts/python -m kapacitet study collect nb-2026   # every station's figures, caps applied: runs/<quarter>/stations.parquet
 .venv/Scripts/python -m kapacitet study validate nb-2026  # the model against the meters, dpPower and the DSO's static results
+.venv/Scripts/python -m kapacitet study review nb-2026    # runs/<quarter>/review.csv, the least margin first
+.venv/Scripts/python -m kapacitet study sign nb-2026 --by "name, role"
+.venv/Scripts/python -m kapacitet study publish nb-2026   # runs/<quarter>/publication (UTKAST unless signed)
+.venv/Scripts/python -m kapacitet study diff nb-2026 --from 2026Q3 --to 2026Q4
 ```
+
+Every input file and column, and what each step of a quarter writes, is in
+[docs/study-inputs.md](docs/study-inputs.md); `study init` writes the same list into `study.toml`.
 
 `study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
 the method's choices (percentile, curtailment basis, the consumption device), the MV band, what may
@@ -563,6 +570,23 @@ loading; a dpPower snapshot (`inputs/dppower/snapshot.csv`: `start`, `mrid`, `ki
 `loading_pct`) is compared element by element by mRID, and the DSO's static results
 (`inputs/dppower/static.csv`: `customer_id`, `gen_kw`, `load_kw`) with this model's
 (`processed/results/validation_measured.json`).
+
+A quarter is published in four steps. `study review` writes `review.csv` with the stations of
+least margin first and overlays the reviewer's `corrections.csv`, which can only lower a figure,
+hide a station or add a note, and never overwrites a computed value: both are published, side by
+side. `study sign --by "name, role"` seals the sha256 of every output (the run's files and each
+station's results) as a `publication` in the study's own chain, `evidence/`. `study publish`
+writes `capacity.csv` (Swedish Excel dialect) beside `capacity.machine.csv` (RFC 4180),
+`capacity.geojson`, `grunder_for_berakning.md` (rendered from
+`study/templates/grunder_for_berakning.sv.md`, every value from the data), the validation report
+and `manifest.json`; anything changed since the signature makes it an UTKAST again, and a study
+pinned to another method version is refused. What may be shown follows `[disclosure]`
+(`study/disclosure.py`): cells by station, SWEREF 99 TM square or zone, merged upward until they
+hold k customers, a merged cell showing its stations' lowest figure, hidden stations left out, and
+`disclosure_report.csv`, which says which station is in which cell, never published. The
+conditional (envelope) column appears only with `[method] approval_reference` set and verified
+envelopes. `study diff` lists what changed between two quarters with the inputs behind each change
+(`runs/<Q>/inputs.json`) and a sentence in Swedish.
 
 A DSO that exports CGMES 2.4.15 (EQ, TP, SSH and, for the map, GL) puts the files in
 `inputs/network/cgmes/` and `inputs/cim_customers.csv` beside them, which CGMES cannot carry:

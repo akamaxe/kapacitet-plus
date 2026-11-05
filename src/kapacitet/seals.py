@@ -27,11 +27,13 @@ Standard library only, so the engine, the API and the tests can all use it.
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import math
 import os
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -42,7 +44,10 @@ from .paths import CONFIG, DATA, PROCESSED, RAW
 
 _LOCK = threading.RLock()
 GENESIS = "0" * 64
-KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure")
+KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure",
+         "publication")
+# a chain kept somewhere else than data/requests: a study's evidence/ folder (`chain_at`)
+_CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
 
 # What an answer depends on, besides the engine's code: the network, the profiles behind it, the
 # published results and the inputs. A change to any of these changes the fingerprint. The "study"
@@ -72,8 +77,24 @@ def folder() -> Path:
     return DATA / "requests"
 
 
+def _root() -> Path:
+    """Where the chain in use lives: the folder of `chain_at`, or data/requests."""
+    return _CHAIN_AT.get() or folder()
+
+
+@contextmanager
+def chain_at(path: str | Path):
+    """Seal into, and read from, the chain in `path` instead of data/requests: a study's sign-off
+    is chained in the study's own evidence/ folder (study/publish.py), apart from any server's."""
+    token = _CHAIN_AT.set(Path(path))
+    try:
+        yield Path(path)
+    finally:
+        _CHAIN_AT.reset(token)
+
+
 def _chain_file() -> Path:
-    return folder() / "seals.jsonl"
+    return _root() / "seals.jsonl"
 
 
 def _clean(value: Any) -> Any:
@@ -197,7 +218,7 @@ def _chain_hash(prev: str, entry: dict) -> str:
 
 
 def _sealed_path(kind: str, item_id: str) -> Path:
-    return folder() / "sealed" / kind / f"{item_id}.json"
+    return _root() / "sealed" / kind / f"{item_id}.json"
 
 
 def seal(kind: str, item_id: str, obj: Any) -> dict:
@@ -223,7 +244,7 @@ def seal(kind: str, item_id: str, obj: Any) -> dict:
         entry["chain"] = _chain_hash(prev, entry)
         append_line(_chain_file(), json.dumps(entry, sort_keys=True))
         # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
-        fp_path = folder() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
+        fp_path = _root() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
         if not fp_path.exists():
             write_json_atomic(fp_path, fp, sort_keys=True)
     return entry

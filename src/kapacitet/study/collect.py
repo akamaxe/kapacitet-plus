@@ -5,6 +5,13 @@ apply after the computation and build nothing again, study/upstream.py), and a c
 whose `upstream` or `published` they change is rewritten with them. A station that has not been
 computed yet is listed with its status and no figures. The table is built with pyarrow on a fixed
 schema and written by DuckDB (beside, then moved in), so a reader never sees half a file.
+
+Beside it, runs/<Q>/inputs.json keeps what each station's figures were computed from (the input
+digests its build recorded, and the upstream.csv the caps came from), so `study diff` can say why a
+figure changed between two quarters. Each row also carries the station's position (its
+transformer's busbar, WGS84) and the DSO's zone from inputs/stations.csv, which the disclosure of
+a publication groups by, and the envelope (conditional) capacity when the method is approved and
+its envelopes verified, capped by the same upstream chain.
 """
 
 from __future__ import annotations
@@ -32,7 +39,12 @@ FIELDS = (
     ("published_generation_kw", "float64"), ("published_generation_limited_by", "string"),
     ("published_consumption_kw", "float64"), ("published_consumption_limited_by", "string"),
     ("upstream_complete", "bool_"), ("full_year_violations", "int64"), ("nonconverged_hours", "int64"),
+    ("conditional_generation_status", "string"), ("conditional_generation_kw", "float64"),
+    ("published_conditional_generation_kw", "float64"), ("approval_reference", "string"),
+    ("lon", "float64"), ("lat", "float64"), ("zone", "string"),
+    ("years", "string"), ("orders", "int64"), ("percentile", "float64"),
 )
+INPUTS_SCHEMA = "kapacitet.run-inputs/1"
 
 
 def _hours(block: dict) -> int | None:
@@ -56,6 +68,19 @@ def _limit(block: dict) -> str | None:
     return ((block or {}).get("binding") or {}).get("limit")
 
 
+def position(study: Study, sid: str) -> tuple[float | None, float | None]:
+    """The station's transformer busbar (processed/grid/substation.json), WGS84, when it has one."""
+    from ..geo import num
+
+    path = study.station_dir(sid) / "processed" / "grid" / "substation.json"
+    try:
+        sub = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    except (OSError, ValueError):
+        sub = {}
+    lon, lat = num(sub.get("lon")), num(sub.get("lat"))
+    return (lon, lat) if lon is not None and lat is not None else (None, None)
+
+
 def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
     """The station's row of the table, and its capacity.json with the current caps (None when the
     station has none)."""
@@ -64,7 +89,9 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
     base = {name: None for name, _ in FIELDS}
     base.update(station_id=sid, name=rec.get("name") or sid, status=rec.get("status"),
                 hidden=sid in set(study.config.disclosure.hidden) or bool((up["stations"].get(sid) or {}).get("hidden")),
-                customers=(rec.get("summary") or {}).get("customers"))
+                customers=(rec.get("summary") or {}).get("customers"),
+                zone=(up["stations"].get(sid) or {}).get("zone"))
+    base["lon"], base["lat"] = position(study, sid)
     if not path.is_file():
         return base, None
     cap = json.loads(path.read_text(encoding="utf-8"))
@@ -89,7 +116,17 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
         published_consumption_kw=pc["kw"], published_consumption_limited_by=pc["limited_by"],
         upstream_complete=bool(pg.get("complete")) and bool(pc.get("complete")),
         full_year_violations=(cap.get("verification") or {}).get("full_year_violations"),
-        nonconverged_hours=(cap.get("verification") or {}).get("nonconverged_hours"))
+        nonconverged_hours=(cap.get("verification") or {}).get("nonconverged_hours"),
+        years=",".join(str(y) for y in cap.get("years") or []) or None, orders=cap.get("orders"),
+        percentile=cap.get("percentile"))
+    doe = gen.get("doe") or {}
+    if doe:
+        base.update(conditional_generation_status=doe.get("status"), approval_reference=doe.get("approval_reference"))
+    if doe.get("status") == "ok" and doe.get("kw") is not None:
+        # the envelope capacity, capped by the same chain as the firm one
+        _, capped = up_mod.apply(up, sid, doe["kw"], None)
+        base.update(conditional_generation_kw=float(doe["kw"]),
+                    published_conditional_generation_kw=capped["generation"]["kw"])
     return base, cap
 
 
@@ -128,4 +165,31 @@ def collect(study: Study, q: str | None = None) -> dict:
     finally:
         con.close()
     os.replace(tmp, out)
+    write_json_atomic(folder / "inputs.json", run_inputs(study, up))
     return {"path": out, "rows": len(rows), "rewritten": rewritten, "quarter": q}
+
+
+def run_inputs(study: Study, up: dict | None = None) -> dict:
+    """What the run's figures were computed from, per station: the digests its build recorded,
+    the upstream.csv applied now, and the method and code of its capacity.json."""
+    from . import code_version, file_digest
+
+    upstream_now = file_digest(study.inputs / "upstream.csv")
+    stations = {}
+    for sid in study.station_ids():
+        rec = study.record(sid)
+        path = study.station_dir(sid) / "processed" / "results" / "capacity.json"
+        cap = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+        built = rec.get("kapacitet") or {}
+        stations[sid] = {"inputs": {k: v for k, v in (rec.get("inputs") or {}).items() if k != "upstream"},
+                         "upstream": upstream_now, "stations_csv": file_digest(study.inputs / "stations.csv"),
+                         "method_version": cap.get("method_version") or rec.get("method_version"),
+                         "code": built.get("commit") or built.get("version"), "quick": bool(rec.get("quick"))}
+    return {"schema": INPUTS_SCHEMA, "study": study.id, "collected_at": _now(), "stations": stations,
+            "code": code_version()}
+
+
+def _now() -> str:
+    from .. import procs
+
+    return procs.now()

@@ -1,5 +1,5 @@
-"""The study commands: `kapacitet study init|demo|fetch|import|check|build|status|collect|validate
-<dir>`, and the hidden `kapacitet station build|validate <sid> --study <dir>` that a study's build
+"""The study commands: `kapacitet study init|demo|fetch|import|check|build|status|collect|validate|
+review|sign|publish|diff <dir>`, and the hidden `kapacitet station build|validate <sid> --study <dir>` that a study's build
 and validation start once per station.
 
 pipeline.py registers them with one call to `register`; nothing heavy is imported until a command
@@ -53,6 +53,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--quarter", default=None, help="the run's quarter, as 2026Q4 (default: this quarter)")
     q = add("validate", "replay each station's metered hours and compare with the measurements and dpPower")
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
+    q = add("review", "runs/<quarter>/review.csv, the least margin first, with runs/<quarter>/corrections.csv overlaid")
+    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
+    q = add("sign", "seal the quarter's outputs in the study's evidence chain: runs/<quarter>/signoff.json")
+    q.add_argument("--by", required=True, help='who signs, as "name, role"')
+    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
+    q = add("publish", "runs/<quarter>/publication: capacity.csv and .geojson, the basis of calculation, the "
+                       "validation report and the manifest (a draft, UTKAST, unless signed)")
+    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
+    q = add("diff", "runs/<to>/changes.csv: what changed since another quarter, and why")
+    q.add_argument("--from", dest="q_from", required=True, help="the earlier quarter, as 2026Q3")
+    q.add_argument("--to", dest="q_to", default=None, help="the later quarter (default: this quarter)")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
@@ -74,7 +85,8 @@ def cmd_study(args: argparse.Namespace) -> None:
 
     try:
         {"init": _init, "demo": _demo, "fetch": _fetch, "import": _import, "check": _check, "build": _build,
-         "status": _status, "collect": _collect, "validate": _validate}[args.study_command](args)
+         "status": _status, "collect": _collect, "validate": _validate, "review": _review, "sign": _sign,
+         "publish": _publish, "diff": _diff}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -230,6 +242,56 @@ def _validate(args) -> None:
         print(f"  {sid}: {'done' if r['code'] == 0 else 'failed (see build.log)'} in {r['seconds']:.0f} s")
     if any(r["code"] != 0 for r in out.values()):
         sys.exit(1)
+
+
+def _quarter(q: str | None) -> str:
+    from .collect import quarter
+
+    return q or quarter()
+
+
+def _review(args) -> None:
+    from . import open_study
+    from .review import review
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = review(study, _quarter(args.quarter))
+    print(f"{len(out['rows'])} stations in {out['paths'][0]}, the least margin first")
+    for f in out["findings"]:
+        print(f"  [correction not applied] {f}")
+
+
+def _sign(args) -> None:
+    from . import open_study
+    from .publish import sign
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    doc = sign(study, _quarter(args.quarter), args.by)
+    print(f"Signed by {doc['by']}: {len(doc['outputs'])} files sealed as publication {doc['seal']['id']} "
+          f"in {study.evidence}")
+
+
+def _publish(args) -> None:
+    from . import open_study
+    from .publish import DRAFT, publish
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = publish(study, _quarter(args.quarter))
+    print(f"{out['cells']} cells published in {out['folder']} ({out['status']})")
+    if out["status"] == DRAFT:
+        why = f": changed since the signature: {', '.join(out['changed'])}" if out["changed"] else ": not signed"
+        print(f"  a draft{why}")
+    for f in out["findings"]:
+        print(f"  [correction not applied] {f}")
+
+
+def _diff(args) -> None:
+    from . import open_study
+    from .diff import diff
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = diff(study, args.q_from, _quarter(args.q_to))
+    print(f"{len(out['rows'])} changes in {out['paths'][0]}")
 
 
 def cmd_station(args: argparse.Namespace) -> None:

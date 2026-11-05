@@ -9,7 +9,10 @@
         stations/<sid>/   one data folder per station, shaped like an imported network's:
                           station.json, import/, processed/, requests/, build.log, build.lock
         evidence/         the study's seal chain
-        runs/<Q>/         one quarter's publication
+        runs/<Q>/         one quarter: stations.parquet and inputs.json (`study collect`),
+                          review.csv and the reviewer's corrections.csv (`study review`),
+                          signoff.json (`study sign`), publication/ (`study publish`),
+                          changes.csv (`study diff`) and disclosure_report.csv (never published)
         cases/<batch>/    connection cases checked in a batch
 
 A study holds a DSO's network and customer data, so it lives outside the code: by default under
@@ -93,6 +96,10 @@ ERRORS = {
                          "inputs/stations.csv (station_id, name, trafo_mrid)",
     "no_network": "the study has no network: put a contract folder per station in inputs/network/contract/ "
                   "(or run `kapacitet study import {path} --contract <folder>`)",
+    "not_collected": "quarter {quarter} has not been collected: run `kapacitet study collect {path} --quarter {quarter}`",
+    "stale_method": "stations {ids} were computed with another method than the study's {pinned}: build them again "
+                    "before they are published",
+    "bad_signer": "{by!r} is not a signer: give a name and a role, as --by \"name, role\"",
 }
 
 
