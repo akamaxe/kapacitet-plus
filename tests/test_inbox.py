@@ -131,7 +131,7 @@ def test_an_old_assessment_is_evaluated_again_before_the_rule_decides(inbox_dirs
     qu._save({"version": 1, "baseline": "static", "items": [{"assessment": "f00000000000", "cid": 5, "decision": "nonfirm"}]})
     old = _saved(records, "a00000000001", cid=7, **_result(pv_ok=True))
     app = inbox.receive(old["id"])
-    assert app["status"] == "pending" and app["reference"].startswith("KP-")
+    assert app["status"] == "pending" and app["reference"].startswith("KP-") and app["reference_hint"] == app["reference"][3:7]
 
     asked = []
 

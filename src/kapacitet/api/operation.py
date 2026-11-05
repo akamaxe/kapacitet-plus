@@ -6,11 +6,13 @@ from __future__ import annotations
 import csv
 import io
 import json
+import threading
 import time
 from datetime import date as Date
+from datetime import datetime
 
 import numpy as np
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
@@ -21,6 +23,12 @@ from .combos import COMMAND, POLICY_PATTERN, operation_index, resolve
 
 router = APIRouter(prefix="/api/v1", tags=["operation"])
 METER_MAX_BYTES = 5_000_000
+DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
+# An Idempotency-Key names one issue or export: sent again, it returns the seal it already has
+# (seals.entry_for) instead of chaining a second line. It becomes part of a seal's id, hence the alphabet.
+IDEMPOTENCY_KEY = "^[A-Za-z0-9_-]{8,64}$"
+# looking up a key's seal and sealing it are one step, so two retries at once cannot both seal
+_SEAL_LOCK = threading.Lock()
 
 
 # What the operation stage's answers rest on (api/main.SOURCES).
@@ -70,12 +78,8 @@ def _sealed_headers(entry: dict, filename: str) -> dict:
             "X-Seal-Seq": str(entry["seq"]), "X-Seal-At": entry["at"]}
 
 
-@router.get("/eipack")
-def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
-           policy: str | None = Query(None, pattern=POLICY_PATTERN),
-           export: bool = Query(False, description="true: download the pack, sealed with what it showed")):
-    """Each of Ei's conditions for conditional agreements (Ei2025:01) beside what the prototype can
-    show for it: evidence of the model, a statement of the DSO, not met here, or not applicable."""
+def _pack(basis: str, policy: str | None) -> tuple[dict, str]:
+    """Each of Ei's conditions beside what the prototype can show for it, and the rule it was read for."""
     from ..engine.eipack import assess
     from . import main
 
@@ -90,13 +94,45 @@ def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
     pack = assess(basis, combo.policy, dso.load(), operation_index(), agreements["agreements"], report, business)
     pack["provenance"] = _provenance(processed_ro("results", "operation", "index.json"),
                                      processed_ro("results", "operation", "agreements.json"), report_path)
-    if not export:
-        return pack
-    stamp = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-    entry = seals.seal("eipack", f"{basis}-{combo.policy}-{stamp}", pack)
+    return pack, combo.policy
+
+
+@router.get("/eipack")
+def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
+           policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
+    """Each of Ei's conditions for conditional agreements (Ei2025:01) beside what the prototype can
+    show for it: evidence of the model, a statement of the DSO, not met here, or not applicable.
+    Reading it leaves no record; `POST /eipack/export` downloads it sealed."""
+    return _pack(basis, policy)[0]
+
+
+class PackOut(BaseModel):
+    basis: str = Field("dayahead", pattern="^(foresight|dayahead)$")
+    policy: str | None = Field(None, pattern=POLICY_PATTERN)
+
+
+def _sealed_pack(pack: dict, entry: dict, basis: str, policy: str) -> Response:
     body = json.dumps({**pack, "seal": {k: entry[k] for k in ("digest", "seq", "at", "fingerprint")}}, indent=1)
     return Response(body, media_type="application/json",
-                    headers=_sealed_headers(entry, f"kapacitet-ei-evidence-{basis}-{combo.policy}.json"))
+                    headers=_sealed_headers(entry, f"kapacitet-ei-evidence-{basis}-{policy}.json"))
+
+
+@router.post("/eipack/export")
+def eipack_export(body: PackOut, idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> Response:
+    """Download the pack, sealed with what it showed. Each export is a seal of its own, unless it
+    repeats an Idempotency-Key: then the pack sealed under that key comes back as it was."""
+    pack, policy = _pack(body.basis, body.policy)
+    with _SEAL_LOCK:
+        if idempotency_key:
+            item = f"{body.basis}-{policy}-k{idempotency_key}"
+            entry = seals.entry_for("eipack", item)
+            kept = seals.sealed_copy("eipack", item) if entry else None
+            if kept is not None:
+                return _sealed_pack(kept, entry, body.basis, policy)
+        else:
+            item = f"{body.basis}-{policy}-{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+        entry = seals.seal("eipack", item, pack)
+    return _sealed_pack(pack, entry, body.basis, policy)
 
 
 # ---------------------------------------------------------------- a day's schedule
@@ -125,7 +161,7 @@ def _day_ahead(cid: int, date: str, policy: str | None):
 
 
 @router.get("/operation/schedule")
-def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
              policy: str | None = Query(None, pattern=POLICY_PATTERN),
              format: str = Query("json", pattern="^(json|csv)$")):  # noqa: A002 - the API's own word
     """A house's 24 limits for one date, issued the day before, with each hour's interval start."""
@@ -147,26 +183,52 @@ def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^\d{4
 
 
 @router.get("/operation/schedule.xml")
-def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
-                 policy: str | None = Query(None, pattern=POLICY_PATTERN),
-                 issue: bool = Query(True, description="false: a preview to read on screen, not sealed")) -> Response:
-    """The day as an IEEE 2030.5 DERControlList in the CSIP-AUS profile (modelled, not certified).
-    Each issue is sealed: what was sent, to whom, for which day. A preview (`issue=false`) is the
-    same document, shown rather than sent, so it leaves no record."""
+def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
+                 policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
+    """The day as an IEEE 2030.5 DERControlList in the CSIP-AUS profile (modelled, not certified),
+    to read on screen. A preview is never sealed: `POST /operation/schedule/issue` is the same
+    document, issued."""
     from ..engine.csipaus import der_control_list
     from ..engine.delivery import schedule as rows_for
 
-    combo, year, day, limits, desired, _, _ = _day_ahead(cid, date, policy)
+    _, year, day, limits, desired, _, _ = _day_ahead(cid, date, policy)
+    return Response(der_control_list(cid, rows_for(limits, desired, year, day), int(time.time())),
+                    media_type="application/sep+xml")
+
+
+class Issue(BaseModel):
+    cid: int = Field(..., ge=0)
+    date: str = Field(..., pattern=DATE_PATTERN)
+    policy: str | None = Field(None, pattern=POLICY_PATTERN)
+
+
+@router.post("/operation/schedule/issue")
+def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> Response:
+    """Issue the day to the house's inverter: the DERControlList, sealed with what was sent, to
+    whom and for which day. An issue that repeats an Idempotency-Key gets the document of the
+    first one back, with its seal, and nothing new is sealed."""
+    from ..engine.csipaus import der_control_list
+    from ..engine.delivery import schedule as rows_for
+
+    combo, year, day, limits, desired, _, _ = _day_ahead(body.cid, body.date, body.policy)
     rows = rows_for(limits, desired, year, day)
-    body = der_control_list(cid, rows, int(time.time()))
-    if not issue:
-        return Response(body, media_type="application/sep+xml")
-    fp = seals.fingerprint()["digest"][:8]
-    entry = seals.seal("schedule", f"{cid}-{date}-{combo.policy}-{fp}",
-                       {"cid": cid, "date": date, "policy": combo.policy, "basis": "dayahead",
-                        "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows]})
-    return Response(body, media_type="application/sep+xml",
-                    headers=_sealed_headers(entry, f"kapacitet-dercontrols-{cid}-{date}.xml"))
+    item = f"{body.cid}-{body.date}-{combo.policy}-{seals.fingerprint()['digest'][:8]}"
+    name = f"kapacitet-dercontrols-{body.cid}-{body.date}.xml"
+    with _SEAL_LOCK:
+        kept = None
+        if idempotency_key:
+            item += f"-k{idempotency_key}"
+            entry = seals.entry_for("schedule", item)
+            kept = seals.sealed_copy("schedule", item) if entry else None
+        if kept is not None:
+            rows = kept["limits"]              # the limits sent the first time, issued when they were sealed
+        else:
+            entry = seals.seal("schedule", item, {
+                "cid": body.cid, "date": body.date, "policy": combo.policy, "basis": "dayahead",
+                "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows]})
+    issued = int(datetime.fromisoformat(entry["at"]).timestamp())
+    return Response(der_control_list(body.cid, rows, issued), media_type="application/sep+xml",
+                    headers=_sealed_headers(entry, name))
 
 
 @router.get("/operation/default.xml")
@@ -253,7 +315,7 @@ def meter_check(body: MeterIn) -> dict:
 
 
 @router.get("/operation/meter-example")
-def meter_example(cid: int = Query(..., ge=0), date: str = Query(..., pattern=r"^\d{4}-\d{2}-\d{2}$"),
+def meter_example(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
                   policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
     """A synthetic day of 5-minute readings for a house, with one deliberate breach (labelled)."""
     from ..engine.delivery import meter_example as example

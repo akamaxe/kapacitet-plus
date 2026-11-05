@@ -12,13 +12,21 @@ Every step is an event in data/requests/applications.jsonl, appended and never r
 application's state is the fold of its events, and the indicators (time to a decision, the share
 the rule decided, kW connected firm and with an envelope) are computed from the same events. Each
 application is sealed when it arrives; each decision is sealed by the queue.
+
+An application's reference code is the household's key to its state, so it is shown once, to
+whoever sent the application, and never kept: the log holds its SHA-256 and a hint of its first
+four characters for the DSO's table. Codes from before that (`KP-XXXX-XXXX`, kept in plain) still
+resolve.
 """
 
 from __future__ import annotations
 
+import hashlib
+import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import threading
 import time
@@ -47,6 +55,12 @@ ERRORS = {
 STATUSES = ("pending", "review", "firm", "nonfirm", "declined")
 DECIDED = ("firm", "nonfirm", "declined")
 
+# Crockford's base32: no I, L, O or U, so a code read aloud or typed from paper has one spelling.
+CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+_C = f"[{CROCKFORD}]"
+# 80 bits in four groups (KP-XXXX-XXXX-XXXX-XXXX), and the 32-bit hex codes issued before them
+REFERENCE = re.compile(rf"^KP-{_C}{{4}}-{_C}{{4}}-{_C}{{4}}-{_C}{{4}}$|^KP-[0-9A-F]{{4}}-[0-9A-F]{{4}}$")
+
 _LOG_LOCK = threading.Lock()
 # receiving checks the log and then writes to it: two at once could both pass the checks
 _RECEIVE_LOCK = threading.Lock()
@@ -56,6 +70,53 @@ _STATE: dict = {"thread": None, "working": None}
 
 def refusal(status: int, code: str, **params) -> HTTPException:
     return HTTPException(status, {"code": code, "message": ERRORS[code].format(**params), "params": params})
+
+
+# ---------------------------------------------------------------- reference codes
+
+def new_reference(key: str | None = None) -> str:
+    """A fresh reference code: 80 bits in Crockford's base32, KP-XXXX-XXXX-XXXX-XXXX.
+
+    The bits are random. An application sent with an idempotency key takes them from the key
+    instead (HMAC-SHA256), so a retry whose first answer was lost gets the same code back; the key
+    is then as secret as the code, and the log keeps only its hash too."""
+    raw = (hmac.new(key.encode("utf-8"), b"kapacitet-reference", hashlib.sha256).digest()[:10] if key
+           else secrets.token_bytes(10))
+    n = int.from_bytes(raw, "big")
+    chars = "".join(CROCKFORD[(n >> 5 * i) & 31] for i in reversed(range(16)))
+    return "KP-" + "-".join(chars[i:i + 4] for i in range(0, 16, 4))
+
+
+def normalize_reference(text: str) -> str:
+    """A code as typed: upper case, and the letters base32 reads as digits (O as 0, I and L as 1)."""
+    return text.strip().upper().replace("O", "0").replace("I", "1").replace("L", "1")
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def hint_label(hint: str | None) -> str:
+    """How a refusal names an application without its code."""
+    return f"KP-{hint}-…" if hint else "KP-…"
+
+
+def find(reference: str) -> dict | None:
+    """The application a code belongs to, compared in constant time; None when no code matches."""
+    ref = normalize_reference(reference)
+    if not REFERENCE.match(ref):
+        return None
+    digest = _sha256(ref)
+    evs = events()
+    found = None
+    for e in evs:
+        if e.get("event") != "received":
+            continue
+        kept = e.get("reference_sha256")
+        legacy = e.get("reference")
+        if (kept and hmac.compare_digest(kept, digest)) or (legacy and hmac.compare_digest(legacy.upper(), ref)):
+            found = e["app"]
+    return fold(evs).get(found) if found else None
 
 
 def log_path():
@@ -99,7 +160,9 @@ def fold(evs: list[dict]) -> dict[str, dict]:
     for e in evs:
         a = e.get("app")
         if e.get("event") == "received":
-            apps[a] = {"id": a, "reference": e.get("reference"), "received": e["at"], "cid": e["cid"],
+            legacy = e.get("reference") or ""
+            apps[a] = {"id": a, "reference_hint": e.get("reference_hint") or legacy[3:7] or None,
+                       "received": e["at"], "cid": e["cid"],
                        "address": e.get("address"), "source": e.get("source", "dso"), "request": e.get("request", {}),
                        "assessment": e["assessment"], "assessments": [e["assessment"]], "status": "pending",
                        "reasons": [], "decided": None,
@@ -155,8 +218,23 @@ def applications() -> dict[str, dict]:
 
 # ---------------------------------------------------------------- receiving
 
+def _replay(evs: list[dict], apps: dict, key: str) -> dict | None:
+    """The application an idempotency key already sent, with its code when the key made it."""
+    digest = _sha256(key)
+    for e in evs:
+        if e.get("event") != "received" or e.get("app") not in apps:
+            continue
+        if e.get("key_sha256") and hmac.compare_digest(e["key_sha256"], digest):
+            return {**apps[e["app"]], "reference": new_reference(key)}
+        if e.get("key") and hmac.compare_digest(e["key"], key):          # an application from before the hashes
+            return {**apps[e["app"]], "reference": e.get("reference")}
+    return None
+
+
 def receive(assessment: str, source: str = "dso", key: str | None = None) -> dict:
-    """Register an application on a saved assessment and wake the worker. Idempotent on `key`."""
+    """Register an application on a saved assessment and wake the worker. Idempotent on `key`.
+
+    The answer is the application's state with its `reference` code, the one time it is shown."""
     from ..engine import queue as qu
 
     rec = records.load(assessment)
@@ -166,28 +244,30 @@ def receive(assessment: str, source: str = "dso", key: str | None = None) -> dic
         evs = events()
         apps = fold(evs)
         if key:
-            for e in evs:
-                if e.get("event") == "received" and e.get("key") == key and e["app"] in apps:
-                    return apps[e["app"]]
+            again = _replay(evs, apps, key)
+            if again is not None:
+                return again
         # an assessment backs one application, whether it was the first answer or a later one
         used = {e["assessment"]: e["app"] for e in evs if e.get("assessment") and e.get("app") in apps}
         if assessment in used:
-            raise refusal(409, "already_applied", app=apps[used[assessment]]["reference"])
+            raise refusal(409, "already_applied", app=hint_label(apps[used[assessment]]["reference_hint"]))
         cid = int(rec["request"]["cid"])
         for app in apps.values():
             if app["cid"] == cid and app["status"] in ("pending", "review"):
-                raise refusal(409, "application_open", app=app["reference"])
+                raise refusal(409, "application_open", app=hint_label(app["reference_hint"]))
         if any(it["cid"] == cid for it in qu.approved(qu.load())):
             raise HTTPException(409, {"code": "already_approved", "message": qu.ERRORS["already_approved"], "params": {}})
         app_id = uuid.uuid4().hex[:12]
-        reference = "KP-" + secrets.token_hex(2).upper() + "-" + secrets.token_hex(2).upper()
+        reference = new_reference(key)
         request = {k: v for k, v in rec["request"].items() if k != "baseline"}
-        event = append({"app": app_id, "event": "received", "reference": reference, "assessment": assessment,
-                        "cid": cid, "address": rec["result"].get("customer", {}).get("address"), "source": source,
-                        "request": request, **({"key": key} if key else {})})
-    seals.seal("application", app_id, {k: event[k] for k in ("app", "reference", "assessment", "cid", "source", "request", "at")})
+        event = append({"app": app_id, "event": "received", "reference_sha256": _sha256(reference),
+                        "reference_hint": reference[3:7], "assessment": assessment, "cid": cid,
+                        "address": rec["result"].get("customer", {}).get("address"), "source": source,
+                        "request": request, **({"key_sha256": _sha256(key)} if key else {})})
+    seals.seal("application", app_id, {k: event[k] for k in ("app", "reference_sha256", "reference_hint", "assessment",
+                                                             "cid", "source", "request", "at")})
     start()
-    return fold(events())[app_id]
+    return {**fold(events())[app_id], "reference": reference}
 
 
 # ---------------------------------------------------------------- the worker
@@ -310,22 +390,27 @@ class ApplicationIn(BaseModel):
 
 
 def _public(app: dict) -> dict:
-    return {k: v for k, v in app.items() if k != "history"} | {"history": app["history"][-12:]}
+    """An application as the DSO's table shows it: the hint of its code, never the code."""
+    return {k: v for k, v in app.items() if k not in ("history", "reference")} | {"history": app["history"][-12:]}
 
 
 @router.post("/applications")
 def post_application(body: ApplicationIn) -> dict:
-    """Apply for the connection an assessment describes. The DSO's rule decides it, or a person does."""
-    return _public(receive(body.assessment, "dso", body.key))
+    """Apply for the connection an assessment describes. The DSO's rule decides it, or a person does.
+    The answer carries the reference code for the household, once."""
+    app = receive(body.assessment, "dso", body.key)
+    return {**_public(app), "reference": app.get("reference")}
 
 
 @router.get("/inbox")
-def get_inbox(limit: int = Query(100, ge=1, le=500)) -> dict:
-    """Every application, newest first, with its state; the worker's status and the DSO's thresholds."""
-    apps = list(applications().values())[::-1][:limit]
+def get_inbox(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)) -> dict:
+    """The applications, newest first, a page at a time, with their state; the worker's status and
+    the DSO's thresholds."""
+    apps = list(applications().values())[::-1]
     s = dso.load()
     th = dso.thresholds(s)
-    return {"items": [_public(a) for a in apps], "working": _STATE["working"], "auto_decisions": s.auto_decisions,
+    return {"items": [_public(a) for a in apps[offset:offset + limit]], "total": len(apps), "offset": offset,
+            "limit": limit, "working": _STATE["working"], "auto_decisions": s.auto_decisions,
             "thresholds": {"curtailment_mean_pct": th.curtailment_mean_pct, "curtailment_p90_pct": th.curtailment_p90_pct,
                            "ev_unserved_pct": th.ev_unserved_pct}}
 

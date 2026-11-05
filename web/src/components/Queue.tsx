@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
-import { API } from "../lib/api";
+import { API, apiWrite } from "../lib/api";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { responseRefusal } from "../lib/errors";
@@ -70,11 +70,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
     setProgress(decision === "declined" ? "" : t("req.decide.verifying"));
     let r: Response;
     try {
-      r = await fetch(`${API}/queue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assessment: res.id, decision, note }),
-      });
+      r = await apiWrite("/queue", { assessment: res.id, decision, note });
     } catch {
       setBusy(null);
       setError(t("req.dropped"));
@@ -166,7 +162,7 @@ export function QueueList({ queue }: { queue: QueueState }) {
   const declined = queue.items.length - queue.approved;
   const empty = async () => {
     setConfirm(false);
-    const r = await fetch(`${API}/queue`, { method: "DELETE" }).catch(() => null);
+    const r = await apiWrite("/queue", {}, "DELETE").catch(() => null);
     if (!r?.ok) {
       toast.error(t("queue.emptyFailed"));
       return;

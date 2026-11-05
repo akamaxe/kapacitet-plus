@@ -39,6 +39,8 @@ from .. import __version__
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from . import records
+from .guard import ERRORS as GUARD_ERRORS
+from .guard import Guard
 from .. import seals
 from ..ingest.provenance import load_manifest
 from ..ingest.sources import SOURCES
@@ -101,6 +103,11 @@ async def etag(request, call_next):
         return Response(status_code=304, headers={"ETag": tag, "Cache-Control": "no-cache"})
     return Response(content=body, status_code=200, headers=headers, media_type=response.media_type)
 
+
+# Host, origin, content type and rate limit, in front of everything above (api/guard.py); added
+# last, so it runs first, and inside CORSMiddleware, so a refusal still carries its CORS headers.
+app.add_middleware(Guard)
+
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
 from .apply import router as apply_router  # noqa: E402
@@ -157,6 +164,7 @@ API_ERRORS = {
     "unknown_customer": "unknown customer",
     "busy": "busy: {n} requests are already being evaluated, try again shortly",
     "bad_phases": "a charger is single-phase (1) or three-phase (3)",
+    **GUARD_ERRORS,
 }
 
 

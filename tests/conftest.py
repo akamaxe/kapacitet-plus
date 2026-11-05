@@ -25,6 +25,8 @@ import pytest
 
 # The inbox's worker decides applications in the real queue; tests drive `inbox.process` themselves.
 os.environ["KAPACITET_INBOX_WORKER"] = "0"
+# Starlette's TestClient sends `Host: testserver`; the guard reads its hosts when the app is built.
+os.environ.setdefault("KAPACITET_ALLOWED_HOSTS", "testserver")
 
 from kapacitet.paths import processed
 
@@ -56,6 +58,14 @@ def _seals_in_a_temporary_folder(tmp_path, monkeypatch):
     from kapacitet import seals
 
     monkeypatch.setattr(seals, "folder", lambda: tmp_path / "seals")
+
+
+@pytest.fixture(autouse=True)
+def _a_fresh_rate_limit():
+    """Every TestClient is the same client address: each test starts with the guard's windows empty."""
+    from kapacitet.api.guard import LIMITER
+
+    LIMITER.reset()
 
 
 def _has_operation() -> bool:

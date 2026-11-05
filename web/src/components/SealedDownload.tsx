@@ -1,11 +1,13 @@
 /**
  * A download that seals what it sends: the evidence for Ei, a day's schedule issued to an inverter.
- * It is fetched rather than linked, so the page can keep a receipt once the file is saved: which
- * file, when, the first twelve hex digits of its seal and its entry in the evidence chain. Without
- * it nobody could tell afterwards what was sealed, or match a file to its line in the chain.
+ * It is posted rather than linked: sealing is a write, which a link (a GET) never is, and the page
+ * keeps a receipt once the file is saved: which file, when, the first twelve hex digits of its seal
+ * and its entry in the evidence chain. Without it nobody could tell afterwards what was sealed, or
+ * match a file to its line in the chain.
  */
 import { useState } from "react";
 import { toast } from "./Toast";
+import { apiWrite } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
 import { clock } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -20,14 +22,14 @@ export interface Receipt {
 
 const FILENAME = /filename="([^"]+)"/;
 
-/** Fetch `href`, save it under the name the server gives, and return the seal it was given. */
-export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; download: (href: string, fallbackName: string) => Promise<void> } {
+/** Post `body` to `path` (under /api/v1), save the answer under the name the server gives, and keep the seal it was given. */
+export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; download: (path: string, body: object, fallbackName: string) => Promise<void> } {
   const t = useT();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [busy, setBusy] = useState(false);
-  const download = async (href: string, fallbackName: string) => {
+  const download = async (path: string, body: object, fallbackName: string) => {
     setBusy(true);
-    const r = await fetch(href).catch(() => null);
+    const r = await apiWrite(path, body).catch(() => null);
     if (!r) {
       setBusy(false);
       toast.error(t("ui.offline"));

@@ -242,7 +242,7 @@ def test_the_queue_reports_its_decisions_and_can_be_emptied(client, monkeypatch,
     assert r.status_code == 404
     bad = client.post(f"{API}/queue", json={"assessment": "0123456789ab", "decision": "maybe"})
     assert bad.status_code == 422
-    assert client.delete(f"{API}/queue").json() == {"ok": True}
+    assert client.request("DELETE", f"{API}/queue", json={}).json() == {"ok": True}
 
 
 def test_a_request_against_an_empty_queue_is_refused(client, monkeypatch, tmp_path):

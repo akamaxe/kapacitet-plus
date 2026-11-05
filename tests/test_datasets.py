@@ -62,14 +62,14 @@ def api(tmp_path, monkeypatch):
 def test_switching_needs_the_supervisor_and_no_running_job(api, monkeypatch):
     c, ds, main = api
     monkeypatch.delenv("KAPACITET_SUPERVISED", raising=False)
-    r = c.post("/api/v1/datasets/reference/activate")
+    r = c.post("/api/v1/datasets/reference/activate", json={})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "not_supervised"
     monkeypatch.setenv("KAPACITET_SUPERVISED", "1")
     monkeypatch.setitem(main._JOBS, "f00000000000", {"status": "running", "events": [], "created": 0})
-    r = c.post("/api/v1/datasets/reference/activate")
+    r = c.post("/api/v1/datasets/reference/activate", json={})
     assert r.status_code == 409 and r.json()["detail"]["code"] == "jobs_running"
     main._JOBS.pop("f00000000000")
-    r = c.post("/api/v1/datasets/no-such-net/activate")          # refused before anything restarts
+    r = c.post("/api/v1/datasets/no-such-net/activate", json={})  # refused before anything restarts
     assert r.status_code == 404 and r.json()["detail"]["code"] == "unknown_dataset"
     assert not (ds.HOME / "active.json").exists()
 

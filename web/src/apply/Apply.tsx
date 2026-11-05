@@ -11,21 +11,23 @@ import { Mark, Status } from "../components/bits";
 import { HouseSearch, type HouseOption } from "../components/HouseSearch";
 import { Icon } from "../components/Icon";
 import { OwnerFigures } from "../components/OwnerCase";
-import { API, useApi } from "../lib/api";
+import { API, apiWrite, useApi } from "../lib/api";
 import { refusalOf, refusalText } from "../lib/errors";
 import { follow, type Failure } from "../lib/evaluate";
 import { dateTime, round, useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { describeRequest, fuseText, reasonLine } from "../lib/reasons";
+import { REF, normalizeRef } from "../lib/reference";
 import { useStore } from "../lib/store";
 
 const STAGES = ["static", "envelope", "verify", "risk", "economics"] as const;
-const REF = /^KP-[0-9A-F]{4}-[0-9A-F]{4}$/i;
+// a status is read again every ten seconds: api/guard.py allows ten lookups a minute per address
+const POLL_MS = 10_000;
 
 /** The reference in the portal's own address, if any. */
 function refInHash(): string | null {
   const q = new URLSearchParams(window.location.hash.split("?")[1] ?? "");
-  const ref = (q.get("ref") ?? "").toUpperCase();
+  const ref = normalizeRef(q.get("ref") ?? "");
   return REF.test(ref) ? ref : null;
 }
 
@@ -71,7 +73,7 @@ export default function Apply() {
   // while an application is being decided, its state is read again every few seconds
   useEffect(() => {
     if (status?.status !== "pending") return;
-    const id = window.setInterval(() => void lookUp(status.reference, true), 3000);
+    const id = window.setInterval(() => void lookUp(status.reference, true), POLL_MS);
     return () => window.clearInterval(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status?.status, status?.reference]);
@@ -91,10 +93,7 @@ export default function Apply() {
     setStages([]);
     setBusy(true);
     key.current = newKey();
-    const r = await fetch(`${API}/apply/evaluate`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 }),
-    }).catch(() => null);
+    const r = await apiWrite("/apply/evaluate", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 }).catch(() => null);
     if (!r) {
       setBusy(false);
       return setError(t("ui.offline"));
@@ -121,10 +120,7 @@ export default function Apply() {
     if (!answer) return;
     setBusy(true);
     setError(null);
-    const r = await fetch(`${API}/apply/submit`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assessment: answer.id, key: key.current }),
-    }).catch(() => null);
+    const r = await apiWrite("/apply/submit", { assessment: answer.id, key: key.current }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
     const body = await r.json().catch(() => null);
@@ -135,7 +131,7 @@ export default function Apply() {
   };
 
   async function lookUp(reference: string, quiet = false) {
-    const code = reference.trim().toUpperCase();
+    const code = normalizeRef(reference);
     if (!REF.test(code)) {
       if (!quiet) setError(t("apply.status.badCode"));
       return;
@@ -239,7 +235,7 @@ export default function Apply() {
           <form className="portal-form" onSubmit={(e) => { e.preventDefault(); void lookUp(ref); }}>
             <label className="field-inline">
               <span>{t("apply.status.code")}</span>
-              <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="KP-0000-0000" autoComplete="off" spellCheck={false} />
+              <input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="KP-0000-0000-0000-0000" autoComplete="off" spellCheck={false} />
             </label>
             <button className="btn ghost" type="submit">{t("apply.status.go")}</button>
           </form>

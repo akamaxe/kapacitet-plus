@@ -15,7 +15,7 @@ import { OwnerCase } from "../components/OwnerCase";
 import { HouseSearch } from "../components/HouseSearch";
 import { copyText } from "../lib/clipboard";
 import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
-import { API, useApi } from "../lib/api";
+import { API, apiWrite, useApi } from "../lib/api";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -258,11 +258,7 @@ export default function Request() {
     setJob({ id: "", stages: {}, result: null, error: null });
     let r: Response;
     try {
-      r = await fetch(`${API}/requests`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0, baseline }),
-      });
+      r = await apiWrite("/requests", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0, baseline });
     } catch {
       fail(t("req.dropped"));
       return;

@@ -167,12 +167,17 @@ has no results. The container takes it that way with
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
 `KAPACITET_HOME` (where the imported networks, `datasets/`, and `active.json` live; the data
 folder by default), `KAPACITET_RAW_DIR` (the downloads; `raw/` in the data folder by default),
-`KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_CORS_ORIGINS` (comma-separated; cross-origin
-access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
+`KAPACITET_HOST` and `KAPACITET_PORT`, `KAPACITET_ALLOWED_HOSTS` (comma-separated names the server
+answers to besides localhost, 127.0.0.1 and `[::1]`, such as its address on a LAN; `*` turns the
+check off; a codespace's forwarded names are allowed by themselves), `KAPACITET_CORS_ORIGINS`
+(comma-separated; cross-origin access is off by default), `KAPACITET_MAX_JOBS` and `KAPACITET_JOB_TIMEOUT_S` (live requests),
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
 `KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release).
 
-The API documentation is at `/docs`. Every response that carries results has a `provenance`
+The API documentation is at `/docs`. A write (POST, PUT, DELETE) is taken only as JSON and, from
+a browser, only from the server's own origin, which keeps another site's page from making one;
+`api/guard.py` lists every write with what it changes, and limits how often one address may
+evaluate (10 a minute) or write (30). Every response that carries results has a `provenance`
 block: the sources behind it, when its own files were computed (`computed_at`), when
 `results/meta.json` was last written (`full_run_at`: by any compute without `--only`, the extra
 stage alone included) and which of its inputs are real and which synthetic.
@@ -530,10 +535,12 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
   each with its interval start in UTC, on the study's clock (UTC+1 all year) and in Stockholm time,
   beside the export it would make without them.
 - `GET /api/v1/operation/schedule.xml`: the same day as an IEEE 2030.5 `DERControlList` in the
-  CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`. Downloading it
-  issues it, and the issue is sealed with the limits it sent; the seal comes back in `X-Seal-Digest`,
-  `X-Seal-Seq` and `X-Seal-At`, and the screen keeps it as a receipt under the button
-  (`issue=false` is a preview that leaves no record). `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
+  CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`, as a preview that
+  leaves no record. `POST /api/v1/operation/schedule/issue` with `{cid, date}` issues it: the issue
+  is sealed with the limits it sent, the seal comes back in `X-Seal-Digest`, `X-Seal-Seq` and
+  `X-Seal-At`, and the screen keeps it as a receipt under the button. Sent again with the same
+  `Idempotency-Key` header, an issue returns the first document and its seal instead of sealing a
+  second. `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
   keeps when no schedule arrives: never above the lowest limit issued that year, so close to zero
   here. The format is modelled on the profile, not certified, and no device is connected.
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
@@ -562,8 +569,9 @@ not yet made: never met, but not shown as a failure of the model), **not met her
 apply**. On the day-ahead basis the model shows the capacity shortage, the terms and
 the annual report, and says plainly that limiting 1 146 hours where 148 needed it does not meet
 "only when the grid would otherwise be overloaded", nor "only once the market result shows an
-overload". `export=true` downloads the pack sealed with what it showed, with the same seal headers
-and receipt as an issued schedule. The Annual report screen
+overload". `POST /api/v1/eipack/export` with `{basis, policy}` downloads the pack sealed with what
+it showed, with the same seal headers, receipt and `Idempotency-Key` as an issued schedule; reading
+the pack never seals it. The Annual report screen
 holds the section, the statements and a printable method description. It is evidence from a
 simulation, never a legal assessment; the regulation's rule on compensation for non-market
 redispatch is not assessed.
@@ -572,7 +580,9 @@ redispatch is not assessed.
 
 An assessment answers *what if*; an application asks for the connection. *Apply* under an answer
 on the request screen (or `POST /api/v1/applications {assessment}`) registers one, with a
-reference such as `KP-1A2B-3C4D`, and seals it. One worker takes the applications in the order they
+reference such as `KP-7K3M-Q9TD-X2HB-5RWN`, and seals it. The code (80 bits in Crockford's base32)
+is shown once, to whoever applied: the log and the seal keep only its SHA-256, and the DSO's inbox
+(`GET /api/v1/inbox`, a page at a time with `limit` and `offset`) shows its first four characters. One worker takes the applications in the order they
 arrived. If the queue has moved since the assessment, it evaluates the request again against the
 grid as it now stands, then `engine/rules.py` gives its verdict:
 
@@ -598,8 +608,9 @@ person is decided there with the queue's usual decision, or sent back to be eval
 `http://127.0.0.1:8000/#/apply` is a page for the household, not the DSO: pick your address, say
 what you want to connect (solar, a charger, a heat pump, a battery), read the answer in plain
 words, with what connecting now is worth against waiting, and apply. The application gets a
-reference code such as `KP-1A2B-3C4D`, which is all the status form needs; the portal asks for no
-personal data and keeps none. Its API, `/api/v1/apply/*`, serves only the addresses, the answer for
+reference code such as `KP-7K3M-Q9TD-X2HB-5RWN`, which is all the status form needs (codes of the
+older `KP-1A2B-3C4D` form still work); the portal asks for no personal data and keeps none. One
+address may look up ten codes a minute. Its API, `/api/v1/apply/*`, serves only the addresses, the answer for
 one house and the state behind one code. The grid the answer is computed against is decided on the
 server (the queue once it holds approvals, otherwise the DSO's published situation), and sending
 the same application twice returns the first (an idempotency key). `main.tsx` chooses the portal

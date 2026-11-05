@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { Status } from "./bits";
 import { CreateNetwork } from "./Networks";
-import { API, useApi } from "../lib/api";
+import { API, apiWrite, useApi } from "../lib/api";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { refusalOf, refusalText } from "../lib/errors";
@@ -46,11 +46,7 @@ export function NetworkCheck() {
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`${API}/check`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files }),
-      });
+      const r = await apiWrite("/check", { files });
       const body = await r.json();
       if (!r.ok) setError(refusalText(t, refusalOf(body), String(r.status)));
       else {

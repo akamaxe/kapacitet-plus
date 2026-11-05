@@ -11,7 +11,7 @@ import { SealReceipt, useSealedDownload } from "./SealedDownload";
 import { Roundel } from "./Shell";
 import { Status } from "./bits";
 import { toast } from "./Toast";
-import { API, useApi } from "../lib/api";
+import { apiWrite, useApi } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, listJoin, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
@@ -79,10 +79,7 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
 
   const save = async () => {
     setSaving(true);
-    const r = await fetch(`${API}/settings`, {
-      method: "PUT", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ market_alternative_statement: market, method_approval_reference: method, review_statement: review }),
-    }).catch(() => null);
+    const r = await apiWrite("/settings", { market_alternative_statement: market, method_approval_reference: method, review_statement: review }, "PUT").catch(() => null);
     setSaving(false);
     if (!r) return toast.error(t("ui.offline"));
     if (!r.ok) return toast.error(await responseRefusal(t, r));
@@ -137,7 +134,7 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
       </section>
       <div>
         <div className="answer-actions">
-          <button className="btn" disabled={sealed.busy} onClick={() => sealed.download(`${API}/eipack?${q}&export=true`, `kapacitet-ei-evidence-${basis}.json`)}>
+          <button className="btn" disabled={sealed.busy} onClick={() => sealed.download("/eipack/export", { basis, policy }, `kapacitet-ei-evidence-${basis}.json`)}>
             <Icon name="download" size={15} />{t("ei.export")}
           </button>
           <button className="btn ghost" onClick={printMethod}>{t("ei.print")}</button>

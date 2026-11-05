@@ -133,9 +133,9 @@ describe("writing the address", () => {
 describe("the portal's address", () => {
   it("is left alone until the application asks to follow the address", () => {
     useStore.setState({ screen: "operation" });
-    window.location.hash = "#/apply?ref=KP-1A2B-3C4D";
+    window.location.hash = "#/apply?ref=KP-7K3M-Q9TD-X2HB-5RWN";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
-    expect(window.location.hash).toBe("#/apply?ref=KP-1A2B-3C4D");
+    expect(window.location.hash).toBe("#/apply?ref=KP-7K3M-Q9TD-X2HB-5RWN");
     expect(useStore.getState().screen).toBe("operation");
   });
 

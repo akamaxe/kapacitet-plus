@@ -9,7 +9,7 @@ import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, 
 import { InboxSection } from "../components/Inbox";
 import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
 import { Term } from "../components/Term";
-import { API, ApiError, getJSON, useApi } from "../lib/api";
+import { API, ApiError, apiWrite, getJSON, useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { refusalOf, refusalText } from "../lib/errors";
 import { monthLong, monthNames, studyDate, useFmt } from "../lib/format";
@@ -215,7 +215,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   const lang = useStore((s) => s.lang);
   const q = `cid=${cid}&date=${date}`;
   const sch = useKept<any>(`/operation/schedule?${q}`);
-  const xml = useText(`/operation/schedule.xml?${q}&issue=false`);
+  const xml = useText(`/operation/schedule.xml?${q}`);
   const sealed = useSealedDownload();
   if (sch.isLoading) return <ChartSkeleton height={240} />;
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
@@ -253,7 +253,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
         <p className="caption">{t("op.payload.caption")}</p>
         <div>
           <div className="answer-actions">
-            <button className="btn small" disabled={sealed.busy} onClick={() => sealed.download(`${API}/operation/schedule.xml?${q}`, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
+            <button className="btn small" disabled={sealed.busy} onClick={() => sealed.download("/operation/schedule/issue", { cid, date }, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
               <Icon name="download" size={15} />{t("op.dl.xml")}
             </button>
             <a className="btn ghost small" href={`${API}/operation/default.xml?cid=${cid}`} download><Icon name="download" size={15} />{t("op.dl.default")}</a>
@@ -426,9 +426,7 @@ function MeterCheck({ cid, date, name }: { cid: number; date: string; name: stri
     setBusy(true);
     setError(null);
     try {
-      const r = await fetch(`${API}/operation/meter-check`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ cid, csv }),
-      });
+      const r = await apiWrite("/operation/meter-check", { cid, csv });
       const body = await r.json().catch(() => null);
       if (!r.ok) {
         setRes(null);

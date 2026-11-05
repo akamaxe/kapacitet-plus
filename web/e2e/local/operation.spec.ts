@@ -15,6 +15,11 @@ test("operation shows a day's limits, the summer in shadow and a meter check", a
   // the inverter's file is previewed on screen without being issued
   await expect(main.locator("pre.payload")).toContainText("DERControlList");
   await expect(main.getByText(/not certified and no device is connected/)).toBeVisible();
+  // issuing it is a write (a POST), sealed, and the page keeps the seal's receipt under the button
+  const saved = page.waitForEvent("download");
+  await main.getByRole("button", { name: "Issue the file (XML)" }).click();
+  expect((await saved).suggestedFilename()).toMatch(/^kapacitet-dercontrols-\d+-\d{4}-\d{2}-\d{2}\.xml$/);
+  await expect(main.locator(".seal-receipt").first()).toContainText(/Sealed in the evidence chain/);
 
   // a day chosen is a day in the link
   await main.getByLabel("Day", { exact: true }).fill(`${year}-06-20`);

@@ -22,7 +22,7 @@ test("a household applies and the rule decides", async ({ page, request }) => {
   await expect(page.getByText(/^Yes/)).toBeVisible({ timeout: 120_000 });
   await page.getByRole("button", { name: "Apply", exact: true }).click();
   const ref = page.locator(".portal-ref");
-  await expect(ref).toHaveText(/^KP-[0-9A-F]{4}-[0-9A-F]{4}$/);
+  await expect(ref).toHaveText(/^KP-(?:[0-9A-HJKMNP-TV-Z]{4}-){3}[0-9A-HJKMNP-TV-Z]{4}$/);
   await expect(page).toHaveURL(/#\/apply\?ref=KP-/);
   // the rule decides a small system on its own, after checking every weather year
   await expect(page.getByText(/Connected (firm|with an envelope)/)).toBeVisible({ timeout: 180_000 });

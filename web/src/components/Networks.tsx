@@ -9,7 +9,7 @@ import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { Status } from "./bits";
 import { toast } from "./Toast";
-import { API, useApi } from "../lib/api";
+import { API, apiWrite, useApi } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -46,10 +46,7 @@ export function CreateNetwork({ files }: { files: Record<string, string> }) {
   const create = async () => {
     setBusy(true);
     setError(null);
-    const r = await fetch(`${API}/datasets`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: name.trim() || t("nets.create.default"), files, quick }),
-    }).catch(() => null);
+    const r = await apiWrite("/datasets", { name: name.trim() || t("nets.create.default"), files, quick }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
@@ -107,18 +104,18 @@ export function NetworksPanel() {
   const activate = async () => {
     if (!target) return;
     setError(null);
-    const r = await fetch(`${API}/datasets/${target.id}/activate`, { method: "POST" }).catch(() => null);
+    const r = await apiWrite(`/datasets/${target.id}/activate`).catch(() => null);
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
     setSwitching(true);
   };
   const rebuild = async (n: Net) => {
-    const r = await fetch(`${API}/datasets/${n.id}/build`, { method: "POST" }).catch(() => null);
+    const r = await apiWrite(`/datasets/${n.id}/build`).catch(() => null);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
     await client.invalidateQueries({ queryKey: ["/datasets"] });
   };
   const remove = async (n: Net) => {
-    const r = await fetch(`${API}/datasets/${n.id}`, { method: "DELETE" }).catch(() => null);
+    const r = await apiWrite(`/datasets/${n.id}`, {}, "DELETE").catch(() => null);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
     await client.invalidateQueries({ queryKey: ["/datasets"] });
     toast.info(t("nets.deleted", { name: n.name }));

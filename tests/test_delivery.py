@@ -136,11 +136,13 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         assert len(sch["rows"]) == 24 and sch["basis"] == "dayahead"
         assert sch["default_kw"] <= min(r["limit_kw"] for r in sch["rows"]) + 1e-6
 
-        # a preview leaves no record; an issue is sealed with the limits it sent
-        preview = c.get("/api/v1/operation/schedule.xml", params={"cid": cid, "date": day, "issue": "false"})
+        # a preview leaves no record, whatever it is asked (a GET never seals); an issue is a POST,
+        # sealed with the limits it sent
+        preview = c.get("/api/v1/operation/schedule.xml", params={"cid": cid, "date": day})
         assert preview.status_code == 200 and "content-disposition" not in preview.headers
+        assert c.get("/api/v1/operation/schedule.xml", params={"cid": cid, "date": day, "issue": "true"}).status_code == 200
         assert not seals.sealed_of_kind("schedule")
-        issued = c.get("/api/v1/operation/schedule.xml", params={"cid": cid, "date": day})
+        issued = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day})
         assert issued.status_code == 200 and "attachment" in issued.headers["content-disposition"]
         kept = seals.sealed_of_kind("schedule")
         assert len(kept) == 1 and kept[0]["record"]["cid"] == cid and len(kept[0]["record"]["limits"]) == 24
@@ -148,6 +150,14 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         assert issued.headers["x-seal-digest"] == kept[0]["entry"]["digest"] and issued.headers["x-seal-seq"].isdigit()
         assert "x-seal-digest" not in preview.headers
         assert ET.fromstring(issued.content).get("all") == "24"
+        # an issue sent again under the same Idempotency-Key is the first one, document and seal
+        key = {"Idempotency-Key": "inverter-retry-0001"}
+        first = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day}, headers=key)
+        again = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day}, headers=key)
+        assert first.headers["x-seal-seq"] == again.headers["x-seal-seq"] and first.content == again.content
+        assert len(seals.sealed_of_kind("schedule")) == 2
+        assert c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day},
+                      headers={"Idempotency-Key": "../x"}).status_code == 422
 
         # the synthetic day carries one deliberate breach of ten minutes, in an hour its limit bound,
         # and the check finds those two readings and nothing else

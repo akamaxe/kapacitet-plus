@@ -2,14 +2,14 @@
 state of one's own application. Nothing else of the DSO's view is served here.
 
 No personal data is asked for or kept: a household picks its address, asks, and applies; the
-application is then known by its reference code, which is all the status page needs. The grid the
+application is then known by its reference code, which is all the status page needs. The code is
+80 bits and the server keeps only its hash (api/inbox.py); api/guard.py allows ten lookups a
+minute from one address, so it cannot be guessed. The grid the
 answer is computed against is the DSO's choice, decided here (the queue once it holds approvals,
 otherwise the DSO's published situation), never the household's.
 """
 
 from __future__ import annotations
-
-import re
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -20,7 +20,8 @@ from ..engine import rules
 from . import inbox
 
 router = APIRouter(prefix="/api/v1/apply", tags=["apply"])
-REFERENCE = re.compile(r"^KP-[0-9A-F]{4}-[0-9A-F]{4}$")
+# KP-XXXX-XXXX-XXXX-XXXX in Crockford's base32, or a KP-XXXX-XXXX code from before
+REFERENCE = inbox.REFERENCE
 
 
 class Ask(BaseModel):
@@ -119,25 +120,25 @@ def answer(job_id: str) -> dict:
     }
 
 
-def _status(app: dict) -> dict:
-    keep = ("reference", "status", "received", "decided", "by", "address", "request")
-    return {**{k: app.get(k) for k in keep},
+def _status(app: dict, reference: str | None) -> dict:
+    keep = ("status", "received", "decided", "by", "address", "request")
+    return {"reference": reference, **{k: app.get(k) for k in keep},
             "reasons": [{"code": r.get("code"), "params": r.get("params", {})} for r in app.get("reasons", [])]}
 
 
 @router.post("/submit")
 def submit(body: Submit) -> dict:
-    """Apply for the connection the answer describes. The reference code is the household's key."""
-    return _status(inbox.receive(body.assessment, "portal", body.key))
+    """Apply for the connection the answer describes. The reference code is the household's key:
+    this answer is the one place it is shown (a retry with the same key shows it again)."""
+    app = inbox.receive(body.assessment, "portal", body.key)
+    return _status(app, app.get("reference"))
 
 
 @router.get("/status/{reference}")
 def status(reference: str) -> dict:
     """One application's state, read with its reference code and nothing else."""
-    ref = reference.strip().upper()
-    if not REFERENCE.match(ref):
-        raise inbox.refusal(404, "unknown_application")
-    app = next((a for a in inbox.applications().values() if (a.get("reference") or "").upper() == ref), None)
+    ref = inbox.normalize_reference(reference)
+    app = inbox.find(ref) if REFERENCE.match(ref) else None
     if app is None:
         raise inbox.refusal(404, "unknown_application")
-    return _status(app)
+    return _status(app, ref)

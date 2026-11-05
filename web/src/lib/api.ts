@@ -46,6 +46,22 @@ export async function getJSON<T = any>(path: string): Promise<T> {
   return r.json();
 }
 
+export type WriteMethod = "POST" | "PUT" | "DELETE";
+
+/**
+ * Every write the interface makes: a JSON body, `{}` when there is nothing to say. The server
+ * (api/guard.py) takes a write only as JSON, so a page on another site, which cannot send JSON
+ * without asking first, cannot make one. It rejects like `fetch` when the server never answers.
+ * The one exception is the setup page's upload of bytes (lib/upload.ts).
+ */
+export function apiWrite(path: string, body: unknown = {}, method: WriteMethod = "POST", headers: Record<string, string> = {}): Promise<Response> {
+  return fetch(`${API}${path}`, {
+    method,
+    headers: { ...headers, "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
 /** Results are static once computed: cache them for the whole session. */
 export function useApi<T = any>(path: string | null, opts: { refetchMs?: number } = {}) {
   return useQuery<T>({

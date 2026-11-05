@@ -10,7 +10,7 @@ import { EiSection } from "../components/EiPack";
 import { ReportRecord } from "../components/ReportRecord";
 import { toast } from "../components/Toast";
 import { Term } from "../components/Term";
-import { API, useApi } from "../lib/api";
+import { API, apiWrite, useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { hourLabel, hoursInYear, monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -60,7 +60,7 @@ export default function Report() {
   const makeRule = async () => {
     setSaving(true);
     try {
-      const r = await fetch(`${API}/settings`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ allocation_policy: policy }) });
+      const r = await apiWrite("/settings", { allocation_policy: policy }, "PUT");
       if (!r.ok) throw new Error(String(r.status));
       setPolicy(null);
       await client.invalidateQueries();

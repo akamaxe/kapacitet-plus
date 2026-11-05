@@ -78,7 +78,14 @@ def test_the_api_serves_the_pack_and_seals_what_it_exports(tmp_path, monkeypatch
         shown = c.get("/api/v1/eipack", params={"basis": "dayahead"}).json()
         assert shown["basis"] == "dayahead" and len(shown["conditions"]) >= 6
         assert not seals.sealed_of_kind("eipack")                 # reading it leaves no record
-        sent = c.get("/api/v1/eipack", params={"basis": "dayahead", "export": "true"})
+        assert "seal" not in c.get("/api/v1/eipack", params={"basis": "dayahead", "export": "true"}).json()
+        assert not seals.sealed_of_kind("eipack")                 # not even when a GET asks for the export
+        sent = c.post("/api/v1/eipack/export", json={"basis": "dayahead"})
         assert "attachment" in sent.headers["content-disposition"] and sent.json()["seal"]["digest"]
         assert sent.headers["x-seal-digest"] == sent.json()["seal"]["digest"]   # for the page's receipt
         assert len(seals.sealed_of_kind("eipack")) == 1
+        # the same Idempotency-Key exports once: a retry gets the pack and the seal of the first
+        key = {"Idempotency-Key": "ei-export-0001"}
+        first = c.post("/api/v1/eipack/export", json={"basis": "dayahead"}, headers=key).json()
+        again = c.post("/api/v1/eipack/export", json={"basis": "dayahead"}, headers=key).json()
+        assert first == again and len(seals.sealed_of_kind("eipack")) == 2

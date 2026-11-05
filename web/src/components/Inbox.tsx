@@ -15,7 +15,7 @@ import { Icon } from "./Icon";
 import { Bar } from "./Skeleton";
 import { Status, Tile } from "./bits";
 import { toast } from "./Toast";
-import { API, useApi } from "../lib/api";
+import { apiWrite, useApi } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, duration, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -24,7 +24,8 @@ import { useStore } from "../lib/store";
 
 export interface Application {
   id: string;
-  reference: string;
+  /** the first four characters of the reference code: the code itself is shown once, to whoever applied */
+  reference_hint: string | null;
   received: string;
   cid: number;
   address: string | null;
@@ -38,6 +39,11 @@ export interface Application {
   by: "rule" | "dso" | null;
   pv_kw: number;
   evaluations: number;
+}
+
+/** An application named by its hint, never by its code (api/inbox.py keeps only the code's hash). */
+export function refHint(app: Pick<Application, "reference_hint">): string {
+  return app.reference_hint ? `KP-${app.reference_hint}-…` : "KP-…";
 }
 
 interface Inbox {
@@ -69,6 +75,8 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
   const inbox = useInbox();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // the code the server gave when this page applied: it is never sent again, so it is kept for the visit
+  const [code, setCode] = useState<string | null>(null);
   const app = inbox.data?.items.find((a) => a.assessments.includes(res.id));
   // a decision taken directly on this answer leaves nothing to apply for
   const decided = queue.items.some((it) => it.assessment === res.id);
@@ -76,22 +84,21 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
   useEffect(() => {
     if (was.current === "pending" && app && app.status !== "pending") {
       void client.invalidateQueries({ queryKey: ["/queue"] });
-      toast.info(t(`inbox.done.${app.status}`, { ref: app.reference }));
+      toast.info(t(`inbox.done.${app.status}`, { ref: code ?? refHint(app) }));
     }
     was.current = app?.status;
-  }, [app?.status, app, client, t]);
+  }, [app?.status, app, client, t, code]);
   if (decided && !app) return null;
 
   const apply = async () => {
     setBusy(true);
     setError(null);
-    const r = await fetch(`${API}/applications`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assessment: res.id }),
-    }).catch(() => null);
+    const r = await apiWrite("/applications", { assessment: res.id }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
     const body = await r.json();
+    setCode(body.reference ?? null);
     await client.invalidateQueries({ queryKey: ["/inbox"] });
     toast.info(t("inbox.applied", { ref: body.reference }));
   };
@@ -101,7 +108,7 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
       <h3 id="apply-title">{t("inbox.apply.title")}</h3>
       {app ? (
         <p className="apply-state" role="status">
-          <StatusOf app={app} /> <span>{app.reference}</span>
+          <StatusOf app={app} /> <span>{code ?? refHint(app)}</span>
           <a href="#/operation">{t("inbox.apply.open")}</a>
         </p>
       ) : (
@@ -143,9 +150,7 @@ export function InboxSection() {
 
   const setAuto = async (on: boolean) => {
     setSaving(true);
-    const r = await fetch(`${API}/settings`, {
-      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto_decisions: on }),
-    }).catch(() => null);
+    const r = await apiWrite("/settings", { auto_decisions: on }, "PUT").catch(() => null);
     setSaving(false);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
     await client.invalidateQueries({ queryKey: ["/inbox"] });
@@ -153,14 +158,14 @@ export function InboxSection() {
     toast.info(t(on ? "inbox.auto.onDone" : "inbox.auto.offDone"));
   };
   const requeue = async (app: Application) => {
-    const r = await fetch(`${API}/applications/${app.id}/requeue`, { method: "POST" }).catch(() => null);
+    const r = await apiWrite(`/applications/${app.id}/requeue`).catch(() => null);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
     await client.invalidateQueries({ queryKey: ["/inbox"] });
   };
 
   const waitOf = (a: Application) => a.decided ? (Date.parse(a.decided) - Date.parse(a.received)) / 1000 : null;
   const cols: Col<Application>[] = [
-    { key: "ref", label: t("inbox.col.ref"), value: (a) => a.reference },
+    { key: "ref", label: t("inbox.col.ref"), value: (a) => refHint(a) },
     { key: "house", label: t("inbox.col.house"), value: (a) => a.address ?? "",
       cell: (a) => <a href={`#/request?cid=${a.cid}&job=${a.assessment}`}>{a.address || t("dt.unnamed", { id: a.cid })}</a> },
     { key: "asked", label: t("inbox.col.asked"), value: (a) => describeRequest(t, f, a.request) },
@@ -216,7 +221,7 @@ export function InboxSection() {
       <Dialog open={open !== null} onClose={() => setOpen(null)} labelledBy="inbox-dialog-title" width={560}>
         {open && queue.data && (
           <div className="sheet">
-            <h2 id="inbox-dialog-title">{t("inbox.dialog", { ref: open.reference })}</h2>
+            <h2 id="inbox-dialog-title">{t("inbox.dialog", { ref: refHint(open) })}</h2>
             <DecideOne app={open} queue={queue.data} />
           </div>
         )}
