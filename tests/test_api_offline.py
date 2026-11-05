@@ -478,6 +478,87 @@ def test_no_sealed_or_logged_file_holds_an_address(client, stubbed, tmp_path, mo
     assert listed[0]["id"] == job_id and listed[0]["address"] == "Testvägen 1"
 
 
+
+def test_an_approval_firm_or_with_an_envelope_writes_no_address(client, stubbed, tmp_path, monkeypatch, caplog):
+    """The approve path (POST /queue -> queue.decide -> inbox.link_decision), offline: the engine is a
+    stub whose answer carries the address, as the real one does, and nothing it writes may keep it."""
+    import gzip
+    import json
+    import logging
+    import time
+
+    import numpy as np
+    import pandas as pd
+
+    from kapacitet import seals
+    from kapacitet.api import inbox
+    from kapacitet.config import settings
+    from kapacitet.engine import queue as qu
+    from kapacitet.engine import request as rq
+
+    hours, n = 8760, 8
+    years = list(settings().weather_years)[:2]
+    street = "Testvägen 1"
+    monkeypatch.setattr(qu, "folder", lambda: tmp_path / "queue")
+    monkeypatch.setattr(inbox, "log_path", lambda: tmp_path / "requests" / "applications.jsonl")
+    monkeypatch.setattr(qu, "customers", lambda: pd.DataFrame(
+        {"fuse_kva": [17.3] * n, "address": [street] * n}, index=pd.RangeIndex(n, name="cid")))
+
+    class Ctx(rq.Context):                # the grid as the queue left it: the second request meets it
+        def years(self, wanted):
+            return years
+
+        def pq(self, model, y, hp, ev):
+            return np.zeros((n, hours)), np.zeros((n, hours))
+
+    monkeypatch.setattr(qu, "context", lambda: Ctx("static", label={"version": qu.load()["version"]}))
+
+    def run(model, req, hp, ev, ctx=None, verify_years=None):
+        d = {"load": np.full(hours, 0.4), "hp": np.zeros(hours), "ev_want": np.zeros(hours),
+             "pv": np.full(hours, 1.0)}
+        out = {"request": dict(req.__dict__), "customer": {"cid": req.cid, "address": street},
+               "verification": {"all_years": {"export_violations_after": 0}}, "summary": {"pv_static_approved": True}}
+        return out, {y: d for y in verify_years}
+
+    monkeypatch.setattr(rq, "run", run)
+    monkeypatch.setattr(rq, "evaluate", lambda model, req, hp, ev, emit=None, ctx=None: {
+        **_stub_result(req.cid), **({"queue": ctx.label} if ctx is not None else {})})
+    monkeypatch.setattr(rq, "_injection", lambda d: d["pv"] - d["load"])
+    monkeypatch.setattr(rq, "_reactive", lambda d: -0.3 * d["load"])
+    monkeypatch.setattr(rq, "build_state", lambda model, p, q: {"pt": p.sum(axis=0).astype(np.float32)})
+    caplog.set_level(logging.DEBUG)
+
+    for cid, decision, baseline in ((2, "firm", "static"), (5, "nonfirm", "queue")):
+        job_id = client.post(f"{API}/requests", json={"cid": cid, "pv_kwp": 4.0, "baseline": baseline}).json()["id"]
+        assert _finish(client, job_id)["customer"]["address"] == street
+        assert client.post(f"{API}/applications", json={"assessment": job_id}).status_code == 200
+        r = client.post(f"{API}/queue", json={"assessment": job_id, "decision": decision, "note": "approved"})
+        assert r.status_code == 200, r.text
+        for _ in range(200):
+            res = client.get(f"{API}/queue/jobs/{r.json()['id']}")
+            if res.status_code != 202:
+                break
+            time.sleep(0.02)
+        assert res.status_code == 200, res.text
+        item = res.json()
+        assert item["decision"] == decision and "address" not in json.dumps(item)
+        assert seals.verify("decision", job_id, qu.load()["items"][-1])["ok"]
+
+    q = client.get(f"{API}/queue").json()
+    assert [it["decision"] for it in q["items"]] == ["firm", "nonfirm"] and q["approved"] == 2
+    assert all(it["address"] == street for it in q["items"])          # read from the network for the reader
+    assert sorted(a["status"] for a in inbox.applications().values()) == ["firm", "nonfirm"]
+    written = [p for p in tmp_path.rglob("*") if p.is_file()]
+    for part in ("queue.json", "applications.jsonl", "seals.jsonl", "index.jsonl"):
+        assert any(p.name == part for p in written), f"no {part} was written"
+    assert any(p.parent.name == "queue" and p.name.startswith("state_") for p in written)
+    for path in written:
+        data = path.read_bytes()
+        if path.suffix == ".gz":
+            data = gzip.decompress(data)
+        assert b"Testv" not in data, f"{path.relative_to(tmp_path)} keeps the address"
+    assert not any("Testv" in rec.getMessage() for rec in caplog.records), "a log line keeps the address"
+
 # ---------------------------------------------------------------- retention and the server's lock
 
 def test_old_assessments_are_purged_and_their_seals_erased_but_not_what_a_decision_rests_on(tmp_path, monkeypatch):
