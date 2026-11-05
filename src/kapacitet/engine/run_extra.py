@@ -19,8 +19,8 @@ log = logging.getLogger(__name__)
 
 
 def _write(name: str, obj) -> None:
-    from .run import _default
-    processed("results", name).write_text(json.dumps(obj, indent=1, default=_default), encoding="utf-8")
+    from .run import _write as write
+    write(name, obj)
 
 
 def _largest_true(pred, lo: int, hi: int) -> int:

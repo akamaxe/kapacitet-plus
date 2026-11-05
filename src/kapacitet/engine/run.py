@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 
 from .. import __version__
+from ..atomic import atomic_file, write_bytes_atomic, write_json_atomic, write_text_atomic
 from ..cache import on_clear
 from ..config import A, settings
 from ..paths import processed
@@ -56,7 +57,15 @@ def largest_true(pred, lo: int, hi: int) -> int:
 
 
 def _write(name: str, obj) -> None:
-    processed("results", name).write_text(json.dumps(obj, indent=1, default=_default), encoding="utf-8")
+    """One results file, replaced whole (kapacitet.atomic): the server, which rereads a file when
+    its date changes, never reads one half written."""
+    write_json_atomic(processed("results", name), obj, indent=1, default=_default)
+
+
+def save_npy(path, array: np.ndarray) -> None:
+    """np.save, replacing the file whole."""
+    with atomic_file(path) as fh:
+        np.save(fh, array)
 
 
 def spread(values) -> dict:
@@ -533,10 +542,10 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
     # The paperwork the agreement leaves behind: one row per curtailment with the component
     # that was out of room, and the annual filing derived from it.
     trail = compliance.audit_trail(m, r, arr, y, cids=cust["cid"].to_numpy())
-    trail.events.to_csv(processed("results", "audit_trail.csv"), index=False)
+    write_text_atomic(processed("results", "audit_trail.csv"), trail.events.to_csv(index=False))
     report = compliance.annual_report(trail, r, cids=cust["cid"].to_numpy())
     _write("compliance.json", report)
-    processed("results", "compliance.txt").write_text(compliance.report_text(report), encoding="utf-8")
+    write_text_atomic(processed("results", "compliance.txt"), compliance.report_text(report))
     log.info("compliance: %d events in %d hours, %.0f kWh",
              len(trail.events), trail.hours_with_curtailment, trail.energy_kwh)
 
@@ -548,7 +557,7 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
     write_state("doe", res_doe, v_doe, p_doe, pv_real, arr["load"], r.curtailed.sum(axis=0))
     # envelopes of the non-firm customers (kW, float16) for the request / customer views
     env = r.envelope(H).astype(np.float16)
-    np.save(processed("ui", "envelopes_doe.npy"), env)
+    save_npy(processed("ui", "envelopes_doe.npy"), env)
     _write("envelopes_index.json", {"cids": cust["cid"].to_numpy()[nf].tolist(), "hours": H})
 
 
@@ -565,8 +574,8 @@ def write_state(name: str, res, viol, p_net, pv, load, curtailed_total, folder: 
     }
     header, blob = encode_state(name, np.abs(res.v), res.line_loading, np.asarray(p_net),
                                 m.net.bus.index.tolist(), m.net.line.index.tolist(), agg)
-    processed(*folder, f"state_{name}.bin").write_bytes(blob)
-    processed(*folder, f"state_{name}.json").write_text(json.dumps(header, default=_default), encoding="utf-8")
+    write_bytes_atomic(processed(*folder, f"state_{name}.bin"), blob)
+    write_json_atomic(processed(*folder, f"state_{name}.json"), header, indent=None, default=_default)
 
 
 def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:

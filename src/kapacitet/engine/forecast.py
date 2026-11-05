@@ -697,6 +697,7 @@ def write() -> tuple[list, dict, dict | None]:
     Returns the rows, the showcase and the capacity under each scheme (foresight.json) if computed."""
     import json
 
+    from ..atomic import write_json_atomic
     from ..paths import processed
     from .netmodel import get_model
 
@@ -704,6 +705,5 @@ def write() -> tuple[list, dict, dict | None]:
     cap_path = processed("results", "foresight.json")
     capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
     rows = ladder(get_model(), show)
-    processed("results", "forecast.json").write_text(json.dumps(ladder_payload(rows, show["year"]), indent=1),
-                                                     encoding="utf-8")
+    write_json_atomic(processed("results", "forecast.json"), ladder_payload(rows, show["year"]), indent=1)
     return rows, show, capacity

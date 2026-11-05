@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import json
-
 import numpy as np
 import pandas as pd
 
+from ..atomic import write_json_atomic
 from ..config import settings
 from ..ingest import esett, prices
 from ..paths import RAW, processed
@@ -56,5 +55,5 @@ def build() -> dict:
                {"name": "Ellevio — Elnätskapacitet i regionnätet",
                 "url": "https://www.ellevio.se/om-oss/elnat/elnatskapacitet-i-ellevios-regionnat/gavleborg/"},
            ]}
-    processed("results", "national.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    write_json_atomic(processed("results", "national.json"), out, indent=1)
     return out

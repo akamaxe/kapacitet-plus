@@ -36,6 +36,7 @@ import time
 import numpy as np
 import pandas as pd
 
+from ..atomic import savez_atomic, write_json_atomic, write_text_atomic
 from ..config import settings
 from ..paths import processed
 from . import compliance, doe, forecast, hosting
@@ -51,7 +52,7 @@ SCHEME = {"foresight": "foresight", "dayahead": "climatological"}
 def _write_json(path, obj) -> None:
     from .run import _default
 
-    path.write_text(json.dumps(obj, default=_default), encoding="utf-8")
+    write_json_atomic(path, obj, indent=None, default=_default)
 
 
 def _days(values: np.ndarray, H: int) -> np.ndarray:
@@ -80,7 +81,7 @@ def agreements(model, order: np.ndarray, firm: int, adopters: int, cids: np.ndar
 
 def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...] = BASES) -> dict:
     """Compute, verify and write every combination; returns the index."""
-    from .run import _versions, background_masks, model, write_state
+    from .run import _versions, background_masks, model, save_npy, write_state
 
     t_all = time.perf_counter()
     show = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
@@ -114,7 +115,7 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
     root = processed("results", "operation", "index.json").parent
     # what each non-firm house would export with no limit, hour by hour: the day's schedule is
     # read against it, and it does not depend on rule or basis
-    np.save(processed("ui", "operation", "desired.npy"), desired.astype(np.float16))
+    save_npy(processed("ui", "operation", "desired.npy"), desired.astype(np.float16))
     agree = agreements(m, order, int(show["firm"]), int(show["adopters"]), cids)
     _write_json(root / "agreements.json", {"year": y, "order": int(show["order"]), "agreements": agree})
 
@@ -155,9 +156,9 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
             report = compliance.annual_report(trail, rr, cids=cids, basis=basis)
 
             folder = processed("results", "operation", basis, pol, "issued.json").parent
-            trail.events.to_csv(folder / "audit_trail.csv", index=False)
+            write_text_atomic(folder / "audit_trail.csv", trail.events.to_csv(index=False))
             _write_json(folder / "compliance.json", report)
-            (folder / "compliance.txt").write_text(compliance.report_text(report), encoding="utf-8")
+            write_text_atomic(folder / "compliance.txt", compliance.report_text(report))
 
             limited = curtailed.sum(axis=0) > 1e-3
             per_day = {
@@ -171,9 +172,9 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
                 **(exceed_days or {}),
             }
             _write_json(folder / "days.json", {"year": y, "days": H // 24, "tz": "UTC+1", **per_day})
-            np.savez_compressed(folder / "days.npz", curtailed=_days(curtailed, H).astype(np.float32),
-                                desired=_days(desired, H).astype(np.float32),
-                                pv=_days(arr["pv"][nf].astype(float), H).astype(np.float32), cids=cids[nf])
+            savez_atomic(folder / "days.npz", compressed=True, curtailed=_days(curtailed, H).astype(np.float32),
+                         desired=_days(desired, H).astype(np.float32),
+                         pv=_days(arr["pv"][nf].astype(float), H).astype(np.float32), cids=cids[nf])
 
             lowest = published.min(axis=1)
             default_kw = np.minimum(kappa * caps, lowest)
@@ -200,7 +201,7 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
             _write_json(folder / "issued.json", issued)
 
             ui = processed("ui", "operation", basis, pol, "envelopes.npy").parent
-            np.save(ui / "envelopes.npy", published.astype(np.float16))
+            save_npy(ui / "envelopes.npy", published.astype(np.float16))
             pv_real = arr["pv"].astype(float).copy()
             pv_real[nf] -= curtailed
             write_state("doe", res, v, p, pv_real, arr["load"], curtailed.sum(axis=0),

@@ -117,15 +117,14 @@ def assess(net, lines: pd.DataFrame, cust: pd.DataFrame, ik: pd.Series | None = 
 
 def write() -> dict:
     """Compute and save results/protection.json for the built network."""
-    import json
-
+    from ..atomic import write_json_atomic
     from ..grid.builder import load_net, load_tables
     from ..paths import processed
 
     net = load_net()
     _, lines, cust = load_tables()
     out = assess(net, lines, cust)
-    processed("results", "protection.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+    write_json_atomic(processed("results", "protection.json"), out, indent=1)
     s = out["summary"]
     log.info("protection: %d of %d feeders and %d of %d houses clear a fault within %.0f s",
              s["feeders_ok"], s["feeders"], s["houses_ok"], s["houses"], out["criterion"]["disconnect_s"])
