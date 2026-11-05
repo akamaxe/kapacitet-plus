@@ -385,7 +385,7 @@ def link_decision(assessment: str, decision: str, pv_kw: float, application: str
 
 class ApplicationIn(BaseModel):
     assessment: str = Field(..., pattern="^[0-9a-f]{12}$", description="the saved assessment the application rests on")
-    key: str | None = Field(None, max_length=64, pattern="^[A-Za-z0-9_-]+$",
+    key: str | None = Field(None, min_length=22, max_length=64, pattern="^[A-Za-z0-9_-]+$",
                             description="idempotency key: the same key returns the same application")
 
 

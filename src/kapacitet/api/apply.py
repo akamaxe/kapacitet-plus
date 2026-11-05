@@ -35,7 +35,7 @@ class Ask(BaseModel):
 
 class Submit(BaseModel):
     assessment: str = Field(..., pattern="^[0-9a-f]{12}$")
-    key: str = Field(..., min_length=8, max_length=64, pattern="^[A-Za-z0-9_-]+$",
+    key: str = Field(..., min_length=22, max_length=64, pattern="^[A-Za-z0-9_-]+$",
                      description="idempotency key: sending the same application twice returns the first")
 
 

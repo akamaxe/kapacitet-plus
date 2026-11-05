@@ -5,7 +5,7 @@
  * and its entry in the evidence chain. Without it nobody could tell afterwards what was sealed, or
  * match a file to its line in the chain.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "./Toast";
 import { apiWrite } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
@@ -27,15 +27,21 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; d
   const t = useT();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
   const download = async (path: string, body: object, fallbackName: string) => {
+    if (inFlight.current) return;            // a double click seals once
+    inFlight.current = true;
     setBusy(true);
-    const r = await apiWrite(path, body).catch(() => null);
+    // one key per click: a retry of this request is the same issue, a later click is a new one
+    const r = await apiWrite(path, body, "POST", { "Idempotency-Key": crypto.randomUUID() }).catch(() => null);
     if (!r) {
+      inFlight.current = false;
       setBusy(false);
       toast.error(t("ui.offline"));
       return;
     }
     if (!r.ok) {
+      inFlight.current = false;
       setBusy(false);
       toast.error(await responseRefusal(t, r));
       return;
@@ -49,6 +55,7 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; d
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    inFlight.current = false;
     setBusy(false);
     const digest = r.headers.get("X-Seal-Digest");
     if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString() });

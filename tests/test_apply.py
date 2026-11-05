@@ -36,7 +36,7 @@ def client(tmp_path, monkeypatch):
 
 def test_an_application_needs_its_answer(client):
     c, _, _ = client
-    r = c.post("/api/v1/apply/submit", json={"assessment": "0123456789ab", "key": "household-key-1"})
+    r = c.post("/api/v1/apply/submit", json={"assessment": "0123456789ab", "key": "household-key-1-0123456789"})
     assert r.status_code == 404 and r.json()["detail"]["code"] == "unknown_assessment"
 
 
@@ -46,10 +46,10 @@ def test_the_state_is_read_with_the_code_and_shows_nothing_of_the_dsos_view(clie
                   "request": {"cid": 3, "pv_kwp": 8.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0,
                               "baseline": "static"},
                   "result": {"customer": {"address": "Gatan 3"}, "static": {"pv": {"approved": True}}}})
-    sent = c.post("/api/v1/apply/submit", json={"assessment": "a0000000000a", "key": "household-key-2"}).json()
+    sent = c.post("/api/v1/apply/submit", json={"assessment": "a0000000000a", "key": "household-key-2-0123456789"}).json()
     assert sent["status"] == "pending" and NEW_CODE.match(sent["reference"])
     # the same key sends nothing new, and a retry whose answer was lost gets the same code back
-    again = c.post("/api/v1/apply/submit", json={"assessment": "a0000000000a", "key": "household-key-2"}).json()
+    again = c.post("/api/v1/apply/submit", json={"assessment": "a0000000000a", "key": "household-key-2-0123456789"}).json()
     assert again["reference"] == sent["reference"] and len(inbox.applications()) == 1
 
     st = c.get(f"/api/v1/apply/status/{sent['reference'].lower()}").json()
@@ -68,12 +68,12 @@ def test_the_code_is_never_kept_and_the_dsos_view_sees_only_its_hint(client):
                   "request": {"cid": 4, "pv_kwp": 6.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0,
                               "baseline": "static"},
                   "result": {"customer": {"address": "Gatan 4"}, "static": {"pv": {"approved": True}}}})
-    sent = c.post("/api/v1/apply/submit", json={"assessment": "b0000000000b", "key": "household-key-3"}).json()
+    sent = c.post("/api/v1/apply/submit", json={"assessment": "b0000000000b", "key": "household-key-3-0123456789"}).json()
     code = sent["reference"]
     log = inbox.log_path().read_text(encoding="utf-8")
-    assert code not in log and code.replace("-", "") not in log and "household-key-3" not in log
+    assert code not in log and code.replace("-", "") not in log and "household-key-3-0123456789" not in log
     received = json.loads(log.splitlines()[0])
-    assert received["reference_hint"] == code[3:7] and len(received["reference_sha256"]) == 64
+    assert "reference" not in received and received["reference_hint"] == code[3:7] and len(received["reference_sha256"]) == 64
     listed = c.get("/api/v1/inbox").json()
     assert listed["total"] == 1 and listed["items"][0]["reference_hint"] == code[3:7]
     assert code not in json.dumps(listed)
@@ -82,17 +82,17 @@ def test_the_code_is_never_kept_and_the_dsos_view_sees_only_its_hint(client):
                   "request": {"cid": 4, "pv_kwp": 7.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0,
                               "baseline": "static"},
                   "result": {"customer": {"address": "Gatan 4"}, "static": {"pv": {"approved": True}}}})
-    open_ = c.post("/api/v1/apply/submit", json={"assessment": "c0000000000c", "key": "household-key-4"})
+    open_ = c.post("/api/v1/apply/submit", json={"assessment": "c0000000000c", "key": "household-key-4-0123456789"})
     assert open_.status_code == 409 and open_.json()["detail"]["params"]["app"] == f"KP-{code[3:7]}-…"
     assert code not in open_.text
-    twice = c.post("/api/v1/apply/submit", json={"assessment": "b0000000000b", "key": "household-key-5"})
+    twice = c.post("/api/v1/apply/submit", json={"assessment": "b0000000000b", "key": "household-key-5-0123456789"})
     assert twice.status_code == 409 and code not in twice.text
 
 
 def test_a_code_from_before_the_hashes_still_resolves(client):
     c, records, inbox = client
     inbox.append({"app": "0123456789ab", "event": "received", "reference": "KP-1A2B-3C4D", "assessment": "d0000000000d",
-                  "cid": 9, "address": "Gatan 9", "source": "portal", "request": {"pv_kwp": 5.0}, "key": "old-key-123"})
+                  "cid": 9, "address": "Gatan 9", "source": "portal", "request": {"pv_kwp": 5.0}, "key": "old-key-0123456789abcdefgh"})
     st = c.get("/api/v1/apply/status/kp-1a2b-3c4d")
     assert st.status_code == 200 and st.json()["reference"] == "KP-1A2B-3C4D" and st.json()["address"] == "Gatan 9"
     assert c.get("/api/v1/inbox").json()["items"][0]["reference_hint"] == "1A2B"
@@ -101,7 +101,7 @@ def test_a_code_from_before_the_hashes_still_resolves(client):
     records.save({"id": "d0000000000d", "created": "2026-11-01T10:00:00+00:00",
                   "request": {"cid": 9, "pv_kwp": 5.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0},
                   "result": {"customer": {"address": "Gatan 9"}}})
-    again = c.post("/api/v1/apply/submit", json={"assessment": "d0000000000d", "key": "old-key-123"}).json()
+    again = c.post("/api/v1/apply/submit", json={"assessment": "d0000000000d", "key": "old-key-0123456789abcdefgh"}).json()
     assert again["reference"] == "KP-1A2B-3C4D" and len(inbox.applications()) == 1
 
 
@@ -119,3 +119,12 @@ def test_the_portal_lists_only_addresses(client):
     body = c.get("/api/v1/apply/houses").json()
     assert body["items"] and all(set(h) == {"cid", "address"} for h in body["items"])
     assert set(body["form"]) == {"pv_min_kwp", "battery_max_kwh", "ev_kw"}
+
+
+def test_a_short_key_is_refused_so_the_code_is_never_guessable(client):
+    c, _, _ = client
+    for short in ("abcdefgh", "household-key-1"):
+        r = c.post("/api/v1/apply/submit", json={"assessment": "0123456789ab", "key": short})
+        assert r.status_code == 422
+        r = c.post("/api/v1/applications", json={"assessment": "0123456789ab", "key": short})
+        assert r.status_code == 422
