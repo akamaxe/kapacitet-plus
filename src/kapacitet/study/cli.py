@@ -1,6 +1,7 @@
 """The study commands: `kapacitet study init|demo|fetch|import|check|build|status|collect|validate|
-review|sign|publish|diff <dir>`, and the hidden `kapacitet station build|validate <sid> --study <dir>` that a study's build
-and validation start once per station.
+review|sign|publish|diff|cases|sync|sign-rule <dir>`, and the hidden `kapacitet station
+build|validate|cases|sync <sid> --study <dir>` that a study's build, validation, case check and
+queue rebuild start once per station.
 
 pipeline.py registers them with one call to `register`; nothing heavy is imported until a command
 runs.
@@ -64,12 +65,33 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = add("diff", "runs/<to>/changes.csv: what changed since another quarter, and why")
     q.add_argument("--from", dest="q_from", required=True, help="the earlier quarter, as 2026Q3")
     q.add_argument("--to", dest="q_to", default=None, help="the later quarter (default: this quarter)")
+    q = add("cases", "check a batch of connection cases, station by station, into cases/<batch>: verdicts.csv, "
+                     "the Swedish annexes and the drafts")
+    q.add_argument("csv", help="the cases: case_id, received_at, connection_point_id, pv_kwp, pv_kw_ac, pv_phases, "
+                               "ev_kw, ev_phases, hp, bat_kwh [, decision_dso]")
+    q.add_argument("--batch", default=None, help="the batch's name (default: the file's name)")
+    q.add_argument("--compare-decisions", action="store_true",
+                   help="also cases/<batch>/confusion.csv: the proposals against decision_dso")
+    q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
+    q = add("sync", "rebuild every station's queue from the DSO's approved connections, into "
+                    "cases/<batch>/sync_report.csv")
+    q.add_argument("--approved", required=True, help="the approved connections: a case's columns, decision "
+                                                     "(firm|nonfirm) and decided_at")
+    q.add_argument("--pending", default=None, help="the cases received and not yet decided")
+    q.add_argument("--batch", default=None, help="the report's name (default: sync-<approved file's name>)")
+    q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
+    q = add("sign-rule", "sign the automatic rule for the study's cases: rule_signature.json, sealed")
+    q.add_argument("--by", required=True, help='who signs, as "name, role"')
+    q.add_argument("--kinds", required=True, help="the kinds of request it covers: pv,ev,hp,battery")
+    q.add_argument("--max-pv-kwp", type=float, required=True, help="the largest solar system it covers (kWp)")
+    q.add_argument("--valid-until", required=True, help="the last day it holds, as 2027-06-30")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
-    p.add_argument("action", choices=["build", "validate"])
+    p.add_argument("action", choices=["build", "validate", "cases", "sync"])
     p.add_argument("sid")
     p.add_argument("--study", required=True)
+    p.add_argument("--batch", default=None)
     p.add_argument("--quick", action="store_true")
     p.add_argument("--allow-git", action="store_true")
     p.set_defaults(func=cmd_station)
@@ -86,7 +108,8 @@ def cmd_study(args: argparse.Namespace) -> None:
     try:
         {"init": _init, "demo": _demo, "fetch": _fetch, "import": _import, "check": _check, "build": _build,
          "status": _status, "collect": _collect, "validate": _validate, "review": _review, "sign": _sign,
-         "publish": _publish, "diff": _diff}[args.study_command](args)
+         "publish": _publish, "diff": _diff, "cases": _cases, "sync": _sync,
+         "sign-rule": _sign_rule}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -294,6 +317,49 @@ def _diff(args) -> None:
     print(f"{len(out['rows'])} changes in {out['paths'][0]}")
 
 
+def _cases(args) -> None:
+    from . import open_study
+    from .cases import run
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = run(study, args.csv, batch=args.batch, compare=args.compare_decisions, jobs=args.jobs,
+              allow_git=args.allow_git)
+    counts = {p: sum(1 for r in out["rows"] if r.get("proposal") == p) for p in ("firm", "nonfirm", "review")}
+    print(f"{len(out['rows'])} cases in {out['paths'][0]}: {counts['firm']} firm, {counts['nonfirm']} nonfirm, "
+          f"{counts['review']} to a person, {len(out['errors'])} not checked")
+    for e in out["errors"]:
+        print(f"  {e['case_id']}: {e['error_text']}")
+    if out["confusion"] is not None:
+        print(f"  proposals against the DSO's decisions in {out['folder'] / 'confusion.csv'}")
+
+
+def _sync(args) -> None:
+    from . import open_study
+    from .sync import run
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = run(study, args.approved, args.pending, batch=args.batch, jobs=args.jobs, allow_git=args.allow_git)
+    approved = [r for r in out["rows"] if r.get("status") == "approved"]
+    flagged = [r for r in approved if r.get("flags")]
+    print(f"{len(out['stations'])} stations synced: {len(approved)} approved connections, {len(flagged)} flagged, "
+          f"in {out['paths'][0]}")
+    for r in flagged:
+        print(f"  {r['case_id']} ({r['station']}): {r['flags']}")
+    for e in out["errors"]:
+        print(f"  {e['case_id']}: {e['error_text']}")
+
+
+def _sign_rule(args) -> None:
+    from . import open_study
+    from .cases import sign_rule
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    kinds = [k.strip() for k in args.kinds.split(",") if k.strip()]
+    doc = sign_rule(study, args.by, kinds, args.max_pv_kwp, args.valid_until)
+    print(f"Rule signed by {doc['signed_by']} ({doc['role']}) for {', '.join(doc['request_kinds'])} up to "
+          f"{doc['max_pv_kwp']:g} kWp until {doc['valid_until']}, sealed as {doc['seal']['id']}")
+
+
 def cmd_station(args: argparse.Namespace) -> None:
     """One station's build or validation, in this process (started by `study build|validate`)."""
     import logging
@@ -305,6 +371,14 @@ def cmd_station(args: argparse.Namespace) -> None:
         study = open_study(args.study, allow_git=args.allow_git)
         if args.action == "validate":
             validate(study, args.sid)
+            sys.exit(0)
+        if args.action in ("cases", "sync"):
+            from .cases import station_cases
+            from .sync import station_sync
+
+            if not args.batch:
+                raise StudyError("bad_batch", batch="")
+            (station_cases if args.action == "cases" else station_sync)(study, args.sid, args.batch)
             sys.exit(0)
         rec = build(study, args.sid, quick=args.quick)
     except StudyError as err:

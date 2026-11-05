@@ -495,6 +495,9 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study sign nb-2026 --by "name, role"
 .venv/Scripts/python -m kapacitet study publish nb-2026   # runs/<quarter>/publication (UTKAST unless signed)
 .venv/Scripts/python -m kapacitet study diff nb-2026 --from 2026Q3 --to 2026Q4
+.venv/Scripts/python -m kapacitet study cases nb-2026 cases.csv --compare-decisions   # cases/<batch>/verdicts.csv, annexes, drafts
+.venv/Scripts/python -m kapacitet study sync nb-2026 --approved approved.csv --pending pending.csv
+.venv/Scripts/python -m kapacitet study sign-rule nb-2026 --by "name, role" --kinds pv,ev --max-pv-kwp 10 --valid-until 2027-06-30
 ```
 
 Every input file and column, and what each step of a quarter writes, is in
@@ -587,6 +590,19 @@ hold k customers, a merged cell showing its stations' lowest figure, hidden stat
 conditional (envelope) column appears only with `[method] approval_reference` set and verified
 envelopes. `study diff` lists what changed between two quarters with the inputs behind each change
 (`runs/<Q>/inputs.json`) and a sentence in Swedish.
+
+Module 2 is the same engine as the request screen, on files (`study/cases.py`). `study cases`
+takes a CSV of connection cases, finds each connection point's station with DuckDB and checks each
+station's cases in a process of its own, across the station's MV band: the solar at both ends of
+`[mv]`, the lower one counting, the consumption at the low end, each end on its own model and
+against the "existing" baseline the build precomputed on that model (`engine/request.check`). It
+writes `verdicts.csv` (firm, nonfirm or review, never a refusal, with the reasons in Swedish, the
+curtailment, fuse and phases, the sealed assessment and the station's fingerprint), a Swedish annex
+per case and drafts for a handler: the time plan, the three-month status and, when the static
+study rejects a part, a reinforcement proposal whose next transformer is checked again. Running a
+batch again reuses each assessment. `study sync` rebuilds every station's queue from the DSO's own
+list of approved connections (`engine/queue.rebuild`, byte for byte the same for the same list),
+flagging instead of dropping a connection that fails the re-verification on every weather year.
 
 A DSO that exports CGMES 2.4.15 (EQ, TP, SSH and, for the map, GL) puts the files in
 `inputs/network/cgmes/` and `inputs/cim_customers.csv` beside them, which CGMES cannot carry:
@@ -751,6 +767,14 @@ grid as it now stands, then `engine/rules.py` gives its verdict:
   agreed level, 3 % of its solar energy), leaves at most 1 % of its EV charging unserved
   (`ev_unserved_limit_pct`), no heat unserved, and no hour above a grid limit;
 - **to a person** otherwise, with the reasons. The rule never declines.
+
+Advisor mode is the default: automatic decisions are off (`auto_decisions`), and switched on, the
+rule still decides only what a person has signed for (`PUT /api/v1/settings/rule-signature`, or
+`study sign-rule` for a study): who signs and in what role, the kinds of request (pv, ev, hp,
+battery), the largest solar system, the thresholds and the last day it holds. The signature is
+sealed as `rule_signature`; an application outside it, under other thresholds or after it runs
+out goes to a person (`unsigned_rule` or `out_of_scope`), and every decision the rule makes keeps
+the signature's digest. A planner's decision can say who made it (`decided_by`, free text).
 
 An approval by the rule goes through `queue.decide` like a person's, so it is verified on every
 weather year before the house enters the grid, under the queue's write lock (a manual decision

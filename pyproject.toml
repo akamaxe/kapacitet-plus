@@ -40,7 +40,7 @@ kapacitet = "kapacitet.pipeline:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-"kapacitet.study" = ["templates/*.md"]
+"kapacitet.study" = ["templates/*.md", "templates/cases_sv/*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

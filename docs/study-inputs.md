@@ -64,3 +64,45 @@ figure of its stations, never a sum. Hidden stations are left out and never coun
 The CSV dialects: `sv-excel` is `;` between fields, a decimal comma, UTF-8 with a byte-order mark
 and CRLF, which Excel opens as it is on a Swedish computer; `rfc4180` is `,` and a decimal point,
 without the mark. The `.machine.csv` copy is always RFC 4180, with the same columns.
+
+## Connection cases: `cases/<batch>/`
+
+`study cases <dir> cases.csv` checks a batch of cases, one row each:
+
+| column | meaning |
+| --- | --- |
+| `case_id` | the DSO's case number: letters, digits, `-`, `_` and `.`; it names the case's files |
+| `received_at` | when the application came in, ISO 8601 (a date is enough) |
+| `connection_point_id` | the house's `customer_id` in the station contracts |
+| `pv_kwp`, `pv_kw_ac`, `pv_phases` | the solar panels (kWp), the inverter (kW AC; blank: kWp over the DC/AC ratio) and its phases (1 or 3; blank: single-phase up to `pv_single_phase_max_kva`) |
+| `ev_kw`, `ev_phases` | the charger and its phases (blank: the small one single-phase) |
+| `hp` | a new heat pump (1/0, ja/nej, true/false) |
+| `bat_kwh` | a home battery, with solar only |
+| `decision_dso` | optional: what the DSO decided, for `--compare-decisions` |
+
+Each station's cases are checked by a process of its own, across the station's MV band: the solar
+at both ends of `[mv]`, the lower one counting, and the consumption at the low end, each against
+the "existing" baseline the station's build precomputed on the same model at that end, or against
+the station's synced queue. The proposal is `firm`, `nonfirm` or `review`, never a refusal.
+
+| file | content |
+| --- | --- |
+| `verdicts.csv` (+ `.machine.csv`) | one row per case: the proposal, `reason_codes` and `reason_sv`, the curtailment on average and in one year in ten, `fuse_ok`, `phases_ok`, the MV end that binds, whether the signed rule covers it (`rule`), the assessment id, its seal's digest, the method version and the station's fingerprint; a case that cannot be checked has its `error` instead |
+| `annex/<case>.md`, `.json` | the case's annex in Swedish (the reasons are the interface's own `req.reason.*` and `inbox.reason.*` from `sv.ts`) |
+| `drafts/<case>/tidsplan.md` | the time plan, with `[cases] processing_days` |
+| `drafts/<case>/status_3m.md` | the status three months after the application, for a case a person has to decide |
+| `drafts/<case>/forstarkning.md` | when the static study rejects a part: the next standard transformer, checked again with it |
+| `confusion.csv` | with `--compare-decisions`: proposals against `decision_dso` |
+
+Running a batch again reuses each case's assessment (its id is a digest of the case, the station's
+fingerprint and the queue it met). With `[cases] protection = "kapacitet"` the annex adds the
+house's fault current from Kapacitet+'s own short-circuit check; by default (`"dppower"`) it says
+the check stays in dpPower. `study sign-rule --by "name, role" --kinds pv,ev --max-pv-kwp 10
+--valid-until 2027-06-30` writes `rule_signature.json`, sealed, and each row says whether that
+signed rule covers the case.
+
+`study sync <dir> --approved approved.csv [--pending pending.csv]` rebuilds every built station's
+queue from the DSO's own list: the approved file has a case's columns plus `decision` (`firm` or
+`nonfirm`) and `decided_at`. The connections are reserved in the order they were approved, at
+each end of the band, and re-verified on every weather year; one that fails is kept and flagged in
+`cases/sync-<name>/sync_report.csv`, and one taken off the list leaves the grid.

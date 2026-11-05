@@ -13,7 +13,10 @@
                           review.csv and the reviewer's corrections.csv (`study review`),
                           signoff.json (`study sign`), publication/ (`study publish`),
                           changes.csv (`study diff`) and disclosure_report.csv (never published)
-        cases/<batch>/    connection cases checked in a batch
+        cases/<batch>/    connection cases checked in a batch (`study cases`, study/cases.py): verdicts.csv,
+                          annex/, drafts/; or the queues rebuilt from the DSO's lists (`study sync`,
+                          study/sync.py): sync_report.csv
+        rule_signature.json  who signed the automatic rule and for what (`study sign-rule`)
 
 A study holds a DSO's network and customer data, so it lives outside the code: by default under
 `%USERPROFILE%\\kapacitet-studies\\<id>` (or KAPACITET_STUDY_DIR), and never inside a git work tree,
@@ -100,6 +103,12 @@ ERRORS = {
     "stale_method": "stations {ids} were computed with another method than the study's {pinned}: build them again "
                     "before they are published",
     "bad_signer": "{by!r} is not a signer: give a name and a role, as --by \"name, role\"",
+    "no_cases": "no case file at {path}",
+    "cases_columns": "{path} has no column {columns}: a case file has case_id, received_at, connection_point_id, "
+                     "pv_kwp, pv_kw_ac, pv_phases, ev_kw, ev_phases, hp and bat_kwh (docs/study-inputs.md)",
+    "bad_batch": "{batch!r} is not a batch name (letters, digits, - and _, at most 64): give one with --batch",
+    "no_ready_station": "no station of the study is built: run `kapacitet study build` first",
+    "bad_signature": "{message}",
 }
 
 
