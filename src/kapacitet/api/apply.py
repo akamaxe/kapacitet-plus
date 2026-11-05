@@ -123,10 +123,19 @@ def answer(job_id: str) -> dict:
                      "hours_limited_ref": summary.get("pv_hours_limited_ref"),
                      "ev_unmet_pct": summary.get("ev_unmet_pct"), "hp_unmet_pct": summary.get("hp_unmet_pct")},
         "fuse": res.get("fuse"), "phases_ok": (res.get("phases") or {}).get("ok", True),
-        "rule": {**rules.verdict(res, dso.thresholds(s)), "auto": s.auto_decisions},
+        # "auto": the rule would decide it on its own, switched on and signed for this request
+        "rule": {**rules.verdict(res, dso.thresholds(s)), "auto": _decides_alone(s, rec["request"])},
         "owner": owner_case(res, years, A("household_discount_rate_pct"), datetime.now(timezone.utc).year),
         "provenance": rec.get("provenance"),
     }
+
+
+def _decides_alone(s, request: dict) -> bool:
+    """Whether the DSO's rule would decide this request without a person (dso.RuleSignature)."""
+    if not s.auto_decisions:
+        return False
+    sig = s.rule_signature.model_dump(mode="json") if s.rule_signature else None
+    return rules.scope(sig, request, dso.thresholds(s), datetime.now(timezone.utc).date()) is None
 
 
 def _status(app: dict, reference: str | None) -> dict:

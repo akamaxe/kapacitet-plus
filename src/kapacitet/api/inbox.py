@@ -3,7 +3,9 @@
 An assessment answers "what if"; an application asks for the connection. It rests on a saved
 assessment, and one worker takes the applications in the order they arrived: if the queue has moved
 since the assessment, it evaluates the request again against the grid as it now stands; then
-`engine/rules.py` gives its verdict. Firm and envelope verdicts go through `queue.decide`, which
+`engine/rules.py` gives its verdict, but only when automatic decisions are on and a person has
+signed the rule for that kind of request (dso.RuleSignature; otherwise `auto_off`, `unsigned_rule`
+or `out_of_scope` send it to a person). Firm and envelope verdicts go through `queue.decide`, which
 re-verifies every weather year, under the queue's own write lock, so no manual decision runs at the
 same time. Anything else waits for a person, who decides it with the queue's usual decision (the
 rule never declines).
@@ -361,12 +363,19 @@ def process(app: dict, engine=None, make_record=None, evaluate=None) -> dict:
         if not settings.auto_decisions:
             return append({"app": app["id"], "event": "review", "assessment": rec["id"],
                            "reasons": [rules._reason("auto_off")]})
-        v = rules.verdict(rec["result"], dso.thresholds(settings))
+        th = dso.thresholds(settings)
+        sig = settings.rule_signature.model_dump(mode="json") if settings.rule_signature else None
+        outside = rules.scope(sig, rec["request"], th, datetime.now(timezone.utc).date())
+        if outside is not None:              # advisor mode: what nobody signed for waits for a person
+            return append({"app": app["id"], "event": "review", "assessment": rec["id"],
+                           "reasons": [rules._reason(outside)]})
+        v = rules.verdict(rec["result"], th)
         if v["outcome"] == "review":
             return append({"app": app["id"], "event": "review", "assessment": rec["id"], "reasons": v["reasons"]})
         eng = engine()
         try:
-            item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, v["outcome"], by="rule")
+            item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, v["outcome"], by="rule",
+                             signature=dso.signature_digest(sig))
         except qu.QueueError as exc:
             return append({"app": app["id"], "event": "review", "assessment": rec["id"],
                            "reasons": [rules._reason("queue", detail=exc.code)]})

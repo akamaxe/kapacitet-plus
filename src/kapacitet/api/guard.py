@@ -83,11 +83,14 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
                                      "one queue update at a time"),
     ("DELETE", f"{API}/queue"): Policy("write", "a seal, then the queue is emptied", "one queue update at a time"),
     ("PUT", f"{API}/settings"): Policy("write", "data/requests/settings.json and a seal"),
+    ("PUT", f"{API}/settings/rule-signature"): Policy("write", "data/requests/settings.json and two seals: "
+                                                               "the signature and the change"),
     ("POST", f"{API}/operation/meter-check"): Policy("write", "nothing: the meter's file is checked in memory"),
     ("POST", f"{API}/operation/schedule/issue"): Policy("write", "a seal of the schedule issued"),
     ("POST", f"{API}/eipack/export"): Policy("write", "a seal of the evidence pack exported"),
     ("POST", f"{API}/applications"): Policy("write", "applications.jsonl and a seal",
-                                            "the rule then decides it when the DSO turned auto_decisions on"),
+                                            "the rule then decides it when the DSO turned auto_decisions on and "
+                                            "signed the rule for it"),
     ("POST", f"{API}/applications/{{app_id}}/requeue"): Policy("write", "applications.jsonl",
                                                                "only an application in review"),
     ("POST", f"{API}/apply/evaluate"): Policy("compute", "as POST /requests, against the DSO's grid"),

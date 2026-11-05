@@ -116,9 +116,19 @@ def inbox_dirs(tmp_path, monkeypatch):
     return inbox, records, qu
 
 
-def _saved(records, job_id, cid, baseline="static", **result):
+def _sign(**over):
+    """Automatic decisions on, under a rule signed for every kind of request (advisor mode is the default)."""
+    from kapacitet import dso
+
+    dso.update(dso.DsoSettingsChange(auto_decisions=True))
+    body = {"signed_by": "A. Planner", "role": "network planning manager", "request_kinds": ["pv", "ev", "hp", "battery"],
+            "max_pv_kwp": 40.0, "valid_until": "2099-12-31", **over}
+    return dso.sign_rule(dso.RuleSignatureIn(**body))
+
+
+def _saved(records, job_id, cid, baseline="static", pv_kwp=10.0, **result):
     rec = {"id": job_id, "created": "2026-11-02T10:00:00+00:00",
-           "request": {"cid": cid, "pv_kwp": 10.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0,
+           "request": {"cid": cid, "pv_kwp": pv_kwp, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0,
                        "baseline": baseline},
            "result": {"customer": {"address": f"Gatan {cid}"}, **result}}
     records.save(rec)
@@ -127,6 +137,7 @@ def _saved(records, job_id, cid, baseline="static", **result):
 
 def test_an_old_assessment_is_evaluated_again_before_the_rule_decides(inbox_dirs, monkeypatch):
     inbox, records, qu = inbox_dirs
+    _sign()
     # the queue already holds an approval, so an assessment made against today's grid is out of date
     qu._save({"version": 1, "baseline": "static", "items": [{"assessment": "f00000000000", "cid": 5, "decision": "nonfirm"}]})
     old = _saved(records, "a00000000001", cid=7, **_result(pv_ok=True))
@@ -144,7 +155,8 @@ def test_an_old_assessment_is_evaluated_again_before_the_rule_decides(inbox_dirs
 
     decided = []
 
-    def fake_decide(model, hp, ev, record, decision, note="", emit=None, by="dso"):
+    def fake_decide(model, hp, ev, record, decision, note="", emit=None, by="dso", signature=None, **kw):
+        assert by != "rule" or signature                      # the rule's decision keeps its signature
         decided.append((record["id"], decision, by))
         return {"pv_kw": 9.5}
 
@@ -162,6 +174,7 @@ def test_an_old_assessment_is_evaluated_again_before_the_rule_decides(inbox_dirs
 
 def test_a_verdict_that_needs_a_person_waits_and_one_application_per_house(inbox_dirs):
     inbox, records, qu = inbox_dirs
+    _sign()
     rec = _saved(records, "a00000000002", cid=9, **_result(pv_ok=False, mean=5.0, p90=9.0))
     app = inbox.receive(rec["id"])
     inbox.process(app, engine=lambda: None, make_record=lambda *a: None, evaluate=lambda r: None)
@@ -180,6 +193,7 @@ def test_a_verdict_that_needs_a_person_waits_and_one_application_per_house(inbox
 
 def test_decisions_share_the_queue_lock(inbox_dirs, monkeypatch):
     inbox, records, qu = inbox_dirs
+    _sign()
     rec = _saved(records, "a00000000004", cid=11, **_result(pv_ok=True))
     app = inbox.receive(rec["id"])
     monkeypatch.setattr(qu, "decide", lambda *a, **k: {"pv_kw": 4.0})
@@ -210,6 +224,7 @@ def test_the_log_keeps_the_house_and_never_its_address(inbox_dirs, monkeypatch, 
     from kapacitet import seals
 
     inbox, records, qu = inbox_dirs
+    _sign()
     monkeypatch.setattr(records, "address_of", lambda cid: f"Gatan {cid}")
     rec = _saved(records, "a00000000005", cid=13, **_result(pv_ok=True))
     app = inbox.receive(rec["id"])
@@ -232,6 +247,7 @@ def test_an_automatic_approval_verifies_every_year(inbox_dirs):
     from kapacitet.config import settings
 
     inbox, records, qu = inbox_dirs
+    sig = _sign()
     request = {"cid": 84, "pv_kwp": 4.0, "ev_kw": 0.0, "hp": False, "bat_kwh": 0.0, "ev_phases": 0, "baseline": "static"}
     rec = main.make_record("c00000000001", time.time(), request, main.evaluate_record(request))
     records.save(rec)
@@ -242,5 +258,79 @@ def test_an_automatic_approval_verifies_every_year(inbox_dirs):
     assert done["by"] == "rule"
     item = next(it for it in qu.load()["items"] if it["assessment"] == done["assessment"])
     assert item["by"] == "rule"
+    from kapacitet import dso
+
+    assert item["rule_signature"] == dso.signature_digest(sig.rule_signature)       # what it was decided under
     assert len(item["verification"]["years_verified"]) == len(settings().weather_years)
     assert item["verification"]["all_years"]["export_violations_after"] == 0
+
+
+# ---------------------------------------------------------------- advisor mode
+
+def _decide_spy(monkeypatch, qu):
+    calls = []
+
+    def decide(model, hp, ev, record, decision, note="", emit=None, by="dso", signature=None, **kw):
+        calls.append({"decision": decision, "by": by, "signature": signature})
+        return {"pv_kw": 4.0}
+
+    monkeypatch.setattr(qu, "decide", decide)
+    return calls
+
+
+def _process(inbox, app):
+    inbox.process(app, engine=lambda: {"model": None, "hp": None, "ev": None},
+                  make_record=lambda *a: None, evaluate=lambda r: None)
+    return inbox.applications()[app["id"]]
+
+
+def test_the_defaults_never_decide_on_their_own(inbox_dirs, monkeypatch):
+    from kapacitet import dso
+
+    inbox, records, qu = inbox_dirs
+    calls = _decide_spy(monkeypatch, qu)
+    assert dso.load().auto_decisions is False and dso.load().rule_signature is None
+    rec = _saved(records, "a00000000011", cid=21, **_result(pv_ok=True))
+    done = _process(inbox, inbox.receive(rec["id"]))
+    assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["auto_off"]
+    # switched on, still nobody signed the rule: a person decides
+    dso.update(dso.DsoSettingsChange(auto_decisions=True))
+    rec = _saved(records, "a00000000012", cid=22, **_result(pv_ok=True))
+    done = _process(inbox, inbox.receive(rec["id"]))
+    assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["unsigned_rule"]
+    assert calls == []
+
+
+def test_a_signed_rule_approves_through_the_queue_and_only_what_it_covers(inbox_dirs, monkeypatch):
+    from kapacitet import dso, seals
+
+    inbox, records, qu = inbox_dirs
+    calls = _decide_spy(monkeypatch, qu)
+    signed = _sign(request_kinds=["pv"], max_pv_kwp=8.0)
+    digest = dso.signature_digest(signed.rule_signature)
+    entries = [e for e in seals._lines() if e["kind"] == "rule_signature"]
+    assert len(entries) == 1 and entries[0]["digest"] == digest
+
+    small = _saved(records, "a00000000013", cid=23, pv_kwp=6.0, **_result(pv_ok=True))
+    assert _process(inbox, inbox.receive(small["id"]))["status"] == "firm"
+    assert calls == [{"decision": "firm", "by": "rule", "signature": digest}]
+
+    big = _saved(records, "a00000000014", cid=24, **_result(pv_ok=True))        # 10 kWp, above the 8 signed
+    done = _process(inbox, inbox.receive(big["id"]))
+    assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["out_of_scope"]
+    # other thresholds than the signed ones are another rule, which nobody signed
+    dso.update(dso.DsoSettingsChange(auto_curtailment_mean_pct=9.0))
+    again = _saved(records, "a00000000015", cid=25, pv_kwp=6.0, **_result(pv_ok=True))
+    done = _process(inbox, inbox.receive(again["id"]))
+    assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["unsigned_rule"]
+    assert len(calls) == 1
+
+
+def test_the_rule_cannot_decide_without_a_signature_and_a_planner_names_themselves(inbox_dirs):
+    inbox, records, qu = inbox_dirs
+    rec = _saved(records, "a00000000016", cid=26, **_result(pv_ok=True))
+    with pytest.raises(ValueError, match="signed rule"):
+        qu.decide(None, None, None, rec, "firm", by="rule")
+    item = qu.decide(None, None, None, rec, "declined", note="no", decided_by="  B. Engineer, planning  ")
+    assert item["decided_by"] == "B. Engineer, planning" and item["by"] == "dso"
+    assert qu.load()["items"][0]["decided_by"] == "B. Engineer, planning"

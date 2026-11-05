@@ -59,6 +59,14 @@ def put_settings(change: dso.DsoSettingsChange) -> dict:
     return {"settings": dso.update(change).model_dump(), "policies": list(dso.POLICIES)}
 
 
+@router.put("/settings/rule-signature")
+def put_rule_signature(body: dso.RuleSignatureIn) -> dict:
+    """Sign the automatic rule: who signs, in what role, for which kinds of request, up to what PV
+    size and until when, with the thresholds in force unless given. Sealed as `rule_signature`;
+    without it, or outside it, an application waits for a person."""
+    return {"settings": dso.sign_rule(body).model_dump(), "policies": list(dso.POLICIES)}
+
+
 @router.get("/operation/index")
 def get_index() -> dict:
     """Which combinations of rule and basis were computed, and what each verified to."""

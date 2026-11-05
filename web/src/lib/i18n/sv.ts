@@ -1126,6 +1126,8 @@ const sv: Dict = {
   "inbox.reason.queue": "Kön avvisade beslutet: {detail}",
   "inbox.reason.engine_error": "Utvärderingen misslyckades: {detail}",
   "inbox.reason.assessment_missing": "Bedömningen som den bygger på finns inte längre kvar.",
+  "inbox.reason.unsigned_rule": "Ingen person har signerat regeln som gäller, så en person beslutar.",
+  "inbox.reason.out_of_scope": "Ansökan ligger utanför det som den signerade regeln omfattar, så en person beslutar.",
   "err.unknown_assessment": "Okänd bedömning.",
   "err.already_applied": "Den här bedömningen ligger redan till grund för ansökan {app}.",
   "err.application_open": "Det här huset har redan en ansökan som väntar: {app}.",

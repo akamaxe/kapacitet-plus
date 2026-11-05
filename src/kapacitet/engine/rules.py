@@ -11,11 +11,16 @@
 The rule never declines: a refusal is a person's decision. It reads only the saved assessment and
 the thresholds, so the same answer always gets the same verdict, and a test can hold it to that.
 An approval it gives is still re-verified on every weather year by `queue.decide`.
+
+It decides on its own only what a person has signed for (`scope`, dso.RuleSignature): a request of
+the kinds signed, within the PV size signed, under the thresholds signed and before the signature
+runs out. Anything else goes to a person as `unsigned_rule` or `out_of_scope`.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import date
 
 OUTCOMES = ("firm", "nonfirm", "review")
 
@@ -34,6 +39,8 @@ REASONS = {
     "queue": "the queue refused the decision: {detail}",
     "engine_error": "the evaluation failed: {detail}",
     "assessment_missing": "the assessment behind it is no longer kept",
+    "unsigned_rule": "no person has signed the rule in force, so a person decides",
+    "out_of_scope": "the request is outside what the signed rule covers, so a person decides",
 }
 
 
@@ -42,6 +49,40 @@ class Thresholds:
     curtailment_mean_pct: float
     curtailment_p90_pct: float
     ev_unserved_pct: float
+
+
+def request_kinds(request: dict) -> set[str]:
+    """What a request asks for, in the signature's words."""
+    kinds = set()
+    if float(request.get("pv_kwp", 0) or 0) > 0:
+        kinds.add("pv")
+    if float(request.get("ev_kw", 0) or 0) > 0:
+        kinds.add("ev")
+    if request.get("hp"):
+        kinds.add("hp")
+    if float(request.get("bat_kwh", 0) or 0) > 0:
+        kinds.add("battery")
+    return kinds
+
+
+def scope(signature: dict | None, request: dict, th: Thresholds, today: date) -> str | None:
+    """None when the signed rule covers this request under these thresholds today; otherwise why a
+    person decides: `unsigned_rule` (no signature, another rule's thresholds, or run out) or
+    `out_of_scope` (a kind or a size the signature does not cover)."""
+    if not signature:
+        return "unsigned_rule"
+    signed = signature.get("thresholds") or {}
+    for key in ("curtailment_mean_pct", "curtailment_p90_pct", "ev_unserved_pct"):
+        if abs(float(signed.get(key, -1.0)) - float(getattr(th, key))) > 1e-9:
+            return "unsigned_rule"
+    until = signature.get("valid_until")
+    if until is None or date.fromisoformat(str(until)) < today:
+        return "unsigned_rule"
+    if not request_kinds(request) <= set(signature.get("request_kinds") or ()):
+        return "out_of_scope"
+    if float(request.get("pv_kwp", 0) or 0) > float(signature.get("max_pv_kwp", 0)) + 1e-9:
+        return "out_of_scope"
+    return None
 
 
 def _reason(code: str, **params) -> dict:

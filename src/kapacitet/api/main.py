@@ -1186,11 +1186,9 @@ def _request_files(baseline: str | None = None) -> list[Path]:
 
 
 def make_record(job_id: str, created: float, request: dict, result: dict) -> dict:
-    """What is kept of an assessment: the question, the full answer and what it was computed with."""
-    return {"id": job_id, "created": datetime.fromtimestamp(created, timezone.utc).isoformat(),
-            "request": request, "result": json.loads(json.dumps(result, default=_json_default)),
-            "version": __version__,
-            "provenance": provenance(*_REQUEST_SOURCES, files=_request_files(request.get("baseline")))}
+    """records.make_record with the provenance of the grid the API evaluated it against."""
+    return records.make_record(job_id, created, request, result,
+                               provenance(*_REQUEST_SOURCES, files=_request_files(request.get("baseline"))))
 
 
 def _record(job_id: str, job: dict, result: dict) -> dict:
@@ -1415,6 +1413,8 @@ class DecisionIn(BaseModel):
                           description="firm: connect without an envelope (only if the static study approves); "
                                       "nonfirm: connect with the verified envelope; declined: record a refusal")
     note: str = Field("", max_length=500, description="the planner's reason, kept with the decision")
+    decided_by: str = Field("", max_length=120, description="who decided, as free text (a name, a role), kept "
+                                                         "with the decision")
     application: str | None = Field(None, pattern="^[0-9a-f]{12}$",
                                     description="the application in review this decision answers (api/inbox.py)")
 
@@ -1448,7 +1448,8 @@ def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
 
     try:
         eng = _engine()
-        item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, body.decision, body.note, emit=emit)
+        item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, body.decision, body.note, emit=emit,
+                         decided_by=body.decided_by)
         # the application this answers, if any, is decided with it
         inbox.link_decision(rec["id"], body.decision, float(item.get("pv_kw", 0.0) or 0.0), body.application)
         job.update(result=item, status="done", finished=time.time())
@@ -1522,16 +1523,7 @@ def delete_queue() -> dict:
     return {"ok": True}
 
 
-def _json_default(o):
-    if isinstance(o, (np.integer,)):
-        return int(o)
-    if isinstance(o, (np.floating,)):
-        return None if not np.isfinite(o) else float(o)
-    if isinstance(o, np.ndarray):
-        return o.tolist()
-    if isinstance(o, (np.bool_,)):
-        return bool(o)
-    raise TypeError(type(o))
+_json_default = records.json_default
 
 
 # ------------------------------------------------------------------------------ web UI

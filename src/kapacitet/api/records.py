@@ -87,6 +87,34 @@ def _with_address(record: dict[str, Any]) -> dict[str, Any]:
     return {**record, "result": {**res, "customer": {**customer, "address": address_of(cid)}}}
 
 
+# ---------------------------------------------------------------- what is kept
+
+def json_default(o):
+    """numpy's scalars and arrays as JSON (a non-finite float as null)."""
+    import numpy as np
+
+    if isinstance(o, (np.integer,)):
+        return int(o)
+    if isinstance(o, (np.floating,)):
+        return None if not np.isfinite(o) else float(o)
+    if isinstance(o, np.ndarray):
+        return o.tolist()
+    if isinstance(o, (np.bool_,)):
+        return bool(o)
+    raise TypeError(type(o))
+
+
+def make_record(job_id: str, created: float, request: dict, result: dict, provenance: dict | None = None) -> dict:
+    """What is kept of an assessment: the question, the full answer and what it was computed with.
+    The API passes the provenance of its grid (api/main.make_record); a study's case check passes
+    its station's (study/cases.py)."""
+    from .. import __version__
+
+    return {"id": job_id, "created": datetime.fromtimestamp(created, timezone.utc).isoformat(),
+            "request": request, "result": json.loads(json.dumps(result, default=json_default)),
+            "version": __version__, "provenance": provenance or {}}
+
+
 # ---------------------------------------------------------------- writing and reading
 
 def save(record: dict[str, Any]) -> None:

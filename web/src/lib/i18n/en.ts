@@ -1125,6 +1125,8 @@ const en: Dict = {
   "inbox.reason.queue": "The queue refused the decision: {detail}",
   "inbox.reason.engine_error": "The evaluation failed: {detail}",
   "inbox.reason.assessment_missing": "The assessment behind it is no longer kept.",
+  "inbox.reason.unsigned_rule": "No person has signed the rule in force, so a person decides.",
+  "inbox.reason.out_of_scope": "The request is outside what the signed rule covers, so a person decides.",
   "err.unknown_assessment": "Unknown assessment.",
   "err.already_applied": "This assessment already backs application {app}.",
   "err.application_open": "This house already has an application waiting: {app}.",
