@@ -1384,7 +1384,7 @@ const en: Dict = {
   "met.id.sc.gain": "Capacity over the hourly study",
   "met.id.sc.gain.crit": "at least {min} % over {kw} kW",
   "met.id.sc.unnecessary": "Hours limited without need",
-  "met.id.sc.unnecessary.crit": "of {h} hours limited; the real state, nobody limited, broke no limit",
+  "met.id.sc.unnecessary.crit": "of {h} hours limited, summed over {n} adoption orders and {y} weather years; the real state, nobody limited, broke no limit",
   "met.id.sc.past": "Hours past the plan, neighbourhood total",
   "met.id.sc.past.crit": "net injection above the plan; {pv} hours of solar above it, at worst {kw} kW",
   "met.static.title": "What the static figure assumes",

@@ -1385,7 +1385,7 @@ const sv: Dict = {
   "met.id.sc.gain": "Kapacitet över timstudien",
   "met.id.sc.gain.crit": "minst {min} % över {kw} kW",
   "met.id.sc.unnecessary": "Timmar begränsade utan behov",
-  "met.id.sc.unnecessary.crit": "av {h} begränsade timmar; det verkliga läget, utan begränsning, bröt ingen gräns",
+  "met.id.sc.unnecessary.crit": "av {h} begränsade timmar, summerat över {n} anslutningsordningar och {y} väderår; det verkliga läget, utan begränsning, bröt ingen gräns",
   "met.id.sc.past": "Timmar förbi planen, områdets summa",
   "met.id.sc.past.crit": "nettoinmatning över planen; {pv} timmar med solel över den, som mest {kw} kW",
   "met.static.title": "Vad den statiska siffran antar",

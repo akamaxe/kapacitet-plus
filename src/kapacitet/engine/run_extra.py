@@ -411,7 +411,7 @@ def _intraday_case(args) -> dict:
                 "exceedance": d["exceedance"]}
 
     return {"order": o, **row(k, det), "installation": row(k_i, det_i),
-            "timeseries_adopters": int(mts), "dayahead_adopters": int(lo),
+            "timeseries_adopters": int(mts),
             "exceedance_per_year": [{"year": p["year"], **p["exceedance"]} for p in det["per_year"] if p["exceedance"]],
             "seconds": time.perf_counter() - t0}
 
@@ -489,6 +489,7 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
         row = {k: v for k, v in by_order[r["order"]].items() if k != "exceedance_per_year"}
         da = fs_by.get(r["order"])
         per_order.append({**row, "timeseries_kw": r["timeseries"]["kw_ac"], "doe_kw": r["doe"]["kw_ac"],
+                          "dayahead_adopters": int(da["adopters"]) if da else None,
                           "dayahead_kw": da["kw_ac"] if da else None})
     pv_margin, load_margin = forecast.day_ahead_margins()
     out = {

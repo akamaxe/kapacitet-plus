@@ -3,21 +3,16 @@
 On the tiny grid with its synthetic profiles, so CI runs them: the plan never reads ahead of
 what was measured, the envelopes it issues hold in the real state, and with a gate every hour
 and no delay its capacity sits between the day-ahead one and perfect foresight. The contract
-test on results/intraday.json skips until the stage has run.
+test on results/intraday.json is in test_results_contract.py, away from the tiny grid.
 """
 
 from __future__ import annotations
 
 import contextlib
-import json
 
 import numpy as np
 import pytest
 from conftest import synthetic_profiles, tiny_grid
-
-from kapacitet.paths import processed
-
-INTRADAY = "run: python -m kapacitet compute --stage extra --only intraday"
 
 
 @pytest.fixture(scope="module")
@@ -151,6 +146,8 @@ def test_intraday_envelopes_hold_in_the_real_state_wherever_their_plan_held(setu
             ex = forecast.exceedance_hours(plan, actual)
             beaten = (ex["pv_customers"] > 0) | (ex["load_customers"] > 0)
             assert not (broken & ~beaten).any(), np.flatnonzero(broken & ~beaten)[:5]
+            # the implication has teeth only if the plan holds in most hours (about 1 in 9 here)
+            assert beaten.mean() < 0.25, f"the plan is beaten in {beaten.mean():.0%} of the hours"
         rr = forecast.multiyear(model, order, ms, k, synthetic_profiles.YEARS, hp, ev, "intraday",
                                 check_safety=True)
         assert rr["planning_full_year_violations"] == 0
@@ -237,38 +234,3 @@ def test_a_new_gate_assumption_is_validated():
         intraday.gates_and_lag()
     with gates((6,), -1), pytest.raises(ValueError):
         intraday.gates_and_lag()
-
-
-# ---------------------------------------------------------------- the published replica
-
-def _published() -> dict:
-    path = processed("results", "intraday.json")
-    if not path.exists():
-        pytest.skip(f"intraday.json not published yet; {INTRADAY}")
-    return json.loads(path.read_text(encoding="utf-8"))
-
-
-def test_the_published_replica_backs_its_scorecard():
-    from kapacitet.config import A
-
-    d = _published()
-    assert d["gates_h"] == sorted(A("intraday_gates_h")) and d["measurement_lag_h"] == A("intraday_measurement_lag_h")
-    assert d["margins"]["pv_pct"] == pytest.approx(A("dayahead_pv_margin_pct"))
-    assert len(d["per_order"]) == d["n_orders"]
-    ref = d["median_kw_reference"]
-    for basis in (d, d["installation"]):
-        assert basis["violation_hours"] == 0 and basis["planning_full_year_violations"] == 0
-        assert 0 <= basis["unnecessary_hours"] <= basis["hours_limited"]
-        assert 0 <= basis["within_budget_orders"] <= d["n_orders"]
-        sc = basis["scorecard"]
-        assert sc["gain_over_hourly_pct"]["hourly_kw"] == pytest.approx(ref["timeseries"])
-        assert sc["gain_over_hourly_pct"]["value"] == pytest.approx((basis["median_kw"] / ref["timeseries"] - 1) * 100)
-        assert sc["violation_hours"]["value"] == basis["violation_hours"]
-        assert {v["result"] for k, v in sc.items() if k != "result"} <= {"pass", "pass_if_justified", "fail"}
-    # the intraday plan is never more pessimistic than the day-ahead one, and stops at foresight
-    assert d["median_kw"] <= ref["doe"] + 1e-6
-    assert d["installation"]["median_kw"] <= d["median_kw"] + 1e-6
-    for r in d["per_order"]:
-        assert r["installation"]["adopters"] <= r["adopters"]
-        assert r["kw_ac"] <= r["doe_kw"] + 1e-6
-        assert r["installation"]["z_customer_max_pct"] <= d["z_star_pct"] + 1e-9

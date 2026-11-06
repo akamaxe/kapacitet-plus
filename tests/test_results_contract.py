@@ -444,3 +444,37 @@ def test_a_zero_consumption_capacity_says_whether_todays_grid_already_breaks_a_l
         assert all(d["adopters"]["max"] == 0 for d in c["devices"].values())
     elif c["nodal_kw"]["timeseries"]["median"] > 0:
         assert not any(base.values())
+
+
+INTRADAY = "run: python -m kapacitet compute --stage extra --only intraday"
+
+
+def _intraday() -> dict:
+    path = processed("results", "intraday.json")
+    if not path.exists():
+        pytest.skip(f"intraday.json not published yet; {INTRADAY}")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def test_the_published_replica_backs_its_scorecard():
+    d = _intraday()
+    assert d["gates_h"] == sorted(A("intraday_gates_h")) and d["measurement_lag_h"] == A("intraday_measurement_lag_h")
+    assert d["margins"]["pv_pct"] == pytest.approx(A("dayahead_pv_margin_pct"))
+    assert len(d["per_order"]) == d["n_orders"]
+    ref = d["median_kw_reference"]
+    for basis in (d, d["installation"]):
+        assert basis["violation_hours"] == 0 and basis["planning_full_year_violations"] == 0
+        assert 0 <= basis["unnecessary_hours"] <= basis["hours_limited"]
+        assert 0 <= basis["within_budget_orders"] <= d["n_orders"]
+        sc = basis["scorecard"]
+        assert sc["gain_over_hourly_pct"]["hourly_kw"] == pytest.approx(ref["timeseries"])
+        assert sc["gain_over_hourly_pct"]["value"] == pytest.approx((basis["median_kw"] / ref["timeseries"] - 1) * 100)
+        assert sc["violation_hours"]["value"] == basis["violation_hours"]
+        assert {v["result"] for k, v in sc.items() if k != "result"} <= {"pass", "pass_if_justified", "fail"}
+    # the intraday plan is never more pessimistic than the day-ahead one, and stops at foresight
+    assert d["median_kw"] <= ref["doe"] + 1e-6
+    assert d["installation"]["median_kw"] <= d["median_kw"] + 1e-6
+    for r in d["per_order"]:
+        assert r["installation"]["adopters"] <= r["adopters"]
+        assert r["kw_ac"] <= r["doe_kw"] + 1e-6
+        assert r["installation"]["z_customer_max_pct"] <= d["z_star_pct"] + 1e-9
