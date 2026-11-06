@@ -326,7 +326,7 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
   const [error, setError] = useState<string | null>(null);
   const size = Number(kwp);
   const ready = by.trim() !== "" && role.trim() !== "" && kinds.length > 0 && kwp.trim() !== "" &&
-    Number.isFinite(size) && size >= 0 && size <= 1000 && until >= today;
+    Number.isFinite(size) && size >= 0 && size <= 1000 && until > today;
 
   const toggle = (k: Kind, on: boolean) =>
     setKinds((ks) => (on ? KINDS.filter((x) => x === k || ks.includes(x)) : ks.filter((x) => x !== k)));
@@ -375,7 +375,7 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
         </label>
         <label className="field-inline">
           <span>{t("inbox.sign.until")}</span>
-          <input type="date" min={today} required value={until} onChange={(e) => setUntil(e.target.value)} />
+          <input type="date" min={new Date(Date.parse(today) + 864e5).toISOString().slice(0, 10)} required value={until} onChange={(e) => setUntil(e.target.value)} />
         </label>
       </div>
       <p className="caption-muted">{t("inbox.sign.note")}</p>

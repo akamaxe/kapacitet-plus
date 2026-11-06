@@ -25,6 +25,7 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" }).click();
   // perfect foresight is the default basis, so the address leaves it out (store.ts hashFor)
   await expect(page).not.toHaveURL(/basis=/);
+  await expect(page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText(/the plan issued the day before limited/)).toHaveCount(0);
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
 

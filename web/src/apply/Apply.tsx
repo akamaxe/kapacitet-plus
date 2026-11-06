@@ -305,7 +305,7 @@ function StatusCard({ s }: { s: any }) {
       <p className="caption-muted">{t("apply.status.received", { when: dateTime(lang, s.received) })}
         {s.decided ? ` · ${t("apply.status.decided", { when: dateTime(lang, s.decided) })}` : ""}</p>
       {s.status === "review" && s.reasons?.length > 0 && (
-        <ul className="inbox-reasons">{s.reasons.map((r: any, i: number) => <li key={i}>{reasonLine(t, f, r)}</li>)}</ul>
+        <ul className="inbox-reasons">{s.reasons.map((r: any, i: number) => <li key={i}>{r.code === "auto_off" || r.code === "unsigned_rule" ? t("apply.reason.person") : reasonLine(t, f, r)}</li>)}</ul>
       )}
       <p className="caption-muted">{t("apply.status.keep")}</p>
     </section>

@@ -15,7 +15,7 @@ modelled, and the interface labels which is which on every screen.
 Median over 20 seeded adoption orders and 11 weather years (2015–2025), transformer 0.4 MVA.
 Each envelope row says on which basis it was computed: with **perfect foresight** (each hour's
 limit knows that hour: the planning bound) or **issued the day before** (what an operator can
-issue without a forecast), and whether the 3 % curtailment budget holds for the installations
+issue the day before), and whether the 3 % curtailment budget holds for the installations
 beyond the static limit together (**aggregate**) or for each one (**per installation**).
 
 <!-- M15 -->
@@ -29,7 +29,7 @@ beyond the static limit together (**aggregate**) or for each one (**per installa
 | **Envelopes with perfect foresight, 3 % aggregate** | **787 kW** (782–800) | 96 |
 
 <!-- M15 -->
-So what can be issued today, the day before and without a forecast, is **588–609 kW**: the
+So what can be issued today, the day before, is **588–609 kW**: the
 day-ahead envelopes and the hourly study with no control at all, about what an hourly study
 already allows. With perfect foresight the same grid carries up to **787 kW**, **1.9×** the static
 figure, and the customers who join beyond the static limit lose about **2–3 %** of their annual
@@ -728,7 +728,7 @@ screens say so on the day-ahead basis.
 <!-- M15 -->
 On the reference year the day-ahead envelope keeps the grid inside its limits in every hour but
 curtails 20.2 % of the non-firm export instead of 2.67 %, in 1 240 hours of which only 148 needed
-it: the price of issuing without a forecast, and a reason to say so in the filing rather than
+it: the price of issuing against a bound that dominates the real day, and a reason to say so in the filing rather than
 call it a last resort.
 
 The DSO picks its sharing rule (`PUT /api/v1/settings`, or *Make this the DSO's rule* on the
@@ -922,7 +922,7 @@ the Method screen reads.
 Across the 20 orders the day-ahead search carries a median of 588 kW, against 609 kW for the
 hourly study with no control at all, 413 kW static and 787 kW with perfect foresight, and in
 none of the orders does it carry more than the hourly study. What can be issued the day before
-without a forecast is, in practice, what an hourly study already allows; the step from there to
+from the day-ahead bound is, in practice, what an hourly study already allows; the step from there to
 787 kW is what a forecast would have to buy.
 
 History is a bound on the record, not a guarantee, so every issue audits its exceedances.
