@@ -8,6 +8,7 @@
 import { Chart } from "./LazyChart";
 import { axisStyle } from "../lib/chartStyle";
 import { ChartOrTable, Legend } from "./bits";
+import { PriceBasis, rangeParams } from "./PriceBasis";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
@@ -29,6 +30,11 @@ export function Deferral() {
   // the same horizon at each rate put forward, the one in force first (api: BUSINESS_RATES)
   const rates = Object.entries(B.at_rates ?? {}) as [string, any][];
   const span = B.price_years.length ? `${B.price_years[0]}–${B.price_years[B.price_years.length - 1]}` : "";
+  // the net at the horizon over the price years: the 500 kVA bound's low end to the 800 kVA bound's high end
+  const [rlo, rhi] = B.range?.transformer ?? [];
+  const a = rangeParams(rlo, (v) => ksek(f, v));
+  const b = rangeParams(rhi, (v) => ksek(f, v));
+  const range = a && b ? { min: a.min, max: b.max, p10: a.p10, p90: b.p90 } : null;
   return (
     <section className="block stack" aria-labelledby="deferral-title">
       <div className="block-head">
@@ -39,6 +45,7 @@ export function Deferral() {
         ]} />
       </div>
       <p className="lead-answer">{t("biz.lead", { years: f(B.horizon_years), lo: ksek(f, lo.net_sek), hi: ksek(f, hi.net_sek), rate: f(B.rate_pct, 2) })}</p>
+      {range && <p className="caption">{t("biz.range", { years: f(B.horizon_years), ...range })}</p>}
       <ChartOrTable
         chart={<Chart ariaLabel={t("biz.title")} height={240} deps={[B, lang]} build={(tk, _w, fm) => deferralOption(tk, B, t, fm)} />}
         table={
@@ -77,6 +84,7 @@ export function Deferral() {
       {rates.length > 1 && <p className="caption-muted">{t("biz.ratesNote")}</p>}
       {B.basis && <p className="caption-muted">{t("biz.basis", { z: f(B.basis.z_star_pct) })}</p>}
       <p className="caption-muted">{t("biz.note", { year: B.price_level_year, span, slo: ksek(f, B.at_horizon.with_station[0].net_sek), shi: ksek(f, B.at_horizon.with_station[1].net_sek) })}</p>
+      <PriceBasis P={B.prices} />
     </section>
   );
 }

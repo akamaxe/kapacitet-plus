@@ -65,7 +65,18 @@ SOURCES: dict[str, Source] = {
             license="ENTSO-E Transparency terms (token required)",
             attribution="Prices: ENTSO-E Transparency Platform",
             tag="real",
-            used_for="Optional: prices before Nov 2022 (needs ENTSOE_API_TOKEN)",
+            used_for="Optional: spot prices of the weather years before 2023 (needs ENTSOE_API_TOKEN); "
+                     "the raw XML is never bundled",
+        ),
+        Source(
+            key="ecb_exr",
+            name="Euro foreign exchange reference rates (EUR/SEK)",
+            provider="European Central Bank",
+            homepage="https://data.ecb.europa.eu/data/datasets/EXR",
+            license="ECB statistics: free reuse with the source acknowledged",
+            attribution="Exchange rates: European Central Bank",
+            tag="real",
+            used_for="Converts the ENTSO-E years' EUR prices to SEK at each day's reference rate",
         ),
         Source(
             key="esett",

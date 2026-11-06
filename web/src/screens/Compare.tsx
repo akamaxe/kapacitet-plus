@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnswerStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
+import { rangeParams } from "../components/PriceBasis";
 import { Chart } from "../components/LazyChart";
 import { axisStyle } from "../lib/chartStyle";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
@@ -86,6 +87,7 @@ export default function Compare() {
   // three regions rest on one adoption order, not on the median the rest of the screen shows:
   // each says so in its head, and the bar's basis follows while it is being read
   const priceSpan = (ys: number[] | undefined) => (ys?.length ? `${ys[0]}–${ys[ys.length - 1]}` : "–");
+  const curtRange = rangeParams(RF?.envelopes?.spread?.curtailed_sek, (v) => f(v));
   const valueBasis = OV ? t("cmp.basis.value", { order: OV.order, span: priceSpan(OV.price_years) }) : undefined;
   // Or reinforce prices the deployment the perfect-foresight search sized: it says so
   const reinfBasis = RF ? t(RF.basis ? "cmp.basis.reinfBound" : "cmp.basis.reinf", { order: RF.order, z: f(RF.basis?.z_star_pct ?? zStar) }) : undefined;
@@ -358,6 +360,7 @@ export default function Compare() {
                 c: f(RF.years_of_curtailment.with_station[0]), d: f(RF.years_of_curtailment.with_station[1]),
               })}</p>
             )}
+            {curtRange && <p className="caption">{t("cmp.reinf.curtRange", curtRange)}</p>}
             <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
             <Deferral />
           </section>

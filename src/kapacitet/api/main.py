@@ -878,13 +878,20 @@ def phases() -> dict:
     return with_prov(result("phases.json"), "osm", "synthetic_grid", files=[result_path("phases.json")])
 
 
+def price_sources(prices: dict | None) -> tuple[str, ...]:
+    """The attributions a price-derived figure owes: elprisetjustnu always, and ENTSO-E with the ECB's
+    rate when its years are in the range (summaries.price_basis)."""
+    keys = set((prices or {}).get("source_keys") or ())
+    return ("elprisetjustnu", "entsoe", "ecb_exr") if "entsoe" in keys else ("elprisetjustnu",)
+
+
 @app.get(f"{API}/overinstallation", tags=["hosting"])
 def overinstallation() -> dict:
     """Spot value delivered and curtailed as solar grows past the static limit, and the last kW."""
     from ..engine.summaries import overinstallation_summary
 
-    return with_prov(overinstallation_summary(result("overinstallation.json")),
-                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid",
+    out = overinstallation_summary(result("overinstallation.json"))
+    return with_prov(out, "smhi_strang", "smhi_metobs", *price_sources(out.get("prices")), "synthetic_grid",
                      files=[result_path("overinstallation.json")])
 
 
@@ -899,7 +906,7 @@ def reinforcement() -> dict:
             "reinforce_urban_supplement_sek", "reinforce_price_level_year")
     over = overinstallation_summary(result("overinstallation.json"))
     return with_prov(reinforce(result("tornado.json"), over, {k: A(k) for k in keys}),
-                     "smhi_strang", "smhi_metobs", "elprisetjustnu", "synthetic_grid",
+                     "smhi_strang", "smhi_metobs", *price_sources(over.get("prices")), "synthetic_grid",
                      files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 
@@ -919,7 +926,8 @@ def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
     horizon = years or dso.load().deferral_years
     reinf = reinforcement()["data"]
     rates = {k: A(k) for k in BUSINESS_RATES}
-    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon, rates=rates), "elprisetjustnu", "synthetic_grid",
+    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon, rates=rates),
+                     *price_sources(reinf.get("prices")), "synthetic_grid",
                      files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 

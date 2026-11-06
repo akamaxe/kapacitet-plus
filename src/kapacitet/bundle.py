@@ -54,6 +54,11 @@ LITE = (
 # Everything the pipeline wrote: the live request also needs the hourly profiles, the request
 # baselines and the cached prices and weather.
 FULL = (("processed",), ("raw",))
+# Files a bundle never carries, by their path under data/. ENTSO-E's raw day-ahead XML stays out
+# until the owner decides on its licence (the Transparency Platform's terms are not ODbL, the
+# release's licence); the figures derived from it, in data/processed, may travel. A copy unpacked
+# from a bundle therefore prices the live request on the elprisetjustnu years only.
+EXCLUDED = (re.compile(r"raw/prices/entsoe_[^/]*$"),)
 MANIFEST = "bundle-manifest.json"
 # The folders an archive may write into. The API's own records (data/requests), the imported
 # networks and the choice of network never come from a bundle.
@@ -82,6 +87,7 @@ ERRORS = {
     "bundle_too_large": "the bundle unpacks to more than {gb} GB",
     "not_pinned": "this file is not the pinned data release: its sha256 is not the one expected",
     "bad_network": "{entry} is not a network file this version can load safely",
+    "secret_in_manifest": "{entry} holds the ENTSO-E token: fetch again with this version, which never writes it",
 }
 # What unpacking can refuse a bundle for: the setup page shows these, so each has its words in the
 # interface (err.<code>, tests/test_messages.py).
@@ -131,14 +137,29 @@ def pin_release(archive: str | Path, manifest: dict, url: str | None = None, pat
     return rel
 
 
+def excluded(rel: str) -> bool:
+    """Whether a path under data/ (posix, e.g. raw/prices/entsoe_SE3_2019.xml) may never be bundled."""
+    return any(p.search(rel) for p in EXCLUDED)
+
+
 def _files(data_dir: Path, level: str):
     parts = LITE if level == "lite" else FULL
     for p in parts:
         root = data_dir.joinpath(*p)
-        if root.is_file():
-            yield root
-        elif root.is_dir():
-            yield from sorted(f for f in root.rglob("*") if f.is_file())
+        found = [root] if root.is_file() else sorted(f for f in root.rglob("*") if f.is_file()) if root.is_dir() else []
+        yield from (f for f in found if not excluded(f.relative_to(data_dir).as_posix()))
+
+
+def _secret_free(manifest: Path) -> None:
+    """The download manifest travels in every bundle: refuse one that holds the ENTSO-E token (record()
+    writes *** in its place, so this only trips on a manifest written by hand or by older code)."""
+    if not manifest.is_file():
+        return
+    from .ingest.prices import entsoe_token
+
+    tok = entsoe_token()
+    if tok and tok in manifest.read_text(encoding="utf-8", errors="replace"):
+        raise BundleError("secret_in_manifest", entry="data/raw/manifest.json")
 
 
 def make_bundle(out: str | Path, level: str = "full", web: bool = False, data_dir: Path | None = None) -> dict:
@@ -157,6 +178,7 @@ def make_bundle(out: str | Path, level: str = "full", web: bool = False, data_di
         manifest["mtimes"][rel] = round(f.stat().st_mtime, 3)
         z.write(f, rel)
 
+    _secret_free(data_dir / "raw" / "manifest.json")     # before a byte of the archive is written
     with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=6) as z:
         for f in _files(data_dir, level):
             add(z, f, "data/" + f.relative_to(data_dir).as_posix())

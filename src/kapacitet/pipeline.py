@@ -139,16 +139,26 @@ def cmd_fetch(args: argparse.Namespace) -> None:
         with step("SCB household sizes (HushallT26)"):
             scb.fetch_household_sizes(refresh=refresh)
     if want("prices"):
+        # every weather year, priced where a source has it: elprisetjustnu from its first whole year,
+        # ENTSO-E before that when a token is set (the business case's range); the central years
+        # ([prices] in site.toml) always come from elprisetjustnu
+        zone_site = cfg.site.bidding_zone
+        years = sorted(set(cfg.weather_years) | set(cfg.price_years))
+        early = [y for y in years if prices.source_for_year(y) == "entsoe"]
         with step("Spot prices (elprisetjustnu.se)"):
-            for year in cfg.price_years:
-                prices.fetch_elpris_year(cfg.site.bidding_zone, year, refresh=refresh)
+            for year in years:
+                if year not in early:
+                    prices.fetch_elpris_year(zone_site, year, refresh=refresh)
             for zone in cfg.price_zones:
                 prices.fetch_elpris_year(zone, cfg.national_year, refresh=refresh)
-        if prices.entsoe_token():
-            with step("ENTSO-E day-ahead prices (token found)"):
-                for year in cfg.weather_years:
-                    if year < cfg.price_years[0]:
-                        prices.fetch_entsoe_day_ahead(cfg.site.bidding_zone, year, refresh=refresh)
+        if early and prices.entsoe_token():
+            with step(f"ENTSO-E day-ahead prices {early[0]}–{early[-1]} (token found) and ECB EUR/SEK rates"):
+                prices.fetch_ecb_eursek(early[0], early[-1], refresh=refresh)
+                for year in early:
+                    prices.fetch_entsoe_day_ahead(zone_site, year, refresh=refresh)
+        elif early:
+            log.warning("ENTSOE_API_TOKEN not set: skipping the ENTSO-E prices of %s–%s; "
+                        "the business case's range covers the elprisetjustnu years only.", early[0], early[-1])
 
 
 def cmd_build(args: argparse.Namespace) -> None:

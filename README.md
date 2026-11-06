@@ -273,8 +273,14 @@ year only, so its `mv_band.json` is not comparable with a full one.
 
 Prices come from [elprisetjustnu.se](https://www.elprisetjustnu.se) (free, no key, history from
 November 2022 — attribution: *Elpriser tillhandahålls av Elpriset just nu.se*). With a personal
-ENTSO-E Transparency token in `.env` (`ENTSOE_API_TOKEN=...`, see `.env.example`) the same
-prices can be fetched from the source for all 11 weather years.
+ENTSO-E Transparency token in `.env` (`ENTSOE_API_TOKEN=...`, see `.env.example`),
+`fetch --only prices` also takes the weather years before 2023 (2015–2022) from ENTSO-E, in EUR
+converted to SEK at the ECB's daily reference rate and averaged to hourly means; without it those
+years are skipped with a log line. The business case's central figure is the mean over 2023–2025
+(`[prices]` in `config/site.toml`, the current market regime) and its range spreads over every
+weather year with prices; each response's `prices` block says which years and which source each
+came from. ENTSO-E's raw XML never goes into a data bundle (`bundle.EXCLUDED`) until its licence
+is decided, and the token never reaches a log line, the manifest or a bundle.
 
 ### Getting around
 
@@ -403,6 +409,7 @@ typically in about a second.
 | Irradiance (GHI, DNI, DHI), hourly 2015–2025 | SMHI STRÅNG point API | CC BY 4.0 |
 | Air temperature, hourly | SMHI metobs, station 97200 Stockholm-Bromma | CC BY 4.0 |
 | Day-ahead prices SE1–SE4 | elprisetjustnu.se (ENTSO-E data) | free API, attribution requested |
+| Day-ahead prices SE3 2015–2022 (optional, token) | ENTSO-E Transparency Platform, EUR/SEK from the ECB | ENTSO-E terms (raw XML not bundled); ECB: reuse with the source acknowledged |
 | Production and consumption per zone | eSett Open Data (EXP15/16), load profile EXP18 | open data |
 | Household size mix | SCB PxWeb | CC0 |
 | Buildings, streets, substation position | OpenStreetMap via Overpass | ODbL — share-alike applies to derived data |
@@ -861,7 +868,8 @@ the Method screen):
   k a year, worth k·a(r, T) over the same years. With Ei's real rate for 2024–2027 (4.53 %) and
   its norm values at 2022 prices, deferring the transformer swap by one regulatory period (four
   years, the DSO's `deferral_years`) is worth 15–24 kSEK after the curtailment, 2 878 SEK a year
-  at the spot prices of the price years (not deflated). It pays at any horizon while the swap
+  at the spot prices of 2023–2025, the central years (not deflated); `range` gives each figure at
+  the horizon over every weather year with prices. It pays at any horizon while the swap
   costs more than k/r, about 64 kSEK, and the swap's own norm cost is 156–209 kSEK. `at_rates`
   prices the same horizon at Ei's preliminary real rates for 2028–2031 too (1.99 % with the
   proposed method, 4.57 % with the current one; Konsekvensutredning, p. 342), and a lower rate makes
