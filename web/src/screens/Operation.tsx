@@ -235,6 +235,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   const sch = useKept<any>(`/operation/schedule?${q}`);
   const xml = useText(`/operation/schedule.xml?${q}`);
   const sealed = useSealedDownload();
+  const [reason, setReason] = useState("");
   if (sch.isLoading) return <ChartSkeleton height={240} />;
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
   const rows: any[] = sch.data.rows;
@@ -278,6 +279,16 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}&format=csv`} download><Icon name="download" size={15} />CSV</a>
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
           </div>
+          {sealed.refusalCode === "before_market" ? (
+            <div className="answer-actions">
+              <label className="caption-muted" htmlFor="op-override">{t("op.override.label")}</label>
+              <input id="op-override" className="input" type="text" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
+              <button className="btn small" disabled={sealed.busy || !reason.trim()}
+                onClick={() => sealed.download("/operation/schedule/issue", { cid, date, override_reason: reason.trim() }, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
+                {t("op.override.issue")}
+              </button>
+            </div>
+          ) : null}
           <CoverNote day={date} />
           <SealReceipt receipt={sealed.receipt} />
         </div>

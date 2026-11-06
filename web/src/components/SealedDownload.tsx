@@ -8,7 +8,7 @@
 import { useRef, useState } from "react";
 import { toast } from "./Toast";
 import { apiWrite } from "../lib/api";
-import { responseRefusal } from "../lib/errors";
+import { refusalOf, responseRefusal } from "../lib/errors";
 import { clock } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
@@ -20,20 +20,24 @@ export interface Receipt {
   at: string;
   /** what the record warns of (X-Issue-Flags): an issue before the market result, a day no market alternatives cover */
   flags: string[];
+  /** the reason sealed with an issue made before the market result (override_reason), when one was given */
+  reason?: string;
 }
 
 const FILENAME = /filename="([^"]+)"/;
 
 /** Post `body` to `path` (under /api/v1), save the answer under the name the server gives, and keep the seal it was given. */
-export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; download: (path: string, body: object, fallbackName: string) => Promise<void> } {
+export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; refusalCode: string | null; download: (path: string, body: object, fallbackName: string) => Promise<void> } {
   const t = useT();
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [busy, setBusy] = useState(false);
+  const [refusalCode, setRefusalCode] = useState<string | null>(null);
   const inFlight = useRef(false);
   const download = async (path: string, body: object, fallbackName: string) => {
     if (inFlight.current) return;            // a double click seals once
     inFlight.current = true;
     setBusy(true);
+    setRefusalCode(null);
     // one key per click: a retry of this request is the same issue, a later click is a new one
     const r = await apiWrite(path, body, "POST", { "Idempotency-Key": crypto.randomUUID() }).catch(() => null);
     if (!r) {
@@ -45,7 +49,9 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; d
     if (!r.ok) {
       inFlight.current = false;
       setBusy(false);
-      toast.error(await responseRefusal(t, r));
+      const text = await responseRefusal(t, r.clone());
+      setRefusalCode(refusalOf(await r.json().catch(() => null)).code ?? null);
+      toast.error(text);
       return;
     }
     const file = FILENAME.exec(r.headers.get("Content-Disposition") ?? "")?.[1] ?? fallbackName;
@@ -61,9 +67,10 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; d
     setBusy(false);
     const digest = r.headers.get("X-Seal-Digest");
     const flags = (r.headers.get("X-Issue-Flags") ?? "").split(",").filter(Boolean);
-    if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString(), flags });
+    if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString(), flags,
+      reason: (body as { override_reason?: string }).override_reason?.trim() || undefined });
   };
-  return { receipt, busy, download };
+  return { receipt, busy, refusalCode, download };
 }
 
 /** The receipt of the last sealed download, kept on the page under its button. */
@@ -73,6 +80,7 @@ export function SealReceipt({ receipt }: { receipt: Receipt | null }) {
   return (
     <p className="seal-receipt caption-muted" role="status">
       {receipt ? t("seal.receipt", { when: clock(lang, receipt.at), seq: receipt.seq, file: receipt.file, digest: receipt.digest.slice(0, 12) }) : null}
+      {receipt?.reason && receipt.flags.includes("before_market_override") ? <span className="seal-flag">{t("seal.reason", { reason: receipt.reason })}</span> : null}
       {receipt?.flags.map((fl) => <span key={fl} className="seal-flag">{t(`seal.flag.${fl}`)}</span>)}
     </p>
   );

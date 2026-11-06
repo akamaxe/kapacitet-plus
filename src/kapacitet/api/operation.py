@@ -227,7 +227,7 @@ def _market_terms(body: Issue) -> dict:
     if not g["open"] and not reason:
         raise _refusal(409, "before_market", date=body.date, day_before=g["day_before"], local=local,
                        result_at=g["result_at"])
-    covered = market.covering(day)
+    covered = market.covering(day, cid=body.cid)
     flags = ([] if g["open"] else ["before_market_override"]) + ([] if covered else ["no_market_alternatives"])
     return {"market_result_at": g["result_at"], "market_result_local": local,
             "before_market_result": not g["open"], "override_reason": reason if not g["open"] else None,

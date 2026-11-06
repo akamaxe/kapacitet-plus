@@ -199,12 +199,15 @@ def _period(e: dict) -> tuple[date, date] | None:
         return None
 
 
-def covering(day: date, records: list[dict] | None = None) -> list[str]:
-    """The records whose period covers `day`: the alternatives studied before that day's activations."""
+def covering(day: date, records: list[dict] | None = None, cid: int | None = None) -> list[str]:
+    """The records whose period covers `day`: the alternatives studied before that day's activations.
+    With `cid`, the house's own agreement record counts too (studied before it was signed)."""
     out = []
     for e in entries() if records is None else records:
         p = _period(e) if e.get("scope") in PERIOD_SCOPES else None
         if p and p[0] <= day <= p[1]:
+            out.append(e["id"])
+        elif cid is not None and e.get("scope") == "agreement" and (e.get("ref") or {}).get("cid") == cid:
             out.append(e["id"])
     return out
 

@@ -150,11 +150,12 @@ def test_a_period_covers_its_days_and_an_agreement_covers_none():
     from kapacitet import market
 
     a = market.record(market.RecordIn.model_validate(_record()))[0]
-    market.record(market.RecordIn.model_validate(_record(scope="agreement", ref={"cid": 7})))
+    ag = market.record(market.RecordIn.model_validate(_record(scope="agreement", ref={"cid": 7})))[0]["id"]
     z = market.record(market.RecordIn.model_validate(_record(scope="zone", ref={"start": "2025-06-01", "end": "2025-06-30"})))[0]
     assert market.covering(date(2025, 5, 1)) == [a["id"]]
     assert market.covering(date(2025, 6, 15)) == [a["id"], z["id"]]
     assert market.covering(date(2025, 9, 1)) == []
+    assert market.covering(date(2025, 9, 1), cid=7) == [ag] and market.covering(date(2025, 9, 1), cid=8) == []
     assert len(market.in_year(2025)) == 3 and len(market.in_year(2024)) == 1     # the agreement's holds every year
 
 
