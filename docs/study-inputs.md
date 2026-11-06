@@ -111,6 +111,8 @@ each end of the band, and re-verified on every weather year; one that fails is k
 
 `study portfolio <dir> --run 2026Q4` and `study options <dir> --run 2026Q4` read a collected
 quarter. Neither is published: they are for the DSO's own planning, and Kapacitet+ only proposes.
+Both are internal to the DSO and list every station by name, including those the study hides
+under its disclosure threshold (`hidden` is only a column); they never go into the published files.
 
 | file | content |
 | --- | --- |

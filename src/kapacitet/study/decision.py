@@ -318,6 +318,7 @@ def _cell(x, decimals: int = 1) -> str:
 
 
 def portfolio_markdown(study: Study, q: str, rows: list[dict]) -> str:
+    # internal to the DSO: hidden stations (disclosure k) are listed here; never part of the published files
     from .publish import render
 
     header = SV["portfolio.header"].split(" | ")
@@ -358,7 +359,15 @@ def _brief(block: dict) -> dict:
     return {"status": block.get("status"), "kw": block.get("kw"), "binding_mv_pu": block.get("binding_mv_pu"),
             "limit": ((block.get("binding") or {}).get("limit")),
             "full_year_violations": (block.get("verification") or {}).get("full_year_violations"),
+            "nonconverged_hours": (block.get("verification") or {}).get("nonconverged_hours"),
             "by_end": {k: (v or {}).get("kw") for k, v in (block.get("by_end") or {}).items()} or None}
+
+
+def reusable_doe(doe: dict, ref: str) -> bool:
+    """capacity.json's DOE block stands in for a recomputation only when it verified, at the
+    per-installation budget, with the curtailment, under the same approval."""
+    return bool(doe.get("status") == "ok" and doe.get("budget") == "installation"
+                and "curtailed_kwh_per_year" in doe and (doe.get("approval_reference") or "").strip() == ref)
 
 
 def station_options(study: Study, sid: str, q: str) -> dict:
@@ -397,8 +406,7 @@ def station_options(study: Study, sid: str, q: str) -> dict:
                                        years, n_orders, pct, hp, ev)
         out["reinforce"] = {"generation": _brief(gen), "consumption": _brief(cons)}
     doe = (cap.get("generation") or {}).get("doe") or {}
-    if (doe.get("status") == "ok" and doe.get("budget") == "installation" and "curtailed_kwh_per_year" in doe
-            and (doe.get("approval_reference") or "").strip() == ref):
+    if reusable_doe(doe, ref):
         out["condition"] = {**doe, "source": "capacity.json"}
     elif not ref:
         out["condition"] = {"status": "not_approved"}
@@ -460,7 +468,9 @@ def option_row(facts: dict, doc: dict | None, costs, rates: dict[str, float], ho
             out["reinforce_status"] = "no_larger_unit"
         else:
             g, c = (doc.get("reinforce") or {}).get("generation") or {}, (doc.get("reinforce") or {}).get("consumption") or {}
-            ok = g.get("status") == "ok" and c.get("status") == "ok" and not g.get("full_year_violations")
+            ok = (g.get("status") == "ok" and c.get("status") == "ok"
+                  and not g.get("full_year_violations") and not c.get("full_year_violations")
+                  and not g.get("nonconverged_hours") and not c.get("nonconverged_hours"))
             out.update(reinforce_status="ok" if ok else "not_verified", trafo_next_type=nxt["std_type"],
                        trafo_next_kva=_kva(nxt["sn_mva"]), reinforce_generation_kw=g.get("kw"),
                        reinforce_generation_limit=g.get("limit"), reinforce_consumption_kw=c.get("kw"),
@@ -489,13 +499,17 @@ def option_row(facts: dict, doc: dict | None, costs, rates: dict[str, float], ho
             case = deferral_case(cost, k, rates[key] / 100.0, horizon)
             out[f"wait_deferral_sek_{col}"] = case["deferral_sek"]
             out[f"condition_net_sek_{col}"] = case["net_sek"]
-    rec, why = recommend(out)
+    clean = not any(facts.get(k) for k in ("generation_baseline_violation_hours",
+                                           "consumption_baseline_violation_hours", "full_year_violations"))
+    rec, why = recommend(out, clean)
     out["recommendation"], out["why_none"] = rec, ",".join(why) or None
     return out
 
 
-def recommend(r: dict) -> tuple[str | None, list[str]]:
-    """The proposal for a station's options row, or None with what it lacks (see the docstring)."""
+def recommend(r: dict, clean: bool = True) -> tuple[str | None, list[str]]:
+    """The proposal for a station's options row, or None with what it lacks (see the docstring).
+    `clean`: no baseline violation hours and no full-year violations; "wait" needs it and at least
+    one deferral value."""
     status = r["reinforce_status"]
     why = []
     if status in ("not_computed", "failed", "no_larger_unit", "not_verified"):
@@ -508,7 +522,8 @@ def recommend(r: dict) -> tuple[str | None, list[str]]:
     if not any(g is not None and g > 1e-9 for g in gains):
         return None, ["no_gain"]
     margins = [r["generation_kw"], r["consumption_kw"]]
-    if not r["pending_cases"] and all(m is not None and m > 0 for m in margins):
+    valued = any(v is not None for k, v in r.items() if k.startswith("wait_deferral_sek_"))
+    if not r["pending_cases"] and clean and valued and all(m is not None and m > 0 for m in margins):
         return "wait", []
     if r["condition_status"] == "ok":
         net = r["condition_net_sek_in_force"]

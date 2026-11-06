@@ -204,6 +204,70 @@ def test_a_bigger_unit_that_adds_nothing_and_a_missing_unit_are_not_recommended(
     assert ok["recommendation"] == "wait" and ok["trafo_next_kva"] == 630.0
 
 
+def test_a_wait_needs_a_clean_station_and_a_deferral_value():
+    from kapacitet.study.config import Costs
+
+    costs = Costs(transformer_swap_sek={"630": 400000}, curtailment_sek_per_kwh=1.0, source="avtal")
+    facts = {"rank": 1, "station_id": "S", "name": "S", "customers": 10, "pending_cases": 0,
+             "generation_kw": 100.0, "consumption_kw": 80.0}
+    ref = {"lo": 1.0, "hi": 2.0, "year": 2022}
+    d = doc(gen_kw=160.0, cons_kw=80.0)
+    rates = {"ei_wacc_real_pct": 4.53}
+    assert decision.option_row(facts, d, costs, rates, 4, ref)["recommendation"] == "wait"
+    for k in ("generation_baseline_violation_hours", "consumption_baseline_violation_hours", "full_year_violations"):
+        assert decision.option_row({**facts, k: 3}, d, costs, rates, 4, ref)["recommendation"] == "reinforce"
+    # no rates: nothing to value the deferral with
+    assert decision.option_row(facts, d, costs, {}, 4, ref)["recommendation"] == "reinforce"
+
+
+def test_a_reinforcement_is_verified_on_both_sides():
+    from kapacitet.study.config import Costs
+
+    costs = Costs(transformer_swap_sek={"630": 400000}, curtailment_sek_per_kwh=1.0, source="avtal")
+    facts = {"rank": 1, "station_id": "S", "name": "S", "customers": 10, "pending_cases": 0,
+             "generation_kw": 100.0, "consumption_kw": 80.0}
+    ref = {"lo": 1.0, "hi": 2.0, "year": 2022}
+    for side, key, val in (("consumption", "full_year_violations", 2), ("consumption", "nonconverged_hours", 1),
+                           ("generation", "nonconverged_hours", 1)):
+        d = doc()
+        d["reinforce"][side][key] = val
+        row = decision.option_row(facts, d, costs, {"ei_wacc_real_pct": 4.53}, 4, ref)
+        assert row["reinforce_status"] == "not_verified" and row["recommendation"] is None
+    assert decision._brief({"status": "ok", "verification": {"nonconverged_hours": 2}})["nonconverged_hours"] == 2
+
+
+def test_the_doe_block_is_reused_only_when_budget_approval_and_curtailment_match():
+    ok = {"status": "ok", "budget": "installation", "curtailed_kwh_per_year": 1.0, "approval_reference": " R1 "}
+    assert decision.reusable_doe(ok, "R1")
+    assert not decision.reusable_doe({**ok, "budget": "aggregate"}, "R1")
+    assert not decision.reusable_doe({**ok, "status": "failed"}, "R1")
+    assert not decision.reusable_doe(ok, "R2")
+    assert not decision.reusable_doe({k: v for k, v in ok.items() if k != "curtailed_kwh_per_year"}, "R1")
+
+
+@needs_results
+def test_the_reinforcement_is_computed_on_the_next_transformer_and_the_doe_at_the_installation_budget():
+    from kapacitet.engine import request as rq
+    from kapacitet.engine import run
+    from kapacitet.engine import station as es
+    from kapacitet.study.cases import next_transformer
+
+    m = run.model()
+    hp, ev = run.background_masks(m.C)
+    band = (1.0, 1.0)
+    nxt = next_transformer(rq.model_at(band[0]).net)
+    if nxt is None:
+        pytest.skip("no larger transformer")
+    now = es.generation_capacity(band, [2025], 3, 50.0, hp, ev)
+    new = es.generation_capacity(band, [2025], 3, 50.0, hp, ev, trafo_type=nxt["std_type"],
+                                 approval_reference="R", budget="installation")
+    assert now["status"] == "ok" and new["status"] == "ok" and new["kw"] != now["kw"]
+    assert not decision._brief(new)["full_year_violations"]
+    doe = new["doe"]
+    assert doe["status"] == "ok" and doe["budget"] == "installation" and "curtailed_kwh_per_year" in doe
+    assert decision.reusable_doe(doe, "R")
+
+
 def test_a_price_needs_its_source_and_a_kva_key():
     with pytest.raises(StudyConfigError, match="source"):
         parse({"costs": {"transformer_swap_sek": {"630": 1.0}}})
@@ -231,12 +295,12 @@ def _agree(tornado, over, cost, rates, horizon):
     reinf = summaries.reinforcement(tornado, over, cost)
     case = summaries.business(reinf, rates["ei_wacc_real_pct"], horizon, rates=rates)
     k = reinf["envelopes"]["curtailed_sek_per_year"]
-    # the swap at the low end of the bracket, the envelopes curtailing k SEK a year at one SEK per kWh
-    costs = Costs(transformer_swap_sek={"630": reinf["transformer_sek"][0]}, curtailment_sek_per_kwh=1.0, source="Ei")
+    # the swap at the low end of the bracket, the envelopes curtailing k SEK a year (k/2 kWh at 2 SEK per kWh)
+    costs = Costs(transformer_swap_sek={"630": reinf["transformer_sek"][0]}, curtailment_sek_per_kwh=2.0, source="Ei")
     facts = {"rank": 1, "station_id": "demo", "name": "demo", "customers": 120, "pending_cases": 1,
              "generation_kw": tornado["base"]["static_kw"], "consumption_kw": 100.0}
     row = decision.option_row(facts, doc(condition={"status": "ok", "budget": "installation", "kw": 787.0,
-                                                    "curtailed_kwh_per_year": k}),
+                                                    "curtailed_kwh_per_year": k / 2.0}),
                               costs, rates, horizon, {"lo": cost["reinforce_trafo_500_sek"],
                                                       "hi": cost["reinforce_trafo_800_sek"], "year": 2022})
     assert row["years_of_curtailment"] == reinf["years_of_curtailment"]["transformer"][0]
@@ -245,6 +309,11 @@ def _agree(tornado, over, cost, rates, horizon):
         assert row[f"wait_deferral_sek_{col}"] == at["deferral_sek"]
         assert row[f"condition_net_sek_{col}"] == at["net_sek"]
     assert row["condition_net_sek_in_force"] == case["at_horizon"]["transformer"][0]["net_sek"]
+    # by hand: C(1 - (1+r)^-n) at Ei's 4.53 % and four years
+    c = reinf["transformer_sek"][0]
+    r = rates["ei_wacc_real_pct"] / 100.0
+    assert row["wait_deferral_sek_in_force"] == pytest.approx(c * (1 - (1 + r) ** -horizon))
+    assert row["condition_curtailment_sek_per_year"] == pytest.approx(k)
 
 
 def test_the_options_agree_with_the_reinforcement_summary():
