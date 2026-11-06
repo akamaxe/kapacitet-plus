@@ -54,6 +54,9 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | default control (no schedule) | gräns utan schema | DefaultDERControl in IEEE 2030.5 |
 | meter check | mätarkontroll | |
 | evidence (for Ei) | underlag | evidence, never a legal assessment |
+| day-ahead market result | resultatet från dagen före-marknaden | no schedule is issued before it |
+| market alternatives (consulted) | marknadsbaserade alternativ (som undersökts) | flexibility markets, bilateral flexibility, tariffs |
+| non-market-based redispatch | icke-marknadsbaserad omdirigering | EU 2019/943, art. 13; here, curtailed solar |
 | imported network | importerat nät | a network built from an operator's export |
 
 Money is always **SEK**, never "kr", in every language. Numbers use a narrow no-break space for

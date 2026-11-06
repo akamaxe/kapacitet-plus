@@ -2362,3 +2362,23 @@ main h1:focus, main h1:focus-visible { outline: none; }
 /* the receipt a sealed download leaves under its buttons; empty (and no height) until one is saved */
 .seal-receipt { margin: var(--space-2) 0 0; overflow-wrap: anywhere; }
 .seal-receipt:empty { margin: 0; }
+/* what an issued record warns of (X-Issue-Flags): each on its own line, under the receipt */
+.seal-flag { display: block; margin-top: var(--space-1); color: var(--text-primary); }
+.seal-flag::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: var(--space-2); border-radius: 50%; background: var(--warning); vertical-align: 1px; }
+
+/* ---------------------------------------------------------------- the market alternatives (Operation) */
+.market-form .seg { justify-self: start; }
+.market-select, .decision-note select.market-select {
+  width: 100%; min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+  background: var(--bg-elevated); color: var(--text-primary); font: inherit; font-size: var(--text-small);
+}
+.market-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* one alternative: kind, name, day and outcome side by side, the note under them; one column on a phone */
+.market-alt { display: grid; gap: var(--space-2); margin: 0; padding: 0; border: 0; min-width: 0; }
+.market-alt legend { padding: 0; margin-bottom: var(--space-2); font-size: var(--text-small); font-weight: 500; color: var(--text-secondary); }
+.market-alt-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-2); }
+.market-alt-note { grid-column: 1 / -1; }
+.market-alt-remove { justify-self: start; }
+@media (max-width: 900px) { .market-alt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 480px) { .market-alt-grid { grid-template-columns: minmax(0, 1fr); } }
+.market-alts { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-1); }

@@ -45,7 +45,7 @@ from .paths import CONFIG, DATA, PROCESSED, RAW
 _LOCK = threading.RLock()
 GENESIS = "0" * 64
 KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure",
-         "publication", "sync", "rule_signature", "cases")
+         "publication", "sync", "rule_signature", "cases", "market_alternatives")
 # a chain kept somewhere else than data/requests: a study's evidence/ folder (`chain_at`)
 _CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
 

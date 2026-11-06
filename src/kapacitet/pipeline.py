@@ -7,6 +7,7 @@ Commands
   compute   hosting capacity, DOE, risk, scenarios and UI payloads
   compliance  audit trail and annual filing for a computed year
   forecast  what the published envelopes owe to perfect foresight
+  redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -452,6 +453,20 @@ def cmd_forecast(args: argparse.Namespace) -> None:
         print("\n(Capacity under each scheme needs: python -m kapacitet compute --stage extra)")
 
 
+def cmd_redispatch_report(args: argparse.Namespace) -> None:
+    """The year's non-market-based redispatch, on the day-ahead basis that is issued."""
+    from .engine import redispatch
+    from .paths import processed
+
+    try:
+        report = redispatch.write(args.year)
+    except redispatch.RedispatchError as err:
+        print(f"No redispatch report: {err}")
+        sys.exit(1)
+    print(redispatch.text_sv(report))
+    print(f"Written: {processed('results', 'redispatch.json')} and redispatch_sv.txt")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -506,6 +521,11 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("forecast", help="what the published envelopes owe to perfect foresight")
     p.set_defaults(func=cmd_forecast)
+
+    p = sub.add_parser("redispatch-report", help="the annual report on non-market-based redispatch "
+                                                 "(EU 2019/943, art. 13.4), on the day-ahead basis")
+    p.add_argument("--year", type=int, default=None, help="the report year (default: the operation stage's)")
+    p.set_defaults(func=cmd_redispatch_report)
 
     p = sub.add_parser("purge", help="remove saved assessments older than N days, and erase their seals")
     p.add_argument("--older-than", type=_days, default=None, metavar="N",

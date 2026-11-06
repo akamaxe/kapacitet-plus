@@ -18,6 +18,8 @@ export interface Receipt {
   digest: string;
   seq: number;
   at: string;
+  /** what the record warns of (X-Issue-Flags): an issue before the market result, a day no market alternatives cover */
+  flags: string[];
 }
 
 const FILENAME = /filename="([^"]+)"/;
@@ -58,7 +60,8 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; d
     inFlight.current = false;
     setBusy(false);
     const digest = r.headers.get("X-Seal-Digest");
-    if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString() });
+    const flags = (r.headers.get("X-Issue-Flags") ?? "").split(",").filter(Boolean);
+    if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString(), flags });
   };
   return { receipt, busy, download };
 }
@@ -70,6 +73,7 @@ export function SealReceipt({ receipt }: { receipt: Receipt | null }) {
   return (
     <p className="seal-receipt caption-muted" role="status">
       {receipt ? t("seal.receipt", { when: clock(lang, receipt.at), seq: receipt.seq, file: receipt.file, digest: receipt.digest.slice(0, 12) }) : null}
+      {receipt?.flags.map((fl) => <span key={fl} className="seal-flag">{t(`seal.flag.${fl}`)}</span>)}
     </p>
   );
 }

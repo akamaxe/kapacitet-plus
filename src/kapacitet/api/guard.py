@@ -86,7 +86,12 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("PUT", f"{API}/settings/rule-signature"): Policy("write", "data/requests/settings.json and two seals: "
                                                                "the signature and the change"),
     ("POST", f"{API}/operation/meter-check"): Policy("write", "nothing: the meter's file is checked in memory"),
-    ("POST", f"{API}/operation/schedule/issue"): Policy("write", "a seal of the schedule issued"),
+    ("POST", f"{API}/operation/schedule/issue"): Policy(
+        "write", "a seal of the schedule issued, with its market terms",
+        "after the day-ahead market's result for the day (market_result_local on the day before), "
+        "unless an override_reason is given"),
+    ("POST", f"{API}/operation/market-alternatives"): Policy(
+        "write", "market_alternatives.jsonl and a seal", "an Idempotency-Key sent again records nothing new"),
     ("POST", f"{API}/eipack/export"): Policy("write", "a seal of the evidence pack exported"),
     ("POST", f"{API}/applications"): Policy("write", "applications.jsonl and a seal",
                                             "the rule then decides it when the DSO turned auto_decisions on and "

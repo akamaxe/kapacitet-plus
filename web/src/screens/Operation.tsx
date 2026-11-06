@@ -7,6 +7,7 @@ import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, Tile } from "../components/bits";
 import { InboxSection } from "../components/Inbox";
+import { CoverNote, MarketAlternatives } from "../components/MarketAlternatives";
 import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
 import { Term } from "../components/Term";
 import { API, ApiError, apiWrite, getJSON, useApi } from "../lib/api";
@@ -110,6 +111,7 @@ export default function Operation() {
   const sections: Section[] = [
     { id: "inbox", label: t("op.sec.inbox") },
     { id: "schedule", label: t("op.sec.schedule") },
+    { id: "market", label: t("op.sec.market") },
     { id: "shadow", label: t("op.sec.shadow") },
     { id: "meter", label: t("op.sec.meter") },
   ];
@@ -180,6 +182,17 @@ export default function Operation() {
             <p className="caption-muted">{t("op.notAgreement", { house: name(cid), shown: name(house) })}</p>
           )}
           <DaySchedule cid={house} date={day} />
+        </section>
+
+        {/* ---------------------------------------------------------------- the market comes first */}
+        <section className="region" id="market">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("op.market")}</h2>
+              <p className="caption">{t("op.market.caption")}</p>
+            </div>
+          </div>
+          <MarketAlternatives agreements={agreements} name={name} year={year as number} day={day} />
         </section>
 
         {/* ---------------------------------------------------------------- the season in the shadow */}
@@ -265,6 +278,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}&format=csv`} download><Icon name="download" size={15} />CSV</a>
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
           </div>
+          <CoverNote day={date} />
           <SealReceipt receipt={sealed.receipt} />
         </div>
         <pre className="payload" tabIndex={0} aria-label={t("op.payload")}>{typeof xml.data === "string" ? readable(xml.data) : xml.isError ? t("op.payload.missing") : " "}</pre>

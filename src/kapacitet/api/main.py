@@ -186,6 +186,8 @@ _WRITTEN_BY = {
     "grid/customers.parquet": "build",
     "protection.json": "compute --stage extra --only protection",
     "operation/index.json": "compute --stage extra --only operation",
+    "redispatch.json": "redispatch-report",
+    "redispatch_sv.txt": "redispatch-report",
 }
 
 
@@ -961,6 +963,26 @@ def compliance_text(basis: str | None = Query(None, pattern=BASIS_PATTERN),
     year = _combo_json(combo, "compliance.json").get("year", "")
     return Response(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}-{combo.basis}-{combo.policy}.txt"'})
+
+
+@app.get(f"{API}/redispatch", tags=["compliance"])
+def redispatch() -> dict:
+    """The year's non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4): the solar the
+    conditional agreements curtailed on the day-ahead basis that is issued, with the compensation
+    paid and the market alternatives recorded. Written by `kapacitet redispatch-report`."""
+    return with_prov(result("redispatch.json"), "smhi_strang", "smhi_metobs", "osm", "synthetic_grid",
+                     files=[result_path("redispatch.json")])
+
+
+@app.get(f"{API}/redispatch_sv.txt", tags=["compliance"])
+def redispatch_text() -> Response:
+    """The same report as a page in Swedish, to file."""
+    path = result_path("redispatch_sv.txt")
+    if not path.exists():
+        raise not_computed("redispatch_sv.txt")
+    year = _read("redispatch.json").get("year", "") if result_path("redispatch.json").exists() else ""
+    return Response(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-omdirigering-{year}.txt"'})
 
 
 @memo(maxsize=4)

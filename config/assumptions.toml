@@ -346,6 +346,17 @@ source = "The May–August window of the static study's summer snapshot (engine/
 url = ""
 note = ""
 
+[dayahead_market_result_local]
+value = "13:00"
+unit = "Europe/Stockholm wall clock, on the day before delivery"
+tag = "sourced"
+label = "When the day-ahead market's result is known, before which no schedule is issued"
+label_sv = "När resultatet från dagen före-marknaden är känt, innan dess utfärdas inget schema"
+source = "SDAC (Single Day-Ahead Coupling): orders close at 12:00 CET on the day before delivery and the coupled results follow within the hour; 13:00 on the Stockholm clock is the default each DSO can change in its settings"
+url = "https://www.nemo-committee.eu/sdac"
+note = "Wall-clock time: 12:00 UTC in winter and 11:00 UTC in summer."
+note_sv = "Lokal tid: 12.00 UTC på vintern och 11.00 UTC på sommaren."
+
 [mv_short_circuit_mva]
 value = 150.0
 unit = "MVA"

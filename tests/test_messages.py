@@ -51,10 +51,11 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.engine.queue import ERRORS
     from kapacitet.engine.request import _REASONS
     from kapacitet.importer.validate import MESSAGES
+    from kapacitet.market import ERRORS as MARKET
 
     pairs = [(f"chk.msg.{c}", t) for c, t in MESSAGES.items()]
     pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS, **SETUP,
-                                            **_unpack_errors()}.items()]
+                                            **MARKET, **_unpack_errors()}.items()]
     pairs += [(f"req.reason.{c}", t) for c, t in _REASONS.items()]
     pairs += [(f"inbox.reason.{c}", t) for c, t in RULE_REASONS.items()]
     return pairs
@@ -91,10 +92,11 @@ def test_no_code_means_two_different_sentences():
     from kapacitet.datasets import ERRORS as DATASETS
     from kapacitet.engine.delivery import ERRORS as DELIVERY
     from kapacitet.engine.queue import ERRORS
+    from kapacitet.market import ERRORS as MARKET
 
     seen: dict[str, str] = {}
     clashes = []
-    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP, _unpack_errors()):
+    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP, MARKET, _unpack_errors()):
         for code, text in source.items():
             if code in seen and seen[code] != text:
                 clashes.append(code)

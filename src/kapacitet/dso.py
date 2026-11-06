@@ -89,6 +89,13 @@ class DsoSettings(BaseModel):
     market_alternative_statement: str = Field("", max_length=2000)
     method_approval_reference: str = Field("", max_length=200)
     review_statement: str = Field("", max_length=2000)
+    # when the day-ahead market's result is known, on Stockholm's wall clock on the day before
+    # delivery: a schedule is issued only after it (kapacitet/market.py)
+    market_result_local: str = Field(default_factory=lambda: str(_assumption("dayahead_market_result_local")),
+                                     pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    # what the DSO paid in the report year for the curtailment its conditional agreements imposed,
+    # for the redispatch report (engine/redispatch.py); zero unless the DSO enters it
+    redispatch_compensation_sek: float = Field(0.0, ge=0, le=1e12)
     # what the rule may decide on its own (`sign_rule`); none: nothing
     rule_signature: RuleSignature | None = None
 
@@ -115,6 +122,8 @@ class DsoSettingsChange(BaseModel):
     market_alternative_statement: str | None = Field(None, max_length=2000)
     method_approval_reference: str | None = Field(None, max_length=200)
     review_statement: str | None = Field(None, max_length=2000)
+    market_result_local: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+    redispatch_compensation_sek: float | None = Field(None, ge=0, le=1e12)
 
 
 def path():

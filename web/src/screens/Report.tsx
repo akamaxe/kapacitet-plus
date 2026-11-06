@@ -7,6 +7,7 @@ import { PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Missing, Protocol, Tile } from "../components/bits";
 import { EiSection } from "../components/EiPack";
+import { RedispatchSection } from "../components/Redispatch";
 import { ReportRecord } from "../components/ReportRecord";
 import { toast } from "../components/Toast";
 import { Term } from "../components/Term";
@@ -103,7 +104,7 @@ export default function Report() {
   const sections: Section[] = [
     { id: "resort", label: t("rep.sec.resort") },
     { id: "agreements", label: t("rep.sec.agreements") },
-    ...(ops.data ? [{ id: "ei", label: t("rep.sec.ei") }] : []),
+    ...(ops.data ? [{ id: "ei", label: t("rep.sec.ei") }, { id: "redispatch", label: t("rep.sec.redispatch") }] : []),
     { id: "house", label: t("rep.sec.house") },
   ];
 
@@ -221,6 +222,19 @@ export default function Report() {
               </div>
             </div>
             <EiSection basis={basis} policy={policy} />
+          </section>
+        )}
+
+        {/* ---------------------------------------------------------------- redispatch, art. 13.4 */}
+        {ops.data && (
+          <section className="region" id="redispatch">
+            <div className="region-head">
+              <div className="region-title">
+                <h2>{t("rd.title", { year: R.year })}</h2>
+                <p className="caption">{t("rd.caption")}</p>
+              </div>
+            </div>
+            <RedispatchSection />
           </section>
         )}
 

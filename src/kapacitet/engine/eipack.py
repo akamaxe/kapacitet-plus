@@ -10,8 +10,9 @@ pack gives a state and the facts behind it:
     not_met         not met in this simulation, with the figures that say so
     not_applicable  does not apply to the basis being read
 
-It reads published results, the DSO's settings and the business case; it computes nothing new and
-draws no legal conclusion.
+It reads published results, the DSO's settings, the business case and the DSO's records of the
+market alternatives it consulted (kapacitet/market.py), which the pack carries in full; it computes
+nothing new and draws no legal conclusion.
 """
 
 from __future__ import annotations
@@ -37,8 +38,10 @@ def _declared(text: str, code: str) -> tuple[str, dict]:
 
 
 def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict], report: dict | None,
-           business: dict | None = None) -> dict:
-    """The pack for one basis and sharing rule. `settings` are the DSO's (dso.DsoSettings)."""
+           business: dict | None = None, market_records: list[dict] | None = None) -> dict:
+    """The pack for one basis and sharing rule. `settings` are the DSO's (dso.DsoSettings);
+    `market_records` the alternatives it recorded (market.entries())."""
+    market_records = list(market_records or [])
     cfg = conditions()
     combo = index["combos"][basis][policy]
     unneeded = int(combo.get("activations_unnecessary_hours") or 0)
@@ -52,6 +55,10 @@ def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict
             fact = {"code": "capacity_shortage", "params": {"n": n, "rejected": rejected}}
         elif key == "market_first":
             state, fact = _declared(settings.market_alternative_statement, "market_statement")
+            # the records back the statement; they never stand in for it
+            if market_records:
+                fact = {"code": "market_statement_recorded" if state == "declared" else "market_recorded_only",
+                        "params": {**fact["params"], "recorded": len(market_records)}}
         elif key == "method_approved":
             state, fact = _declared(settings.method_approval_reference, "method_reference")
         elif key == "review_when_changed":
@@ -84,4 +91,4 @@ def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict
                      "label": c["label"], "label_sv": c["label_sv"]})
     counts = {s: sum(1 for r in rows if r["state"] == s) for s in STATES}
     return {"basis": basis, "policy": policy, "year": index.get("year"), "source": cfg["source"],
-            "conditions": rows, "counts": counts}
+            "conditions": rows, "counts": counts, "market_alternatives": market_records}

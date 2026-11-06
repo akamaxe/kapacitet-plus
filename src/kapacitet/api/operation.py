@@ -1,5 +1,7 @@
 """The DSO's settings and what the operation stage computed, over HTTP: a day's schedule as an
-inverter would receive it, the season replayed in the shadow, and a meter checked against its limits."""
+inverter would receive it (issued only once the day-ahead market has cleared), the market
+alternatives the DSO consulted, the season replayed in the shadow, and a meter checked against its
+limits."""
 
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import dso, seals
+from .. import dso, market, seals
 from ..config import A
 from ..paths import processed_ro
 from .combos import COMMAND, POLICY_PATTERN, operation_index, resolve
@@ -45,7 +47,8 @@ def _provenance(*files) -> dict:
 def _refusal(status: int, code: str, **params) -> HTTPException:
     from ..engine.delivery import ERRORS
 
-    return HTTPException(status, {"code": code, "message": ERRORS[code].format(**params), "params": params})
+    message = {**ERRORS, **market.ERRORS}[code].format(**params)
+    return HTTPException(status, {"code": code, "message": message, "params": params})
 
 
 @router.get("/settings")
@@ -99,7 +102,8 @@ def _pack(basis: str, policy: str | None) -> tuple[dict, str]:
         business = main.business(None)["data"]
     except HTTPException:
         business = None                      # the reinforcement case needs results the pack can do without
-    pack = assess(basis, combo.policy, dso.load(), operation_index(), agreements["agreements"], report, business)
+    pack = assess(basis, combo.policy, dso.load(), operation_index(), agreements["agreements"], report, business,
+                  market.entries())
     pack["provenance"] = _provenance(processed_ro("results", "operation", "index.json"),
                                      processed_ro("results", "operation", "agreements.json"), report_path)
     return pack, combo.policy
@@ -208,6 +212,26 @@ class Issue(BaseModel):
     cid: int = Field(..., ge=0)
     date: str = Field(..., pattern=DATE_PATTERN)
     policy: str | None = Field(None, pattern=POLICY_PATTERN)
+    override_reason: str | None = Field(None, max_length=500, description="why the day is issued before the "
+                                        "day-ahead market's result is known; sealed with the issue")
+
+
+def _market_terms(body: Issue) -> dict:
+    """What the issue owes to the market: when its result was known, whether the issue waited for
+    it (or why not), and which records of market alternatives cover the day. Refuses an issue
+    before the result unless it gives a reason; a day no record covers is flagged, never refused."""
+    day = Date.fromisoformat(body.date)
+    local = dso.load().market_result_local
+    g = market.gate(day, local)
+    reason = (body.override_reason or "").strip()
+    if not g["open"] and not reason:
+        raise _refusal(409, "before_market", date=body.date, day_before=g["day_before"], local=local,
+                       result_at=g["result_at"])
+    covered = market.covering(day)
+    flags = ([] if g["open"] else ["before_market_override"]) + ([] if covered else ["no_market_alternatives"])
+    return {"market_result_at": g["result_at"], "market_result_local": local,
+            "before_market_result": not g["open"], "override_reason": reason if not g["open"] else None,
+            "market_alternatives": covered, "flags": flags}
 
 
 @router.post("/operation/schedule/issue")
@@ -225,18 +249,30 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
     with _SEAL_LOCK:
         kept = None
         if idempotency_key:
-            item += f"-k{idempotency_key}"
-            entry = seals.entry_for("schedule", item)
-            kept = seals.sealed_copy("schedule", item) if entry else None
+            # the key alone names the issue, whatever its market terms were
+            keyed = [e for e in seals.sealed_of_kind("schedule")
+                     if e["entry"]["id"].startswith(item) and e["entry"]["id"].endswith(f"-k{idempotency_key}")]
+            if keyed:
+                entry, kept = keyed[-1]["entry"], keyed[-1]["record"]
         if kept is not None:
             rows = kept["limits"]              # the limits sent the first time, issued when they were sealed
+            terms = kept.get("market") or {}
         else:
+            terms = _market_terms(body)
+            # the same day issued under other market terms (a reason, a record added since) is
+            # another record, so it never collides with the first one's seal
+            if terms["flags"] or terms["market_alternatives"]:
+                item += f"-m{seals.digest(terms)[:8]}"
+            if idempotency_key:
+                item += f"-k{idempotency_key}"
             entry = seals.seal("schedule", item, {
                 "cid": body.cid, "date": body.date, "policy": combo.policy, "basis": "dayahead",
-                "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows]})
+                "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows],
+                "market": terms})
     issued = int(datetime.fromisoformat(entry["at"]).timestamp())
-    return Response(der_control_list(body.cid, rows, issued), media_type="application/sep+xml",
-                    headers=_sealed_headers(entry, name))
+    headers = _sealed_headers(entry, name)
+    headers["X-Issue-Flags"] = ",".join(terms.get("flags", []))
+    return Response(der_control_list(body.cid, rows, issued), media_type="application/sep+xml", headers=headers)
 
 
 @router.get("/operation/default.xml")
@@ -252,6 +288,28 @@ def default_xml(cid: int = Query(..., ge=0), policy: str | None = Query(None, pa
     body = default_der_control(cid, float(dc["kw"][dc["cids"].index(cid)]))
     return Response(body, media_type="application/sep+xml",
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-default-{cid}.xml"'})
+
+
+# ---------------------------------------------------------------- the market alternatives
+
+@router.get("/operation/market-alternatives")
+def market_alternatives() -> dict:
+    """Every record of the market alternatives the DSO consulted, newest first, each with its seal."""
+    return {"entries": market.with_seals(), "scopes": list(market.SCOPES), "kinds": list(market.KINDS),
+            "market_result_local": dso.load().market_result_local}
+
+
+@router.post("/operation/market-alternatives")
+def record_market_alternatives(body: market.RecordIn,
+                               idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> dict:
+    """Record the alternatives studied before signing an agreement or before a period of
+    activations: appended to market_alternatives.jsonl and sealed. Sent again under the same
+    Idempotency-Key, it returns the first record and adds nothing."""
+    try:
+        entry, seal = market.record(body, idempotency_key)
+    except market.MarketError as err:
+        raise _refusal(422, err.code, **err.params) from err
+    return {"entry": entry, "seal": {k: seal[k] for k in ("digest", "seq", "at")}}
 
 
 # ---------------------------------------------------------------- the season in the shadow

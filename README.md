@@ -224,6 +224,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet compute` | Hosting capacity, envelopes, risk, 2030 scenarios, validation and the UI payloads |
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
+| `kapacitet redispatch-report [--year Y]` | The annual report on non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4), on the day-ahead basis that is issued: `results/redispatch.json` and `redispatch_sv.txt` |
 | `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet study …` | A DSO's study of many secondary substations, each built in its own process (below) |
