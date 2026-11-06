@@ -18,7 +18,6 @@ limit knows that hour: the planning bound) or **issued the day before** (what an
 issue the day before), and whether the 3 % curtailment budget holds for the installations
 beyond the static limit together (**aggregate**) or for each one (**per installation**).
 
-<!-- M15 -->
 | Method | Solar connected | Houses |
 |---|---|---|
 | Static study, worst case | **413 kW AC** (P10–P90 405–415) | 50 |
@@ -28,7 +27,6 @@ beyond the static limit together (**aggregate**) or for each one (**per installa
 | Envelopes with perfect foresight, 3 % per installation | 724 kW (713–737) | 88 |
 | **Envelopes with perfect foresight, 3 % aggregate** | **787 kW** (782–800) | 96 |
 
-<!-- M15 -->
 So what can be issued today, the day before, is **588–609 kW**: the
 day-ahead envelopes and the hourly study with no control at all, about what an hourly study
 already allows. With perfect foresight the same grid carries up to **787 kW**, **1.9×** the static
@@ -47,7 +45,6 @@ curtailment-versus-capacity curve is on screen, not just that point.
 
 Three findings worth a sentence each:
 
-<!-- M15 -->
 - **At the assumed MV voltage, the transformer is the binding limit, not voltage.** With
   1.00 pu at the substation (an assumption, not a measurement) and no control, voltages stay at
   1.048 pu (limit 1.10), and the sensitivity chart moves with the transformer rating and the
@@ -55,14 +52,12 @@ Three findings worth a sentence each:
   published as a sensitivity (`mv_band.json`; the envelopes stay at 1.00 pu): at its low end the
   published envelopes would overload the transformer in 21 hours (to 101.9 %), at its high end
   voltage binds in 332 hours. A measured MV voltage is the first thing to ask a DSO for.
-<!-- M15 -->
 - **Envelopes with perfect foresight beat reinforcement on the same asset.** 0.4 MVA with
   envelopes (787 kW, the perfect-foresight planning figure) carries more than a 0.63 MVA
   transformer studied statically (655 kW, sensitivity run). At Ei's standard costs that
   transformer alone costs 156–209 kSEK, as much as 54–73 years of the curtailment the envelopes
   impose, valued at spot prices. Issued the day before, the same deployment curtails far more
   (below), so the comparison is a planning figure, and the screen says so.
-<!-- M15 -->
 - **Fairness is free in this network.** Max-min, pro-rata, proportional-fair and max-total all
   curtail the same total energy (1.98 % in the showcase year) because one shared constraint
   binds; they only differ in *who* is curtailed (Jain index 0.59 → 0.92).
@@ -725,7 +720,6 @@ map state under `results/operation/<basis>/<rule>/`; the audit trail says whethe
 hour needed limiting at all. The deployment itself was sized with perfect foresight, and the
 screens say so on the day-ahead basis.
 
-<!-- M15 -->
 On the reference year the day-ahead envelope keeps the grid inside its limits in every hour but
 curtails 20.2 % of the non-firm export instead of 2.67 %, in 1 240 hours of which only 148 needed
 it: the price of issuing against a bound that dominates the real day, and a reason to say so in the filing rather than
@@ -757,9 +751,9 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
   judged by two tests: no hour above a grid limit, and every agreement within the level it was
   promised (the DSO's `agreed_level_pct`, by default the capacity search's own 3 % of each house's
-  solar energy over the year). <!-- M15 --> On the reference year the day-ahead envelope passes the first and
-  fails the second: 0 hours above a limit, but only 3 of 43 agreements within 3 % (median 10.4 %,
-  worst 24.9 %). With perfect foresight 35 of 43 would be, worst 4.3 %. Not ready to go live, and
+  solar energy over the year). On the reference year the day-ahead envelope passes the first and
+  fails the second: 0 hours above a limit, but only 1 of 43 agreements within 3 % (median 12.0 %,
+  worst 27.0 %). With perfect foresight 35 of 43 would be, worst 4.3 %. Not ready to go live, and
   the screen says so; the remedy, re-issuing during the day with measurements, is outside this
   prototype.
 - `POST /api/v1/operation/meter-check` with `{cid, csv}`: measured export (a `timestamp` with its
@@ -847,7 +841,6 @@ the application's address handling (`initUrlSync`) never sees `#/apply`.
 Two sides, both from published results and sourced prices (`config/assumptions.toml`, shown on
 the Method screen):
 
-<!-- M15 -->
 - **The DSO's** (`GET /api/v1/business`, under the reinforcement comparison; it prices the
   perfect-foresight deployment at the aggregate budget and says so in `basis`): deferring a cost C
   by T years is worth C(1 − (1+r)^−T) today; the envelopes cost the houses their curtailed energy,
@@ -892,7 +885,6 @@ in the other ten weather years, demand at the lowest, hour of the day by hour of
 a 3 % margin over the first and under the second. A clock and eleven years of history, no
 forecast. It is a bound on the record, so whether it held is audited, not assumed.
 
-<!-- M15 -->
 On the published showcase deployment, 43 non-firm customers in 2025:
 
 | scheme | envelopes issued | limit violations | curtailed | % of export |
@@ -918,7 +910,6 @@ at the same 3 % budget. `compute --stage extra` runs the published capacity sear
 against the day-ahead state over all 20 adoption orders and writes `foresight.json`, which
 the Method screen reads.
 
-<!-- M15 -->
 Across the 20 orders the day-ahead search carries a median of 588 kW, against 609 kW for the
 hourly study with no control at all, 413 kW static and 787 kW with perfect foresight, and in
 none of the orders does it carry more than the hourly study. What can be issued the day before
@@ -926,7 +917,7 @@ from the day-ahead bound is, in practice, what an hourly study already allows; t
 787 kW is what a forecast would have to buy.
 
 History is a bound on the record, not a guarantee, so every issue audits its exceedances.
-<!-- M15 -->
+
 In 2025, with the 3 % margins, the neighbourhood total stayed inside its eleven-year bound in
 every hour (without the margins, its worst hour would have gone 2.8 % past it). The per-house
 exceptions, 23 customer-hours of generation above the bound and 845 of load below it, are
