@@ -340,6 +340,8 @@ def unpack_bundle(path: str | Path, data_dir: Path | None = None, web_dir: Path 
             kind, dest = _destination(name, data_dir, web_dir)
             if kind == "web" and only_data:
                 continue
+            if excluded(name.removeprefix("data/")):  # an older or hand-made archive: never unpack these
+                continue
             try:
                 info = z.getinfo(prefix + name)
             except KeyError as err:

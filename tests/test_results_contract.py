@@ -478,3 +478,14 @@ def test_the_published_replica_backs_its_scorecard():
         assert r["installation"]["adopters"] <= r["adopters"]
         assert r["kw_ac"] <= r["doe_kw"] + 1e-6
         assert r["installation"]["z_customer_max_pct"] <= d["z_star_pct"] + 1e-9
+
+
+def test_the_overinstallation_prices_cover_every_weather_year_once_recomputed(results):
+    from kapacitet.config import settings
+
+    d = results("overinstallation")
+    if "price_years" not in d:
+        pytest.skip("overinstallation.json has no price_years: compute --stage extra --only overinstallation")
+    if set(d["price_years"]) == set(settings().price_years):
+        pytest.skip("only the 2023-2025 prices were fetched: fetch --only prices with ENTSOE_API_TOKEN set, then recompute")
+    assert set(d["price_years"]) == set(settings().weather_years)

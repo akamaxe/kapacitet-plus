@@ -1439,7 +1439,7 @@ const sv: Dict = {
   "prices.basisOnly": "Centralt värde: medelvärdet över spotpriserna {central}, den nuvarande marknadsregimen. Bara de åren har priser här, så intervallet omfattar bara dem.",
   "prices.src.elprisetjustnu": "Elpriser tillhandahålls av Elpriset just nu.se ({years}).",
   "prices.src.entsoe": "Priser {years}: ENTSO-E Transparency Platform, omräknade med ECB:s referenskurs EUR/SEK.",
-  "biz.range": "Över prisåren är det värt {min}–{max} kSEK att skjuta upp {years} år (p10–p90: {p10}–{p90} kSEK).",
+  "biz.range": "Över prisåren är det värt {min}–{max} kSEK att skjuta upp {years} år.",
   "own.range": "Över prisåren är det värt {min}–{max} SEK att ansluta nu (p10–p90: {p10}–{p90} SEK).",
   "cmp.reinf.curtRange": "Över prisåren ligger nedregleringens spotvärde på {min}–{max} SEK per år (p10–p90: {p10}–{p90} SEK).",
   "biz.ratesNote": "De två räntorna för 2028–2031 är preliminära siffror ur Ei:s konsekvensutredning och fastställs först i Ei:s beslut; inledningen använder den gällande räntan. En lägre ränta gör uppskovet mindre värt.",

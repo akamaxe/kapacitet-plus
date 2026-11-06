@@ -1438,7 +1438,7 @@ const en: Dict = {
   "prices.basisOnly": "Central figure: the mean over the spot prices of {central}, the current market regime. Only those years have prices here, so the range covers them alone.",
   "prices.src.elprisetjustnu": "Elpriser tillhandahålls av Elpriset just nu.se ({years}).",
   "prices.src.entsoe": "Prices of {years}: ENTSO-E Transparency Platform, converted at the ECB's EUR/SEK reference rate.",
-  "biz.range": "Over the price years, deferring by {years} years is worth {min}–{max} kSEK (p10–p90: {p10}–{p90} kSEK).",
+  "biz.range": "Over the price years, deferring by {years} years is worth {min}–{max} kSEK.",
   "own.range": "Over the price years, connecting now is worth {min}–{max} SEK (p10–p90: {p10}–{p90} SEK).",
   "cmp.reinf.curtRange": "Over the price years, the curtailment's spot value runs {min}–{max} SEK a year (p10–p90: {p10}–{p90} SEK).",
   "biz.ratesNote": "The two 2028–2031 rates are preliminary figures from Ei's impact assessment and are set only in its decision; the lead uses the rate in force. A lower rate makes deferring worth less.",

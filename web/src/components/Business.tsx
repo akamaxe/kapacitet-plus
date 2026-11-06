@@ -34,7 +34,7 @@ export function Deferral() {
   const [rlo, rhi] = B.range?.transformer ?? [];
   const a = rangeParams(rlo, (v) => ksek(f, v));
   const b = rangeParams(rhi, (v) => ksek(f, v));
-  const range = a && b ? { min: a.min, max: b.max, p10: a.p10, p90: b.p90 } : null;
+  const range = a && b ? { min: a.min, max: b.max } : null;
   return (
     <section className="block stack" aria-labelledby="deferral-title">
       <div className="block-head">

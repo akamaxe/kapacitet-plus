@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnswerStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
-import { rangeParams } from "../components/PriceBasis";
+import { PriceBasis, rangeParams } from "../components/PriceBasis";
 import { Chart } from "../components/LazyChart";
 import { axisStyle } from "../lib/chartStyle";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
@@ -295,6 +295,7 @@ export default function Compare() {
                 <h2>{t("cmp.value")}</h2>
                 <p className="caption">{t("cmp.value.caption")}</p>
                 <p className="region-basis">{valueBasis}</p>
+                <PriceBasis P={OV.prices} />
               </div>
               <Legend items={[
                 { color: "var(--series-dynamic)", label: t("cmp.value.delivered") },
@@ -361,6 +362,7 @@ export default function Compare() {
               })}</p>
             )}
             {curtRange && <p className="caption">{t("cmp.reinf.curtRange", curtRange)}</p>}
+            <PriceBasis P={RF.prices} />
             <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
             <Deferral />
           </section>

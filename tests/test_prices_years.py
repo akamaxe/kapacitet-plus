@@ -239,3 +239,119 @@ def test_no_entsoe_file_enters_a_bundle_and_no_token_rides_in_its_manifest(tmp_p
         make_bundle(tmp_path / "c.zip", data_dir=root)
     assert err.value.code == "secret_in_manifest" and secret not in str(err.value)
     assert not (tmp_path / "c.zip").exists()
+
+
+# --- the real fetch path, with only the transport stubbed ----------------------------------
+
+SECRET = "a1b2c3d4-0000-4fff-8eee-123456789abc"
+
+
+class _Reply:
+    def __init__(self, status, content, url):
+        self.status_code, self.content, self.url, self.text = status, content, url, content.decode("utf-8", "replace")
+
+
+def _real_fetch(monkeypatch, tmp_path, status, body):
+    from urllib.parse import urlencode
+
+    from kapacitet.ingest import prices, provenance
+
+    raw_dir = tmp_path / "raw"
+    monkeypatch.setattr(provenance, "RAW", raw_dir)
+    monkeypatch.setattr(provenance, "MANIFEST", raw_dir / "manifest.json")
+    monkeypatch.setattr(prices, "raw", lambda *p: raw_dir.joinpath(*p))
+    monkeypatch.setattr(prices, "entsoe_token", lambda: SECRET)
+
+    class _Session:
+        def request(self, method, url, params=None, data=None, timeout=None):
+            return _Reply(status, body, f"{url}?{urlencode(params or {})}")
+
+    monkeypatch.setattr(provenance, "session", lambda: _Session())
+    return raw_dir
+
+
+def test_a_failed_entsoe_request_leaks_no_token(monkeypatch, tmp_path, caplog):
+    from kapacitet.ingest import prices
+    from kapacitet.ingest.provenance import FetchError
+
+    raw_dir = _real_fetch(monkeypatch, tmp_path, 401, b"unauthorized")
+    with caplog.at_level(logging.DEBUG), pytest.raises(FetchError) as err:
+        prices.fetch_entsoe_day_ahead("SE3", 2019)
+    assert SECRET not in str(err.value) and all(SECRET not in r.getMessage() for r in caplog.records)
+    assert not (raw_dir / "manifest.json").exists()
+
+
+def test_a_successful_entsoe_fetch_writes_the_file_and_no_token_to_the_manifest(monkeypatch, tmp_path, caplog):
+    from kapacitet.ingest import prices
+
+    body = _doc(_period("2018-12-31T23:00Z", "2019-01-01T01:00Z", "PT60M", {1: 40.0, 2: 41.0}))
+    raw_dir = _real_fetch(monkeypatch, tmp_path, 200, body)
+    with caplog.at_level(logging.DEBUG):
+        dest = prices.fetch_entsoe_day_ahead("SE3", 2019)
+    assert dest.read_bytes() == body
+    manifest = (raw_dir / "manifest.json").read_text(encoding="utf-8")
+    assert "entsoe_SE3_2019" in manifest and SECRET not in manifest
+    assert all(SECRET not in r.getMessage() for r in caplog.records)
+
+
+def test_an_acknowledgement_reply_is_an_error_and_is_not_cached(monkeypatch, tmp_path):
+    from kapacitet.ingest import prices
+    from kapacitet.ingest.provenance import FetchError
+
+    ack = (f'<?xml version="1.0"?><Acknowledgement_MarketDocument xmlns="{NS}">'
+           "<Reason><code>999</code><text>No matching data found</text></Reason>"
+           "</Acknowledgement_MarketDocument>").encode()
+    raw_dir = _real_fetch(monkeypatch, tmp_path, 200, ack)
+    with pytest.raises(FetchError, match="no prices for SE3 2016"):
+        prices.fetch_entsoe_day_ahead("SE3", 2016)
+    assert not (raw_dir / "prices" / "entsoe_SE3_2016.xml").exists()
+    assert not (raw_dir / "manifest.json").exists()
+
+
+# --- the API's attribution and the unpack path ---------------------------------------------
+
+def test_price_sources_attribute_entsoe_and_the_ecb_only_for_their_years():
+    from kapacitet.api.main import price_sources
+
+    assert price_sources(None) == ("elprisetjustnu",)
+    assert price_sources({"source_keys": ["elprisetjustnu"]}) == ("elprisetjustnu",)
+    assert price_sources({"source_keys": ["elprisetjustnu", "entsoe"]}) == ("elprisetjustnu", "entsoe", "ecb_exr")
+
+
+def test_hourly_prefers_elprisetjustnu_when_both_files_exist(monkeypatch, tmp_path):
+    from kapacitet import paths
+    from kapacitet.engine import economics
+    from kapacitet.ingest import prices
+    from kapacitet.timeindex import year_index
+
+    monkeypatch.setattr(paths, "RAW", tmp_path)
+    (tmp_path / "prices").mkdir()
+    (tmp_path / "prices" / "elpris_SE3_2023.jsonl").write_text("", encoding="utf-8")
+    idx = year_index(2023)
+    marker = pd.DataFrame({"sek_kwh": 1.0, "eur_kwh": 0.1, "filled": False}, index=idx)
+    monkeypatch.setattr(prices, "read_elpris", lambda z, y: pd.DataFrame())
+    monkeypatch.setattr(prices, "hourly_prices", lambda df, i: marker)
+    monkeypatch.setattr(prices, "entsoe_hourly", lambda *a: pytest.fail("ENTSO-E used although elprisetjustnu has the year"))
+    economics.hourly.cache_clear()
+    try:
+        assert economics.hourly(2023, "SE3") is marker
+    finally:
+        economics.hourly.cache_clear()
+
+
+def test_an_old_bundle_with_entsoe_raw_files_does_not_unpack_them(tmp_path, monkeypatch):
+    from kapacitet import bundle
+
+    root = tmp_path / "data"
+    for rel, body in {"processed/results/showcase.json": "{}", "raw/prices/elpris_SE3_2025.jsonl": "x",
+                      "raw/prices/entsoe_SE3_2019.xml": "<x/>"}.items():
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_text(body, encoding="utf-8")
+    with monkeypatch.context() as m:                     # an older version, which did not exclude them
+        m.setattr(bundle, "EXCLUDED", ())
+        bundle.make_bundle(tmp_path / "old.zip", data_dir=root)
+    assert any("entsoe" in n for n in zipfile.ZipFile(tmp_path / "old.zip").namelist())
+    target = tmp_path / "out"
+    bundle.unpack_bundle(tmp_path / "old.zip", data_dir=target, web_dir=tmp_path / "web", only_data=True)
+    assert (target / "raw/prices/elpris_SE3_2025.jsonl").exists()
+    assert not list(target.rglob("entsoe*"))

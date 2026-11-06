@@ -138,6 +138,13 @@ def fetch_entsoe_day_ahead(zone: str, year: int, *, refresh: bool = False) -> Pa
         "periodEnd": f"{year}12312300",
     }
     resp = http("GET", ENTSOE_URL, params=params, timeout=180)
+    # "no matching data" comes back as an Acknowledgement document at HTTP 200: keep it out of the cache
+    try:
+        empty = parse_entsoe_xml(resp.content).empty
+    except ET.ParseError:
+        empty = True
+    if empty:
+        raise FetchError(f"ENTSO-E returned no prices for {zone} {year}")
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(resp.content)
     safe = {k: v for k, v in params.items() if k != "securityToken"}
