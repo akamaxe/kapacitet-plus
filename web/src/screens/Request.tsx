@@ -16,6 +16,7 @@ import { HouseSearch } from "../components/HouseSearch";
 import { copyText } from "../lib/clipboard";
 import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, apiWrite, useApi } from "../lib/api";
+import { follow, type Following } from "../lib/evaluate";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -79,7 +80,15 @@ export default function Request() {
   const jobRef = useRef<Job | null>(null);
   jobRef.current = job;
   const mapRef = useRef<MLMap | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  // the evaluation being followed, and a counter that tells a later one from it: a running
+  // evaluation is stopped on the server when another one starts, the house changes or the page is left
+  const watchRef = useRef<Following | null>(null);
+  const runRef = useRef(0);
+  const stopRunning = () => {
+    runRef.current += 1;
+    watchRef.current?.cancel();
+    watchRef.current = null;
+  };
   const resultRef = useRef<HTMLDivElement>(null);
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
@@ -126,7 +135,7 @@ export default function Request() {
   useEffect(() => {
     // ...unless the answer on screen is this house's, opened from a link or the history
     if (house && jobRef.current?.result?.request?.cid === house.cid) return;
-    esRef.current?.close();
+    stopRunning();
     setJob(null);
     if (house) setPv(Math.min(pvMax, Math.max(pvMin, Math.round(house.kwp))));
     if (house?.has_hp) setHp(false);
@@ -138,6 +147,8 @@ export default function Request() {
   // A saved assessment named in the address bar: fetch it and put its question back in the form.
   useEffect(() => {
     if (!urlJob || jobRef.current?.id === urlJob) return;
+    // another saved answer opened while one is running: the running one stops
+    stopRunning();
     let cancelled = false;
     fetch(`${API}/requests/${urlJob}`)
       .then(async (r) => {
@@ -255,14 +266,23 @@ export default function Request() {
 
   const evaluate = async () => {
     if (cid === null) return;
-    esRef.current?.close();
+    stopRunning();
+    const run = runRef.current;
     setUrlJob(null);
     setJob({ id: "", stages: {}, result: null, error: null });
     let r: Response;
     try {
       r = await apiWrite("/requests", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0, baseline });
     } catch {
-      fail(t("req.dropped"));
+      if (run === runRef.current) fail(t("req.dropped"));
+      return;
+    }
+    if (run !== runRef.current) {
+      // left, or asked again, while the server was accepting it: stop it before it takes a slot
+      if (r.ok) {
+        const started = await r.json().catch(() => null);
+        if (started?.id) void apiWrite(`/requests/${started.id}`, {}, "DELETE").catch(() => null);
+      }
       return;
     }
     if (!r.ok) {
@@ -271,62 +291,36 @@ export default function Request() {
       return;
     }
     const { id } = await r.json();
-    const es = new EventSource(`${API}/requests/${id}/events`);
-    esRef.current = es;
-    const mark = (stage: Stage) => (e: MessageEvent) => {
-      const p = JSON.parse(e.data);
-      setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p.ms ?? 0 } } : j));
-    };
-    STAGES.forEach((s) => es.addEventListener(s, mark(s) as any));
-    es.addEventListener("queued", (e: MessageEvent) => {
-      const n = Number(JSON.parse(e.data)?.position);
-      setJob((j) => (j && Number.isFinite(n) ? { ...j, id, queued: n } : j));
-    });
-    es.addEventListener("started", () => setJob((j) => (j ? { ...j, queued: null } : j)));
-    es.addEventListener("done", async () => {
-      es.close();
-      // the server answers 202 while a job is still running; only a 200 carries the result
-      let res: any = null;
-      for (let i = 0; i < 20 && !res; i++) {
-        const r = await fetch(`${API}/requests/${id}`).catch(() => null);
-        if (r?.status === 200) res = await r.json();
-        else if (r && r.status !== 202) break;
-        else await new Promise((ok) => setTimeout(ok, 150));
-      }
-      if (!res) {
-        fail(t("req.ended"));
-        return;
-      }
-      setJob((j) => (j ? { ...j, id, stages: { ...j.stages, done: 0 }, result: res } : j));
-      jobRef.current = { id, stages: {}, result: res, error: null };
-      setUrlJob(id);
-      void queryClient.invalidateQueries({ queryKey: ["/requests?limit=12"] });
-    });
-    // The engine reports its own failure as a named event. Without this the stepper
-    // simply stopped, indistinguishable from a transport drop, and the button never
-    // came back.
-    es.addEventListener("failed", (e: MessageEvent) => {
-      es.close();
-      fail(JSON.parse(e.data)?.error ?? "");
-    });
-    // The server always ends the stream. If it ends with no result, something went
-    // wrong between the stages, so this is the signal that stops the spinner.
-    es.addEventListener("end", () => {
-      es.close();
-      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.failedPlain"), detail: t("req.ended") } : j));
-    });
-    es.addEventListener("timeout", () => {
-      es.close();
-      fail(t("req.timeout"));
-    });
-    // the native EventSource error: the stream dropped rather than the job failing
-    es.addEventListener("error", () => {
-      es.close();
-      setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.failedPlain"), detail: t("req.dropped") } : j));
-    });
+    const current = () => run === runRef.current;
+    watchRef.current = follow(`${API}/requests/${id}/events`, `${API}/requests/${id}`, STAGES, {
+      stage: (stage, p) => {
+        if (current()) setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p?.ms ?? 0 } } : j));
+      },
+      queued: (n) => current() && setJob((j) => (j ? { ...j, id, queued: n } : j)),
+      started: () => current() && setJob((j) => (j ? { ...j, queued: null } : j)),
+      done: (res) => {
+        if (!current()) return;
+        watchRef.current = null;
+        setJob((j) => (j ? { ...j, id, stages: { ...j.stages, done: 0 }, result: res } : j));
+        jobRef.current = { id, stages: {}, result: res, error: null };
+        setUrlJob(id);
+        void queryClient.invalidateQueries({ queryKey: ["/requests?limit=12"] });
+      },
+      fail: (why, detail) => {
+        if (!current()) return;
+        watchRef.current = null;
+        // the engine's own failure says why; a stream that ended or dropped without an answer, or
+        // an answer never stored, stops the spinner with what happened
+        if (why === "failed") fail(detail ?? "");
+        else if (why === "timeout") fail(t("req.timeout"));
+        else setJob((j) => (j && !j.result && !j.error ? { ...j, error: t("req.failedPlain"), detail: t(why === "dropped" ? "req.dropped" : "req.ended") } : j));
+      },
+    }, `/requests/${id}`);
   };
 
-  useEffect(() => () => esRef.current?.close(), []);
+  // leaving the screen stops the evaluation on the server, so it does not hold a slot of the pool
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => () => stopRunning(), []);
 
   if (net.isError || meta.isError) return <Missing of={[net, meta]} />;
   if (!net.data || !meta.data || asm.isLoading) return <SplitSkeleton wide />;

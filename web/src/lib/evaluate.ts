@@ -12,7 +12,8 @@ import { apiWrite } from "./api";
 export type Failure = "failed" | "ended" | "timeout" | "dropped";
 
 export interface Handlers {
-  stage: (name: string) => void;
+  /** A stage finished, with what the server said about it (its `ms`, for one). */
+  stage: (name: string, data?: any) => void;
   done: (result: any) => void;
   fail: (why: Failure, detail?: string) => void;
   /** Waiting for a free slot: its place in line (1 is next); called again as it moves up. */
@@ -35,7 +36,14 @@ export function follow(eventsUrl: string, resultUrl: string, stages: readonly st
     settled = true;
     es.close();
   };
-  stages.forEach((s) => es.addEventListener(s, () => on.stage(s)));
+  const parse = (raw: string) => {
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return undefined;
+    }
+  };
+  stages.forEach((s) => es.addEventListener(s, (e: MessageEvent) => on.stage(s, parse(e.data))));
   es.addEventListener("queued", (e: MessageEvent) => {
     const position = Number(JSON.parse(e.data)?.position);
     if (Number.isFinite(position)) on.queued?.(position);

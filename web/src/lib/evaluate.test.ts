@@ -30,7 +30,7 @@ describe("follow", () => {
     const seen: (number | string)[] = [];
     follow("/events", "/result", ["static"], {
       ...quiet,
-      stage: (s) => seen.push(s),
+      stage: (s, data) => seen.push(s, data?.ms),
       queued: (n) => seen.push(n),
       started: () => seen.push("started"),
     });
@@ -38,7 +38,8 @@ describe("follow", () => {
     FakeSource.last.send("queued", { position: 1 });
     FakeSource.last.send("started");
     FakeSource.last.send("static", { ms: 4 });
-    expect(seen).toEqual([2, 1, "started", "static"]);
+    // each stage hands on what the server said about it (the request screen shows its ms)
+    expect(seen).toEqual([2, 1, "started", "static", 4]);
   });
 
   it("stops the evaluation on the server while it runs, and only once", () => {
