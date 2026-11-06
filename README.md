@@ -12,18 +12,29 @@ modelled, and the interface labels which is which on every screen.
 
 ## What it shows
 
-Median over 20 seeded adoption orders and 11 weather years (2015–2025), transformer 0.4 MVA:
+Median over 20 seeded adoption orders and 11 weather years (2015–2025), transformer 0.4 MVA.
+Each envelope row says on which basis it was computed: with **perfect foresight** (each hour's
+limit knows that hour: the planning bound) or **issued the day before** (what an operator can
+issue without a forecast), and whether the 3 % curtailment budget holds for the installations
+beyond the static limit together (**aggregate**) or for each one (**per installation**).
 
+<!-- M15 -->
 | Method | Solar connected | Houses |
 |---|---|---|
 | Static study, worst case | **413 kW AC** (P10–P90 405–415) | 50 |
 | Static study + fixed export cap at 3 % curtailment | 416 kW | 51 |
 | Real hours, no control (every hour of 11 years within limits) | 609 kW | 74 |
-| **Dynamic envelopes at 3 % curtailment** (aggregate) | **787 kW** (782–800) | 96 |
+| Envelopes issued the day before, no forecast, 3 % aggregate | 588 kW (577–598) | 71 |
+| Envelopes with perfect foresight, 3 % per installation | 724 kW (713–737) | 88 |
+| **Envelopes with perfect foresight, 3 % aggregate** | **787 kW** (782–800) | 96 |
 
-So the same grid carries **1.9×** more solar with envelopes, and the customers who join beyond
-the static limit lose about **2–3 %** of their annual solar energy. Without any control, the
-same 94 systems would push the transformer above its rating in **148 hours** of 2025.
+<!-- M15 -->
+So what can be issued today, the day before and without a forecast, is **588–609 kW**: the
+day-ahead envelopes and the hourly study with no control at all, about what an hourly study
+already allows. With perfect foresight the same grid carries up to **787 kW**, **1.9×** the static
+figure, and the customers who join beyond the static limit lose about **2–3 %** of their annual
+solar energy; the step from 609 to 787 kW is what a forecast would have to buy. Without any
+control, the same 94 systems would push the transformer above its rating in **148 hours** of 2025.
 
 The 3 % threshold is an anchor, not an invention: German EnWG §11(2) *Spitzenkappung* lets a
 DSO plan with up to 3 % of the annual energy of each installation curtailed. The headline holds
@@ -36,13 +47,22 @@ curtailment-versus-capacity curve is on screen, not just that point.
 
 Three findings worth a sentence each:
 
-- **The transformer is the binding limit here, not voltage.** Even with no control, voltages
-  stay at 1.048 pu (limit 1.10). The sensitivity chart shows the result moves with the
-  transformer rating and the inverter sizing, and barely with the voltage assumptions.
-- **Envelopes beat reinforcement on the same asset.** 0.4 MVA with envelopes (787 kW) carries
-  more than a 0.63 MVA transformer studied statically (655 kW, sensitivity run). At Ei's standard
-  costs that transformer alone costs 156–209 kSEK, as much as 54–73 years of the curtailment the
-  envelopes impose, valued at spot prices.
+<!-- M15 -->
+- **At the assumed MV voltage, the transformer is the binding limit, not voltage.** With
+  1.00 pu at the substation (an assumption, not a measurement) and no control, voltages stay at
+  1.048 pu (limit 1.10), and the sensitivity chart moves with the transformer rating and the
+  inverter sizing far more than with the voltage. The MV band a DSO may run, 0.98–1.06 pu, is
+  published as a sensitivity (`mv_band.json`; the envelopes stay at 1.00 pu): at its low end the
+  published envelopes would overload the transformer in 21 hours (to 101.9 %), at its high end
+  voltage binds in 332 hours. A measured MV voltage is the first thing to ask a DSO for.
+<!-- M15 -->
+- **Envelopes with perfect foresight beat reinforcement on the same asset.** 0.4 MVA with
+  envelopes (787 kW, the perfect-foresight planning figure) carries more than a 0.63 MVA
+  transformer studied statically (655 kW, sensitivity run). At Ei's standard costs that
+  transformer alone costs 156–209 kSEK, as much as 54–73 years of the curtailment the envelopes
+  impose, valued at spot prices. Issued the day before, the same deployment curtails far more
+  (below), so the comparison is a planning figure, and the screen says so.
+<!-- M15 -->
 - **Fairness is free in this network.** Max-min, pro-rata, proportional-fair and max-total all
   curtail the same total energy (1.98 % in the showcase year) because one shared constraint
   binds; they only differ in *who* is curtailed (Jain index 0.59 → 0.92).
@@ -306,10 +326,12 @@ to navigate screens without affecting form fields.
    Approve it into the queue (*Connect with this envelope*), then ask for the house next door:
    it meets less headroom, because the approved house used it first. *Empty the queue* to start
    again. Every answer can be printed as a record or downloaded hour by hour.
-5. **Operation** — what the DSO would send: one house's 24 limits for a day, issued the day
-   before, beside the export it would make without them, and the file its inverter would receive.
-   Below, the summer replayed in the shadow against a pilot's two tests, and a meter checked
-   against what it was sent (try the synthetic day).
+5. **Operation** — the applications, each with the DSO's rule's proposal (a person decides
+   unless the rule is switched on and signed: *Sign the rule…*), and what the DSO would issue:
+   one house's 24 limits for a day, issued the day before, beside the export it would make
+   without them, and the file issued for its inverter. Below, the summer replayed in the shadow
+   against a pilot's two tests, and a meter checked against the limits issued for it (try the
+   synthetic day).
 6. **Annual report** — what the DSO files with Ei: every curtailed hour, the part of the grid
    that was full, the 43 agreements, and each house's own record to read and download.
 7. **2030 scenarios** — how far the neighbourhood can electrify before either method needs
@@ -338,9 +360,11 @@ web/        React + MapLibre + ECharts: 8 screens in English and Swedish (docs/g
 ```
 
 **Power flow.** A batched Z-bus fixed point `V = w + Z·conj(S/V)` on pandapower's exact model
-(cable shunts, transformer tap and magnetising branch). It solves a full year in 1.6 s and
-matches `pp.runpp` to 1e-12 pu — the tests check this on both a synthetic feeder and the real
-network.
+(cable shunts, transformer tap and magnetising branch). On the reference network (165 buses) a
+full year takes under two seconds on a laptop: the validation stage records each run's own time in
+`validation.json` (`zbus_seconds_per_year`), which the Method screen shows. It stays within 1e-12 pu
+of `pp.runpp` over the validation stage's 12 hours (`max_abs_dv_pu`), and the tests hold it to
+1e-8 pu on a synthetic feeder and on the real network.
 
 **Hosting capacity.** Static, for solar: the worst-case summer snapshot (PV at
 `static_pv_factor` × its rating, the household load `static_load_rule` picks: the minimum daytime
@@ -502,6 +526,12 @@ that holds them, kept outside the code and outside any git work tree (by default
 
 Every input file and column, and what each step of a quarter writes, is in
 [docs/study-inputs.md](docs/study-inputs.md); `study init` writes the same list into `study.toml`.
+A station's network comes in the four-file contract of
+[docs/network-export-contract.md](docs/network-export-contract.md) (with the optional fifth table of
+what is already connected), or as CGMES (below). A quarter runs in order: `import` and `fetch`, then
+`check`, `build`, `collect` and `validate`, then `review`, `sign`, `publish` and `diff`; connection
+cases (`cases`, Module 2) and the DSO's own list of approvals (`sync`) can run at any time on built
+stations, and `sign-rule` says what the automatic rule may decide in them.
 
 `study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
 the method's choices (percentile, curtailment basis, the consumption device), the MV band, what may
@@ -677,23 +707,29 @@ in its place, with the digest the copy had and why it went, so the chain stays v
 DSO's record of what it decided and are not purged. Records written before addresses were left
 out still hold them, and their seals cover them as they are.
 
-## Every rule, and what can be sent the day before
+## Every rule, and what can be issued the day before
 
 ```bash
 .venv/Scripts/python -m kapacitet compute --stage extra --only operation    # about two minutes
 ```
 
 The published envelopes use perfect foresight: each hour's limit knows that hour, which is the
-bound an operator works towards but cannot send in advance. `engine/operation.py` computes the
+bound an operator works towards but cannot issue in advance. `engine/operation.py` computes the
 published deployment under each of the four sharing rules and on two bases, perfect foresight
-and **issued the day before** (the dominating state of `forecast.climatological`: safe without a
-forecast), and verifies every combination over the whole year with the nonlinear flow before it
-can be served. Each one gets its own envelopes, filing, audit trail and map state under
-`results/operation/<basis>/<rule>/`; the audit trail now says whether each limited hour needed
-limiting at all. On the reference year the day-ahead envelope keeps the grid inside its limits
-in every hour but curtails 17.9 % of the non-firm export instead of 2.67 %, in 1 146 hours of
-which only 148 needed it: the price of issuing without a forecast, and a reason to say so in the
-filing rather than call it a last resort.
+and **issued the day before**, against the planning state of `forecast.climatological`: at least
+the generation and at most the load the same fortnight reached in the other weather years, with
+3 % margins. That bound is empirical, not a guarantee, so every issue audits where the real year
+went past it (the next section). Every combination is verified over the whole year with the
+nonlinear flow before it can be served. Each one gets its own envelopes, filing, audit trail and
+map state under `results/operation/<basis>/<rule>/`; the audit trail says whether each limited
+hour needed limiting at all. The deployment itself was sized with perfect foresight, and the
+screens say so on the day-ahead basis.
+
+<!-- M15 -->
+On the reference year the day-ahead envelope keeps the grid inside its limits in every hour but
+curtails 20.2 % of the non-firm export instead of 2.67 %, in 1 240 hours of which only 148 needed
+it: the price of issuing without a forecast, and a reason to say so in the filing rather than
+call it a last resort.
 
 The DSO picks its sharing rule (`PUT /api/v1/settings`, or *Make this the DSO's rule* on the
 Annual report screen); the change is sealed with the rule it replaced, and the report, the audit
@@ -701,9 +737,9 @@ trail, each house's envelope and the neighbourhood's envelope scenario follow it
 request still meets the published envelopes allocated equally (its baselines are computed once
 for that rule).
 
-### Sending it: the schedule, the inverter's file, the shadow season and the meter
+### Issuing it: the schedule, the inverter's file, the shadow season and the meter
 
-Only the day-ahead basis is ever sent; a schedule with perfect foresight would be hindsight. The
+Only the day-ahead basis is ever issued; a schedule with perfect foresight would be hindsight. The
 **Operation** screen and these endpoints read what the operation stage wrote:
 
 - `GET /api/v1/operation/schedule?cid=&date=` (`&format=csv`): a house's 24 limits for a date,
@@ -712,22 +748,22 @@ Only the day-ahead basis is ever sent; a schedule with perfect foresight would b
 - `GET /api/v1/operation/schedule.xml`: the same day as an IEEE 2030.5 `DERControlList` in the
   CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`, as a preview that
   leaves no record. `POST /api/v1/operation/schedule/issue` with `{cid, date}` issues it: the issue
-  is sealed with the limits it sent, the seal comes back in `X-Seal-Digest`, `X-Seal-Seq` and
-  `X-Seal-At`, and the screen keeps it as a receipt under the button. Sent again with the same
+  is sealed with the limits it issued, the seal comes back in `X-Seal-Digest`, `X-Seal-Seq` and
+  `X-Seal-At`, and the screen keeps it as a receipt under the button. Asked again with the same
   `Idempotency-Key` header, an issue returns the first document and its seal instead of sealing a
   second. `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
-  keeps when no schedule arrives: never above the lowest limit issued that year, so close to zero
+  keeps when no schedule reaches it: never above the lowest limit issued that year, so close to zero
   here. The format is modelled on the profile, not certified, and no device is connected.
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
   judged by two tests: no hour above a grid limit, and every agreement within the level it was
   promised (the DSO's `agreed_level_pct`, by default the capacity search's own 3 % of each house's
-  solar energy over the year). On the reference year the day-ahead envelope passes the first and
+  solar energy over the year). <!-- M15 --> On the reference year the day-ahead envelope passes the first and
   fails the second: 0 hours above a limit, but only 3 of 43 agreements within 3 % (median 10.4 %,
   worst 24.9 %). With perfect foresight 35 of 43 would be, worst 4.3 %. Not ready to go live, and
   the screen says so; the remedy, re-issuing during the day with measurements, is outside this
   prototype.
 - `POST /api/v1/operation/meter-check` with `{cid, csv}`: measured export (a `timestamp` with its
-  UTC offset and `export_kw` or `export_w`) against the limits the house was sent. A breach is a
+  UTC offset and `export_kw` or `export_w`) against the limits issued for the house. A breach is a
   reading more than 250 W above its hour's limit, the measure SA Power Networks used in its
   Flexible Exports trial (`meter_breach_tolerance_w`). `GET /api/v1/operation/meter-example`
   writes a synthetic day to try it on, with one deliberate ten-minute breach.
@@ -759,7 +795,8 @@ reference such as `KP-7K3M-Q9TD-X2HB-5RWN`, and seals it. The code (80 bits in C
 is shown once, to whoever applied: the log and the seal keep only its SHA-256, and the DSO's inbox
 (`GET /api/v1/inbox`, a page at a time with `limit` and `offset`) shows its first four characters. One worker takes the applications in the order they
 arrived. If the queue has moved since the assessment, it evaluates the request again against the
-grid as it now stands, then `engine/rules.py` gives its verdict:
+grid as it now stands, then `engine/rules.py` gives its verdict, which is a proposal unless the
+DSO has switched the rule on and signed it (below):
 
 - **firm** when every part passes the static study and the house's own main fuse and phases take it;
 - **with an envelope** when the static study rejects a part but the verified envelope keeps the
@@ -768,9 +805,11 @@ grid as it now stands, then `engine/rules.py` gives its verdict:
   (`ev_unserved_limit_pct`), no heat unserved, and no hour above a grid limit;
 - **to a person** otherwise, with the reasons. The rule never declines.
 
-Advisor mode is the default: automatic decisions are off (`auto_decisions`), and switched on, the
-rule still decides only what a person has signed for (`PUT /api/v1/settings/rule-signature`, or
-`study sign-rule` for a study): who signs and in what role, the kinds of request (pv, ev, hp,
+Advisor mode is the default: automatic decisions are off (`auto_decisions`), so the rule only
+proposes, and the inbox shows each application's `proposal` beside the reasons a person decides
+it. Switched on, the rule still decides only what a person has signed for (*Sign the rule…* in
+the inbox on the Operation screen, `PUT /api/v1/settings/rule-signature`, or `study sign-rule`
+for a study), and the inbox says whether a signature is in force (`signature_state`): who signs and in what role, the kinds of request (pv, ev, hp,
 battery), the largest solar system, the thresholds and the last day it holds. The signature is
 sealed as `rule_signature`; an application outside it, under other thresholds or after it runs
 out goes to a person (`unsigned_rule` or `out_of_scope`), and every decision the rule makes keeps
@@ -792,7 +831,10 @@ person is decided there with the queue's usual decision, or sent back to be eval
 what you want to connect (solar, a charger, a heat pump, a battery), read the answer in plain
 words, with what connecting now is worth against waiting, and apply. The application gets a
 reference code such as `KP-7K3M-Q9TD-X2HB-5RWN`, which is all the status form needs (codes of the
-older `KP-1A2B-3C4D` form still work); the portal asks for no personal data and keeps none. One
+older `KP-1A2B-3C4D` form still work). The portal asks for no name, e-mail or personal number,
+but an application is stored with the house's address and what it asks for, in `data/requests/`,
+in the queue and in the sealed evidence chain, and an address is personal data under the GDPR
+(see *Privacy and retention*). One
 address may look up ten codes a minute. Its API, `/api/v1/apply/*`, serves only the addresses, the answer for
 one house and the state behind one code. The grid the answer is computed against is decided on the
 server (the queue once it holds approvals, otherwise the DSO's published situation), and sending
@@ -805,13 +847,18 @@ the application's address handling (`initUrlSync`) never sees `#/apply`.
 Two sides, both from published results and sourced prices (`config/assumptions.toml`, shown on
 the Method screen):
 
-- **The DSO's** (`GET /api/v1/business`, under the reinforcement comparison): deferring a cost C
+<!-- M15 -->
+- **The DSO's** (`GET /api/v1/business`, under the reinforcement comparison; it prices the
+  perfect-foresight deployment at the aggregate budget and says so in `basis`): deferring a cost C
   by T years is worth C(1 − (1+r)^−T) today; the envelopes cost the houses their curtailed energy,
   k a year, worth k·a(r, T) over the same years. With Ei's real rate for 2024–2027 (4.53 %) and
   its norm values at 2022 prices, deferring the transformer swap by one regulatory period (four
   years, the DSO's `deferral_years`) is worth 15–24 kSEK after the curtailment, 2 878 SEK a year
   at the spot prices of the price years (not deflated). It pays at any horizon while the swap
-  costs more than k/r, about 64 kSEK, and the swap's own norm cost is 156–209 kSEK.
+  costs more than k/r, about 64 kSEK, and the swap's own norm cost is 156–209 kSEK. `at_rates`
+  prices the same horizon at Ei's preliminary real rates for 2028–2031 too (1.99 % with the
+  proposed method, 4.57 % with the current one; Konsekvensutredning, p. 342), and a lower rate makes
+  deferring worth less.
 - **The house's** (`GET /api/v1/requests/{id}/owner-case`, under an answer with solar): connect now
   with the envelope, or wait for the reinforcement. Solar used at home saves the spot price plus
   the energy tax (36.0 öre/kWh from 2026), Ellevio's transfer fee (20.8 öre/kWh from June 2026)
@@ -837,18 +884,22 @@ hour, it assumes at least as much generation and at most as much load as actuall
 Every export-side constraint is monotone in those two quantities, so an envelope that is
 feasible against a dominating state is feasible against what happens — including in the
 hours the planner never flagged as critical, which is exactly where a point forecast fails.
-Safety then needs no forecast skill at all; what it costs is how loose the bound is.
+Safety then rests on the bound holding rather than on forecast skill; what it costs is how
+loose the bound is.
 
 The bound used here is weather-blind: generation at the highest the same fortnight reached
-in the other ten weather years, demand at the lowest, hour of the day by hour of the day. A
-clock and eleven years of history, no forecast. On the published showcase deployment, 43
-non-firm customers in 2025:
+in the other ten weather years, demand at the lowest, hour of the day by hour of the day, with
+a 3 % margin over the first and under the second. A clock and eleven years of history, no
+forecast. It is a bound on the record, so whether it held is audited, not assumed.
+
+<!-- M15 -->
+On the published showcase deployment, 43 non-firm customers in 2025:
 
 | scheme | envelopes issued | limit violations | curtailed | % of export |
 |---|---|---|---|---|
 | static worst case, no envelope | – | 0 | 267 559 kWh | 98.54 |
-| day ahead, no forecast | 1 400 h | **0** | 48 681 kWh | 17.93 |
-| day ahead, yesterday's weather | 148 h | **109** | 3 998 kWh | 1.47 |
+| day ahead, no forecast | 1 240 h | **0** | 54 745 kWh | 20.16 |
+| day ahead, yesterday's weather | 136 h | **109** | 3 998 kWh | 1.47 |
 | perfect foresight (published) | 148 h | 0 | 7 261 kWh | 2.67 |
 
 The persistence row is the instructive failure. It curtails *less* than the published
@@ -865,23 +916,29 @@ anything to discuss.
 Curtailment is one half of the question; the other is how much capacity each scheme carries
 at the same 3 % budget. `compute --stage extra` runs the published capacity search again
 against the day-ahead state over all 20 adoption orders and writes `foresight.json`, which
-the Method screen reads. On adoption order 0 it carries 73 adopters and 622 kW where perfect
-foresight carries 96 and 801 kW, against 45 and 402 kW static — so on that order roughly two
-thirds of what the envelopes add survives with no forecast at all, and the rest is what a
-forecast buys.
+the Method screen reads.
 
-History is a bound on the record, not a guarantee. In 2025 the neighbourhood total beat its
-own eleven-year envelope in **1 hour of 8 760**, by 2.8 %, and that hour produced no
-violation. The per-house exceptions — 333 customer-hours of 1 051 200 — are counted in
-`exceedance_audit` rather than argued away.
+<!-- M15 -->
+Across the 20 orders the day-ahead search carries a median of 588 kW, against 609 kW for the
+hourly study with no control at all, 413 kW static and 787 kW with perfect foresight, and in
+none of the orders does it carry more than the hourly study. What can be issued the day before
+without a forecast is, in practice, what an hourly study already allows; the step from there to
+787 kW is what a forecast would have to buy.
+
+History is a bound on the record, not a guarantee, so every issue audits its exceedances.
+<!-- M15 -->
+In 2025, with the 3 % margins, the neighbourhood total stayed inside its eleven-year bound in
+every hour (without the margins, its worst hour would have gone 2.8 % past it). The per-house
+exceptions, 23 customer-hours of generation above the bound and 845 of load below it, are
+counted in the exceedance audit rather than argued away.
 
 Two things this is not. The climatology leaves out the year it plans, which for 2025 is also
 strictly causal because every other weather year precedes it; planning an early year uses
 years that came later, so the multi-year medians are leave-one-out rather than real-time.
 And nobody would run a grid on this bound by choice — a real day-ahead forecast is far
 better than the climatological extreme, so the honest reading is a bracket: the published
-figure is what a perfect forecast buys, this one is what no forecast at all still carries,
-and an operator lands between them.
+figure is what a perfect forecast buys, this one is what no forecast at all still carries
+(about what the hourly study already allows), and an operator lands between them.
 
 ## Limitations
 

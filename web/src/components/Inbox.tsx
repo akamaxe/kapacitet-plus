@@ -1,12 +1,14 @@
 /**
- * Applications: a request to connect, decided by the DSO's rule when it can be and by a person when
- * it cannot (api/inbox.py). The rule connects firm or with the verified envelope; it never declines.
+ * Applications: a request to connect, with the DSO's rule's proposal, decided by a person unless the
+ * DSO switched the rule on and a person signed it for that kind of request (api/inbox.py; advisor
+ * mode is the default). The rule connects firm or with the verified envelope; it never declines.
  *
  * `ApplyBlock` sits under an answer on the request screen and turns it into an application;
  * `InboxSection` is the DSO's view of all of them on the operation screen, with what the inbox has
- * done measured from its own events.
+ * done measured from its own events, and `RuleBlock` says what the rule may decide and lets a person
+ * sign it (PUT /settings/rule-signature).
  */
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { DataTable, type Col } from "./DataTable";
 import { Dialog } from "./Dialog";
@@ -17,7 +19,7 @@ import { Status, Tile } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
 import { responseRefusal } from "../lib/errors";
-import { dateTime, duration, useFmt } from "../lib/format";
+import { dateTime, duration, listJoin, studyDate, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { describeRequest, reasonLine } from "../lib/reasons";
 import { useStore } from "../lib/store";
@@ -35,6 +37,9 @@ export interface Application {
   assessments: string[];
   status: "pending" | "review" | "firm" | "nonfirm" | "declined";
   reasons: { code: string; params: Record<string, number | string> }[];
+  /** what the rule would decide, kept when a person has to (advisor mode) */
+  proposal?: "firm" | "nonfirm" | "review" | null;
+  proposal_reasons?: { code: string; params: Record<string, number | string> }[];
   decided: string | null;
   by: "rule" | "dso" | null;
   pv_kw: number;
@@ -46,11 +51,29 @@ export function refHint(app: Pick<Application, "reference_hint">): string {
   return app.reference_hint ? `KP-${app.reference_hint}-…` : "KP-…";
 }
 
-interface Inbox {
+type Thresholds = { curtailment_mean_pct: number; curtailment_p90_pct: number; ev_unserved_pct: number };
+
+const KINDS = ["pv", "ev", "hp", "battery"] as const;
+type Kind = (typeof KINDS)[number];
+
+interface Signature {
+  signed_by: string;
+  role: string;
+  signed_at: string;
+  request_kinds: Kind[];
+  max_pv_kwp: number;
+  thresholds: Thresholds;
+  valid_until: string;
+}
+
+export interface Inbox {
   items: Application[];
   working: string | null;
   auto_decisions: boolean;
-  thresholds: { curtailment_mean_pct: number; curtailment_p90_pct: number; ev_unserved_pct: number };
+  thresholds: Thresholds;
+  rule_signature: Signature | null;
+  /** whether the signature can decide anything today (api/inbox.py signature_state) */
+  signature_state: "none" | "expired" | "thresholds_changed" | "in_force";
 }
 
 const STATUS_KIND = { firm: "good", nonfirm: "good", review: "warning", declined: "critical" } as const;
@@ -134,7 +157,6 @@ export function InboxSection() {
   const kpi = useApi<any>("/inbox/kpis", { refetchMs: inbox.data?.items.some((a) => a.status === "pending") ? 1500 : undefined });
   const queue = useApi<QueueState>("/queue");
   const [open, setOpen] = useState<Application | null>(null);
-  const [saving, setSaving] = useState(false);
 
   // when the worker settles an application, the queue it wrote to is read again
   const settled = inbox.data?.items.filter((a) => a.status !== "pending").length ?? 0;
@@ -148,15 +170,6 @@ export function InboxSection() {
   const I = inbox.data;
   const K = kpi.data;
 
-  const setAuto = async (on: boolean) => {
-    setSaving(true);
-    const r = await apiWrite("/settings", { auto_decisions: on }, "PUT").catch(() => null);
-    setSaving(false);
-    if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
-    await client.invalidateQueries({ queryKey: ["/inbox"] });
-    await client.invalidateQueries({ queryKey: ["/settings"] });
-    toast.info(t(on ? "inbox.auto.onDone" : "inbox.auto.offDone"));
-  };
   const requeue = async (app: Application) => {
     const r = await apiWrite(`/applications/${app.id}/requeue`).catch(() => null);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
@@ -175,6 +188,7 @@ export function InboxSection() {
           <StatusOf app={a} />
           {a.by && <small>{t(`inbox.by.${a.by}`)}</small>}
           {a.status === "review" && a.reasons.map((r, i) => <small key={i} className="inbox-reason">{reasonLine(t, f, r)}</small>)}
+          {a.status === "review" && a.proposal && <small className="inbox-proposal">{t(`inbox.proposal.${a.proposal}`)}</small>}
         </span>
       ) },
     { key: "received", label: t("inbox.col.received"), value: (a) => a.received, cell: (a) => dateTime(lang, a.received) },
@@ -201,17 +215,7 @@ export function InboxSection() {
         <Tile label={t("inbox.kpi.connected")} value={f(K.firm_kw + K.nonfirm_kw, 1)} unit="kW"
           note={t("inbox.kpi.connectedNote", { firm: f(K.firm_kw, 1), nonfirm: f(K.nonfirm_kw, 1) })} />
       </div>
-      <div className="report-controls">
-        <div className="seg" role="group" aria-label={t("inbox.auto.label")}>
-          <button aria-pressed={I.auto_decisions} disabled={saving} onClick={() => !I.auto_decisions && void setAuto(true)}>{t("inbox.auto.on")}</button>
-          <button aria-pressed={!I.auto_decisions} disabled={saving} onClick={() => I.auto_decisions && void setAuto(false)}>{t("inbox.auto.off")}</button>
-        </div>
-        <p className="caption-muted">
-          {I.auto_decisions
-            ? t("inbox.auto.rule", { mean: f(I.thresholds.curtailment_mean_pct, 1), p90: f(I.thresholds.curtailment_p90_pct, 1), ev: f(I.thresholds.ev_unserved_pct, 1) })
-            : t("inbox.auto.offNote")}
-        </p>
-      </div>
+      <RuleBlock inbox={I} />
       {I.items.length === 0 ? (
         <p className="caption">{t("inbox.empty")} <a href="#/request">{t("inbox.emptyGo")}</a></p>
       ) : (
@@ -239,9 +243,148 @@ function DecideOne({ app, queue }: { app: Application; queue: QueueState }) {
     <div className="stack">
       <p className="caption">{app.address} · {describeRequest(t, f, app.request)}</p>
       <ul className="inbox-reasons">{app.reasons.map((r, i) => <li key={i}>{reasonLine(t, f, r)}</li>)}</ul>
+      {app.proposal && (
+        <p className="caption inbox-proposal-line">
+          {t(`inbox.proposal.${app.proposal}`)}
+          {(app.proposal_reasons ?? []).map((r, i) => <small key={i} className="inbox-reason">{reasonLine(t, f, r)}</small>)}
+        </p>
+      )}
       <p><a href={`#/request?cid=${app.cid}&job=${app.assessment}`}>{t("inbox.openAnswer")}</a></p>
       {res.data ? <DecisionBlock res={res.data} queue={queue} /> : <Lines n={3} />}
     </div>
+  );
+}
+
+/** What the DSO's rule may decide on its own: advisor mode unless it is switched on and a person's
+ * signature covers today's thresholds, and the form to sign it. */
+export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const client = useQueryClient();
+  const [saving, setSaving] = useState(false);
+  const [signing, setSigning] = useState(false);
+  const sig = I.rule_signature ?? null;
+  const advisor = !I.auto_decisions || I.signature_state !== "in_force";
+  const th = I.thresholds;
+
+  const setAuto = async (on: boolean) => {
+    setSaving(true);
+    const r = await apiWrite("/settings", { auto_decisions: on }, "PUT").catch(() => null);
+    setSaving(false);
+    if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
+    await client.invalidateQueries({ queryKey: ["/inbox"] });
+    await client.invalidateQueries({ queryKey: ["/settings"] });
+    toast.info(t(on ? "inbox.auto.onDone" : "inbox.auto.offDone"));
+  };
+
+  const kinds = (ks: Kind[]) => listJoin(lang, ks.map((k) => t(`inbox.kind.${k}`)));
+  const who = sig ? { by: sig.signed_by, role: sig.role } : { by: "", role: "" };
+  return (
+    <section className="block stack" aria-labelledby="inbox-rule">
+      <div className="block-head">
+        <h3 id="inbox-rule">{t("inbox.rule.title")}</h3>
+        <span className="status measured">{t(advisor ? "inbox.mode.advisorTag" : "inbox.mode.autoTag")}</span>
+      </div>
+      <p className="rule-mode">
+        <strong>{advisor ? t("inbox.mode.advisor") : t("inbox.mode.auto", who)}</strong>{" "}
+        {sig === null && t("inbox.sig.none")}
+        {sig !== null && I.signature_state === "in_force" && t("inbox.sig.inForce", {
+          ...who, at: dateTime(lang, sig.signed_at, false), kinds: kinds(sig.request_kinds),
+          kwp: f(sig.max_pv_kwp, sig.max_pv_kwp % 1 ? 1 : 0), until: studyDate(lang, sig.valid_until) })}
+        {sig !== null && I.signature_state === "expired" && t("inbox.sig.expired", { ...who, until: studyDate(lang, sig.valid_until) })}
+        {sig !== null && I.signature_state === "thresholds_changed" && t("inbox.sig.changed", who)}
+      </p>
+      <p className="caption-muted">{t("inbox.auto.rule", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
+      <div className="report-controls">
+        <div className="seg" role="group" aria-label={t("inbox.auto.label")}>
+          <button aria-pressed={!I.auto_decisions} disabled={saving} onClick={() => I.auto_decisions && void setAuto(false)}>{t("inbox.auto.off")}</button>
+          <button aria-pressed={I.auto_decisions} disabled={saving} onClick={() => !I.auto_decisions && void setAuto(true)}>{t("inbox.auto.on")}</button>
+        </div>
+        <button className="btn ghost small" onClick={() => setSigning(true)}>{t(sig ? "inbox.sign.again" : "inbox.sign.open")}</button>
+      </div>
+      <Dialog open={signing} onClose={() => setSigning(false)} labelledBy="inbox-sign-title" width={520}>
+        {signing && <SignRule thresholds={th} last={sig} onDone={() => setSigning(false)} />}
+      </Dialog>
+    </section>
+  );
+}
+
+/** The signature form: who signs and in what role, for which requests, up to what size and until when.
+ * It signs the thresholds in force; the server dates it and seals it. */
+function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; last: Signature | null; onDone: () => void }) {
+  const t = useT();
+  const f = useFmt();
+  const client = useQueryClient();
+  const today = new Date().toISOString().slice(0, 10);
+  const [by, setBy] = useState(last?.signed_by ?? "");
+  const [role, setRole] = useState(last?.role ?? "");
+  const [kinds, setKinds] = useState<Kind[]>(last?.request_kinds ?? ["pv"]);
+  const [kwp, setKwp] = useState(last ? String(last.max_pv_kwp) : "");
+  const [until, setUntil] = useState(last && last.valid_until >= today ? last.valid_until : "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const size = Number(kwp);
+  const ready = by.trim() !== "" && role.trim() !== "" && kinds.length > 0 && kwp.trim() !== "" &&
+    Number.isFinite(size) && size >= 0 && size <= 1000 && until >= today;
+
+  const toggle = (k: Kind, on: boolean) =>
+    setKinds((ks) => (on ? KINDS.filter((x) => x === k || ks.includes(x)) : ks.filter((x) => x !== k)));
+  const sign = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!ready) return;
+    setBusy(true);
+    setError(null);
+    const r = await apiWrite("/settings/rule-signature",
+      { signed_by: by.trim(), role: role.trim(), request_kinds: kinds, max_pv_kwp: size, valid_until: until }, "PUT").catch(() => null);
+    setBusy(false);
+    if (!r) return setError(t("ui.offline"));
+    if (!r.ok) return setError((await responseRefusal(t, r)) || t("inbox.sign.invalid"));
+    await client.invalidateQueries({ queryKey: ["/inbox"] });
+    await client.invalidateQueries({ queryKey: ["/settings"] });
+    toast.info(t("inbox.sign.done", { by: by.trim() }));
+    onDone();
+  };
+
+  return (
+    <form className="sheet stack" onSubmit={sign}>
+      <h2 id="inbox-sign-title">{t("inbox.sign.title")}</h2>
+      <p className="caption">{t("inbox.sign.lead", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
+      <div className="field decision-note">
+        <label htmlFor="sign-by">{t("inbox.sign.by")}</label>
+        <input id="sign-by" maxLength={120} required autoComplete="name" value={by} onChange={(e) => setBy(e.target.value)} />
+      </div>
+      <div className="field decision-note">
+        <label htmlFor="sign-role">{t("inbox.sign.role")}</label>
+        <input id="sign-role" maxLength={120} required autoComplete="organization-title" value={role} onChange={(e) => setRole(e.target.value)} />
+      </div>
+      <fieldset className="sign-kinds">
+        <legend>{t("inbox.sign.kinds")}</legend>
+        {KINDS.map((k) => (
+          <label key={k} className="field-inline">
+            <input type="checkbox" checked={kinds.includes(k)} onChange={(e) => toggle(k, e.target.checked)} />
+            <span>{t(`inbox.kind.${k}`)}</span>
+          </label>
+        ))}
+      </fieldset>
+      <div className="report-controls">
+        <label className="field-inline">
+          <span>{t("inbox.sign.kwp")}</span>
+          <input type="number" inputMode="decimal" min={0} max={1000} step={0.5} required value={kwp} onChange={(e) => setKwp(e.target.value)} />
+          <span>kWp</span>
+        </label>
+        <label className="field-inline">
+          <span>{t("inbox.sign.until")}</span>
+          <input type="date" min={today} required value={until} onChange={(e) => setUntil(e.target.value)} />
+        </label>
+      </div>
+      <p className="caption-muted">{t("inbox.sign.note")}</p>
+      {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
+      <div className="decision-actions">
+        <button type="submit" className="btn" disabled={!ready || busy}>{busy ? t("req.decide.working") : t("inbox.sign.go")}</button>
+        <button type="button" className="btn ghost" onClick={onDone}>{t("inbox.sign.cancel")}</button>
+      </div>
+    </form>
   );
 }
 

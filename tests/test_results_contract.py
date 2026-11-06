@@ -274,6 +274,46 @@ def test_operation_sized_with_perfect_foresight_curtails_more_when_issued_the_da
         assert da["curtailed_share_of_export_pct"] >= fs["curtailed_share_of_export_pct"], pol
 
 
+def test_every_hour_that_needed_a_limit_was_limited_on_both_bases(results):
+    """The Report and the README count the day-ahead basis's limited hours against the hours that
+    needed a limit: a verified envelope limits every one of those, and the rest are the activations
+    the audit trail calls unnecessary."""
+    path = processed("results", "operation", "index.json")
+    if not path.exists():
+        pytest.skip("run: python -m kapacitet compute --stage extra --only operation")
+    idx = json.loads(path.read_text(encoding="utf-8"))
+    needed = idx.get("necessary_hours")
+    if needed is None:
+        pytest.skip("necessary_hours not published yet; run: python -m kapacitet compute --stage extra --only operation")
+    for basis, rules in idx["combos"].items():
+        for pol, c in rules.items():
+            if "activations_unnecessary_hours" not in c:
+                pytest.skip("activations_unnecessary_hours not published yet; "
+                            "run: python -m kapacitet compute --stage extra --only operation")
+            assert c["verified"] and c["full_year_violation_hours"] == 0, (basis, pol)
+            assert c["hours_limited"] - c["activations_unnecessary_hours"] == needed, (basis, pol)
+
+
+def test_the_day_ahead_capacity_is_audited_and_within_budget(results):
+    """The opening answer shows the day-ahead stop only when the search is audited: no violation
+    on any order, its planning state met in full, and every order within the budget."""
+    path = processed("results", "foresight.json")
+    if not path.exists():
+        pytest.skip("run: python -m kapacitet compute --stage extra --only foresight")
+    f = json.loads(path.read_text(encoding="utf-8"))
+    for key in ("within_budget_orders", "planning_full_year_violations", "exceedance"):
+        if key not in f:
+            pytest.skip(f"{key} not published yet; run: python -m kapacitet compute --stage extra --only foresight")
+    assert f["violation_hours"] == 0 and f["planning_full_year_violations"] == 0
+    assert 0 <= f["within_budget_orders"] <= f["n_orders"]
+    ex = f["exceedance"]
+    # the published search used the margins the assumptions state (the Method caption reads them)
+    assert ex["pv_margin_pct"] == pytest.approx(A("dayahead_pv_margin_pct"))
+    assert ex["load_margin_pct"] == pytest.approx(A("dayahead_load_margin_pct"))
+    # the aggregate bound is what the safety argument rests on: it is audited, and reported
+    assert ex["pv_aggregate_hours_over"] >= 0 and ex["load_aggregate_hours_under"] >= 0
+
+
 # ---------------------------------------------------------------- the budget per installation
 
 PER_INSTALLATION = "run: python -m kapacitet compute (the per-installation budget came after these results)"

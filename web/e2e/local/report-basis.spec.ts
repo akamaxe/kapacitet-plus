@@ -23,7 +23,8 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
 
   // on the perfect-foresight basis no day-ahead plan was issued, so no row names one
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" }).click();
-  await expect(page).toHaveURL(/basis=foresight/);
+  // perfect foresight is the default basis, so the address leaves it out (store.ts hashFor)
+  await expect(page).not.toHaveURL(/basis=/);
   await expect(page.getByText(/the plan issued the day before limited/)).toHaveCount(0);
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
 

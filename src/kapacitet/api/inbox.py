@@ -5,7 +5,8 @@ assessment, and one worker takes the applications in the order they arrived: if 
 since the assessment, it evaluates the request again against the grid as it now stands; then
 `engine/rules.py` gives its verdict, but only when automatic decisions are on and a person has
 signed the rule for that kind of request (dso.RuleSignature; otherwise `auto_off`, `unsigned_rule`
-or `out_of_scope` send it to a person). Firm and envelope verdicts go through `queue.decide`, which
+or `out_of_scope` send it to a person, with the rule's verdict kept as its `proposal`: in advisor
+mode, the default, the rule only proposes). Firm and envelope verdicts go through `queue.decide`, which
 re-verifies every weather year, under the queue's own write lock, so no manual decision runs at the
 same time. Anything else waits for a person, who decides it with the queue's usual decision (the
 rule never declines).
@@ -173,7 +174,7 @@ def fold(evs: list[dict]) -> dict[str, dict]:
                        "received": e["at"], "cid": e["cid"],
                        "address": e.get("address"), "source": e.get("source", "dso"), "request": e.get("request", {}),
                        "assessment": e["assessment"], "assessments": [e["assessment"]], "status": "pending",
-                       "reasons": [], "decided": None,
+                       "reasons": [], "proposal": None, "proposal_reasons": [], "decided": None,
                        "by": None, "pv_kw": 0.0, "evaluations": 1, "history": []}
         app = apps.get(a)
         if app is None:
@@ -184,9 +185,10 @@ def fold(evs: list[dict]) -> dict[str, dict]:
             app["assessments"].append(e["assessment"])
             app["evaluations"] += 1
         elif kind == "review":
-            app.update(status="review", reasons=e.get("reasons", []))
+            app.update(status="review", reasons=e.get("reasons", []), proposal=e.get("proposal"),
+                       proposal_reasons=e.get("proposal_reasons", []))
         elif kind == "requeued":
-            app.update(status="pending", reasons=[])
+            app.update(status="pending", reasons=[], proposal=None, proposal_reasons=[])
         elif kind == "decided":
             app.update(status=e["outcome"], decided=e["at"], by=e.get("by"), reasons=e.get("reasons", []),
                        pv_kw=float(e.get("pv_kw") or 0.0), assessment=e.get("assessment", app["assessment"]))
@@ -360,16 +362,15 @@ def process(app: dict, engine=None, make_record=None, evaluate=None) -> dict:
             records.save(rec)
             append({"app": app["id"], "event": "reevaluated", "assessment": rec["id"], "because": why,
                     "baseline": baseline})
-        if not settings.auto_decisions:
-            return append({"app": app["id"], "event": "review", "assessment": rec["id"],
-                           "reasons": [rules._reason("auto_off")]})
         th = dso.thresholds(settings)
-        sig = settings.rule_signature.model_dump(mode="json") if settings.rule_signature else None
-        outside = rules.scope(sig, rec["request"], th, datetime.now(timezone.utc).date())
-        if outside is not None:              # advisor mode: what nobody signed for waits for a person
-            return append({"app": app["id"], "event": "review", "assessment": rec["id"],
-                           "reasons": [rules._reason(outside)]})
         v = rules.verdict(rec["result"], th)
+        sig = settings.rule_signature.model_dump(mode="json") if settings.rule_signature else None
+        outside = "auto_off" if not settings.auto_decisions else rules.scope(
+            sig, rec["request"], th, datetime.now(timezone.utc).date())
+        if outside is not None:              # advisor mode: the rule only proposes, and a person decides
+            return append({"app": app["id"], "event": "review", "assessment": rec["id"],
+                           "reasons": [rules._reason(outside)], "proposal": v["outcome"],
+                           "proposal_reasons": v["reasons"]})
         if v["outcome"] == "review":
             return append({"app": app["id"], "event": "review", "assessment": rec["id"], "reasons": v["reasons"]})
         eng = engine()
@@ -416,6 +417,22 @@ def post_application(body: ApplicationIn) -> dict:
     return {**_public(app), "reference": app.get("reference")}
 
 
+def signature_state(s: dso.DsoSettings, today=None) -> str:
+    """Whether the signed rule can decide anything today: `none` (nobody signed), `expired`,
+    `thresholds_changed` (the thresholds in force are not the ones signed) or `in_force`."""
+    sig = s.rule_signature
+    if sig is None:
+        return "none"
+    if sig.valid_until < (today or datetime.now(timezone.utc).date()):
+        return "expired"
+    th = dso.thresholds(s)
+    signed = sig.thresholds
+    if any(abs(getattr(signed, k) - getattr(th, k)) > 1e-9
+           for k in ("curtailment_mean_pct", "curtailment_p90_pct", "ev_unserved_pct")):
+        return "thresholds_changed"
+    return "in_force"
+
+
 @router.get("/inbox")
 def get_inbox(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0)) -> dict:
     """The applications, newest first, a page at a time, with their state; the worker's status and
@@ -425,6 +442,8 @@ def get_inbox(limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0
     th = dso.thresholds(s)
     return {"items": [_public(a) for a in apps[offset:offset + limit]], "total": len(apps), "offset": offset,
             "limit": limit, "working": _STATE["working"], "auto_decisions": s.auto_decisions,
+            "rule_signature": s.rule_signature.model_dump(mode="json") if s.rule_signature else None,
+            "signature_state": signature_state(s),
             "thresholds": {"curtailment_mean_pct": th.curtailment_mean_pct, "curtailment_p90_pct": th.curtailment_p90_pct,
                            "ev_unserved_pct": th.ev_unserved_pct}}
 

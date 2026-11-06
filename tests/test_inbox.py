@@ -293,6 +293,9 @@ def test_the_defaults_never_decide_on_their_own(inbox_dirs, monkeypatch):
     rec = _saved(records, "a00000000011", cid=21, **_result(pv_ok=True))
     done = _process(inbox, inbox.receive(rec["id"]))
     assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["auto_off"]
+    # in advisor mode the rule only proposes: its verdict is kept beside the application
+    assert done["proposal"] == "firm" and done["proposal_reasons"] == []
+    assert inbox.signature_state(dso.load()) == "none"
     # switched on, still nobody signed the rule: a person decides
     dso.update(dso.DsoSettingsChange(auto_decisions=True))
     rec = _saved(records, "a00000000012", cid=22, **_result(pv_ok=True))
@@ -323,7 +326,25 @@ def test_a_signed_rule_approves_through_the_queue_and_only_what_it_covers(inbox_
     again = _saved(records, "a00000000015", cid=25, pv_kwp=6.0, **_result(pv_ok=True))
     done = _process(inbox, inbox.receive(again["id"]))
     assert done["status"] == "review" and [r["code"] for r in done["reasons"]] == ["unsigned_rule"]
+    assert done["proposal"] == "firm"
     assert len(calls) == 1
+    assert inbox.signature_state(dso.load()) == "thresholds_changed"
+
+
+def test_the_inbox_says_whether_the_signed_rule_is_in_force(inbox_dirs):
+    from datetime import date
+
+    from kapacitet import dso
+
+    inbox, _, _ = inbox_dirs
+    signed = _sign(valid_until="2030-06-30")
+    assert inbox.signature_state(signed, today=date(2030, 6, 30)) == "in_force"
+    assert inbox.signature_state(signed, today=date(2030, 7, 1)) == "expired"
+    body = inbox.get_inbox(limit=10, offset=0)
+    assert body["rule_signature"]["signed_by"] == "A. Planner" and body["signature_state"] in ("in_force", "expired")
+    assert body["auto_decisions"] is True
+    dso.update(dso.DsoSettingsChange(auto_decisions=False))
+    assert inbox.get_inbox(limit=10, offset=0)["auto_decisions"] is False
 
 
 def test_the_rule_cannot_decide_without_a_signature_and_a_planner_names_themselves(inbox_dirs):

@@ -2200,6 +2200,19 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .inbox-status .inbox-reason { color: var(--text-secondary); max-width: 38ch; }
 .inbox-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); }
 .inbox-reasons { margin: 0; padding-left: var(--space-4); display: grid; gap: var(--space-1); font-size: var(--text-small); }
+/* advisor mode: the rule's proposal reads under the reasons a person decides, in the primary ink */
+.inbox-status .inbox-proposal { color: var(--text-primary); max-width: 38ch; }
+.inbox-proposal-line { display: grid; gap: 2px; }
+.inbox-proposal-line .inbox-reason { font-size: var(--text-caption); color: var(--text-secondary); }
+/* the rule's mode in one body sentence, the signature after it in ink-2: a block line, not a headline */
+.rule-mode { margin: 0; max-width: 72ch; font-size: var(--text-body); line-height: var(--lh-body); color: var(--text-secondary); }
+.rule-mode strong { font-weight: 600; color: var(--text-primary); }
+/* the rule's signature: the kinds it covers as one row of checkboxes */
+.sign-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; border: 0; min-width: 0; }
+.sign-kinds legend { width: 100%; padding: 0; margin-bottom: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
+/* the kinds are written for a sentence ("for solar and EV chargers"); as a label each starts upper case */
+.sign-kinds .field-inline span { display: inline-block; }
+.sign-kinds .field-inline span::first-letter { text-transform: uppercase; }
 /* the inbox on a phone: each application reads as its reference, house and state, with its actions
    beside them; what it asked, when it came and how long it waited are in the dialog and the answer */
 @media (max-width: 600px) {

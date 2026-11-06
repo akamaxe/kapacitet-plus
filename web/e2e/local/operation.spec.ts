@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-// The operation screen: one house's limits for a day and the file its inverter receives, the summer
+// The operation screen: one house's limits for a day and the file issued for its inverter, the summer
 // replayed in the shadow, and a meter checked with the synthetic day.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem("kap.tour", "1"));

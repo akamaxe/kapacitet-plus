@@ -34,7 +34,7 @@ REASONS = {
     "ev_unserved": "{value:.1f} % of the charging it asks for would be unserved, above {limit:.1f} %",
     "hp_unserved": "{value:.1f} % of the heat pump's energy would be unserved",
     "violations": "the checked year still has {value:.0f} hours above a grid limit",
-    "auto_off": "automatic decisions are switched off",
+    "auto_off": "advisor mode: the rule only proposes",
     # `detail` is the queue's own refusal code (engine/queue.py ERRORS), which the interface translates
     "queue": "the queue refused the decision: {detail}",
     "engine_error": "the evaluation failed: {detail}",

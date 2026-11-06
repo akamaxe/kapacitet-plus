@@ -16,7 +16,8 @@ Two users on either side of one connection, served equally:
 - **The applicant** — a household, a solar or battery developer, a large consumer — who is offered a non-firm
   connection and has to judge it: how much of their energy would be curtailed, and what that costs them. A
   household has its own small page, the applicant's portal (`#/apply`): pick the address, ask, read the answer
-  in plain words, apply, and follow the application by a reference code, without giving any personal data.
+  in plain words, apply, and follow the application by a reference code, without giving a name or contact
+  details (the application keeps the address and what it asks for).
 
 ## Product Purpose
 
@@ -46,9 +47,11 @@ non-firm offer.
   - Connection request: evaluate one house's request live (solar, EV charger, heat pump, battery), keep
     the answer as a printable, sealed record, value connecting now against waiting, apply, and decide on it
     in a queue of approvals.
-  - Operation: the applications the DSO's rule decides (it never declines), each day's limits issued the
-    day before and the file an inverter would receive, the summer replayed in the shadow against a pilot's
-    tests, and a meter checked against what it was sent.
+  - Operation: the applications, each with the DSO's rule's proposal (advisor mode by default: a person
+    decides, unless the DSO switched the rule on and signed it for that kind of request; it never declines),
+    a form to sign the rule, each day's limits issued the
+    day before and the file issued for an inverter, the summer replayed in the shadow against a pilot's
+    tests, and a meter checked against the limits issued for it.
   - Annual report: the year's filing for conditional connection agreements on either basis and under any
     sharing rule, its hourly audit trail, each house's own record, and the evidence for Ei (Ei2025:01).
   - 2030: adoption scenarios.

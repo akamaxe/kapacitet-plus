@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 // A household's whole path on this machine's data: pick an address, ask for a small solar system,
-// read the answer, apply, and follow the application until the DSO's rule has decided it.
-test("a household applies and the rule decides", async ({ page, request }) => {
+// read the answer, apply, and follow the application until it is decided, or waits for a person with
+// the rule's proposal (advisor mode, the default: the rule decides only what a person signed).
+test("a household applies, and the rule decides or proposes", async ({ page, request }) => {
   const houses = (await (await request.get("/api/v1/apply/houses")).json()).items;
   // a house the queue has not approved and that has no application waiting: the test can run again
   const queue = (await (await request.get("/api/v1/queue")).json()).items;
@@ -24,7 +25,17 @@ test("a household applies and the rule decides", async ({ page, request }) => {
   const ref = page.locator(".portal-ref");
   await expect(ref).toHaveText(/^KP-(?:[0-9A-HJKMNP-TV-Z]{4}-){3}[0-9A-HJKMNP-TV-Z]{4}$/);
   await expect(page).toHaveURL(/#\/apply\?ref=KP-/);
-  // the rule decides a small system on its own, after checking every weather year
-  await expect(page.getByText(/Connected (firm|with an envelope)/)).toBeVisible({ timeout: 180_000 });
+  const box = await (await request.get("/api/v1/inbox")).json();
+  const sig = box.rule_signature;
+  const signed = box.auto_decisions && box.signature_state === "in_force" && sig.request_kinds.includes("pv") && sig.max_pv_kwp >= 4;
+  if (signed) {
+    // a signed rule decides a small system on its own, after checking every weather year
+    await expect(page.getByText(/Connected (firm|with an envelope)/)).toBeVisible({ timeout: 180_000 });
+  } else {
+    // advisor mode: it waits for a person, and the DSO's inbox keeps what the rule proposes
+    await expect(page.getByText("Needs a person")).toBeVisible({ timeout: 180_000 });
+    const app = (await (await request.get("/api/v1/inbox")).json()).items.find((a: any) => a.cid === house.cid);
+    expect(["firm", "nonfirm"]).toContain(app.proposal);
+  }
   await page.screenshot({ path: "test-results/shots/apply-flow.png", fullPage: true });
 });

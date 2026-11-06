@@ -4,7 +4,7 @@
  *
  * It is its own small page: main.tsx loads it instead of the application, so it carries neither the
  * map nor the chart library, and it keeps its own address (`#/apply?ref=KP-…`) rather than the
- * application's. It asks for no personal data. Everything it reads comes from /api/v1/apply.
+ * application's. It asks for no name or contact details. Everything it reads comes from /api/v1/apply.
  */
 import { useEffect, useRef, useState } from "react";
 import { Mark, Status } from "../components/bits";
