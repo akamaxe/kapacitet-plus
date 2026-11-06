@@ -26,6 +26,8 @@ export function Deferral() {
   const B = q.data?.data;
   if (!B) return null;
   const [lo, hi] = B.at_horizon.transformer;
+  // the same horizon at each rate put forward, the one in force first (api: BUSINESS_RATES)
+  const rates = Object.entries(B.at_rates ?? {}) as [string, any][];
   const span = B.price_years.length ? `${B.price_years[0]}–${B.price_years[B.price_years.length - 1]}` : "";
   return (
     <section className="block stack" aria-labelledby="deferral-title">
@@ -57,6 +59,23 @@ export function Deferral() {
         }
       />
       <p className="caption">{t("biz.always", { perp: ksek(f, B.perpetual_curtailment_sek), k: f(B.curtailed_sek_per_year) })}</p>
+      {rates.length > 1 && (
+        <table className="data biz-rates">
+          <caption>{t("biz.rates", { years: f(B.horizon_years) })}</caption>
+          <thead><tr><th>{t("biz.col.rate")}</th><th className="r">{t("biz.col.ratePct")}</th><th className="r">{t("biz.col.net")}</th></tr></thead>
+          <tbody>
+            {rates.map(([key, r]) => (
+              <tr key={key}>
+                <td>{t(`biz.rate.${key}`)}</td>
+                <td className="r">{f(r.rate_pct, 2)}</td>
+                <td className="r">{ksek(f, r.transformer[0].net_sek)}–{ksek(f, r.transformer[1].net_sek)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {rates.length > 1 && <p className="caption-muted">{t("biz.ratesNote")}</p>}
+      {B.basis && <p className="caption-muted">{t("biz.basis", { z: f(B.basis.z_star_pct) })}</p>}
       <p className="caption-muted">{t("biz.note", { year: B.price_level_year, span, slo: ksek(f, B.at_horizon.with_station[0].net_sek), shi: ksek(f, B.at_horizon.with_station[1].net_sek) })}</p>
     </section>
   );

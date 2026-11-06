@@ -723,6 +723,12 @@ table.data th.r {
   text-align: right;
 }
 
+/* a reading that is itself the bad news (DESIGN.md: --danger), and the row the published figures use */
+table.data td.danger { color: var(--danger); font-weight: 600; }
+table.data tr[aria-current="true"] td { font-weight: 600; color: var(--text-primary); }
+/* the rates table under the deferral: its caption reads as a block head, flush left */
+.biz-rates > caption { caption-side: top; text-align: left; padding-bottom: var(--space-2); font-size: var(--text-small); font-weight: 600; color: var(--text-primary); }
+
 /* ---------------------------------------------------------------- map overlays */
 /* a key docked in the corner of the map: part of the map, so edged rather than floating */
 .map-legend {
@@ -1857,26 +1863,35 @@ ol.list {
 }
 
 /* ---------------------------------------------------------------- the opening answer
-   Two figures and the step between them: the static study in the muted ink, the
-   envelopes at display size. The screen's one display figure. */
-.answer-pair {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-  margin-top: var(--space-4);
-  font-variant-numeric: tabular-nums;
-}
-.answer-pair small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
-.ap-from { font-size: var(--text-h1); line-height: var(--lh-h1); font-weight: 600; color: var(--text-muted); }
-.ap-arrow { align-self: center; color: var(--text-muted); display: inline-flex; }
-.ap-to { font-size: var(--text-display); line-height: var(--lh-display); font-weight: 700; letter-spacing: var(--track-display); color: var(--text-primary); }
+   Three stops on one line, like a metro line read downwards: the static study and what can be
+   issued today in the muted ink at h1, the perfect-foresight bound at display size with the
+   budget it is held to. The screen's one display figure. */
+.answer-stops { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-3); font-variant-numeric: tabular-nums; }
+.as-stop { --dot-y: calc(var(--text-h1) * var(--lh-h1) / 2); position: relative; display: grid; gap: 2px; padding-left: var(--space-6); min-width: 0; }
+.as-stop.as-bound { --dot-y: calc(var(--text-display) * var(--lh-display) / 2); }
+/* the stop: a ring in its series colour on the page ground */
+.as-stop::before { content: ""; position: absolute; left: 0; top: calc(var(--dot-y) - 7px); width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--as-colour); background: var(--bg-base); }
+/* the line to the next stop */
+.as-stop:not(:last-child)::after { content: ""; position: absolute; left: 6px; top: calc(var(--dot-y) + 7px); bottom: calc(-1 * var(--space-3) - var(--dot-y) + 7px); width: 2px; background: var(--border-strong); }
+.as-static { --as-colour: var(--neutral-series); }
+.as-issuable { --as-colour: var(--series-dynamic-quiet); }
+.as-bound { --as-colour: var(--series-dynamic); }
+.as-bound::before { background: var(--series-dynamic); }
+.as-value { font-size: var(--text-h1); line-height: var(--lh-h1); font-weight: 600; color: var(--text-muted); }
+.as-bound .as-value { font-size: var(--text-display); line-height: var(--lh-display); font-weight: 700; letter-spacing: var(--track-display); color: var(--text-primary); }
+.as-value small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
+.as-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); font-size: var(--text-small); font-weight: 500; color: var(--text-primary); }
+.as-note { font-size: var(--text-caption); color: var(--text-muted); max-width: 52ch; }
+/* the budget the bound is held to, said beside the figure it qualifies */
+.basis-mark { padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .answer-ratio { color: var(--good); font-weight: 600; }
 /* the ratio as two lengths: words, not figures, because the figures are said above */
 .ratio-bars { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: var(--space-2) var(--space-3); width: 100%; margin-top: var(--space-3); font-size: var(--text-small); color: var(--text-secondary); }
 .ratio-bars i { display: block; height: 10px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .rb-static { background: var(--neutral-series); }
 .rb-doe { width: 100%; background: var(--series-dynamic); }
+/* what can be issued today: solid to the lower end of its range, hatched to the upper */
+.rb-issuable { background: linear-gradient(90deg, var(--series-dynamic-quiet) 0 var(--lo), transparent var(--lo)), repeating-linear-gradient(135deg, var(--series-dynamic-quiet) 0 2px, transparent 2px 5px); }
 .answer-sheet { width: 100%; margin-top: var(--space-3); border-top: 1px solid var(--border); }
 .tile .t-value.danger { color: var(--danger); }
 
@@ -1906,7 +1921,8 @@ ol.list {
   .net-figure { min-height: 380px; }
 }
 @media (max-width: 700px) {
-  .ap-to { font-size: var(--text-h1); }
+  .as-bound .as-value { font-size: var(--text-h1); line-height: var(--lh-h1); }
+  .as-stop.as-bound { --dot-y: calc(var(--text-h1) * var(--lh-h1) / 2); }
   .net-figure { min-height: 440px; }
   .net-key .net-src:first-of-type { margin-left: 0; }
 }

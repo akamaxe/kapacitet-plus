@@ -8,7 +8,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { SectionMissing, Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { clock, dateTime, round, useFmt } from "../lib/format";
+import { clock, dateTime, monthLong, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -74,6 +74,10 @@ export default function Method() {
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
   const F = host.data?.data?.foresight;
+  // the MV band, a sensitivity beside the published envelopes (mv_band.json), and what the static
+  // figure assumes (hosting_summary.json)
+  const MV = host.data?.data?.mv_band;
+  const SD = host.data?.data?.summary?.static_definition;
 
   const statusByKey = useMemo(() => {
     const m = new Map<string, any>();
@@ -123,6 +127,7 @@ export default function Method() {
     { id: "inputs", label: t("met.assumptions") },
     ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
     ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    ...(MV ? [{ id: "mvband", label: t("met.nav.mv") }] : []),
     ...(P ? [{ id: "protection", label: t("met.nav.prot") }] : []),
     { id: "import", label: t("met.nav.imp") },
     { id: "limits", label: t("met.limits") },
@@ -316,23 +321,45 @@ export default function Method() {
             <div className="region-head">
               <div className="region-title">
                 <h2>{t("met.fc")}</h2>
-                <p className="caption">{t("met.fc.caption", { years: F.years.length - 1 })}</p>
+                <p className="caption">
+                  {t(F.margins ? "met.fc.captionMargins" : "met.fc.caption", { years: F.years.length - 1, pv: f(F.margins?.pv_pct ?? 0), load: f(F.margins?.load_pct ?? 0) })}
+                </p>
               </div>
             </div>
             <div className="tiles cols-4">
               <Tile label={t("met.fc.static")} value={f(F.median_kw.static, 0)} unit="kW" />
+              {F.median_kw.timeseries != null && <Tile label={t("met.fc.timeseries")} value={f(F.median_kw.timeseries, 0)} unit="kW" />}
               <Tile label={t("met.fc.climo")} value={f(F.median_kw.climatological, 0)} unit="kW" />
               <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
-              <Tile label={t("met.fc.premium")} value={f(F.foresight_premium_kw, 0)} unit="kW" />
             </div>
             <div className="tiles">
-              <Tile label={t("met.fc.violations", { n: F.n_orders })} value={F.violation_hours} />
+              <Tile label={t("met.fc.premium")} value={f(F.foresight_premium_kw, 0)} unit="kW" />
+              <Tile label={t("met.fc.violations", { n: F.n_orders })} value={f(F.violation_hours)} unit="h" />
+              {F.within_budget_orders != null && (
+                <Tile label={t("met.fc.withinBudget", { z: f(F.z_star_pct) })} value={`${f(F.within_budget_orders)} / ${f(F.n_orders)}`}
+                  note={F.at_floor_orders != null ? t("met.fc.withinBudget.note", { n: f(F.at_floor_orders) }) : undefined} />
+              )}
               <Tile
-                label={t("met.fc.record")}
-                value={F.exceedance.pv_aggregate_hours_over}
-                note={t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
+                label={t("met.fc.record", { year: F.exceedance.year ?? "" })}
+                value={f(F.exceedance.pv_aggregate_hours_over)}
+                unit="h"
+                note={F.plan_exceedance?.total
+                  ? t("met.fc.record.noteAll", { n: f(F.years.length), h: f(F.plan_exceedance.total.pv_aggregate_hours_over), kw: f(F.plan_exceedance.total.pv_worst_aggregate_kw, 2) })
+                  : t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
               />
             </div>
+            <p className="caption-muted">{t("met.fc.bound")}</p>
+            {SD && (
+              <section className="block stack">
+                <div className="block-head"><h3>{t("met.static.title")}</h3></div>
+                <p className="caption">
+                  {SD.load_rule !== "min_daytime_summer" ? SD.load_rule_text : t("met.static.text", {
+                    pv: f(SD.pv_factor, 2), load: f(SD.load_factor, 2), mv: f(SD.mv_voltage_pu, 2),
+                    from: monthLong(lang, SD.months[0]), to: monthLong(lang, SD.months[1]), h0: SD.hours[0], h1: SD.hours[1],
+                  })}
+                </p>
+              </section>
+            )}
             <SectionMissing title={t("met.fc.schemes")} q={fc} />
             {FC && (
               <section className="block stack">
@@ -351,6 +378,9 @@ export default function Method() {
             )}
           </section>
         )}
+
+        {/* ---------------------------------------------------------------- the MV band */}
+        {MV && <MvBand MV={MV} />}
 
         {/* ---------------------------------------------------------------- protection */}
         <SectionMissing title={t("met.prot")} q={prot} />
@@ -473,4 +503,62 @@ function weatherOption(tk: Tokens, w: any[], f: (v: number | null | undefined, d
     tooltip: { trigger: "axis", valueFormatter: (v: number) => `${f(v)} kWh/m²` },
     series: [{ type: "bar", data: w.map((x) => Math.round(x.ghi_kwh_m2)), itemStyle: { color: tk.main, borderRadius: [tk.size.radius, tk.size.radius, 0, 0] }, barWidth: 18 }],
   };
+}
+
+/* ==================================================================== the MV band */
+
+/**
+ * The station's MV voltage across its band (mv_band.json): the capacity search rerun at each level
+ * and the published envelopes replayed at it. A sensitivity: the envelopes stay at the base level.
+ */
+function MvBand({ MV }: { MV: any }) {
+  const t = useT();
+  const f = useFmt();
+  const levels = MV.levels as any[];
+  const safe = levels.filter((l) => l.published.violation_hours === 0).map((l) => l.vm_pu as number);
+  return (
+    <section className="region" id="mvband">
+      <div className="region-head">
+        <div className="region-title">
+          <h2>{t("met.mv")}</h2>
+          <p className="caption">
+            {t("met.mv.caption", { lo: f(MV.band_pu[0], 2), hi: f(MV.band_pu[1], 2), base: f(MV.base_pu, 2), order: MV.order, year: MV.year })}
+          </p>
+        </div>
+      </div>
+      {safe.length > 0 && (
+        <p className="lead-answer">
+          {t(safe.length === levels.length ? "met.mv.leadAll" : "met.mv.lead", { from: f(Math.min(...safe), 2), to: f(Math.max(...safe), 2) })}
+        </p>
+      )}
+      <table className="data">
+        <caption className="sr-only">{t("met.mv.table")}</caption>
+        <thead>
+          <tr>
+            <th className="r">{t("met.mv.col.pu")}</th>
+            <th className="r">{t("met.mv.col.static")}</th>
+            <th className="r">{t("met.mv.col.ts")}</th>
+            <th className="r">{t("met.mv.col.doe")}</th>
+            <th className="r">{t("met.mv.col.hours")}</th>
+            <th className="r">{t("met.mv.col.trafo")}</th>
+            <th className="r">{t("met.mv.col.vmax")}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {levels.map((l) => (
+            <tr key={l.vm_pu} aria-current={l.vm_pu === MV.base_pu ? "true" : undefined}>
+              <td className="r">{f(l.vm_pu, 2)}{l.vm_pu === MV.base_pu ? ` · ${t("met.mv.base")}` : ""}</td>
+              <td className="r">{f(l.static_kw)}</td>
+              <td className="r">{f(l.timeseries_kw)}</td>
+              <td className="r">{f(l.doe_kw)}</td>
+              <td className={`r${l.published.violation_hours > 0 ? " danger" : ""}`}>{f(l.published.violation_hours)}</td>
+              <td className="r">{f(l.published.max_trafo_loading_pct, 1)}</td>
+              <td className="r">{f(l.published.max_voltage_pu, 3)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="caption-muted">{t("met.mv.note")}</p>
+    </section>
+  );
 }

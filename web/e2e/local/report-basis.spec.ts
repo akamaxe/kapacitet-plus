@@ -12,6 +12,14 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
   await expect(page).toHaveURL(/basis=dayahead/);
   await expect(page.getByRole("row", { name: /Limited hours that needed it/ })).toBeVisible();
+  // the binding rows count the hours a limit was needed, with the plan's own count beside them
+  await expect(page.getByRole("row", { name: /the plan issued the day before limited/ }).first()).toBeVisible();
+  // an audited, empirical bound: nowhere called a guarantee, and the pack cites no figure priced
+  // on the perfect-foresight deployment
+  await expect(page.getByText(/guarantee/i)).toHaveCount(0);
+  await expect(page.getByText(/every issue audits/).first()).toBeVisible();
+  const pack = page.locator("#ei");
+  if (await pack.count()) await expect(pack).not.toContainText("kSEK");
 
   await page.getByLabel("Sharing rule").selectOption("prorata");
   await expect(page).toHaveURL(/policy=prorata/);

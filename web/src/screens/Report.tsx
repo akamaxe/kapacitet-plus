@@ -86,7 +86,11 @@ export default function Report() {
   if (!R) return <Missing of={[settings, comp, net]} />;
 
   const H = hoursInYear(R.year);
-  const binding = Object.entries(R.binding_constraint_hours ?? {}) as [string, number][];
+  // the component that bound each hour a limit was needed (compliance.json): on the day-ahead basis
+  // that is fewer hours than the plan limited, and the plan's count is said beside it
+  const planned: Record<string, number> = R.binding_constraint_hours ?? {};
+  const needed: Record<string, number> | undefined = R.binding_constraint_necessary_hours;
+  const binding = Object.entries(needed ?? planned) as [string, number][];
   const worst = R.worst_uncontrolled;
   const selected = rows.find((r) => r.customer_id === cid) ?? null;
   const cols: Col<Agreement>[] = [
@@ -164,7 +168,10 @@ export default function Report() {
                 ok: null, label: t("rep.necessary"), value: `${f(R.activations_necessary_hours)} / ${f(R.hours_with_curtailment)}`, unit: "h",
                 criterion: t("rep.necessaryNote", { n: f(R.activations_unnecessary_hours) }),
               }] : []),
-              ...binding.map(([el, h]) => ({ ok: null, label: t("rep.binding", { el: t(`rep.el.${el}`) }), value: f(h), unit: "h", criterion: t("rep.bindingNote") })),
+              ...binding.map(([el, h]) => ({
+                ok: null, label: t("rep.binding", { el: t(`rep.el.${el}`) }), value: f(h), unit: "h",
+                criterion: needed && (planned[el] ?? h) !== h ? t("rep.bindingPlanNote", { n: f(planned[el] ?? 0) }) : t("rep.bindingNote"),
+              })),
               { ok: null, label: t("rep.limits"), value: `${f(R.voltage_limits_pu[0], 2)}–${f(R.voltage_limits_pu[1], 2)}`, unit: "pu", criterion: t("rep.limitsNote", { pct: f(R.thermal_limit_pct) }) },
             ]}
           />

@@ -280,6 +280,7 @@ A white sheet with ink and one public-transport blue, and three signal colours t
 | Role token | Primitive | Job | Text on ground (day / night) |
 |---|---|---|---|
 | `--good-fill`, `--series-dynamic` | `green` | firm houses on the maps, the envelope (dynamic) series, the "with envelopes" bar, energy delivered in the envelope, the live mark on Sweden | 5.4 / 6.2 (graphic) |
+| `--series-dynamic-quiet` | `green` at 42 % over the page | what can be issued today beside the bound: the middle stop and bar of the opening answer; never text | (graphic, paired with its label) |
 | `--good` | `green-ink` | the ratio line, pass icons, good outcomes as text (a firm decision in the queue, the decided check) | 6.1 / 9.2; 5.2 / 7.0 on its wash |
 | `--good-quiet` | `green-wash` | quiet good fields | |
 | `--warning-fill` | `amber` | houses under an envelope on the maps, a meter at or above 85 % of its limit, curtailed energy in a chart, the strong end of the envelope heatmaps | 3.2 / 9.5 (graphic) |
@@ -340,8 +341,8 @@ The printed record is black on white whatever the screen theme: **Paper** (`prin
 
 ### Hierarchy
 The scale steps about 1.2 on a 15 px body (rem on a 16 px root).
-- **Display** (700, `--text-display` 2.5rem, 1.05, −0.022em): the one answer figure per screen ("787 kW" on Static vs envelopes; the curtailed share of export on the Annual report). Nothing else is set at this size. Falls to h1 size below 700 px.
-- **Headline** (600, `--text-h1` 1.625rem, 1.2): the screen title; also the "from" figure of the answer pair and the verdict figure. A map screen's h1 sits in its side panel one step down (`--text-h2`).
+- **Display** (700, `--text-display` 2.5rem, 1.05, −0.022em): the one answer figure per screen (the perfect-foresight bound on Static vs envelopes, the last of its three stops; the curtailed share of export on the Annual report). Nothing else is set at this size. Falls to h1 size below 700 px.
+- **Headline** (600, `--text-h1` 1.625rem, 1.2): the screen title; also the first two stops of the opening answer and the verdict figure. A map screen's h1 sits in its side panel one step down (`--text-h2`).
 - **Title** (600, `--text-h2` 1.25rem, 1.3): a region heading; also the lead answer sentence under a title (at 500).
 - **Title small** (600, `--text-h3` 1.0625rem, 1.35): a sub-heading in a region or panel, the hour verdict, the inspector title, the decision and live-strip heads, the tour card's title, the brand name (700).
 - **Body** (400, `--text-body` 0.9375rem, 1.5): prose, data-sheet values (500).
@@ -432,7 +433,11 @@ A set of checks is a table: one row per check, a status mark with its word (Pass
 A loading as a scale, not a progress bar: a 6 px inset track, a fill scaled from the left, 1 px ticks at 50 and 85 % of the limit and a 2 px ink mark at the limit. The fill is green, amber at or above 85 % of the limit, red past it: the same thresholds the map gives the cables. The reading sits in the head row like a data-sheet value.
 
 ### The answer and the verdict
-- *Answer pair*: the static figure at h1/600 in muted ink, an arrow, the envelope figure at display/700 in ink, units at h3 size in muted ink; under it the ratio line in `--good`, then two bars (pencil and green, labels as words) and a data sheet.
+- *The three stops* (`AnswerStops.tsx`, Static vs envelopes): one vertical line read downwards, like a metro line, every figure a published median read from `/hosting` and none typed into the screen.
+  1. **Static**: the worst-hour study at h1/600 in muted ink, a pencil ring on the line.
+  2. **Issuable today**: what an operator can issue now, as a range from the lower to the higher of the hourly study and the envelopes issued the day before (`foresight.json`), at h1/600 in muted ink with a ring in `--series-dynamic-quiet`. Without `foresight.json` the stop is the hourly study alone and its note says the day-ahead figure is not computed yet; the screen never waits for it.
+  3. **The perfect-foresight bound**: the screen's display figure (700, ink) on a filled green stop. Beside its label sits the basis mark, a hairline-edged caption chip naming the budget the figure is held to (the aggregate share of the neighbourhood's solar, `budget_basis`); under it, in caption, the same search held to the budget per installation. The label is a glossary term, because "perfect foresight" is not a figure anyone can issue.
+  Units at h3 size in muted ink. Under the stops: the ratio line in `--good` ("up to"), then three bars as lengths with words for labels: pencil, the quiet green solid to the low end of the issuable range and hatched to its high end, and green; then the data sheet. Below 700 px the bound falls to h1 like every display figure.
 - *Verdicts*: two columns under a 2 px ink rule, like the head of a form: the method in caption, a status mark with its word, the figure at h1/500, the detail and its basis.
 - *Stale answer*: when the request changes after an evaluation, the answer is cancelled, not removed: it fades to 45 %, its figure is struck through, and an amber-wash note names what changed and offers to evaluate again.
 - *Filed figure* (Annual report): the curtailed share of export at display size with its unit at h3 size in muted ink, the words beside it at body size in ink-2 (32ch), then the filing download as the primary button and the audit trail as a ghost one.

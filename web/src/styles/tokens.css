@@ -260,6 +260,8 @@
   --chrome-rule: var(--sl-rule);
   /* data: the envelope side and firm status in green, limits in amber, above rating in red */
   --series-dynamic: var(--green);
+  /* what can be issued today, beside the bound: the same green, quieter (the opening answer) */
+  --series-dynamic-quiet: color-mix(in srgb, var(--green) 42%, var(--bg-base));
   --series-main: var(--blue-line);
   --good: var(--green-ink);
   --good-fill: var(--green);

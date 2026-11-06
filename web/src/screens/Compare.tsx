@@ -1,11 +1,11 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { AnswerStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
 import { Chart } from "../components/LazyChart";
 import { axisStyle } from "../lib/chartStyle";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { SectionMissing, ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
-import { Icon } from "../components/Icon";
 // the map library is the heaviest thing on this screen: it loads beside the words, not before them
 const NetworkMap = lazy(() => import("../components/NetworkMap").then((m) => ({ default: m.NetworkMap })));
 import { Term } from "../components/Term";
@@ -73,10 +73,7 @@ export default function Compare() {
 
   const m = H.summary.measures;
   const zStar = H.summary.z_star_pct;
-  const staticKw = m.static.kw_ac.median;
-  const doeKw = m.doe.kw_ac.median;
   const years = H.summary.years;
-  const ratio = doeKw / staticKw;
   const pol = S.policies;
   const ver = S.verification;
   const fixedZ = (H.curve.points as any[]).map((p) => p.z_fixed_pct).filter((v: number) => v > 0);
@@ -90,7 +87,8 @@ export default function Compare() {
   // each says so in its head, and the bar's basis follows while it is being read
   const priceSpan = (ys: number[] | undefined) => (ys?.length ? `${ys[0]}–${ys[ys.length - 1]}` : "–");
   const valueBasis = OV ? t("cmp.basis.value", { order: OV.order, span: priceSpan(OV.price_years) }) : undefined;
-  const reinfBasis = RF ? t("cmp.basis.reinf", { order: RF.order }) : undefined;
+  // Or reinforce prices the deployment the perfect-foresight search sized: it says so
+  const reinfBasis = RF ? t(RF.basis ? "cmp.basis.reinfBound" : "cmp.basis.reinf", { order: RF.order, z: f(RF.basis?.z_star_pct ?? zStar) }) : undefined;
   const sensBasis = H.tornado ? t("cmp.basis.sens", { order: H.tornado.order, n: H.tornado.years?.length ?? years.length }) : undefined;
   const sections: Section[] = [
     { id: "capacity", label: t("cmp.sec.capacity") },
@@ -115,18 +113,9 @@ export default function Compare() {
             <div className="overview-copy">
               <h1 className="headline">{t("overview.title")}</h1>
               <p className="headline-sub">{t("cmp.leadShort", { mva: trafoMva != null ? f(trafoMva, 1) : "–" })}</p>
-              {/* the screen's one answer: each figure is said here and nowhere else in the view */}
-              <p className="answer-pair">
-                <span className="ap-from">{f(staticKw)}<small>kW</small></span>
-                <span className="ap-arrow" aria-hidden="true"><Icon name="arrow" size={26} /></span>
-                <span className="sr-only">{t("ui.to")}</span>
-                <span className="ap-to">{f(doeKw)}<small>kW</small></span>
-              </p>
-              <p className="answer-ratio">{t("cmp.ratioLine", { r: f(ratio, 1) })}</p>
-              <div className="ratio-bars">
-                <span><Term id="static">{t("cmp.fig.static")}</Term></span><i aria-hidden="true" className="rb-static" style={{ width: `${(staticKw / doeKw) * 100}%` }} />
-                <span><Term id="envelope">{t("cmp.fig.doe")}</Term></span><i aria-hidden="true" className="rb-doe" />
-              </div>
+              {/* the screen's one answer: static, what can be issued today, the perfect-foresight
+                  bound; each figure is said here and nowhere else in the view */}
+              <AnswerStops />
               <div className="tiles cols-1 answer-sheet">
                 <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
                 <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />

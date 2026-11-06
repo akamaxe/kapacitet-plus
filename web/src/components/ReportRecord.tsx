@@ -16,7 +16,8 @@ export function ReportRecord({ R, rows }: {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
-  const binding = Object.entries(R.binding_constraint_hours ?? {}) as [string, number][];
+  // the hours a limit was needed, as on the screen (binding_constraint_necessary_hours)
+  const binding = Object.entries(R.binding_constraint_necessary_hours ?? R.binding_constraint_hours ?? {}) as [string, number][];
   const dayahead = R.basis === "dayahead";
   return createPortal(
     <article className="print-record filing" lang={lang} aria-hidden="true">

@@ -129,6 +129,11 @@ export default function Operation() {
                 <span className="rf-label">{t("op.figure", { foresight: f(FS.curtailed_share_of_export_pct, 1) })}</span>
               </p>
               <p className="caption-muted">{t("op.figureNote")}</p>
+              {/* the deployment was sized by the perfect-foresight search: issued the day before,
+                  the same houses are held back in many more hours (operation/index.json) */}
+              {DA.critical_hours != null && FS.critical_hours != null && (
+                <p className="caption-muted" data-basis="sized">{t("op.sized", { da: f(DA.critical_hours), fs: f(FS.critical_hours) })}</p>
+              )}
             </div>
             <div className="tiles cols-1 answer-sheet">
               <Tile label={<Term id="nonfirm">{t("op.agreements")}</Term>} value={f(agreements.length)} />
@@ -358,6 +363,14 @@ function Shadow({ S, f, onDay }: { S: any; f: F; onDay: (day: number) => void })
             criterion: t("op.crit.levelNote", { level: f(S.agreed_level_pct, 1), median: f(A.median_year_share_pct, 1), worst: f(A.worst_year_share_pct, 1) }) },
           { ok: null, label: t("op.crit.foresight"), value: `${f(P.within_level)} / ${f(P.agreements)}`,
             criterion: t("op.crit.foresightNote", { worst: f(P.worst_year_share_pct, 1) }) },
+          // where the real year beat the plan the limits were issued against: audited, never assumed
+          ...(A.exceedance
+            ? [{ ok: null, label: t("op.crit.exceed"), value: f(A.exceedance.pv_aggregate_hours_over), unit: "h",
+                criterion: t("op.crit.exceedNote", {
+                  houses: f(A.exceedance.pv_customer_hours_over), kw: f(A.exceedance.pv_worst_customer_kw, 2),
+                  load: f(A.exceedance.load_customer_hours_under), year: S.year,
+                }) }]
+            : []),
           ...(S.persistence && typeof S.persistence.violation_hours === "number"
             // a comparison, not one of the pilot's two tests: measured, never marked Fail beside them
             ? [{ ok: null, label: t("op.crit.persistence"), value: f(S.persistence.violation_hours), unit: "h",
