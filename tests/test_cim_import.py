@@ -170,9 +170,6 @@ def test_a_second_transformer_on_the_same_lv_network_and_consumers_no_station_re
     net = copy.deepcopy(conversion.net)
     k1 = int(net.bus.index[net.bus["origin_id"] == fx.nodes["K1"]][0])
     hv = int(net.trafo.at[0, "hv_bus"])
-    # pandapower 3's converter leaves nullable-boolean flags that create_transformer cannot extend
-    flags = [c for c in net.trafo.columns if str(net.trafo[c].dtype) == "boolean"]
-    net.trafo[flags] = net.trafo[flags].fillna(False).astype(bool)
     pp.create_transformer(net, hv, k1, "0.4 MVA 10/0.4 kV", name="T2")
     net.trafo.loc[1, "origin_id"] = "_t2"
     out, overall = stations(net, mapping)

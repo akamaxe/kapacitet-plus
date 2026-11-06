@@ -110,15 +110,20 @@ def contract_tables(net, trafo_idx: int = 0,
     lines = pd.DataFrame(rows, columns=["line_id", "from_bus", "to_bus", "length_m", "std_type", "r_ohm_per_km",
                                         "x_ohm_per_km", "c_nf_per_km", "max_i_ka", "parallel"])
 
+    # a tap read from the characteristic table also sets the impedance pandapower solves with
+    table = net.get("trafo_characteristic_table")
+    row = tap_table_row(trafo, table)
+    vk, vkr = (float(trafo[k]) if row is None or k not in row.index or pd.isna(row[k]) else float(row[k])
+               for k in ("vk_percent", "vkr_percent"))
     transformer = pd.DataFrame([{
         "lv_bus": bus_id[root],
         "sn_mva": float(trafo["sn_mva"]),
         "vn_hv_kv": float(trafo["vn_hv_kv"]),
         "vn_lv_kv": float(trafo["vn_lv_kv"]),
-        "vk_percent": float(trafo["vk_percent"]),
-        "vkr_percent": float(trafo["vkr_percent"]),
+        "vk_percent": vk,
+        "vkr_percent": vkr,
         "vector_group": _vector_group(net, trafo),
-        "tap_pos": contract_tap(trafo),
+        "tap_pos": contract_tap(trafo, table),
     }])
 
     customers = _customers(net, load, rep, bus_id, customer_map)
@@ -150,20 +155,54 @@ def transformer_id(net, trafo_idx: int = 0) -> str | None:
     return str(value) if isinstance(value, str) and value else None
 
 
-def contract_tap(trafo) -> int:
+def _tabular(trafo) -> bool:
+    value = trafo.get("tap_dependency_table")
+    return bool(value) if value is not None and not pd.isna(value) else False
+
+
+def tap_table_row(trafo, table) -> pd.Series | None:
+    """The row of `net.trafo_characteristic_table` pandapower 3 solves the transformer with, or
+    None when its tap does not depend on a table. pandapower 3 reads the table whenever
+    `tap_dependency_table` is true and the tap side is set, whatever `tap_changer_type` says (the
+    CGMES converter sets it for every tap changer with a ratio table); a missing table or step
+    would leave pandapower with a ratio of 1 and an impedance of 1 %, so it is refused."""
+    if not _tabular(trafo) or trafo.get("tap_side") not in ("hv", "lv"):
+        return None
+    ident, pos = trafo.get("id_characteristic_table"), trafo.get("tap_pos")
+    if table is None or len(table) == 0 or ident is None or pd.isna(ident) or pos is None or pd.isna(pos):
+        raise ContractError("the transformer's tap depends on a characteristic table the network does not hold")
+    rows = table[(table["id_characteristic"] == ident) & (table["step"] == pos)]
+    if rows.empty:
+        raise ContractError(f"the transformer's characteristic table {ident} has no row for tap position {pos}")
+    return rows.iloc[0]
+
+
+def contract_tap(trafo, table=None) -> int:
     """The contract's tap position with the transformer's voltage ratio: its offset from neutral
     in the network's own steps and side, as a whole number of 2.5 % steps on the HV side. A tap
     pandapower itself ignores (no tap changer type, position, step, neutral or side) is 0.
 
     pandapower 3 applies a tap only through `tap_changer_type`: "Ratio" changes the ratio, while
     "Symmetrical" and "Ideal" shift the phase as well. A network from before pandapower 3 has
-    `tap_phase_shifter` instead, which pandapower still reads when the type column is missing."""
+    `tap_phase_shifter` instead, which pandapower still reads when the type column is missing.
+    With `tap_dependency_table` set, pandapower 3 takes the ratio and the angle from
+    `net.trafo_characteristic_table` (passed as `table`) instead of the step."""
     def num(key: str) -> float:
         value = trafo.get(key)
         return float(value) if value is not None and pd.notna(value) else math.nan
 
-    pos, neutral, step = num("tap_pos"), num("tap_neutral"), num("tap_step_percent")
     side = trafo.get("tap_side")
+    row = tap_table_row(trafo, table)
+    if row is not None:
+        angle = float(row["angle_deg"]) if "angle_deg" in row.index and pd.notna(row["angle_deg"]) else 0.0
+        if angle != 0.0:
+            raise ContractError("the transformer's tap changer shifts the phase, which the contract cannot express")
+        # pandapower scales the tap side's rated voltage by the table's voltage_ratio
+        scale = float(row["voltage_ratio"])
+        return _contract_steps(scale if side == "hv" else 1.0 / scale,
+                               f"tap position {num('tap_pos'):g} of characteristic table "
+                               f"{trafo.get('id_characteristic_table')} on the {side} side")
+    pos, neutral, step = num("tap_pos"), num("tap_neutral"), num("tap_step_percent")
     typed = "tap_changer_type" in trafo.index if hasattr(trafo, "index") else "tap_changer_type" in trafo
     changer = trafo.get("tap_changer_type") if typed else None
     changer = changer if isinstance(changer, str) and changer else None
@@ -171,6 +210,11 @@ def contract_tap(trafo) -> int:
         return 0                                           # no tap changer: pandapower applies no tap
     if any(math.isnan(v) for v in (pos, neutral, step)) or pos == neutral or step == 0.0 or side not in ("hv", "lv"):
         return 0                                           # at neutral, or a tap pandapower does not apply
+    if changer == "Tabular":
+        raise ContractError("the transformer's tabular tap changer has no characteristic table "
+                            "(tap_dependency_table is off), so its ratio is unknown")
+    if typed and changer not in ("Ratio", "Symmetrical", "Ideal"):
+        raise ContractError(f"the transformer's tap changer type {changer!r} is not one pandapower knows")
     degree = num("tap_step_degree")
     shifts = changer != "Ratio" if typed else bool(trafo.get("tap_phase_shifter", False))
     if shifts or (not math.isnan(degree) and degree != 0.0):
@@ -178,13 +222,17 @@ def contract_tap(trafo) -> int:
     offset = (pos - neutral) * step / 100.0
     # a tap on the LV winding raises its voltage, which lowers the ratio
     ratio = 1.0 + offset if side == "hv" else 1.0 / (1.0 + offset)
+    return _contract_steps(ratio, f"position {pos:g}, neutral {neutral:g}, {step:g} % per step on the {side} side")
+
+
+def _contract_steps(ratio: float, what: str) -> int:
+    """The ratio (over its rated value) as whole 2.5 % HV steps in the contract's range."""
     exact = (ratio - 1.0) * 100.0 / CONTRACT_TAP_STEP_PCT
     steps = round(exact)
     lo, hi = CONTRACT_TAP_RANGE
     if abs(exact - steps) * CONTRACT_TAP_STEP_PCT > 0.25 or not lo <= steps <= hi:
-        raise ContractError(f"the transformer's tap (position {pos:g}, neutral {neutral:g}, {step:g} % per step on "
-                            f"the {side} side) changes the ratio by {(ratio - 1.0) * 100.0:+.2f} %, which the "
-                            f"contract's {lo}..{hi} steps of {CONTRACT_TAP_STEP_PCT:g} % cannot give")
+        raise ContractError(f"the transformer's tap ({what}) changes the ratio by {(ratio - 1.0) * 100.0:+.2f} %, "
+                            f"which the contract's {lo}..{hi} steps of {CONTRACT_TAP_STEP_PCT:g} % cannot give")
     return int(steps)
 
 

@@ -21,10 +21,11 @@ from kapacitet.grid.builder import NET_JSON_OBJECTS, GridFileError, check_net_js
 def _small_net() -> pp.pandapowerNet:
     net = pp.create_empty_network(name="Smedslätten test")
     b0 = pp.create_bus(net, vn_kv=10.0)
-    b1 = pp.create_bus(net, vn_kv=0.4)
+    b1 = pp.create_bus(net, vn_kv=0.4, geodata=(17.95, 59.33))   # what the current pandapower writes
     b2 = pp.create_bus(net, vn_kv=0.4)
     pp.create_ext_grid(net, b0)
-    pp.create_transformer(net, b0, b1, std_type="0.4 MVA 10/0.4 kV")
+    t = pp.create_transformer(net, b0, b1, std_type="0.4 MVA 10/0.4 kV")
+    net.trafo.loc[t, "tap_pos"] = net.trafo.at[t, "tap_neutral"] + 1     # a Ratio tap above neutral
     pp.create_line(net, b1, b2, length_km=0.1, std_type="NAYY 4x50 SE")
     pp.create_load(net, b2, p_mw=0.01)
     return net
@@ -60,6 +61,7 @@ def test_a_network_written_by_pandapower_loads(net_file):
     net = safe_load_net(net_file)
     assert len(net.bus) == 3 and len(net.line) == 1 and net.name == "Smedslätten test"
     assert float(net.load.p_mw.iloc[0]) == pytest.approx(0.01)
+    assert net.trafo.at[0, "tap_pos"] == net.trafo.at[0, "tap_neutral"] + 1 and isinstance(net.bus.at[1, "geo"], str)
 
 
 def test_a_file_naming_another_class_is_refused_before_any_import(tmp_path, no_imports):

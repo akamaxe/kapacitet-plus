@@ -130,6 +130,42 @@ def test_a_tap_pandapower_ignores_is_neutral_and_a_phase_shifting_one_is_refused
         contract_tap(old)
 
 
+def test_a_tap_from_the_characteristic_table_uses_the_tables_ratio():
+    """pandapower 3 (and its CGMES converter) solves a transformer with tap_dependency_table set
+    with the table's voltage_ratio and impedance, whatever the step says."""
+    import pandas as pd
+
+    net = pn.kb_extrem_dorfnetz()
+    t = net.trafo.index[0]
+    neutral = int(net.trafo.at[t, "tap_neutral"])
+    net.trafo_characteristic_table = pd.DataFrame({
+        "id_characteristic": [0, 0, 0], "step": [neutral - 1, neutral, neutral + 1],
+        "voltage_ratio": [0.95, 1.0, 1.05], "angle_deg": [0.0, 0.0, 0.0],
+        "vk_percent": [4.1, 4.2, 4.3], "vkr_percent": [1.1, 1.2, 1.3]})
+    net.trafo["tap_dependency_table"] = net.trafo["tap_dependency_table"].astype(object)
+    net.trafo.loc[t, ["tap_dependency_table", "id_characteristic_table", "tap_pos", "tap_side"]] =         [True, 0, neutral + 1, "hv"]
+    trafo = net.trafo.loc[t]
+    assert contract_tap(trafo, net.trafo_characteristic_table) == 2          # +5 %, not one 2.5 % step
+    tables = contract_tables(net, 0, _map(net))
+    row = tables["transformer"].iloc[0]
+    assert (int(row["tap_pos"]), row["vk_percent"], row["vkr_percent"]) == (2, 4.3, 1.3)
+    trafo = trafo.copy()
+    trafo["tap_side"] = "lv"
+    assert contract_tap(trafo, net.trafo_characteristic_table) == -2         # a raised LV winding
+    with pytest.raises(ContractError, match="does not hold"):
+        contract_tap(trafo)                                                   # the table is missing
+    trafo["tap_pos"] = neutral + 5
+    with pytest.raises(ContractError, match="no row"):
+        contract_tap(trafo, net.trafo_characteristic_table)
+    shifted = net.trafo_characteristic_table.assign(angle_deg=[-5.0, 0.0, 5.0])
+    with pytest.raises(ContractError, match="phase"):
+        contract_tap(net.trafo.loc[t], shifted)
+    plain = pn.kb_extrem_dorfnetz().trafo.loc[0].copy()
+    plain["tap_pos"], plain["tap_changer_type"] = plain["tap_neutral"] + 1, "Tabular"
+    with pytest.raises(ContractError, match="tabular"):
+        contract_tap(plain)                                                   # no table to read
+
+
 def test_the_transformers_own_id_is_kept():
     net = pn.kb_extrem_dorfnetz()
     assert transformer_id(net, 0) is None

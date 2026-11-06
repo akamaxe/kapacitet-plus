@@ -209,6 +209,7 @@ def load_network(files: list[str | Path]):
             raise CimError(f"the CGMES files cannot be converted: {type(err).__name__}: {err}") from None
     _place(net, crs)
     _vector_groups(net)
+    _plain_flags(net)
     return net, crs
 
 
@@ -295,6 +296,15 @@ def _place(net, crs: str | None) -> None:
         pos = {b: tuple(to_wgs.transform(x, y)) for b, (x, y) in pos.items()}
     net.bus["geo"] = pd.Series([point_geojson(*pos[b]) if b in pos else None for b in net.bus.index],
                                index=net.bus.index, dtype=object)
+
+
+def _plain_flags(net) -> None:
+    """pandapower 3's converter leaves the transformer flags (tap_dependency_table, oltc...) as
+    nullable booleans, and create_transformer cannot extend such a column: plain bool, with NA as
+    False, which is how pandapower reads a missing flag anyway."""
+    flags = [c for c in net.trafo.columns if str(net.trafo[c].dtype) == "boolean"]
+    if flags:
+        net.trafo[flags] = net.trafo[flags].fillna(False).astype(bool)
 
 
 def _vector_groups(net) -> None:
