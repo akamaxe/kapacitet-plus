@@ -275,11 +275,21 @@ def shadow(policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
         npz = np.load(combo.result("days.npz"))
         season = season_days(year, tuple(A("shadow_season_months")))
         verdict = go_no_go(days, {k: npz[k] for k in ("curtailed", "pv", "cids")}, season, settings.agreed_level_pct)
+        # on the day-ahead basis, where the real year beat the plan it was issued against: the
+        # year's audit (issued.json) and, day by day, the season's share of it (days.json)
+        issued_path = combo.result("issued.json")
+        issued = json.loads(issued_path.read_text(encoding="utf-8")) if issued_path.exists() else {}
+        if issued:
+            files.append(issued_path)
+        exceed_keys = [k for k in ("exceedance_pv_customer_hours", "exceedance_load_customer_hours",
+                                   "exceedance_net_hours") if k in days]
         out["bases"][basis] = {
             **verdict,
             "days": {k: [days[k][i] for i in season] for k in
                      ("curtailed_kwh", "desired_kwh", "hours_limited", "hours_necessary_limited",
-                      "hours_unnecessary_limited", "violation_hours")},
+                      "hours_unnecessary_limited", "violation_hours", *exceed_keys)},
+            **({"exceedance": issued["exceedance"]} if issued.get("exceedance") is not None else {}),
+            **({k: issued[k] for k in ("critical_hours", "curtailed_share_of_export_pct") if k in issued}),
         }
     out["year"] = year
     out["season_months"] = list(A("shadow_season_months"))

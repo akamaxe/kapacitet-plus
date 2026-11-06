@@ -113,6 +113,39 @@ def test_the_extra_results_are_served(client):
     assert client.get(f"{API}/phases").json()["data"]["cases"]
 
 
+def test_hosting_carries_the_mv_band_and_consumption_once_computed(client):
+    from kapacitet.paths import processed
+
+    h = client.get(f"{API}/hosting").json()["data"]
+    for name in ("mv_band", "consumption", "foresight"):
+        assert (name in h) == processed("results", f"{name}.json").exists(), name
+
+
+def test_houses_carry_the_hourly_import_capacity_beside_the_static_one(client):
+    from kapacitet.paths import processed
+
+    houses = [f["properties"] for f in client.get(f"{API}/network").json()["features"] if f["properties"]["layer"] == "house"]
+    assert all("nodal_import_kw_ts" in p for p in houses)
+    if not processed("results", "consumption.json").exists():
+        pytest.skip("run: python -m kapacitet compute --stage extra --only consumption")
+    assert all(isinstance(p["nodal_import_kw_ts"], float) for p in houses)
+
+
+def test_the_shadow_season_says_where_the_real_year_beat_the_plan(client):
+    r = client.get(f"{API}/operation/shadow")
+    if r.status_code == 404:
+        pytest.skip("run: python -m kapacitet compute --stage extra --only operation")
+    da = r.json()["bases"]["dayahead"]
+    if "exceedance" not in da:
+        pytest.skip("issued.json predates the exceedance audit; run: python -m kapacitet compute --stage extra --only operation")
+    ex = da["exceedance"]
+    assert {"pv_aggregate_hours_over", "load_aggregate_hours_under", "net_aggregate_hours_not_dominated"} <= set(ex)
+    assert "exceedance" not in r.json()["bases"]["foresight"], "perfect foresight has no plan to beat"
+    assert da["curtailed_share_of_export_pct"] >= r.json()["bases"]["foresight"]["curtailed_share_of_export_pct"]
+    if "exceedance_pv_customer_hours" in da["days"]:
+        assert len(da["days"]["exceedance_pv_customer_hours"]) == len(da["days"]["curtailed_kwh"])
+
+
 def test_houses_say_whether_they_have_a_heat_pump_or_an_ev(client):
     houses = [f for f in client.get(f"{API}/network").json()["features"] if f["properties"]["layer"] == "house"]
     assert all(isinstance(f["properties"]["has_hp"], bool) for f in houses)

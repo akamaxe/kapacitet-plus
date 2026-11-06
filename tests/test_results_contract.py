@@ -208,6 +208,69 @@ def test_the_reinforcement_comparison_rests_on_the_published_results(results):
     assert yrs[0] == pytest.approx(lo / r["envelopes"]["curtailed_sek_per_year"])
 
 
+def test_the_reinforcement_says_which_deployment_it_prices(results):
+    """Or reinforce rests on the perfect-foresight deployment at the aggregate budget: it says so."""
+    from kapacitet.engine.summaries import overinstallation_summary, reinforcement
+
+    if "envelope_basis" not in results("overinstallation"):
+        pytest.skip("overinstallation.json predates envelope_basis; run: python -m kapacitet compute --stage extra --only overinstallation")
+    keys = ("reinforce_trafo_500_sek", "reinforce_trafo_800_sek", "reinforce_station_800_sek",
+            "reinforce_urban_supplement_sek", "reinforce_price_level_year")
+    r = reinforcement(results("tornado"), overinstallation_summary(results("overinstallation")), {k: A(k) for k in keys})
+    assert r["basis"]["envelopes"] == "foresight" and r["basis"]["budget"] == "aggregate"
+
+
+# ---------------------------------------------------------------- the three stops of the hero
+
+FORESIGHT = "run: python -m kapacitet compute --stage extra --only foresight"
+
+
+def test_the_heros_three_stops_are_ordered(results):
+    """Static, then what can be issued today (the hourly study and the day-ahead envelopes, as a
+    range), then the perfect-foresight bound, with the per-installation figure under it."""
+    if not processed("results", "foresight.json").exists():
+        pytest.skip(f"foresight.json not published yet; {FORESIGHT}")
+    m, fs = results("hosting_summary")["measures"], results("foresight")
+    static, ts, doe = (m[k]["kw_ac"]["median"] for k in ("static", "timeseries", "doe"))
+    da = fs["median_kw"]["climatological"]
+    assert static <= min(ts, da) <= max(ts, da) <= doe
+    if "doe_installation" in m:
+        assert static <= m["doe_installation"]["kw_ac"]["median"] <= doe
+    assert fs["violation_hours"] == 0 and fs["planning_full_year_violations"] == 0
+
+
+def test_the_method_tiles_read_published_fields(results):
+    if not processed("results", "foresight.json").exists():
+        pytest.skip(f"foresight.json not published yet; {FORESIGHT}")
+    fs = results("foresight")
+    for key in ("margins", "within_budget_orders", "plan_exceedance"):
+        if key not in fs:
+            pytest.skip(f"foresight.json predates {key}; {FORESIGHT}")
+    assert 0 <= fs["within_budget_orders"] <= fs["n_orders"]
+    assert fs["margins"]["pv_pct"] >= 0 and fs["margins"]["load_pct"] >= 0
+    total = fs["plan_exceedance"]["total"]
+    assert total["pv_aggregate_hours_over"] >= 0 and total["pv_worst_aggregate_kw"] >= 0
+    assert "timeseries" in fs["median_kw"]
+    sd = results("hosting_summary").get("static_definition")
+    if sd is None:
+        pytest.skip("hosting_summary.json predates static_definition; run: python -m kapacitet compute")
+    assert sd["load_rule_text"] and sd["mv_voltage_pu"] == A("mv_voltage_pu")
+
+
+def test_operation_sized_with_perfect_foresight_curtails_more_when_issued_the_day_before(results):
+    """Operation says the deployment was sized with perfect foresight: issued the day before, the
+    same houses are limited in at least as many hours and lose at least as large a share."""
+    path = processed("results", "operation", "index.json")
+    if not path.exists():
+        pytest.skip("run: python -m kapacitet compute --stage extra --only operation")
+    combos = json.loads(path.read_text(encoding="utf-8"))["combos"]
+    for pol, da in combos["dayahead"].items():
+        fs = combos["foresight"][pol]
+        assert da["verified"] and fs["verified"], pol
+        assert da["critical_hours"] >= fs["critical_hours"], pol
+        assert da["curtailed_share_of_export_pct"] >= fs["curtailed_share_of_export_pct"], pol
+
+
 # ---------------------------------------------------------------- the budget per installation
 
 PER_INSTALLATION = "run: python -m kapacitet compute (the per-installation budget came after these results)"

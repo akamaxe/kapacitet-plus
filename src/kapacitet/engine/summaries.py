@@ -53,7 +53,7 @@ def overinstallation_summary(d: dict) -> dict:
     i_budget = next(i for i, p in enumerate(pts) if p["adopters"] == d["doe_adopters"])
     return {
         "price_years": sorted(priced), "z_star_pct": d["z_star_pct"], "value_basis": d.get("value_basis"),
-        "order": d.get("order"),
+        "envelope_basis": d.get("envelope_basis", "foresight"), "order": d.get("order"),
         "static": curve[0], "budget": curve[i_budget], "full": curve[-1],
         "budget_marginal": marginal[i_budget - 1] if i_budget > 0 else None,
         "full_marginal": marginal[-1] if marginal else None,
@@ -87,6 +87,10 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
       (over-installation summary, the same adoption order).
     The ratio is undiscounted and compares a one-off cost with a yearly one; it says how many years
     of curtailment the reinforcement would buy, nothing more.
+
+    `basis` says what the envelope side rests on: the deployment the perfect-foresight search sized
+    at the aggregate curtailment budget, which is the planning figure and not what can be issued
+    the day before (that one curtails far more: results/operation).
     """
     big = next(c for c in tornado["cases"] if c["key"] == "trafo" and c["level"].startswith("0.63"))
     base = tornado["base"]
@@ -107,6 +111,8 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
         "years_of_curtailment": {"transformer": [per_year(t_lo), per_year(t_hi)],
                                  "with_station": [per_year(t_lo + station), per_year(t_hi + station)]},
         "order": tornado.get("order"), "order_over": over.get("order"),
+        "basis": {"envelopes": over.get("envelope_basis", "foresight"), "budget": "aggregate",
+                  "z_star_pct": over.get("z_star_pct")},
     }
 
 
@@ -120,7 +126,8 @@ def deferral_value(cost: float, rate: float, years: int) -> float:
     return cost * (1 - (1 + rate) ** -years)
 
 
-def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20) -> dict:
+def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20,
+             rates: dict[str, float] | None = None) -> dict:
     """The DSO's case for deferring the reinforcement with envelopes, from `reinforcement()`.
 
     Deferring a cost C by T years is worth C(1 - (1+r)^-T) today; the envelopes cost the houses
@@ -140,6 +147,15 @@ def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20) ->
         return {"years": t, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
 
     years = range(0, max_years + 1)
+    # the same horizon at the other rates the regulator has put forward (assumptions.toml): what
+    # deferring is worth depends on the rate as much as on the curtailment
+    at_rates = {}
+    for key, pct in (rates or {}).items():
+        rr = pct / 100.0
+        def at(cost: float, rr=rr) -> dict:
+            d, c = deferral_value(cost, rr, horizon), k * annuity(rr, horizon)
+            return {"years": horizon, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
+        at_rates[key] = {"rate_pct": pct, "transformer": [at(lo), at(hi)], "with_station": [at(slo), at(shi)]}
     return {
         "rate_pct": rate_pct, "rate_basis": "real", "price_level_year": reinf["price_level_year"],
         "horizon_years": horizon, "price_years": reinf["envelopes"]["price_years"],
@@ -149,4 +165,5 @@ def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20) ->
         "curves": {"low": [point(lo, t) for t in years], "high": [point(hi, t) for t in years]},
         "at_horizon": {"transformer": [point(lo, horizon), point(hi, horizon)],
                        "with_station": [point(slo, horizon), point(shi, horizon)]},
+        "at_rates": at_rates, "basis": reinf.get("basis"),
     }

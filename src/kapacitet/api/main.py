@@ -662,12 +662,13 @@ def network() -> dict:
     """GeoJSON of the modelled neighbourhood: houses, cables, cabinets, substation, context."""
     if not processed("grid", "customers.parquet").exists():
         raise not_computed("grid/customers.parquet")
-    stamp = tuple(p.stat().st_mtime for p in (processed("grid", "customers.parquet"), processed("results", "showcase.json"),
-                                               processed("results", "nodal.json")) if p.exists())
+    stamp = tuple(p.stat().st_mtime if p.exists() else 0.0
+                  for p in (processed("grid", "customers.parquet"), processed("results", "showcase.json"),
+                            processed("results", "nodal.json"), processed("results", "consumption.json")))
     # the provenance is dated afresh on every call: it reads files the cache's stamp does not cover
     return {**_network(stamp), "provenance": provenance("osm", "synthetic_grid", files=[
         *(processed("grid", n) for n in ("customers.parquet", "lines.parquet", "buses.parquet", "substation.json")),
-        result_path("showcase.json"), result_path("nodal.json")])}
+        result_path("showcase.json"), result_path("nodal.json"), result_path("consumption.json")])}
 
 
 # the GeoJSON helpers live in kapacitet.geo, which a study's publication uses too
@@ -691,6 +692,10 @@ def _network(stamp: tuple) -> dict:
     firm = set(showcase.get("firm_cids", []))
     nonfirm = set(showcase.get("nonfirm_cids", []))
     nodal = result("nodal.json") if processed("results", "nodal.json").exists() else None
+    # the import side of each house checked over every hour of every weather year, beside the
+    # static one of nodal.json (consumption.json, with its own customer order)
+    cons = result("consumption.json").get("nodal") if processed("results", "consumption.json").exists() else None
+    import_ts = dict(zip(map(int, cons["customers"]), cons["timeseries_kw"])) if cons else {}
     feats = []
     for c in cust.itertuples():
         feats.append({"type": "Feature", "geometry": _house_geometry(c.polygon, c.lon, c.lat),
@@ -704,6 +709,7 @@ def _network(stamp: tuple) -> dict:
                           "pv_status": "firm" if c.cid in firm else ("nonfirm" if c.cid in nonfirm else "none"),
                           "nodal_pv_kw": float(nodal["pv_kw"][int(c.cid)]) if nodal else None,
                           "nodal_import_kw": float(nodal["import_kw"][int(c.cid)]) if nodal else None,
+                          "nodal_import_kw_ts": _num(import_ts.get(int(c.cid))),
                           # synthetic: who has a heat pump or an EV today (fixed seeds, engine/run.py)
                           "has_hp": bool(has_hp[int(c.cid)]), "has_ev": bool(has_ev[int(c.cid)]),
                       }})
@@ -811,7 +817,8 @@ def state_bin(name: str, request: Request, basis: str | None = Query(None, patte
 def hosting_summary() -> dict:
     names = ["hosting_summary.json", "zcurve.json", "nodal.json"]
     out = {"summary": result("hosting_summary.json"), "curve": result("zcurve.json"), "nodal": result("nodal.json")}
-    for name in ("tornado.json", "foresight.json"):
+    # each optional part is left out until its stage has run, and the screens say which one to run
+    for name in ("tornado.json", "foresight.json", "mv_band.json", "consumption.json"):
         if processed("results", name).exists():
             out[name.split(".")[0]] = result(name)
             names.append(name)
@@ -893,6 +900,11 @@ def reinforcement() -> dict:
                      files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 
+# the rates /business also prices the horizon at: the one in force and the two Ei has put forward
+# for 2028-2031 (assumptions.toml, with their sources)
+BUSINESS_RATES = ("ei_wacc_real_pct", "ei_wacc_real_pct_2028_prelim", "ei_wacc_real_pct_2028_current_method")
+
+
 @app.get(f"{API}/business", tags=["hosting"])
 def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
     """The DSO's case for deferring the reinforcement with envelopes: what deferring is worth at Ei's
@@ -903,7 +915,8 @@ def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
 
     horizon = years or dso.load().deferral_years
     reinf = reinforcement()["data"]
-    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon), "elprisetjustnu", "synthetic_grid",
+    rates = {k: A(k) for k in BUSINESS_RATES}
+    return with_prov(case(reinf, A("ei_wacc_real_pct"), horizon, rates=rates), "elprisetjustnu", "synthetic_grid",
                      files=[result_path("tornado.json"), result_path("overinstallation.json")])
 
 

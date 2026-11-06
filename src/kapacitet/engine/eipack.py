@@ -58,7 +58,9 @@ def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict
             state, fact = _declared(settings.review_statement, "review_statement")
         elif key == "terms_how_when":
             state = "evidence"
-            at = (business or {}).get("at_horizon", {}).get("transformer")
+            # the business case is priced on the perfect-foresight deployment: on the day-ahead
+            # basis it is not this basis's figure, so the pack states the terms without it
+            at = (business or {}).get("at_horizon", {}).get("transformer") if basis == "foresight" else None
             fact = {"code": "terms" if at else "terms_plain", "params": {"rule": policy, "hours": int(combo.get("hours_limited") or 0),
                                                 "years": settings.deferral_years,
                                                 **({"lo": at[0]["net_sek"], "hi": at[1]["net_sek"]} if at else {})}}

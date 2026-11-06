@@ -60,6 +60,20 @@ def test_after_the_market_does_not_apply_to_perfect_foresight_and_the_day_ahead_
     assert only["state"] == "not_met" and only["fact"]["params"] == {"limited": 1146, "needed": 148, "unneeded": 998}
 
 
+def test_the_day_ahead_pack_never_cites_the_foresight_business_case():
+    """The deferral value is priced on the perfect-foresight deployment: the day-ahead pack states
+    its terms without it (terms_plain), so no kSEK figure of the other basis reaches it."""
+    from kapacitet.dso import DsoSettings
+    from kapacitet.engine.eipack import assess
+
+    business = {"at_horizon": {"transformer": [{"net_sek": 15_000.0}, {"net_sek": 24_000.0}]}}
+    args = (DsoSettings(), _index(998, 1146), [{"customer_id": 1, "static_approved": False}], None, business)
+    ahead = _state(assess("dayahead", "maxmin", *args), "terms_how_when")["fact"]
+    assert ahead["code"] == "terms_plain" and not {"lo", "hi"} & set(ahead["params"])
+    foresight = _state(assess("foresight", "maxmin", *args), "terms_how_when")["fact"]
+    assert foresight["code"] == "terms" and foresight["params"]["lo"] == 15_000.0
+
+
 @pytest.mark.parametrize("rejected, state", [(True, "evidence"), (False, "not_met")])
 def test_a_shortage_is_shown_only_when_the_static_study_rejected_every_agreement(rejected, state):
     agreements = [{"customer_id": 1, "static_approved": False}, {"customer_id": 2, "static_approved": not rejected}]

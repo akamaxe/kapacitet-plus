@@ -66,6 +66,8 @@ def test_a_missing_result_names_the_command_that_makes_it():
 
     assert main.command_for("forecast.json") == "python -m kapacitet forecast"
     assert main.command_for("scenarios.json").endswith("--stage extra --only scenarios")
+    assert main.command_for("mv_band.json").endswith("--stage extra --only mvband")
+    assert main.command_for("consumption.json").endswith("--stage extra --only consumption")
     err = main.not_computed("risk.json")
     assert err.status_code == 404 and err.detail["code"] == "not_computed"
     assert err.detail["command"] == "python -m kapacitet compute"

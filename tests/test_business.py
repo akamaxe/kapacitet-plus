@@ -41,6 +41,36 @@ def test_a_real_rate_goes_with_real_costs():
     assert annuity(0.05, 1) == pytest.approx(1 / 1.05)
 
 
+def test_the_horizon_is_also_priced_at_each_rate_put_forward():
+    from kapacitet.engine.summaries import business
+
+    reinf = {**_reinf(), "basis": {"envelopes": "foresight", "budget": "aggregate", "z_star_pct": 3.0}}
+    rates = {"now": 4.53, "prelim": 1.99, "current": 4.57}
+    out = business(reinf, 4.53, horizon=4, rates=rates)
+    assert out["basis"]["envelopes"] == "foresight"
+    assert set(out["at_rates"]) == set(rates)
+    # the rate in force gives the headline's own figures
+    assert out["at_rates"]["now"]["transformer"] == out["at_horizon"]["transformer"]
+    assert out["at_rates"]["now"]["with_station"] == out["at_horizon"]["with_station"]
+    for key, pct in rates.items():
+        r = pct / 100
+        lo = out["at_rates"][key]["transformer"][0]
+        assert out["at_rates"][key]["rate_pct"] == pct and lo["years"] == 4
+        assert lo["net_sek"] == pytest.approx((1 - (1 + r) ** -4) * (150_000.0 - 3_000.0 / r), rel=1e-12)
+    # a lower rate makes deferring worth less
+    assert out["at_rates"]["prelim"]["transformer"][0]["net_sek"] < out["at_rates"]["now"]["transformer"][0]["net_sek"]
+    assert business(_reinf(), 4.53, horizon=4)["at_rates"] == {}
+
+
+def test_the_2028_rates_are_sourced_in_the_assumptions():
+    from kapacitet.config import assumptions
+
+    a = assumptions()
+    for key in ("ei_wacc_real_pct_2028_prelim", "ei_wacc_real_pct_2028_current_method"):
+        assert a[key].unit.endswith("real") and "Konsekvensutredning" in a[key].source and "p. 342" in a[key].source
+    assert a["ei_wacc_real_pct_2028_prelim"].value < a["ei_wacc_real_pct_2028_current_method"].value
+
+
 def _result(year=2025):
     """A saved answer's economics and reference-year profile: a July export and a January one."""
     from kapacitet.timeindex import year_index
@@ -119,3 +149,7 @@ def test_the_api_serves_the_dsos_case_on_its_own_horizon(tmp_path, monkeypatch):
         assert lo["net_sek"] <= hi["net_sek"]
         assert len(b["curves"]["low"]) == 21
         assert c.get("/api/v1/business", params={"years": 10}).json()["data"]["horizon_years"] == 10
+        # the basis is said, and the same horizon is priced at the rates Ei has put forward
+        assert b["basis"]["envelopes"] == "foresight" and b["basis"]["budget"] == "aggregate"
+        assert b["at_rates"]["ei_wacc_real_pct"]["transformer"] == b["at_horizon"]["transformer"]
+        assert b["at_rates"]["ei_wacc_real_pct_2028_prelim"]["rate_pct"] == A("ei_wacc_real_pct_2028_prelim")
