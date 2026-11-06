@@ -579,6 +579,70 @@ def test_the_meters_step_keeps_the_stations_readings_and_the_load_step_says_what
     assert not (paths.PROCESSED / "meters" / "hourly.parquet").exists()
 
 
+def _phase_voltages(ids: list[str], phases: list[str], quarters: int = 96 * 14):
+    """A 15-minute voltage store whose single-phase meters follow their phase's movements, and the
+    transformer secondary meter's phase voltages in the inputs/mv form."""
+    import numpy as np
+    import pandas as pd
+
+    rng = np.random.default_rng(5)
+    t = pd.date_range("2025-03-03T00:00:00Z", periods=quarters, freq="15min")
+    drive = np.cumsum(rng.normal(0, 0.5, (3, quarters)), axis=1) + np.cumsum(rng.normal(0, 0.2, quarters))
+    rows = [pd.DataFrame({"customer_id": cid, "start": t, "v_l1": np.round(230 + drive["abc".index(ph)]
+                                                                             + rng.normal(0, 0.2, quarters), 1),
+                          "v_l2": np.nan, "v_l3": np.nan}) for cid, ph in zip(ids, phases)]
+    mv = pd.DataFrame({"start": t.strftime("%Y-%m-%dT%H:%M:%SZ"), "vm_pu": 1.0,
+                       **{f"v_l{k + 1}": np.round(231 + drive[k], 1) for k in range(3)}})
+    return pd.concat(rows, ignore_index=True), mv
+
+
+def test_the_phases_step_writes_identified_phases_where_none_is_recorded(imported):
+    import pandas as pd
+
+    study, sid = imported
+    rec, note = _record(study, sid)
+    assert station.place_phases(study, sid, rec, note) == {"meters": 0} and "phases" not in rec["quality"]
+    ids = _ids(study, sid)[:6]
+    truth = ["a", "b", "c", "a", "b", "c"]
+    volt, mv = _phase_voltages(ids, truth)
+    (paths.PROCESSED / "meters").mkdir(parents=True, exist_ok=True)
+    volt.to_parquet(paths.PROCESSED / "meters" / "voltage_15min.parquet", index=False)
+    (study.inputs / "mv").mkdir(parents=True, exist_ok=True)
+    mv.to_csv(study.inputs / "mv" / f"{sid}.csv", index=False)
+    grid = paths.PROCESSED / "grid" / "customers.parquet"
+    cust = pd.read_parquet(grid)
+    cust["phase"] = ""
+    cust.loc[cust["osm_id"].astype(str) == ids[0], "phase"] = "c"            # the DSO recorded another
+    cust.to_parquet(grid, index=False)
+
+    out = station.place_phases(study, sid, rec, note)
+    assert out["reference"] == "station" and out["identified"] == 6
+    assert out["written"] == 5 and out["conflict"] == 1
+    got = pd.read_parquet(grid).set_index(pd.read_parquet(grid)["osm_id"].astype(str))["phase"]
+    assert got[ids].to_list() == ["c"] + truth[1:]                        # the recorded phase wins
+    assert (paths.PROCESSED / "meters" / "phase_id.parquet").is_file()
+    codes = {f["code"] for f in rec["quality"]["phases"]["findings"]}
+    assert {"phase_id_reference_station", "phase_id_conflict_recorded"} <= codes
+    assert any(t.startswith("phases: 6 single-phase services identified") and "recorded one kept" in t
+               for t in rec["provenance"]["real"])
+
+    # with --prefer-identified the identified phase replaces the recorded one
+    cust.to_parquet(grid, index=False)
+    rec, note = _record(study, sid)
+    rec["prefer_identified"] = True
+    assert station.place_phases(study, sid, rec, note)["written"] == 6
+    assert pd.read_parquet(grid).set_index("osm_id")["phase"][ids].to_list() == truth
+
+
+def test_prefer_identified_is_a_mode_of_the_build(demo):
+    station.build(demo, "demo-dickert", steps={s: (lambda: {}) for s in station.STEPS})
+    assert portfolio.reason(demo, "demo-dickert") == "unchanged"
+    assert portfolio.reason(demo, "demo-dickert", prefer_identified=True) == "mode changed"
+    assert "--prefer-identified" in portfolio.command(demo, "demo-dickert", prefer_identified=True)
+    rec = demo.record("demo-dickert")
+    assert station.fingerprint(demo, rec, False) != station.fingerprint(demo, {**rec, "prefer_identified": True}, False)
+
+
 def test_the_new_inputs_make_a_built_station_stale(demo):
     from fixtures import meters_tiny
 

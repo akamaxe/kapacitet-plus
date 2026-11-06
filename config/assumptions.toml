@@ -400,6 +400,17 @@ url = ""
 note = "The alternative value is 'random', the unfavourable case where nobody keeps track. The gap between the two is the cost of not recording the phase of each service, and it is worth reporting."
 note_sv = "Det alternativa värdet är 'random', det ogynnsamma fallet där ingen håller reda på faserna. Skillnaden mellan de två är kostnaden för att inte registrera fasen för varje servisledning, och den är värd att redovisa."
 
+[phase_id_min_confidence]
+value = 0.1
+unit = "-"
+tag = "team-assumption"
+label = "Confidence a phase identified from meter voltages needs before a study uses it (margin of the best correlation over the second best)"
+label_sv = "Konfidens som en fas identifierad från mätarspänningar behöver innan en studie använder den (marginalen mellan den bästa och den näst bästa korrelationen)"
+source = "Calibrated on voltages from the unbalanced flow on the test grid (tests/test_phase_id.py): at 0.2 V meter noise and 0.1 V resolution every single-phase meter clears it; the method is the correlation of voltage changes of T. A. Short, IEEE Trans. Smart Grid 4(2), 2013"
+url = ""
+note = "Below it the meter's evidence is kept in processed/meters/phase_id.parquet and the phase is not used. A phase the DSO recorded wins over an identified one unless the study is built with --prefer-identified."
+note_sv = "Under den behålls mätarens underlag i processed/meters/phase_id.parquet och fasen används inte. En fas som nätägaren har registrerat går före en identifierad, om inte studien byggs med --prefer-identified."
+
 # ------------------------------------------------- zero sequence (unbalanced three-phase model)
 [cable_r0_r1_ratio]
 value = 4.0

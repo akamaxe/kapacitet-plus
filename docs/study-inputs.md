@@ -24,10 +24,30 @@ never read as zero.
 
 | file | columns | read by |
 | --- | --- | --- |
-| `meters/*.csv` (or `.csv.gz`) | `customer_id` or `meter_id`, `start` (the quarter-hour's start), `kwh_import`; optionally `kwh_export` and `v_l1`, `v_l2`, `v_l3` (V). An hour counts only with all four of its quarter-hours; a wrong daylight-saving offset, a time off the 15-minute grid, a negative or unreadable value and conflicting copies are left out and counted | `study build`, `study validate` |
-| `mv/<station>.csv` | `start`, `vm_pu` (the measured MV voltage at the station's transformer, per unit); optionally `trafo_p_kw` and `trafo_q_kvar` (the station meter). Readings within an hour are averaged to that hour. Without this file, the metered hours are replayed at both ends of the `[mv]` band | `study validate` |
+| `meters/*.csv` (or `.csv.gz`) | `customer_id` or `meter_id`, `start` (the quarter-hour's start), `kwh_import`; optionally `kwh_export` and `v_l1`, `v_l2`, `v_l3` (V: a single-phase meter fills one, a three-phase meter all three; they identify each meter's phase, below). An hour counts only with all four of its quarter-hours; a wrong daylight-saving offset, a time off the 15-minute grid, a negative or unreadable value and conflicting copies are left out and counted | `study build`, `study validate` |
+| `mv/<station>.csv` | `start`, `vm_pu` (the measured MV voltage at the station's transformer, per unit); optionally `trafo_p_kw` and `trafo_q_kvar` (the station meter), and `v_l1`, `v_l2`, `v_l3` (V, the transformer secondary meter's phase voltages at their own 15-minute resolution: the reference for phase identification). Readings within an hour are averaged to that hour. Without this file, the metered hours are replayed at both ends of the `[mv]` band | `study validate`, `study build` (the phase voltages) |
 | `dppower/snapshot.csv` | `start` (the hour of the snapshot), `mrid`, `kind` (`bus`, `line` or `transformer`), `vm_pu` (for a bus), `loading_pct` (for a line or the transformer): a load flow from dpPower, compared element by element with this model solving the same hour, matched by mRID to the contract's `bus_id` and `line_id` and the transformer's mRID | `study validate` |
 | `dppower/static.csv` | `customer_id`, `gen_kw` and/or `load_kw`: the DSO's own static capacity per customer, compared with this model's (generation at the high end of the band, consumption at the low end) | `study validate` |
+
+### Phases identified from the meters' voltages
+
+When the readings carry phase voltages, `study build` identifies each meter's phase
+(`ingest/phase_id.py`) and writes `stations/<station>/processed/meters/phase_id.parquet`
+(`customer_id`, `service` single or three, `channel`, `phase`, `order`, `confidence`, the
+correlations `corr_a`, `corr_b`, `corr_c`, `changes`, `status`, `reference` and `matters`) with its
+check report in `phase_id.json`. The quarter-hour changes of a single-phase meter's voltage are
+correlated with each phase of the reference, with the common movement of the three phases taken
+out; a three-phase meter gets the order of its three columns that correlates best. The reference is
+the transformer secondary meter (`v_l1..v_l3` in `mv/<station>.csv`); without it, the three-phase
+meters aligned to each other (the order most of them share is called a, b, c); without three of
+those, the single-phase meters grouped in three by correlation, whose names are arbitrary. The
+confidence is the margin of the best correlation over the second best: below
+`phase_id_min_confidence` (`config/assumptions.toml`), with a flat voltage or with fewer than a
+week of readings, the meter is left unidentified. An identified phase goes into the station's
+customers where `customers.csv` records none; a recorded phase wins unless the study is built with
+`study build --prefer-identified`, and a disagreement is reported either way. A three-phase meter
+wired in another order matters where `equipment.csv` gives the customer a single-phase inverter
+(`matters`), and the report says so.
 
 ## The grid above the stations
 

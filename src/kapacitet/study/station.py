@@ -10,6 +10,11 @@ them), so every step is the existing pipeline's and writes only into `stations/<
                 inputs/equipment.csv, or the equipment.csv of its own contract folder
     meters      its customers' readings in the study's inputs/meters/ -> processed/meters
                 (ingest/meters.py: checked, and summed to complete hours)
+    phases      each meter's phase from its voltages (ingest/phase_id.py) -> processed/meters/
+                phase_id.parquet, against the transformer secondary meter's v_l1..v_l3 in
+                inputs/mv/<sid>.csv when given; the identified phases at or above
+                phase_id_min_confidence go into customers.parquet where the DSO recorded none
+                (and over a recorded one only with --prefer-identified)
     weather     the study's SMHI downloads -> processed/weather, when the study names a place of
                 its own and fetched them for it; otherwise the reference network's weather years,
                 copied and said so under provenance "synthetic"
@@ -46,7 +51,7 @@ from . import PROVENANCE, SCHEMA, Study, StudyError, code_version, value_digest
 from .config import METHOD_VERSION
 
 log = logging.getLogger("kapacitet.study")
-STEPS = ("import", "equipment", "meters", "weather", "households", "load", "profiles", "compute")
+STEPS = ("import", "equipment", "meters", "phases", "weather", "households", "load", "profiles", "compute")
 POOL_NOTE = "household load: the CREST profile pool (richardsonpy), not metered"
 
 
@@ -58,8 +63,10 @@ def isolated(study: Study, sid: str) -> bool:
 
 
 def build(study: Study, sid: str, quick: bool = False,
-          steps: dict[str, Callable[[], dict | None]] | None = None) -> dict:
-    """Run the station's steps, recording each one; `steps` replaces the real ones (a test's fakes)."""
+          steps: dict[str, Callable[[], dict | None]] | None = None, prefer_identified: bool = False) -> dict:
+    """Run the station's steps, recording each one; `steps` replaces the real ones (a test's fakes).
+    `prefer_identified`: a phase identified from the meters' voltages replaces the one the DSO
+    recorded (by default the recorded one wins)."""
     rec = study.record(sid)
     if study.building(sid):
         raise StudyError("building", id=sid)
@@ -73,7 +80,8 @@ def build(study: Study, sid: str, quick: bool = False,
 
         set_overrides(study.config.overrides(), layer="study")
     rec.update(schema=SCHEMA, inputs=study.digests(sid), method_version=METHOD_VERSION,
-               kapacitet=code_version(), quick=quick, pid=os.getpid(), error=None,
+               kapacitet=code_version(), quick=quick, prefer_identified=bool(prefer_identified),
+               pid=os.getpid(), error=None,
                provenance={k: [] for k in PROVENANCE}, summary=rec.get("summary") or {})
     steps = steps or _real_steps(study, sid, rec, quick)
     out = procs.run_steps(rec, STEPS, steps, study.save, procs.lock_path(study.station_dir(sid)),
@@ -317,7 +325,8 @@ def _real_steps(study: Study, sid: str, rec: dict, quick: bool) -> dict:
         return compute(study, sid, rec, quick)
 
     return {"import": do_import, "equipment": lambda: place_equipment(study, sid, rec, note),
-            "meters": lambda: place_meters(study, sid, rec, note), "weather": lambda: place_weather(study, note),
+            "meters": lambda: place_meters(study, sid, rec, note),
+            "phases": lambda: place_phases(study, sid, rec, note), "weather": lambda: place_weather(study, note),
             "households": lambda: place_households(note), "load": lambda: place_load(rec, note),
             "profiles": do_profiles, "compute": do_compute}
 
@@ -422,6 +431,49 @@ def place_meters(study: Study, sid: str, rec: dict, note: Callable[[str, str], N
     return {"files": len(files), "meters": n, "hours": int(len(hourly))}
 
 
+def place_phases(study: Study, sid: str, rec: dict, note: Callable[[str, str], None]) -> dict:
+    """The phases step: each meter's phase from the voltages the meters step kept at 15 minutes
+    (ingest/phase_id.py), against the transformer secondary meter's v_l1..v_l3 in inputs/mv/<sid>.csv
+    when the file has them, into processed/meters/phase_id.parquet; the identified single-phase
+    phases go into processed/grid/customers.parquet where the DSO recorded none, and over a
+    recorded one only with --prefer-identified. Without voltages nothing changes."""
+    import pandas as pd
+
+    from ..config import A
+    from ..ingest import phase_id
+
+    quality = rec.setdefault("quality", {})
+    quality.pop("phases", None)
+    volt_path = paths.PROCESSED / "meters" / "voltage_15min.parquet"
+    if not volt_path.is_file():
+        return {"meters": 0}
+    grid = paths.PROCESSED / "grid" / "customers.parquet"
+    cust = pd.read_parquet(grid)
+    pv = (cust.set_index(cust["osm_id"].astype(str))["existing_pv_phase"]
+          if "existing_pv_phase" in cust.columns else None)
+    ref = phase_id.read_reference(study.inputs / "mv" / f"{sid}.csv")
+    out, report = phase_id.identify(pd.read_parquet(volt_path), ref, pv_phase=pv)
+    prefer = bool(rec.get("prefer_identified"))
+    merged, counts = phase_id.apply(cust, out, prefer_identified=prefer, report=report)
+    phase_id.write(out, report, paths.PROCESSED / "meters")
+    quality["phases"] = report.to_dict()
+    if counts["written"]:
+        _write_parquet(merged, grid)
+    source = next((r for r in out["reference"] if r), "")
+    against = {"station": "the transformer secondary meter (inputs/mv)",
+               "three_phase_meters": "the three-phase meters (the order most share named a, b, c)",
+               "clusters": "groups of the single-phase meters (names a, b, c arbitrary)"}.get(source)
+    if counts["identified"]:
+        kept = (f"; {counts['conflict']} differ from the recorded phase, "
+                f"{'the identified one used (--prefer-identified)' if prefer else 'the recorded one kept'}"
+                if counts["conflict"] else "")
+        note("real", f"phases: {counts['identified']} single-phase services identified from the meters' voltages "
+                     f"against {against}, at a confidence of {A('phase_id_min_confidence'):g} or more; {counts['written']} "
+                     f"written where none was recorded{' or preferred' if prefer else ''}{kept}")
+    return {"meters": int(len(out)), "reference": source, **counts,
+            "by_status": {str(k): int(v) for k, v in out["status"].value_counts().items()}}
+
+
 def place_load(rec: dict, note: Callable[[str, str], None]) -> dict:
     """The load step: the metered customers' load over every weather year (profiles/metered.py),
     which the engine takes in place of their pool profile; the provenance says how many."""
@@ -468,9 +520,12 @@ def capacity_path() -> Path:
 
 def fingerprint(study: Study, rec: dict, quick: bool) -> str:
     """What a station's figures were computed from: its inputs' digests, the computation's part of
-    study.toml, the method version, the code and the mode."""
-    return value_digest({"inputs": rec.get("inputs"), "computation": study.config.computation(),
-                         "method_version": METHOD_VERSION, "code": code_version(), "quick": bool(quick)})
+    study.toml, the method version, the code and the mode (quick, and --prefer-identified when set)."""
+    what = {"inputs": rec.get("inputs"), "computation": study.config.computation(),
+            "method_version": METHOD_VERSION, "code": code_version(), "quick": bool(quick)}
+    if rec.get("prefer_identified"):
+        what["prefer_identified"] = True
+    return value_digest(what)
 
 
 def worst_generation(band: tuple[float, float], years, hp, ev) -> dict:

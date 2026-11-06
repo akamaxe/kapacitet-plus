@@ -100,6 +100,21 @@ MESSAGES = {
     "meter_incomplete": "meters with fewer than {pct} % of their hours complete, for example {meter}",
     "meter_complete": "complete hours at {meters} meters, {pct} % of the hours between each one's first and last reading",
     "meter_no_readings": "customers without meter readings, whose household load stays synthetic",
+    "phase_id_no_voltages": "no meter reading carries phase voltages, so no phase is identified",
+    "phase_id_reference_station": "phases identified against the transformer secondary meter's phase voltages",
+    "phase_id_reference_meters": "no transformer secondary meter, so phases are identified against the three-phase meters: a, b and c are the phase order most of them share",
+    "phase_id_reference_clusters": "neither a transformer secondary meter nor three three-phase meters, so the single-phase meters are grouped in three by correlation: the names a, b and c are arbitrary",
+    "phase_id_no_reference": "meters left unidentified for want of a reference: no transformer secondary meter, too few three-phase meters and too few single-phase ones to group",
+    "phase_id_identified": "single-phase meters whose phase is identified, at a confidence of {threshold} or more",
+    "phase_id_order_identified": "three-phase meters whose phase order is identified",
+    "phase_id_low_confidence": "meters below the confidence of {threshold}, whose phase is not used, for example {meter}",
+    "phase_id_flat": "meters whose voltage does not change, left unidentified, for example {meter}",
+    "phase_id_too_few": "meters with fewer than {n} quarter-hour voltage changes, left unidentified, for example {meter}",
+    "phase_id_channels": "meters with two phase voltages, neither single- nor three-phase, left unidentified, for example {meter}",
+    "phase_id_order": "three-phase meters wired in another phase order than a, b, c, for example {meter} ({order})",
+    "phase_id_order_matters": "three-phase meters in another phase order with a single-phase inverter in equipment.csv, whose recorded phase may name another phase of the network, for example {meter}",
+    "phase_id_conflict_recorded": "customers whose recorded phase differs from the identified one, for example {customer} (recorded {recorded}, identified {identified}); the recorded one is kept",
+    "phase_id_conflict_identified": "customers whose recorded phase differs from the identified one, for example {customer} (recorded {recorded}, identified {identified}); the identified one is used (--prefer-identified)",
 }
 
 

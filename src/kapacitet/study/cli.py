@@ -47,6 +47,8 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--jobs", type=int, default=None, help="station processes at a time (default: 6, at most the cores)")
     q.add_argument("--force", action="store_true", help="build every station again")
     q.add_argument("--quick", action="store_true", help="one weather year and fewer adoption orders")
+    q.add_argument("--prefer-identified", action="store_true",
+                   help="a phase identified from the meters' voltages replaces the one the DSO recorded")
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
     q = add("status", "what each station is and how its last build went")
     q.add_argument("--json", action="store_true", help="the records as JSON")
@@ -100,6 +102,7 @@ def register(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--study", required=True)
     p.add_argument("--batch", default=None)
     p.add_argument("--quick", action="store_true")
+    p.add_argument("--prefer-identified", action="store_true")
     p.add_argument("--allow-git", action="store_true")
     p.set_defaults(func=cmd_station)
 
@@ -220,7 +223,7 @@ def _build(args) -> None:
 
     study = open_study(args.dir, allow_git=args.allow_git)
     out = run(study, stations=args.station, jobs=args.jobs, force=args.force, quick=args.quick,
-              allow_git=args.allow_git)
+              allow_git=args.allow_git, prefer_identified=args.prefer_identified)
     for sid, why in out["skipped"].items():
         print(f"  {sid}: {why}, not built")
     for sid, r in out["built"].items():
@@ -243,7 +246,8 @@ def _status(args) -> None:
     shared = study.shared_digests()
     for rec in recs:
         steps = " ".join(f"{s['name']}:{s['status']}" for s in rec.get("steps", []))
-        why = reason(study, rec["id"], quick=bool(rec.get("quick")), shared=shared)
+        why = reason(study, rec["id"], quick=bool(rec.get("quick")), shared=shared,
+                     prefer_identified=bool(rec.get("prefer_identified")))
         stale = "" if why in ("unchanged", "building") else f" [{why}]"
         n = (rec.get("summary") or {}).get("customers")
         print(f"  {rec['id']}: {rec.get('status')}{stale}, {n if n is not None else '?'} customers  {steps}")
@@ -420,7 +424,7 @@ def cmd_station(args: argparse.Namespace) -> None:
                 raise StudyError("bad_batch", batch="")
             (station_cases if args.action == "cases" else station_sync)(study, args.sid, args.batch)
             sys.exit(0)
-        rec = build(study, args.sid, quick=args.quick)
+        rec = build(study, args.sid, quick=args.quick, prefer_identified=args.prefer_identified)
     except StudyError as err:
         _fail(err)
     logging.getLogger("kapacitet.study").info("station %s: %s", args.sid, rec["status"])

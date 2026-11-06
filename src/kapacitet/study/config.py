@@ -296,6 +296,7 @@ def template(name: str = "", site: dict | None = None) -> str:
         "#   upstream.csv                 level (feeder|substation|regional), id, parent_id, gen_headroom_kw,",
         "#                                load_headroom_kw, source, as_of: a blank headroom is not entered",
         "#   mv/<station>.csv             start, vm_pu [, trafo_p_kw, trafo_q_kvar]: the measured MV voltage",
+        "#                                [, v_l1..v_l3]: the transformer secondary meter's phase voltages",
         "#   dppower/snapshot.csv         start, mrid, kind (bus|line|transformer), vm_pu, loading_pct",
         "#   dppower/static.csv           customer_id, gen_kw, load_kw: the DSO's own static results",
         "# A quarter: study collect, review, sign --by \"name, role\", publish (runs/<quarter>/).",

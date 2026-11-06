@@ -13,7 +13,7 @@ runs as its own process, with its own environment:
 
 Nothing here touches active.json or a running server. A station is built again only when the
 digests of its inputs (the upstream caps aside, which apply after the computation), its method
-version or its mode (quick or not) differ from those of its last finished build, or when it is
+version or its mode (quick or not, --prefer-identified or not) differ from those of its last finished build, or when it is
 forced. A station whose process fails marks only its own record. One `study build` at a time:
 it holds the study's build.lock while it runs.
 """
@@ -49,7 +49,8 @@ def _trigger(inputs: dict | None) -> dict:
     return {k: v for k, v in (inputs or {}).items() if k not in NOT_A_TRIGGER}
 
 
-def reason(study: Study, sid: str, force: bool = False, quick: bool = False, shared: dict | None = None) -> str:
+def reason(study: Study, sid: str, force: bool = False, quick: bool = False, shared: dict | None = None,
+           prefer_identified: bool = False) -> str:
     """Why a station would be built, or why not ("unchanged", "building"). `shared` is the study's
     shared_digests(), when the caller asks for many stations at once."""
     if study.building(sid):
@@ -70,23 +71,30 @@ def reason(study: Study, sid: str, force: bool = False, quick: bool = False, sha
         return "method changed"
     if bool(rec.get("quick")) != bool(quick):
         return "mode changed"
+    if bool(rec.get("prefer_identified")) != bool(prefer_identified):
+        return "mode changed"
     return "unchanged"
 
 
-def plan(study: Study, stations: list[str] | None = None, force: bool = False, quick: bool = False) -> dict[str, str]:
+def plan(study: Study, stations: list[str] | None = None, force: bool = False, quick: bool = False,
+         prefer_identified: bool = False) -> dict[str, str]:
     """Each station's reason, in id order; what the stations share is digested once."""
     shared = study.shared_digests()
-    return {sid: reason(study, sid, force, quick, shared) for sid in (stations or study.station_ids())}
+    return {sid: reason(study, sid, force, quick, shared, prefer_identified)
+            for sid in (stations or study.station_ids())}
 
 
 def lock(study: Study) -> Path:
     return procs.lock_path(study.root)
 
 
-def command(study: Study, sid: str, quick: bool = False, allow_git: bool = False) -> list[str]:
+def command(study: Study, sid: str, quick: bool = False, allow_git: bool = False,
+            prefer_identified: bool = False) -> list[str]:
     cmd = [sys.executable, "-m", "kapacitet", "station", "build", sid, "--study", str(study.root)]
     if quick:
         cmd.append("--quick")
+    if prefer_identified:
+        cmd.append("--prefer-identified")
     if allow_git:
         cmd.append("--allow-git")
     return cmd
@@ -94,7 +102,7 @@ def command(study: Study, sid: str, quick: bool = False, allow_git: bool = False
 
 def run(study: Study, stations: list[str] | None = None, jobs: int | None = None, force: bool = False,
         quick: bool = False, allow_git: bool = False, timeout: float | None = None,
-        make_command: Callable[[Study, str], list[str]] | None = None) -> dict:
+        make_command: Callable[[Study, str], list[str]] | None = None, prefer_identified: bool = False) -> dict:
     """Build what needs building; returns {"built": {sid: outcome}, "skipped": {sid: reason}}.
     `make_command` replaces the station process's command line (a test's stand-in). Refused while
     another process builds the same study."""
@@ -102,7 +110,7 @@ def run(study: Study, stations: list[str] | None = None, jobs: int | None = None
     if holder is not None:
         raise StudyError("study_building", pid=holder)
     try:
-        why = plan(study, stations, force, quick)
+        why = plan(study, stations, force, quick, prefer_identified)
         todo = [sid for sid, r in why.items() if r in BUILD]
         skipped = {sid: r for sid, r in why.items() if r not in BUILD}
         if not todo:
@@ -110,7 +118,7 @@ def run(study: Study, stations: list[str] | None = None, jobs: int | None = None
         n = max(1, min(jobs or MAX_JOBS, os.cpu_count() or 1, len(todo)))
 
         def one(sid: str) -> dict:
-            cmd = make_command(study, sid) if make_command else command(study, sid, quick, allow_git)
+            cmd = make_command(study, sid) if make_command else command(study, sid, quick, allow_git, prefer_identified)
             return _run_one(study, sid, cmd, timeout)
 
         with ThreadPoolExecutor(max_workers=n) as ex:
