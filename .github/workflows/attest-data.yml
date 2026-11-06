@@ -1,0 +1,46 @@
+# A build-provenance attestation for the published data (the asset kapacitet-data.zip of the
+# release `data`). It downloads the asset, checks its sha256 and size against config/data-release.json
+# on the branch it runs from, and only then signs a provenance statement for that digest with the
+# repository's workflow identity (Sigstore, through actions/attest-build-provenance). Anyone can
+# then check that the file came out of this repository's workflow:
+#   gh attestation verify kapacitet-data.zip -R akamaxe/kapacitet-plus
+# `gh release upload --clobber` replaces the asset without publishing the release again, so after
+# each upload (and the push of the new pin) run it by hand: Actions -> attest-data -> Run workflow.
+name: attest-data
+
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  attest:
+    if: github.event_name == 'workflow_dispatch' || github.event.release.tag_name == 'data'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Download the asset and check it against the pin
+        run: |
+          pin=config/data-release.json
+          url=$(jq -r .url "$pin"); sha=$(jq -r .sha256 "$pin"); size=$(jq -r .size "$pin")
+          curl -fsSL --retry 3 --retry-delay 5 -o kapacitet-data.zip "$url"
+          got=$(stat -c %s kapacitet-data.zip)
+          if [ "$got" != "$size" ]; then
+            echo "::error::$url is $got bytes; $pin says $size. Push the pin of the uploaded file first."
+            exit 1
+          fi
+          if ! echo "$sha  kapacitet-data.zip" | sha256sum -c --status -; then
+            echo "::error::the sha256 of $url differs from $pin. Push the pin of the uploaded file first."
+            exit 1
+          fi
+          echo "kapacitet-data.zip matches $pin: sha256 $sha, $size bytes"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: kapacitet-data.zip

@@ -3,7 +3,9 @@
 CI's docker job builds and runs the image (.github/workflows/ci.yml); this checks, on every test
 run, what a later edit could quietly undo: the examples publish the port on 127.0.0.1 only (the API
 has no login), the image runs unprivileged on base images pinned by digest, every action is pinned
-to a commit, Dependabot proposes the next version of each pin, and CI audits the dependencies.
+to a commit, Dependabot proposes the next version of each pin, and CI audits the dependencies;
+the SBOM and the data attestation ask only for the permissions they need, and the codespace keeps
+the sha256 as the check that decides while it reports the attestation.
 """
 
 from __future__ import annotations
@@ -109,3 +111,58 @@ def test_ci_audits_the_dependencies_and_checks_the_images_user():
     codeql = _read(".github/workflows/codeql.yml")
     assert "python" in codeql and "javascript-typescript" in codeql
     assert "security-events: write" in codeql
+
+
+def _job_permissions(text: str) -> list[str]:
+    """Every `permissions:` block of a workflow (top level and per job), as its indented lines."""
+    blocks, lines = [], text.splitlines()
+    for i, line in enumerate(lines):
+        m = re.match(r"(\s*)permissions:\s*$", line)
+        if not m:
+            continue
+        indent, body = len(m.group(1)), []
+        for nxt in lines[i + 1:]:
+            if nxt.strip() and len(nxt) - len(nxt.lstrip()) <= indent:
+                break
+            if nxt.strip():
+                body.append(nxt.strip())
+        blocks.append("\n".join(body))
+    return blocks
+
+
+def test_the_supply_chain_workflows_ask_only_for_what_they_need():
+    """The SBOM and the data attestation set their permissions; only the attestation may sign."""
+    sbom = _read(".github/workflows/sbom.yml")
+    assert re.search(r"^permissions:\s*\n\s+contents: read\s*$", sbom, flags=re.M)
+    assert "anchore/sbom-action@" in sbom and sbom.count("format: cyclonedx-json") == 2
+    assert "constraints.txt" in sbom and "path: web" in sbom
+    assert "branches: [main]" in sbom
+
+    attest = _read(".github/workflows/attest-data.yml")
+    assert "workflow_dispatch:" in attest and re.search(r"release:\s*\n\s+types: \[published\]", attest)
+    blocks = _job_permissions(attest)
+    assert blocks[0] == "contents: read", "the top level grants only reading"
+    assert any({"id-token: write", "attestations: write"} <= set(b.splitlines()) for b in blocks[1:])
+    assert "actions/attest-build-provenance@" in attest and "subject-path: kapacitet-data.zip" in attest
+    # the asset is checked against the committed pin before it is attested
+    assert "config/data-release.json" in attest and "sha256sum -c" in attest and "stat -c %s" in attest
+    assert attest.index("sha256sum -c") < attest.index("actions/attest-build-provenance@")
+
+    # no other workflow may mint an OIDC token or write attestations
+    for path in WORKFLOWS:
+        text = path.read_text(encoding="utf-8")
+        assert re.search(r"^permissions:", text, flags=re.M), f"{path.name} sets its permissions"
+        if path.name != "attest-data.yml":
+            assert "id-token: write" not in text and "attestations: write" not in text, path.name
+
+
+def test_the_codespace_still_requires_the_sha256_and_reports_the_attestation():
+    data = _read(".devcontainer/data.sh")
+    assert 'sha256sum -c --status' in data and "--expect-sha256" in data
+    assert "gh attestation verify" in data and "command -v gh" in data
+    # the attestation only reports: the sha256 check decides whether the file is unpacked
+    attestation = data[data.index("attestation() {"):data.index("\n}\n", data.index("attestation() {"))]
+    assert "exit" not in attestation and "return 1" not in attestation
+    assert data.index("sha256sum -c") < data.index('attestation "$tmp')
+    for rel in ("README.md", "docs/codespaces.md"):
+        assert "gh attestation verify kapacitet-data.zip -R akamaxe/kapacitet-plus" in _read(rel), rel

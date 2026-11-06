@@ -150,6 +150,19 @@ sha256 and size. `bundle --pin` rewrites it, so commit that file in the same pus
 checks its download the same way, and the setup page takes only the pinned file unless its server
 sets `KAPACITET_SETUP_ANY_BUNDLE=1` (for a bundle you made yourself).
 
+The release's file also carries a build-provenance attestation, made by the workflow
+`attest-data.yml` after it checks the asset against that pin (run it from the Actions tab after each
+upload; `--clobber` publishes no release event). With the GitHub CLI, check that a downloaded file is
+the one this repository attested:
+
+```bash
+gh attestation verify kapacitet-data.zip -R akamaxe/kapacitet-plus
+```
+
+The codespace runs the same check when `gh` is there and reports it; the sha256 stays the check that
+decides. On every push to `main`, the workflow `sbom.yml` leaves a CycloneDX SBOM of the Python pins
+(`constraints.txt`) and of the interface's lockfile as artifacts of its run.
+
 A bundle is never committed: the code is MIT, and the data,
 derived from OpenStreetMap, are published separately under ODbL ([DATA-LICENSE.md](DATA-LICENSE.md)).
 A lite bundle shows every result but cannot evaluate new requests, and the request screen says so.

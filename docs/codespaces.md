@@ -67,6 +67,10 @@ Open the same link and click **Resume**. Your copy opens again in about a minute
   checks the download with `sha256sum -c` and does not unpack a file whose digest differs, and the
   setup page refuses it too. Until the new digest is on `main`, new codespaces open on the setup
   page, so upload the file and push the pin together.
+- After the upload and the push of the pin, run the workflow `attest-data` (Actions tab, *Run
+  workflow*): it checks the asset against the pin and attests its provenance. Anyone can then check
+  a downloaded file with `gh attestation verify kapacitet-data.zip -R akamaxe/kapacitet-plus`.
+  `data.sh` runs that check when `gh` is available and reports the result; the sha256 decides.
 - To try another data file in a codespace, set `KAPACITET_DATA_URL` to its address and
   `KAPACITET_DATA_SHA256` to its sha256 (as `sha256sum` prints it) before `data.sh` runs. A URL
   without its digest is checked against the pinned one, so its file is refused.

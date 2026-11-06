@@ -9,6 +9,9 @@
 # and the sha256 come from config/data-release.json, committed with the code (`kapacitet bundle
 # --pin` writes it). A download whose digest differs is not unpacked. KAPACITET_DATA_URL points it
 # at another file; that file's digest then has to come with it, in KAPACITET_DATA_SHA256.
+# When gh is available (it is in a codespace), the download's build-provenance attestation
+# (.github/workflows/attest-data.yml) is checked as well and the result is reported; the sha256
+# stays the check that decides, because a file uploaded before its attestation has none yet.
 set -uo pipefail
 cd "$(dirname "$0")/.."
 PIN=config/data-release.json
@@ -29,6 +32,21 @@ if [ -z "$URL" ] || [ -z "$SHA" ]; then
   exit 0
 fi
 
+# reports whether the file carries a provenance attestation of the repository that publishes it;
+# never fails: the sha256 above is the required check
+attestation() {
+  local repo
+  repo=$(printf '%s' "$URL" | sed -nE 's#^https://github\.com/([^/]+/[^/]+)/releases/.*#\1#p')
+  if [ -z "$repo" ] || ! command -v gh >/dev/null 2>&1; then
+    return 0
+  fi
+  if gh attestation verify "$1" -R "$repo" >/dev/null 2>&1; then
+    echo "The data carry a build-provenance attestation of $repo."
+  else
+    echo "The data have no attestation of $repo that gh could verify; their sha256 matches the pin."
+  fi
+}
+
 echo "Downloading the data of Kapacitet+ (about 250 MB)..."
 tmp=$(mktemp -d)
 if ! curl -fsSL --retry 3 --retry-delay 5 -o "$tmp/kapacitet-data.zip" "$URL"; then
@@ -40,6 +58,7 @@ elif ! echo "$SHA  $tmp/kapacitet-data.zip" | sha256sum -c --status -; then
     echo "KAPACITET_DATA_URL names another file: give its sha256 in KAPACITET_DATA_SHA256 as well."
   fi
 else
+  attestation "$tmp/kapacitet-data.zip"
   .venv/bin/python -m kapacitet unbundle "$tmp/kapacitet-data.zip" --expect-sha256 "$SHA" \
     || echo "The data could not be unpacked; the setup page will ask for kapacitet-data.zip."
 fi

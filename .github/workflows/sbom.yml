@@ -1,0 +1,40 @@
+# A CycloneDX software bill of materials of what the project pins: the Python constraints
+# (constraints.txt) and the interface's lockfile (web/package-lock.json, the only package file of
+# web/ in a checkout). It runs on every push to main, or by hand, and leaves the two SBOMs as
+# artifacts of the run; nothing is installed, syft reads the pins inside the action. Syft
+# recognises a Python pin list only by a requirements*.txt name, so the constraints are scanned
+# from a copy under that name.
+name: sbom
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  sbom:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - run: |
+          mkdir -p "$RUNNER_TEMP/sbom-python"
+          cp constraints.txt "$RUNNER_TEMP/sbom-python/requirements.txt"
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: ${{ runner.temp }}/sbom-python
+          format: cyclonedx-json
+          output-file: sbom-python.cdx.json
+          artifact-name: sbom-python.cdx.json
+          upload-release-assets: false
+          dependency-snapshot: false
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with:
+          path: web
+          format: cyclonedx-json
+          output-file: sbom-web.cdx.json
+          artifact-name: sbom-web.cdx.json
+          upload-release-assets: false
+          dependency-snapshot: false
