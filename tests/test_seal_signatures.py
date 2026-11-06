@@ -268,3 +268,35 @@ def test_the_private_key_never_reaches_a_bundle_a_manifest_a_record_or_a_log(own
     for blob in blobs + outside + [eipack_like, caplog.text.encode()]:
         assert not any(f in blob for f in forms)
     assert (data / "keys" / seals.KEY_FILE).is_file()
+
+
+def test_the_api_publishes_the_key_and_the_ei_pack_carries_it():
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from kapacitet import seals
+    from kapacitet.api import evidence, operation
+
+    app = FastAPI()
+    app.include_router(evidence.router)
+    client = TestClient(app)
+    seals.seal("decision", "g00000000001", {"decision": "firm"})
+    key = client.get("/api/v1/seals/key").json()
+    assert key["key_id"] == seals.public_key_info()["key_id"] and key["public_key"].startswith("-----BEGIN PUBLIC KEY")
+    assert "PRIVATE" not in json.dumps(key)
+    head = client.get("/api/v1/seals").json()
+    assert head["ok"] and head["signed"] == 1 and head["key"]["key_id"] == key["key_id"]
+    assert head["last"][0]["sig"]
+
+    entry = seals.seal("eipack", "dayahead-maxmin-test", {"conditions": []})
+    resp = operation._sealed_pack({"conditions": []}, entry, "dayahead", "maxmin")
+    body = json.loads(resp.body)
+    assert resp.headers["X-Seal-Key-Id"] == entry["key_id"]
+    assert body["seal"]["key"]["public_key"] == key["public_key"] and body["seal"]["line"]["sig"] == entry["sig"]
+    assert set(body["seal"]["key"]["how_to_verify"]) == {"en", "sv"}
+    # what the sentence says is enough to check it: the pack's digest, then the line's signature
+    pack = {k: v for k, v in body.items() if k != "seal"}
+    assert seals.digest(pack) == body["seal"]["line"]["digest"]
+    pub = seals.load_public(body["seal"]["key"]["public_key"])
+    line = body["seal"]["line"]
+    pub.verify(base64.b64decode(line["sig"]), seals.digest({k: v for k, v in line.items() if k != "sig"}).encode())

@@ -152,6 +152,14 @@ def test_signing_seals_the_outputs_in_the_studys_chain_and_a_change_makes_it_a_d
     manifest = json.loads((out["folder"] / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["signoff"]["valid"] and manifest["signoff"]["by"] == "Test Person, network manager"
     assert DRAFT not in (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    # the signoff's seal is signed, and the manifest carries the public key that checks it, never the private
+    key = manifest["seal_key"]
+    assert key["key_id"] == doc["seal"]["key_id"] == manifest["signoff"]["seal"]["key_id"]
+    assert key["public_key"] == (study.evidence / seals.PUBLISHED).read_text(encoding="ascii")
+    assert set(key["how_to_verify"]) == {"en", "sv"}
+    with seals.chain_at(study.evidence):
+        assert seals.verify_chain({key["key_id"]: seals.load_public(key["public_key"])})["signed"] >= 1
+    assert not any(b"PRIVATE KEY" in f.read_bytes() for f in out["folder"].rglob("*") if f.is_file())
 
     # a station computed again after the signature: the publication is a draft until signed anew
     put(study, "S4", 60, 17.64, 59.86, 190.0, 150.0)

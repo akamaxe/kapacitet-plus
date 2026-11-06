@@ -85,8 +85,11 @@ def get_index() -> dict:
 
 def _sealed_headers(entry: dict, filename: str) -> dict:
     """A sealed file's headers: the attachment's name, and its seal, so the page can keep a receipt."""
-    return {"Content-Disposition": f'attachment; filename="{filename}"', "X-Seal-Digest": entry["digest"],
-            "X-Seal-Seq": str(entry["seq"]), "X-Seal-At": entry["at"]}
+    out = {"Content-Disposition": f'attachment; filename="{filename}"', "X-Seal-Digest": entry["digest"],
+           "X-Seal-Seq": str(entry["seq"]), "X-Seal-At": entry["at"]}
+    if entry.get("key_id"):
+        out["X-Seal-Key-Id"] = entry["key_id"]
+    return out
 
 
 def _pack(basis: str, policy: str | None) -> tuple[dict, str]:
@@ -124,7 +127,12 @@ class PackOut(BaseModel):
 
 
 def _sealed_pack(pack: dict, entry: dict, basis: str, policy: str) -> Response:
-    body = json.dumps({**pack, "seal": {k: entry[k] for k in ("digest", "seq", "at", "fingerprint")}}, indent=1)
+    """The pack with its seal: the chain line, signature included, and the public key that checks
+    it, with the sentence on how (seals.HOW_TO_VERIFY). `digest` is the pack's own, without `seal`."""
+    seal = {k: entry[k] for k in ("digest", "seq", "at", "fingerprint")}
+    seal.update(key_id=entry.get("key_id"), sig=entry.get("sig"), line=entry,
+                key=seals.public_key_info(entry["key_id"]) if entry.get("key_id") else None)
+    body = json.dumps({**pack, "seal": seal}, indent=1)
     return Response(body, media_type="application/json",
                     headers=_sealed_headers(entry, f"kapacitet-ei-evidence-{basis}-{policy}.json"))
 

@@ -698,8 +698,30 @@ the model and data it was computed with. Editing a kept answer, or removing or r
 of the chain, shows at once: `GET /api/v1/seals/verify?kind=assessment&id=…` (the *Verify* button
 under an answer) re-hashes both, `GET /api/v1/seals` gives the chain's head, and
 `GET /api/v1/queue/log.csv` is every decision ever sealed, including those an emptied queue no
-longer holds. This is tamper-evident, not tamper-proof: whoever can write the folder can rewrite
-the whole chain, so the head is worth writing down somewhere else, as the printed record does.
+longer holds.
+
+Each new line is also **signed** with the installation's Ed25519 key, kept in
+`KAPACITET_HOME/keys/seal_ed25519.pem` (`KAPACITET_SEAL_KEY_DIR` moves it). The key is made on first
+use, readable only by its owner where the OS allows it, and never part of a data bundle, a manifest,
+a log or a study's publication. A line carries `key_id` (the SHA-256 of the raw public key) and
+`sig`, the signature over the SHA-256 of the line's canonical JSON without `sig`; the public key is
+published next to every chain as `seal_key.pub`, at `GET /api/v1/seals/key`, in a study's
+publication manifest and in the exported Ei pack, each with a sentence on how to check it.
+Whoever can write the folder can still rebuild the hashes, but not the signatures, so a rewrite
+shows to anyone who holds the public key:
+
+```bash
+python -m kapacitet seals verify                                  # data/requests, with this installation's keys
+python -m kapacitet seals verify <study>/evidence --key seal_key.pub  # a chain copied elsewhere, with the published key
+python -m kapacitet seals rotate-key                              # a new key; the rotation is signed by both
+```
+
+Lines sealed before signing began are reported as *legacy* (held by the hash chain alone), not as
+failures; an unsigned line after the first signed one fails. A rotation record names both public
+keys and is signed by both, so whoever trusts either trusts the other; other chains receive it on
+their next seal. A signature is not a trusted timestamp (there is no RFC 3161 authority behind the
+time in a line), and cutting lines off the end leaves the rest valid, so the chain's head is still
+worth writing down somewhere else, as the printed record does.
 
 Every one of these files is written atomically (`src/kapacitet/atomic.py`): a crash leaves the old
 file or the new one, never half of either. A chain line cut short by a crash is a *torn tail*:

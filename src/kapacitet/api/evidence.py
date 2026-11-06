@@ -1,6 +1,7 @@
 """The evidence trail over HTTP: verify a sealed record, read the chain's head, download the log of
-every queue decision ever sealed (including those an emptied queue no longer holds). A record
-erased after its retention period verifies as `erased`: the chain still holds its digest."""
+every queue decision ever sealed (including those an emptied queue no longer holds), read the
+public key every line is signed with. A record erased after its retention period verifies as
+`erased`: the chain still holds its digest."""
 
 from __future__ import annotations
 
@@ -20,10 +21,23 @@ _ID = r"^[A-Za-z0-9_.:-]{1,80}$"
 
 @router.get("/seals")
 def chain(limit: int = Query(20, ge=1, le=200)) -> dict:
-    """Whether the chain holds, its head (the value to write down elsewhere) and the latest lines."""
+    """Whether the chain holds (hashes and signatures), its head (the value to write down
+    elsewhere), the key it is signed with and the latest lines."""
     head = seals.verify_chain()
     lines = seals._lines()
-    return {**head, "last": lines[-limit:][::-1]}
+    return {**head, "key": _key(), "last": lines[-limit:][::-1]}
+
+
+def _key() -> dict:
+    info = seals.public_key_info()
+    return {k: info[k] for k in ("algorithm", "key_id", "public_key")}
+
+
+@router.get("/seals/key")
+def key() -> dict:
+    """The public key every new seal is signed with, its id (the SHA-256 of the raw key) and how to
+    verify; key_id is null until the first seal creates the key. Reading it creates nothing."""
+    return seals.public_key_info()
 
 
 @router.get("/seals/verify")

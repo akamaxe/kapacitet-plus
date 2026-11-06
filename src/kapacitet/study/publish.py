@@ -97,6 +97,13 @@ def public_outputs(study: Study, q: str, rows: list[dict]) -> dict[str, str]:
 
 # ---------------------------------------------------------------- signing
 
+def _seal_key(signoff: dict | None) -> dict | None:
+    """The public key of a signoff's seal, with the sentence on how to verify; None for a draft
+    never signed, or a signoff sealed before seals were signed."""
+    kid = ((signoff or {}).get("seal") or {}).get("key_id")
+    return seals.public_key_info(kid) if kid else None
+
+
 def _signer(by: str) -> str:
     by = " ".join((by or "").split())
     name, _, role = by.partition(",")
@@ -430,6 +437,8 @@ def publish(study: Study, q: str) -> dict:
         "conditional_column": bool(cfg.method.approval_reference.strip()),
         "corrections": sum(len(v) for v in fixes.values()), "correction_findings": len(findings),
         "outputs": public_outputs(study, q, rows), "files": files,
+        # the public key that checks the signoff's signed seal, and how (never the private key)
+        "seal_key": _seal_key(signoff),
     }
     write_json_atomic(tmp / "manifest.json", manifest, ensure_ascii=False)
     final = folder / "publication"
