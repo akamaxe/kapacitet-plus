@@ -261,6 +261,7 @@ const en: Dict = {
   "req.evaluate": "Evaluate connection",
   "req.running": "Evaluating…",
   "req.stage.static": "Static study (worst-case hours)",
+  "req.stop": "Stop",
   "req.queued": "Waiting for a free slot: number {n} in line",
   "req.stage.envelope": "Export limit for every hour of {n} weather years",
   "req.stage.verify": "Nonlinear power-flow check",
@@ -1348,11 +1349,11 @@ const en: Dict = {
   // the opening answer's stops, the bases said, the MV band and the day-ahead audit
   "cmp.stops": "From the static study to the perfect-foresight bound",
   "cmp.stop.issuable": "Issuable today",
-  "cmp.stop.issuableNote": "from envelopes issued the day before, with no forecast, to the hourly study",
+  "cmp.stop.issuableNote": "between envelopes issued the day before, which need no forecast, and the hourly study",
   "cmp.stop.issuableNoteTs": "the hourly study; the day-ahead figure is not computed yet",
   "cmp.stop.bound": "Perfect-foresight bound",
-  "cmp.stop.basis.aggregate": "budget: {z} % of the neighbourhood's solar",
-  "cmp.stop.basis.installation": "budget: {z} % of each installation's solar",
+  "cmp.stop.basis.aggregate": "Budget: {z} % of the neighbourhood's solar",
+  "cmp.stop.basis.installation": "Budget: {z} % of each installation's solar",
   "cmp.stop.perInstallation": "{kw} kW when no installation may lose more than {z} % of its own solar",
   "term.foresight": "Perfect foresight: each hour's envelope is set knowing that hour's sun and demand. It bounds what envelopes can do, and nobody can issue it in advance: envelopes issued the day before allow less.",
   "cmp.basis.reinfBound": "Adoption order {order} · perfect-foresight deployment, {z} % budget",
@@ -1388,8 +1389,8 @@ const en: Dict = {
   "met.mv.col.vmax": "Highest voltage (pu)",
   "met.mv.base": "published",
   "met.mv.note": "The capacity columns are medians of the search rerun at each level; the last three replay the envelopes published at the base level, hour by hour over the year, with the nonlinear power flow. A study (study.toml) computes generation at the top of its band and consumption at the bottom.",
-  "op.sized": "The houses on envelopes were sized with perfect foresight. Issued the day before, the same deployment is held back in {da} hours, against {fs} with foresight.",
-  "op.crit.exceed": "Hours the real year beat the plan",
+  "op.sized": "The houses on envelopes were sized with perfect foresight, which sets a limit in {fs} hours. Issued the day before, the same houses have a limit planned in {da} hours.",
+  "op.crit.exceed": "Hours the real year went past the plan",
   "op.crit.exceedNote": "{year}: hours the neighbourhood's solar went past the plan the limits were issued against. Single houses went past it in {houses} house-hours (at worst {kw} kW) and below the load floor in {load}; every issue audits them.",
 };
 

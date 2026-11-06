@@ -459,9 +459,13 @@ export default function Request() {
 
             {/* the screen's one action: kept at the foot of the panel so a short screen never hides it */}
             <div className="action-bar">
-              <button className="btn" disabled={running || nothing || liveOff} onClick={evaluate} aria-describedby={nothing || liveOff ? "why-disabled" : undefined}>
-                {running ? t("req.running") : t("req.evaluate")}
-              </button>
+              <div className="action-row">
+                <button className="btn" disabled={running || nothing || liveOff} onClick={evaluate} aria-describedby={nothing || liveOff ? "why-disabled" : undefined}>
+                  {running ? t("req.running") : t("req.evaluate")}
+                </button>
+                {/* a running evaluation holds a slot on the server: it can be stopped, which frees it */}
+                {running && <button className="btn ghost" onClick={() => { stopRunning(); setJob(null); }}>{t("req.stop")}</button>}
+              </div>
               {nothing && !liveOff && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
               {liveOff && (
                 <div id="why-disabled" className="stack">

@@ -367,16 +367,16 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
           </label>
         ))}
       </fieldset>
-      <div className="report-controls">
-        <label className="field-inline">
-          <span>{t("inbox.sign.kwp")}</span>
-          <input type="number" inputMode="decimal" min={0} max={1000} step={0.5} required value={kwp} onChange={(e) => setKwp(e.target.value)} />
-          <span>kWp</span>
-        </label>
-        <label className="field-inline">
-          <span>{t("inbox.sign.until")}</span>
-          <input type="date" min={new Date(Date.parse(today) + 864e5).toISOString().slice(0, 10)} required value={until} onChange={(e) => setUntil(e.target.value)} />
-        </label>
+      {/* the size and the last day as the same labelled fields as the name and the role */}
+      <div className="sign-pair">
+        <div className="field decision-note">
+          <label htmlFor="sign-kwp">{t("inbox.sign.kwp")} (kWp)</label>
+          <input id="sign-kwp" type="number" inputMode="decimal" min={0} max={1000} step={0.5} required value={kwp} onChange={(e) => setKwp(e.target.value)} />
+        </div>
+        <div className="field decision-note">
+          <label htmlFor="sign-until">{t("inbox.sign.until")}</label>
+          <input id="sign-until" type="date" min={new Date(Date.parse(today) + 864e5).toISOString().slice(0, 10)} required value={until} onChange={(e) => setUntil(e.target.value)} />
+        </div>
       </div>
       <p className="caption-muted">{t("inbox.sign.note")}</p>
       {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}

@@ -262,6 +262,7 @@ const sv: Dict = {
   "req.evaluate": "Bedöm anslutningen",
   "req.running": "Bedömer…",
   "req.stage.static": "Statisk studie (timmar för värsta fall)",
+  "req.stop": "Stoppa",
   "req.queued": "Väntar på en ledig beräkningsplats: nummer {n} i ordningen",
   "req.stage.envelope": "Exportgräns för varje timme under {n} väderår",
   "req.stage.verify": "Kontroll med olinjärt lastflöde",
@@ -1349,11 +1350,11 @@ const sv: Dict = {
   // the opening answer's stops, the bases said, the MV band and the day-ahead audit
   "cmp.stops": "Från den statiska studien till gränsen med perfekt framförhållning",
   "cmp.stop.issuable": "Kan utfärdas i dag",
-  "cmp.stop.issuableNote": "från exportgränser utfärdade dagen före, utan prognos, till timstudien",
+  "cmp.stop.issuableNote": "mellan exportgränser utfärdade dagen före, som inte kräver någon prognos, och timstudien",
   "cmp.stop.issuableNoteTs": "timstudien; siffran för dagen före är inte beräknad än",
   "cmp.stop.bound": "Gräns med perfekt framförhållning",
-  "cmp.stop.basis.aggregate": "budget: {z} % av områdets solel",
-  "cmp.stop.basis.installation": "budget: {z} % av varje anläggnings solel",
+  "cmp.stop.basis.aggregate": "Budget: {z} % av områdets solel",
+  "cmp.stop.basis.installation": "Budget: {z} % av varje anläggnings solel",
   "cmp.stop.perInstallation": "{kw} kW när ingen anläggning får förlora mer än {z} % av sin egen solel",
   "term.foresight": "Perfekt framförhållning: varje timmes exportgräns sätts med vetskap om timmens sol och förbrukning. Den visar vad dynamiska gränser kan göra som mest, och ingen kan utfärda den i förväg: gränser som utfärdas dagen före tillåter mindre.",
   "cmp.basis.reinfBound": "Anslutningsordning {order} · utbyggnad med perfekt framförhållning, {z} % budget",
@@ -1389,8 +1390,8 @@ const sv: Dict = {
   "met.mv.col.vmax": "Högsta spänning (pu)",
   "met.mv.base": "publicerad",
   "met.mv.note": "Kapacitetskolumnerna är medianer av sökningen omkörd på varje nivå; de tre sista spelar upp exportgränserna som publicerats på basnivån, timme för timme under året, med icke-linjär lastflödesberäkning. En studie (study.toml) beräknar produktion i bandets övre ände och förbrukning i den nedre.",
-  "op.sized": "Husen med dynamiska gränser dimensionerades med perfekt framförhållning. Utfärdade dagen före hålls samma utbyggnad tillbaka under {da} timmar, mot {fs} med framförhållning.",
-  "op.crit.exceed": "Timmar då det verkliga året slog planen",
+  "op.sized": "Husen med dynamiska gränser dimensionerades med perfekt framförhållning, som sätter en gräns under {fs} timmar. Utfärdade dagen före får samma hus en planerad gräns under {da} timmar.",
+  "op.crit.exceed": "Timmar då det verkliga året gick förbi planen",
   "op.crit.exceedNote": "{year}: timmar då områdets solel gick förbi planen som gränserna utfärdades mot. Enskilda hus gick förbi den under {houses} hustimmar (som mest {kw} kW) och under lastgolvet under {load}; varje utfärdande granskar dem.",
 };
 

@@ -8,6 +8,8 @@
  * 3. the perfect-foresight bound, the screen's display figure, marked with the budget it is held
  *    to, and the per-installation figure beside it.
  *
+ * Each stop draws its length against the bound under its figure, so the ratio is seen as well as said.
+ *
  * It reads /hosting itself, so the screen and a test get the same answer from the same request.
  */
 import { Term } from "./Term";
@@ -60,18 +62,23 @@ export function AnswerStops() {
   const pct = (v: number) => `${(v / s.boundKw) * 100}%`;
   return (
     <>
+      {/* each stop carries its own length against the bound, so the line reads as figures and as
+          distances at once; the words are said once, beside the figure */}
       <ol className="answer-stops" aria-label={t("cmp.stops")}>
         <li className="as-stop as-static">
           <span className="as-value" data-stop="static">{f(s.staticKw)}<small>kW</small></span>
+          <i aria-hidden="true" className="as-bar" style={{ width: pct(s.staticKw) }} />
           <span className="as-label"><Term id="static">{t("cmp.fig.static")}</Term></span>
         </li>
         <li className="as-stop as-issuable">
           <span className="as-value" data-stop="issuable">{range}<small>kW</small></span>
+          <i aria-hidden="true" className="as-bar" style={{ width: pct(hi), ["--lo" as string]: `${(lo / hi) * 100}%` }} />
           <span className="as-label">{t("cmp.stop.issuable")}</span>
           <span className="as-note">{t(s.dayAheadKw == null ? "cmp.stop.issuableNoteTs" : "cmp.stop.issuableNote")}</span>
         </li>
         <li className="as-stop as-bound">
           <span className="as-value" data-stop="bound">{f(s.boundKw)}<small>kW</small></span>
+          <i aria-hidden="true" className="as-bar" />
           <span className="as-label">
             <Term id="foresight">{t("cmp.stop.bound")}</Term>
             <span className="basis-mark">{t(`cmp.stop.basis.${s.budget}`, { z: f(s.zStar) })}</span>
@@ -82,15 +89,6 @@ export function AnswerStops() {
         </li>
       </ol>
       <p className="answer-ratio">{t("cmp.ratioLine", { r: f(s.boundKw / s.staticKw, 1) })}</p>
-      {/* the three as lengths: words, not figures, because the figures are said above */}
-      <div className="ratio-bars">
-        <span><Term id="static">{t("cmp.fig.static")}</Term></span>
-        <i aria-hidden="true" className="rb-static" style={{ width: pct(s.staticKw) }} />
-        <span>{t("cmp.stop.issuable")}</span>
-        <i aria-hidden="true" className="rb-issuable" style={{ width: pct(hi), ["--lo" as string]: `${(lo / hi) * 100}%` }} />
-        <span>{t("cmp.stop.bound")}</span>
-        <i aria-hidden="true" className="rb-doe" />
-      </div>
     </>
   );
 }

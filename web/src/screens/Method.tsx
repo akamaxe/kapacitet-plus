@@ -535,7 +535,7 @@ function MvBand({ MV }: { MV: any }) {
         <caption className="sr-only">{t("met.mv.table")}</caption>
         <thead>
           <tr>
-            <th className="r">{t("met.mv.col.pu")}</th>
+            <th>{t("met.mv.col.pu")}</th>
             <th className="r">{t("met.mv.col.static")}</th>
             <th className="r">{t("met.mv.col.ts")}</th>
             <th className="r">{t("met.mv.col.doe")}</th>
@@ -547,7 +547,8 @@ function MvBand({ MV }: { MV: any }) {
         <tbody>
           {levels.map((l) => (
             <tr key={l.vm_pu} aria-current={l.vm_pu === MV.base_pu ? "true" : undefined}>
-              <td className="r">{f(l.vm_pu, 2)}{l.vm_pu === MV.base_pu ? ` · ${t("met.mv.base")}` : ""}</td>
+              {/* the row's key, flush left so its digits align and the published level's word follows them */}
+              <td className="num">{f(l.vm_pu, 2)}{l.vm_pu === MV.base_pu && <span className="row-mark">{t("met.mv.base")}</span>}</td>
               <td className="r">{f(l.static_kw)}</td>
               <td className="r">{f(l.timeseries_kw)}</td>
               <td className="r">{f(l.doe_kw)}</td>

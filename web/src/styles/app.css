@@ -726,6 +726,8 @@ table.data th.r {
 /* a reading that is itself the bad news (DESIGN.md: --danger), and the row the published figures use */
 table.data td.danger { color: var(--danger); font-weight: 600; }
 table.data tr[aria-current="true"] td { font-weight: 600; color: var(--text-primary); }
+/* a word that names the row, after its key: "published" beside the level the envelopes use */
+table.data .row-mark { margin-left: var(--space-2); font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); }
 /* the rates table under the deferral: its caption reads as a block head, flush left */
 .biz-rates > caption { caption-side: top; text-align: left; padding-bottom: var(--space-2); font-size: var(--text-small); font-weight: 600; color: var(--text-primary); }
 
@@ -1881,18 +1883,19 @@ ol.list {
 .as-bound .as-value { font-size: var(--text-display); line-height: var(--lh-display); font-weight: 700; letter-spacing: var(--track-display); color: var(--text-primary); }
 .as-value small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
 .as-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); font-size: var(--text-small); font-weight: 500; color: var(--text-primary); }
-.as-note { font-size: var(--text-caption); color: var(--text-muted); max-width: 52ch; }
+.as-note { font-size: var(--text-caption); color: var(--text-muted); max-width: 80ch; }
 /* the budget the bound is held to, said beside the figure it qualifies */
 .basis-mark { padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .answer-ratio { color: var(--good); font-weight: 600; }
-/* the ratio as two lengths: words, not figures, because the figures are said above */
-.ratio-bars { display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: center; gap: var(--space-2) var(--space-3); width: 100%; margin-top: var(--space-3); font-size: var(--text-small); color: var(--text-secondary); }
-.ratio-bars i { display: block; height: 10px; border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
-.rb-static { background: var(--neutral-series); }
-.rb-doe { width: 100%; background: var(--series-dynamic); }
-/* what can be issued today: solid to the lower end of its range, hatched to the upper */
-.rb-issuable { background: linear-gradient(90deg, var(--series-dynamic-quiet) 0 var(--lo), transparent var(--lo)), repeating-linear-gradient(135deg, var(--series-dynamic-quiet) 0 2px, transparent 2px 5px); }
+/* each stop's length against the bound, under its figure: pencil, the quiet green solid to the low
+   end of the issuable range and hatched to its high end, and the full green line of the bound */
+.as-bar { display: block; height: 6px; margin: 2px 0 var(--space-1); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+.as-static .as-bar { background: var(--neutral-series); }
+.as-issuable .as-bar { background: linear-gradient(90deg, var(--series-dynamic-quiet) 0 var(--lo), transparent var(--lo)), repeating-linear-gradient(135deg, var(--series-dynamic-quiet) 0 2px, transparent 2px 5px); }
+.as-bound .as-bar { width: 100%; background: var(--series-dynamic); }
 .answer-sheet { width: 100%; margin-top: var(--space-3); border-top: 1px solid var(--border); }
+/* the opening answer's action sits between the answer and its data sheet */
+.hero-actions + .answer-sheet { margin-top: var(--space-5); }
 .tile .t-value.danger { color: var(--danger); }
 
 /* ---------------------------------------------------------------- the network map
@@ -2019,6 +2022,9 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   border-top: 1px solid var(--border);
   background: var(--bg-surface);
 }
+
+/* the action and, while it runs, the way to stop it, side by side at one height */
+.action-row { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 
 /* the opening on a narrow screen: nothing in it may set a width wider than the column */
 .overview-copy, .answer-sheet, .net-figure { min-width: 0; }
@@ -2207,9 +2213,13 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 /* the rule's mode in one body sentence, the signature after it in ink-2: a block line, not a headline */
 .rule-mode { margin: 0; max-width: 72ch; font-size: var(--text-body); line-height: var(--lh-body); color: var(--text-secondary); }
 .rule-mode strong { font-weight: 600; color: var(--text-primary); }
-/* the rule's signature: the kinds it covers as one row of checkboxes */
-.sign-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: 0; border: 0; min-width: 0; }
-.sign-kinds legend { width: 100%; padding: 0; margin-bottom: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
+/* the rule's signature: the kinds it covers as one row of checkboxes, in the same inset band as the
+   form's other fields; the legend floats so it sits inside the band instead of on its edge */
+.sign-kinds { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); margin: 0; padding: var(--space-3) var(--space-4); border: 0; border-radius: var(--radius-md); background: var(--bg-inset); min-width: 0; }
+.sign-kinds legend { float: left; width: 100%; padding: 0; margin-bottom: var(--space-1); font-size: var(--text-small); color: var(--text-secondary); }
+/* the largest system and the last valid day: two fields side by side, one column on a phone */
+.sign-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
+@media (max-width: 480px) { .sign-pair { grid-template-columns: minmax(0, 1fr); } }
 /* the kinds are written for a sentence ("for solar and EV chargers"); as a label each starts upper case */
 .sign-kinds .field-inline span { display: inline-block; }
 .sign-kinds .field-inline span::first-letter { text-transform: uppercase; }
@@ -2240,6 +2250,11 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .rf-value { font-size: var(--text-display); line-height: var(--lh-display); letter-spacing: var(--track-display); font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-primary); }
 .rf-value small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
 .rf-label { max-width: 32ch; font-size: var(--text-body); color: var(--text-secondary); }
+/* the notes under the filed figure: a reading measure, each its own line, air before the downloads */
+.report-hero > :first-child > .caption-muted { max-width: 72ch; }
+.report-hero > :first-child > .caption-muted + .caption-muted { margin-top: var(--space-2); }
+.report-hero > :first-child > .report-controls + .caption-muted { margin-top: var(--space-2); }
+.report-hero > :first-child > .answer-actions { margin-top: var(--space-4); }
 .report-worst { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3); margin-top: var(--space-4); }
 .report-worst .caption { margin: 0; }
 @media (max-width: 1100px) { .report-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); } }

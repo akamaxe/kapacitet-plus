@@ -116,6 +116,12 @@ export default function Compare() {
               {/* the screen's one answer: static, what can be issued today, the perfect-foresight
                   bound; each figure is said here and nowhere else in the view */}
               <AnswerStops />
+              {/* the one action follows the answer, so it is in the first viewport at 1536×730; the
+                  data sheet under it is the answer's evidence */}
+              <div className="hero-actions">
+                <a className="btn" href="#/request">{t("overview.request")}</a>
+                <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
+              </div>
               <div className="tiles cols-1 answer-sheet">
                 <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
                 <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
@@ -129,10 +135,6 @@ export default function Compare() {
                     ? <a href={`#/twin?hour=${meta.data.showcase_hour}&scenario=uncontrolled`}>{hourLabel(lang, S.year, meta.data.showcase_hour)}</a>
                     : undefined}
                 />
-              </div>
-              <div className="hero-actions">
-                <a className="btn" href="#/request">{t("overview.request")}</a>
-                <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
             </div>
             <Suspense fallback={<div className="net-figure" aria-hidden="true"><span /><div className="net-map" /></div>}>
