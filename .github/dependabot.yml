@@ -1,6 +1,7 @@
 # Weekly update proposals for everything the build pins: the actions' commit SHAs in the workflows,
 # the interface's npm lockfile, the Python pins in constraints.txt and the Dockerfile's base images
 # (their digests). Each one is a pull request that CI checks; nothing merges by itself.
+# A major version is a decision, not a weekly update, so no ecosystem proposes one.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -10,6 +11,9 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: npm
     directory: /web
@@ -19,6 +23,9 @@ updates:
       web-minor:
         patterns: ["*"]
         update-types: [minor, patch]
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: pip
     directory: /
@@ -31,9 +38,14 @@ updates:
     # the ceilings constraints.txt explains: pandapower 2.14 predates numpy 2 and supports scipy
     # below 1.14 only, pandas 3's copy-on-write breaks how it writes results, and pandapower 3 is a
     # migration of its own
+    # and cvxpy 1.8 onwards requires numpy 2
     ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
       - dependency-name: numpy
         versions: [">=2"]
+      - dependency-name: cvxpy
+        versions: [">=1.8"]
       - dependency-name: scipy
         versions: [">=1.14"]
       - dependency-name: pandas
@@ -57,3 +69,6 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
