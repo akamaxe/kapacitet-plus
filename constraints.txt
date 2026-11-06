@@ -18,20 +18,20 @@
 
 numpy==1.26.4
 scipy==1.13.1
-pandas==2.2.3
+pandas==2.3.3
 pandapower==2.14.11
 pyarrow==20.0.0
 duckdb==1.5.6
-cvxpy==1.7.5
+cvxpy==1.9.3
 clarabel==0.11.1
 networkx==3.7
 shapely==2.2.0
 pyproj==3.8.0
 pvlib==0.16.1
 requests==2.34.2
-fastapi==0.143.0
-starlette==1.7.0
-pydantic==2.14.0
+fastapi==0.162.0
+starlette==1.10.0
+pydantic==2.14.2
 uvicorn==0.54.0
 httpx==0.28.1
-pytest==9.1.1
+pytest==9.2.0
