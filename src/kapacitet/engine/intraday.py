@@ -32,6 +32,12 @@ envelopes of several gates, each taken where it holds, are the envelopes of a si
 holds each hour's plan from its governing gate. `planning_state` builds that state, and
 `forecast.issue` allocates, verifies and replays it as it does the day-ahead one.
 
+**Two variants.** `planning_state` is the worst-change plan above. `forecast_planning_state`
+replaces the largest change with LightGBM quantile forecasts (`engine/nowcast.py`): solar at a
+high quantile, load at a low one, with the same day-ahead limits and margins. It is beaten by
+design in some hours, so the stage (`run_extra.intraday`) publishes both and leads with the
+forecast variant only when its replay broke no limit (`VARIANTS` maps each to its scheme).
+
 **What the measurements see.** The measured solar is the available output per kWp of the
 replayed year, the uncurtailed value: a house held to its envelope still reports what it could
 have produced (an inverter's available power, or the firm neighbours on the same roof
@@ -169,9 +175,41 @@ def planning_state(year: int, pv_mask: np.ndarray, hp: np.ndarray, ev: np.ndarra
     return forecast._arrays(pv, load)
 
 
-def memo_key() -> tuple:
-    """What a capacity search's memo has to tell apart besides the count: the gates and the lag."""
+def forecast_planning_state(year: int, pv_mask: np.ndarray, hp: np.ndarray, ev: np.ndarray,
+                            window_days: int = forecast.WINDOW_DAYS, *, pv_margin: float | None = None,
+                            load_margin: float | None = None) -> dict:
+    """The forecast variant (`engine/nowcast.py`): each gate plans the solar at the lower of the
+    day-ahead bound and the high-quantile forecast, the load at the higher of the day-ahead floor
+    and the low-quantile forecast, with the day-ahead margins on both, as `planning_state` does
+    with the largest change instead. Where no forecast is made the day-ahead plan holds.
+
+    Unlike the worst-change plan this one is beaten by design in about 1 - q of the hours it
+    forecasts, so the replay against the real state decides whether its envelopes may be the
+    headline (`run_extra.intraday`)."""
+    from . import nowcast
+
     gates, lag = gates_and_lag()
+    pm, lm = forecast.day_ahead_margins(pv_margin, load_margin)
+    da_pv = forecast.pv_upper_bound(year, window_days)
+    pv_q = nowcast.quantile_forecast("pv", year, gates, lag)
+    per = np.where(np.isnan(pv_q), da_pv, np.fmin(da_pv, pv_q)) * (1.0 + pm)
+    pv = forecast._inverter_capped(pv_mask, per)
+    da_load = forecast.load_lower_bound(year, hp, ev, window_days)
+    load_q = nowcast.quantile_forecast("load", year, gates, lag, hp, ev)
+    load = np.where(np.isnan(load_q), da_load, np.fmax(da_load, load_q)) * (1.0 - lm)
+    return forecast._arrays(pv, load)
+
+
+VARIANTS = {"worst_change": "intraday", "forecast": "nowcast"}     # variant -> forecast scheme
+
+
+def memo_key(scheme: str = "intraday") -> tuple:
+    """What a capacity search's memo has to tell apart besides the count: the gates and the lag,
+    and for the forecast variant the two quantiles as well."""
+    gates, lag = gates_and_lag()
+    if scheme == "nowcast":
+        from . import nowcast
+        return (gates, lag, nowcast.quantile("pv"), nowcast.quantile("load"))
     return (gates, lag)
 
 

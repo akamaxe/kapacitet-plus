@@ -480,6 +480,38 @@ def test_the_published_replica_backs_its_scorecard():
         assert r["installation"]["z_customer_max_pct"] <= d["z_star_pct"] + 1e-9
 
 
+def test_the_published_replica_holds_both_variants_and_headlines_a_verified_one():
+    from kapacitet.engine import nowcast
+
+    d = _intraday()
+    if "variants" not in d:
+        pytest.skip(f"intraday.json has no forecast variant yet; {INTRADAY}")
+    v = d["variants"]
+    assert set(v) == {"worst_change", "forecast"}
+    assert d["quantiles"] == {"pv": pytest.approx(A("nowcast_pv_quantile")),
+                              "load": pytest.approx(A("nowcast_load_quantile"))}
+    for name, var in v.items():
+        assert var["variant"] == name and len(var["per_order"]) == d["n_orders"]
+        assert var["planning_full_year_violations"] == 0 == var["installation"]["planning_full_year_violations"]
+        assert var["verified"] == (var["violation_hours"] == 0 == var["installation"]["violation_hours"])
+        for basis in (var, var["installation"]):
+            assert basis["scorecard"]["violation_hours"]["value"] == basis["violation_hours"]
+        for r in var["per_order"]:
+            assert r["kw_ac"] <= r["doe_kw"] + 1e-6
+    assert v["worst_change"]["verified"], "the worst-change replay held in every hour"
+    # the headline is the forecast variant exactly when it held in every replayed hour
+    assert d["headline_variant"] == ("forecast" if v["forecast"]["verified"] else "worst_change")
+    head = v[d["headline_variant"]]
+    assert d["median_kw"] == head["median_kw"] and d["installation"]["median_kw"] == head["installation"]["median_kw"]
+    cal = v["forecast"]["calibration"]
+    for kind in nowcast.KINDS:
+        c = cal[kind]
+        assert c["nominal_exceedance"] == pytest.approx(nowcast.nominal_exceedance(kind))
+        assert c["customer_hours"] > 0 and 0 <= c["exceeded"] <= c["customer_hours"]
+        assert c["realised_exceedance"] == pytest.approx(c["exceeded"] / c["customer_hours"])
+        assert sorted(p["year"] for p in c["per_year"]) == sorted(d["years"])
+
+
 def test_the_overinstallation_prices_cover_every_weather_year_once_recomputed(results):
     from kapacitet.config import settings
 

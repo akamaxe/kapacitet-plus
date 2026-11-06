@@ -35,6 +35,8 @@ dependencies = [
 # richardsonpy is GPL-3.0; it is only used by the offline household-profile generator.
 profiles = ["richardsonpy>=0.2.3"]
 dev = ["pytest>=8", "httpx>=0.27"]
+# the forecast variant of the intraday replica (engine/nowcast.py); CI installs it with dev
+forecast = ["lightgbm>=4.7,<5"]
 
 [project.scripts]
 kapacitet = "kapacitet.pipeline:main"

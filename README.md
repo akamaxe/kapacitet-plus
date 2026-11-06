@@ -996,6 +996,24 @@ study), each marked pass or fail; the Method screen reads it. Nothing is written
 envelope held in every replayed hour. The measured solar is the available output, so the
 replica assumes a limited inverter still reports what it could have produced.
 
+The same stage runs a second variant of the gate's plan, a probabilistic intraday forecast
+(`engine/nowcast.py`, the `forecast` extra: `pip install -e ".[forecast]"`, LightGBM 4.7). Two
+quantile models (`objective="quantile"`) forecast each roof's solar per kWp at a high quantile
+(`nowcast_pv_quantile`, 0.995) and each house's load at a low one (`nowcast_load_quantile`, 0.005)
+for 1 to 12 hours ahead, from what a gate knows: the last reading and its trend, the hour, the
+day of the year, the roof's clear-sky output (pvlib) and the last measured temperature. The model
+for a year is trained on the other weather years only, with fixed seeds, so the forecast is
+deterministic and never reads ahead. The gate then plans the solar at the lower of the day-ahead
+bound and the forecast, and the load at the higher of the day-ahead floor and the forecast, with
+the same 3 % margins. A quantile is beaten by design in about 1 − q of the hours, so this bound is
+empirical and audited, never a guarantee: `intraday.json` holds both variants under `variants`,
+each with its scorecard, and the forecast one also with the realised exceedance of each forecast
+next to its nominal rate (`calibration`). The top level of the file (the figure the Method screen
+leads with) is the forecast variant only when its replay found no hour above a limit, otherwise the
+worst-change one (`headline_variant`); the worst-change replay still has to hold in every hour for
+anything to be written. The trained models are kept in `data/processed/nowcast/`, named by a
+digest of their inputs.
+
 ## Limitations
 
 Stated openly on the Method screen and repeated here: the published envelopes use perfect

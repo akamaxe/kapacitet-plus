@@ -616,22 +616,59 @@ function Intraday({ ID, F }: { ID: any; F: any }) {
       }] : []),
     ];
   };
+  // both variants of the gate's plan when the stage has run them; an older file holds one
+  const variants: [string, any][] = ID.variants
+    ? (["worst_change", "forecast"] as const).filter((v) => ID.variants[v]).map((v) => [v, ID.variants[v]])
+    : [["worst_change", ID]];
+  const wc = ID.variants?.worst_change ?? ID;
+  const fc = ID.variants?.forecast;
+  const calib = (c: any) => (["pv", "load"] as const).map((kind) => ({
+    ok: null,
+    label: t(`met.id.cal.${kind}`),
+    value: c[kind].realised_exceedance == null ? "–" : f(c[kind].realised_exceedance * 100, 2),
+    unit: "%",
+    criterion: t("met.id.cal.crit", { nominal: f(c[kind].nominal_exceedance * 100, 2), n: f(c[kind].customer_hours), y: f(ID.years.length) }),
+  }));
   return (
     <section className="block stack" id="intraday">
       <div className="block-head"><h3>{t("met.id.title")}</h3></div>
       <p className="caption">
         {t("met.id.caption", { gates: listJoin(lang, (ID.gates_h as number[]).map((g) => f(g))), lag: f(ID.measurement_lag_h), years: f(ID.years.length - 1) })}
       </p>
-      <div className="tiles cols-3">
+      {fc && (
+        <p className="caption">
+          {t("met.id.fc.caption", { pv: f(ID.quantiles.pv * 100, 1), load: f(ID.quantiles.load * 100, 1) })}
+        </p>
+      )}
+      <div className={`tiles ${fc ? "cols-4" : "cols-3"}`}>
         <Tile label={t("met.fc.climo")} value={f(F.median_kw.climatological, 0)} unit="kW" />
-        <Tile label={t("met.id.kw")} value={f(ID.median_kw, 0)} unit="kW"
-          note={t("met.id.kw.note", { lo: f(ID.kw_ac_stats.p10, 0), hi: f(ID.kw_ac_stats.p90, 0), inst: f(ID.installation.median_kw, 0) })} />
+        <Tile label={t(fc ? "met.id.kw.worst_change" : "met.id.kw")} value={f(wc.median_kw, 0)} unit="kW"
+          note={t("met.id.kw.note", { lo: f(wc.kw_ac_stats.p10, 0), hi: f(wc.kw_ac_stats.p90, 0), inst: f(wc.installation.median_kw, 0) })} />
+        {fc && (
+          <Tile label={t("met.id.kw.forecast")} value={f(fc.median_kw, 0)} unit="kW"
+            note={t(fc.verified ? "met.id.kw.note" : "met.id.kw.note.unverified",
+              { lo: f(fc.kw_ac_stats.p10, 0), hi: f(fc.kw_ac_stats.p90, 0), inst: f(fc.installation.median_kw, 0), h: f(fc.violation_hours + fc.installation.violation_hours) })} />
+        )}
         <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
       </div>
-      {(["aggregate", "installation"] as const).map((basis) => (
-        <div className="stack" key={basis}>
-          <h4>{t(`cmp.stop.basis.${basis}`, { z: f(ID.z_star_pct) })}</h4>
-          <Protocol rows={card(basis === "aggregate" ? ID : ID.installation)} />
+      {fc && <p className="caption-muted">{t(`met.id.headline.${ID.headline_variant}`)}</p>}
+      {variants.map(([name, v]) => (
+        <div className="stack" key={name}>
+          {fc && <h4>{t(`met.id.variant.${name}`)}</h4>}
+          {(["aggregate", "installation"] as const).map((basis) => (
+            <div className="stack" key={basis}>
+              {fc
+                ? <h5>{t(`cmp.stop.basis.${basis}`, { z: f(ID.z_star_pct) })}</h5>
+                : <h4>{t(`cmp.stop.basis.${basis}`, { z: f(ID.z_star_pct) })}</h4>}
+              <Protocol rows={card(basis === "aggregate" ? v : v.installation)} />
+            </div>
+          ))}
+          {name === "forecast" && v.calibration && (
+            <div className="stack">
+              <h5>{t("met.id.cal.title")}</h5>
+              <Protocol rows={calib(v.calibration)} />
+            </div>
+          )}
         </div>
       ))}
     </section>

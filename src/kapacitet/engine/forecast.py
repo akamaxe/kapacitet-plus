@@ -310,8 +310,11 @@ def planning_state(scheme: str, year: int, pv_mask: np.ndarray, hp: np.ndarray, 
     if scheme == "intraday":
         from . import intraday
         return intraday.planning_state(year, pv_mask, hp, ev, window_days)
+    if scheme == "nowcast":
+        from . import intraday
+        return intraday.forecast_planning_state(year, pv_mask, hp, ev, window_days)
     raise ValueError(f"{scheme!r} issues no envelope; expected climatological, persistence, "
-                     f"intraday or foresight")
+                     f"intraday, nowcast or foresight")
 
 
 def forecast_error(actual: dict[str, np.ndarray], predicted: dict[str, np.ndarray]) -> dict:
@@ -589,7 +592,7 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
     search runs goes into `memo` (count -> `multiyear`), which carries both shares, so a second
     search on the other basis, given the same memo, pays only for the counts the first did not
     measure. The memo is keyed by (scheme, window_days, policy, count), and for "intraday" by its
-    gates and lag as well, so a memo passed to searches of another configuration never hands one
+    gates and lag as well (for "nowcast" its quantiles too), so a memo passed to searches of another configuration never hands one
     of them the other's runs.
 
     `lo` is where the search starts: the published one passes the time-series capacity, the
@@ -609,9 +612,9 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
         raise ValueError(f"budget must be one of {BUDGETS}, not {budget!r}")
     share = _SHARE[budget]
     runs = {} if memo is None else memo
-    if scheme == "intraday":
+    if scheme in ("intraday", "nowcast"):
         from . import intraday
-        extra = intraday.memo_key()
+        extra = intraday.memo_key(scheme)
     else:
         extra = ()
 

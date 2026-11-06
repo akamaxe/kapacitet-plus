@@ -40,6 +40,7 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | spot price, day-ahead | spotpris, dagen före | |
 | re-issued during the day (intraday), gate | utfärdat på nytt under dygnet, tidpunkt | envelopes re-planned at fixed hours with the latest meter readings |
 | forecast, perfect foresight | prognos, perfekt framförhållning | |
+| quantile forecast, exceedance | kvantilprognos, överskridande | the intraday forecast variant; how often the year beat it |
 | reinforcement | förstärkning | |
 | audit trail, annual report | granskningsspår, årsrapport | not årsredovisning, which reads as a company's accounts |
 | real, synthetic | verklig, syntetisk | the label on every figure's data |

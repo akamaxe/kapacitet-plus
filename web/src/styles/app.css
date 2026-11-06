@@ -65,7 +65,8 @@ input[type="radio"] {
 h1,
 h2,
 h3,
-h4 {
+h4,
+h5 {
   margin: 0;
   font-weight: 600;
   text-wrap: balance;
@@ -75,6 +76,8 @@ h1 { font-size: var(--text-h1); line-height: var(--lh-h1); letter-spacing: var(-
 h2 { font-size: var(--text-h2); line-height: var(--lh-h2); letter-spacing: var(--track-h2); }
 h3 { font-size: var(--text-h3); line-height: var(--lh-h3); letter-spacing: var(--track-h3); }
 h4 { font-size: var(--text-body); line-height: var(--lh-body); }
+/* a sub-part of an h4's part (one budget basis of one variant): smaller, in the second ink */
+h5 { font-size: var(--text-small); line-height: var(--lh-small); color: var(--text-secondary); }
 
 p {
   margin: 0;

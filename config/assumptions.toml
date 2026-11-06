@@ -889,6 +889,28 @@ url = ""
 note = "At a gate at hour g the last measured hour is g − 1 − this delay; the replay never reads a later hour of the replayed day."
 note_sv = "Vid tidpunkten g är den senast mätta timmen g − 1 − denna fördröjning; uppspelningen läser aldrig en senare timme av det uppspelade dygnet."
 
+[nowcast_pv_quantile]
+value = 0.995
+unit = "quantile (fraction)"
+tag = "team-assumption"
+label = "Quantile of the intraday solar forecast that plans the forecast variant"
+label_sv = "Kvantil för solelsprognosen under dygnet som planerar prognosvarianten"
+source = "Modelling assumption: a high quantile of a LightGBM quantile model (objective quantile) of AC output per kWp, so the year should beat it in about 1 hour of 200"
+url = "https://lightgbm.readthedocs.io/en/stable/Parameters.html#objective"
+note = "Used by the forecast variant of the intraday replica (intraday.json) only. Trained leave-one-year-out on what a gate knows: the last reading and its trend, the hour, the day of the year, the roof's clear-sky output and the last temperature. Empirical, never a guarantee: the replica reports the realised exceedance next to 1 minus this quantile."
+note_sv = "Används bara av prognosvarianten i efterhandsrepliken under dygnet (intraday.json). Tränas med ett år i taget utelämnat på det som är känt vid tidpunkten: senaste mätvärdet och dess trend, timmen, dagen på året, takets solel vid klar himmel och senaste temperaturen. Empirisk, aldrig en garanti: repliken redovisar den faktiska överskridandeandelen bredvid 1 minus denna kvantil."
+
+[nowcast_load_quantile]
+value = 0.005
+unit = "quantile (fraction)"
+tag = "team-assumption"
+label = "Quantile of the intraday load forecast that plans the forecast variant"
+label_sv = "Kvantil för lastprognosen under dygnet som planerar prognosvarianten"
+source = "Modelling assumption: a low quantile of a LightGBM quantile model (objective quantile) of each house's load with its heat pump and charger, so the year should fall below it in about 1 hour of 200"
+url = "https://lightgbm.readthedocs.io/en/stable/Parameters.html#objective"
+note = "Used by the forecast variant of the intraday replica (intraday.json) only, with the same features and leave-one-year-out training as the solar forecast. The plan never assumes less load than the day-ahead floor."
+note_sv = "Används bara av prognosvarianten i efterhandsrepliken under dygnet (intraday.json), med samma variabler och samma träning med ett år utelämnat som solelsprognosen. Planen antar aldrig mindre last än golvet från dagen före."
+
 # ---------------------------------------------------------------- the static reference
 [static_pv_factor]
 value = 1.0
