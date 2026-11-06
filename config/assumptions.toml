@@ -1016,8 +1016,8 @@ label = "Ei's preliminary real kalkylränta for 2028–2031, proposed method"
 label_sv = "Ei:s preliminära reala kalkylränta för 2028–2031, föreslagen metod"
 source = "Energimarknadsinspektionen, Konsekvensutredning, intäktsramar för elnätsföretag 2028–2031 (2 November 2026), p. 341 and table 50, p. 342: 'Den nya metoden ger preliminärt en nominell kalkylränta på 5,25 procent, vilket motsvarar en real kalkylränta på 1,99 procent'"
 url = "https://ei.se/download/18.439f1d91a18c6ce0b2550c/1793610175300/2026-11-02-Konsekvensutredning-eln%C3%A4t.pdf"
-note = "Preliminary: calculated in September 2026 and set only in Ei's decision. Shown beside the rate in force, never in its place. Cited from the document; the page and table numbers were not independently verified."
-note_sv = "Preliminär: beräknad i september 2026 och fastställs först i Ei:s beslut. Visas bredvid den gällande räntan, aldrig i dess ställe. Citerad ur dokumentet; sid- och tabellnumren är inte oberoende kontrollerade."
+note = "Preliminary: calculated in September 2026 and set only in Ei's decision. Shown beside the rate in force, never in its place. Checked against the document: p. 341, and table 50 on p. 342."
+note_sv = "Preliminär: beräknad i september 2026 och fastställs först i Ei:s beslut. Visas bredvid den gällande räntan, aldrig i dess ställe. Kontrollerad mot dokumentet: s. 341 och tabell 50 på s. 342."
 
 [ei_wacc_real_pct_2028_current_method]
 value = 4.57
@@ -1027,8 +1027,8 @@ label = "Ei's preliminary real kalkylränta for 2028–2031, current method"
 label_sv = "Ei:s preliminära reala kalkylränta för 2028–2031, nuvarande metod"
 source = "Energimarknadsinspektionen, Konsekvensutredning, intäktsramar för elnätsföretag 2028–2031 (2 November 2026), table 50, p. 342: 'Nuvarande metod' 6,78 % nominal, 4,57 % real"
 url = "https://ei.se/download/18.439f1d91a18c6ce0b2550c/1793610175300/2026-11-02-Konsekvensutredning-eln%C3%A4t.pdf"
-note = "Preliminary, the like-for-like comparison with the proposed method: what today's method would give for the same period. Ei notes that it can only be set during 2027. Cited from the document; the page and table numbers were not independently verified."
-note_sv = "Preliminär, den jämförbara siffran för den föreslagna metoden: vad dagens metod skulle ge för samma period. Ei anger att den kan fastställas först under 2027. Citerad ur dokumentet; sid- och tabellnumren är inte oberoende kontrollerade."
+note = "Preliminary, the like-for-like comparison with the proposed method: what today's method would give for the same period. Ei notes that it can only be set during 2027. Checked against the document: p. 341, and table 50 on p. 342."
+note_sv = "Preliminär, den jämförbara siffran för den föreslagna metoden: vad dagens metod skulle ge för samma period. Ei anger att den kan fastställas först under 2027. Kontrollerad mot dokumentet: s. 341 och tabell 50 på s. 342."
 
 [regulatory_period_years]
 value = 4
