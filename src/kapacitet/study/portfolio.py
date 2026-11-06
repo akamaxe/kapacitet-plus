@@ -10,6 +10,7 @@ runs as its own process, with its own environment:
     KAPACITET_STUDY          <study>               study.toml, merged by config.py
     KAPACITET_REFERENCE_DIR  this process's HOME   whose weather and household pool it may reuse
     KAPACITET_INBOX_WORKER   0
+    KAPACITET_SEAL_KEY_DIR   this process's key    so a station signs its seals with the installation's key
 
 Nothing here touches active.json or a running server. A station is built again only when the
 digests of its inputs (the upstream caps aside, which apply after the computation), its method
@@ -28,7 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
-from .. import paths, procs
+from .. import paths, procs, seals
 from . import NOT_A_TRIGGER, Study, StudyError
 from .config import METHOD_VERSION
 
@@ -40,7 +41,7 @@ def env_for(study: Study, sid: str) -> dict[str, str]:
     """The environment of a station's process: nothing of this process's KAPACITET_* survives."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("KAPACITET_")}
     env.update(procs.child_env(study.station_dir(sid), home=study.root, raw=study.raw, study=study.root,
-                               reference_dir=paths.REFERENCE, inbox_worker="0"))
+                               reference_dir=paths.REFERENCE, inbox_worker="0", seal_key_dir=seals.key_dir()))
     env["PYTHONUNBUFFERED"] = "1"
     return env
 

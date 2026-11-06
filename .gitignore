@@ -27,6 +27,8 @@ web/playwright-report/
 
 # data bundles are shared separately and never committed
 *.zip
+# nor is a private key, such as the seals' signing key (KAPACITET_HOME/keys)
+*.pem
 # Playwright: the data folder of the upload server, emptied at every run
 web/e2e/.upload-data/
 # a study holds a DSO's data and lives outside the repository (study/); never commit one

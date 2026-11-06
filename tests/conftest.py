@@ -54,10 +54,22 @@ def results():
 
 @pytest.fixture(autouse=True)
 def _seals_in_a_temporary_folder(tmp_path, monkeypatch):
-    """No test writes the real chain: seals go to the test's own folder (kapacitet.seals)."""
+    """No test writes the real chain: seals go to the test's own folder (kapacitet.seals), signed
+    with a key of the session's own (a test that rotates it points key_dir at a folder of its own)."""
     from kapacitet import seals
 
     monkeypatch.setattr(seals, "folder", lambda: tmp_path / "seals")
+    monkeypatch.setattr(seals, "key_dir", lambda: _SESSION_KEYS[0])
+    monkeypatch.setenv("KAPACITET_SEAL_KEY_DIR", str(_SESSION_KEYS[0]))
+
+
+_SESSION_KEYS: list = []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _a_session_seal_key(tmp_path_factory):
+    _SESSION_KEYS[:] = [tmp_path_factory.mktemp("seal-keys")]
+    yield
 
 
 @pytest.fixture(autouse=True)

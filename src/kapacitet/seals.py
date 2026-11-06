@@ -11,9 +11,19 @@ it is sealed here:
   and data it was computed with, and a chain hash over the previous line, so removing, reordering
   or editing any line breaks every line after it.
 
-This is tamper-evident, not tamper-proof: whoever can write the folder can rewrite the whole chain.
-Writing the chain head somewhere else (a printed record, an e-mail to the regulator) is what
-anchors it. The canonical form is this module's, not RFC 8785.
+Every new line is also signed. The installation keeps one Ed25519 key (`key_dir()`, by default
+KAPACITET_HOME/keys/seal_ed25519.pem, created on first use and readable only by its owner where the
+OS allows); each line carries `key_id`, the SHA-256 of the raw public key, and `sig`, the key's
+signature over the SHA-256 hex digest of the line's canonical JSON without `sig`. Its public key is
+published next to every chain as `seal_key.pub`. Whoever can write the folder can still rebuild the
+hashes, but not the signatures: a rewrite shows to anyone who holds the public key. Lines sealed
+before signing began are legacy: `verify_chain` counts them and says so, and does not fail them;
+an unsigned line after the first signed one (`signed_since`) fails. `rotate_key` replaces the key
+with a rotation record signed by the old and the new one, so a verifier who trusts either trusts
+both. A signature is not a trusted timestamp: the time in a line is the server's own, and cutting
+lines off the end of the chain leaves the rest valid, so writing the chain head somewhere else (a
+printed record, an e-mail to the regulator) is still what anchors it. The canonical form is this
+module's, not RFC 8785.
 
 A crash never leaves half a record: the copy is written atomically, and each chain line is one
 fsynced append (kapacitet.atomic). A line cut short by a crash during its append is a torn tail:
@@ -22,30 +32,38 @@ appends. A record that must not be kept any longer (a retention period, a reques
 erased with `erase`: its copy goes, and an `erasure` record is sealed in its place, so the chain,
 which holds only digests, stays whole and still says that the record existed and when it went.
 
-Standard library only, so the engine, the API and the tests can all use it.
+The standard library and `cryptography` (for Ed25519) only, so the engine, the API and the tests
+can all use it. The private key never leaves `key_dir()`: no bundle, manifest, log or publication
+holds it, and no message names more of it than its path.
 """
 
 from __future__ import annotations
 
+import base64
 import contextvars
 import hashlib
 import json
 import math
 import os
+import subprocess
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
+
 from . import __version__
-from .atomic import append_line, write_bytes_atomic, write_json_atomic
-from .paths import CONFIG, DATA, PROCESSED, RAW
+from .atomic import append_line, write_bytes_atomic, write_json_atomic, write_text_atomic
+from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS
 
 _LOCK = threading.RLock()
 GENESIS = "0" * 64
 KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure",
-         "publication", "sync", "rule_signature", "cases", "market_alternatives")
+         "publication", "sync", "rule_signature", "cases", "market_alternatives", "key_rotation")
 # a chain kept somewhere else than data/requests: a study's evidence/ folder (`chain_at`)
 _CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
 
@@ -217,37 +235,345 @@ def _chain_hash(prev: str, entry: dict) -> str:
     return hashlib.sha256((prev + json.dumps(body, sort_keys=True, separators=(",", ":"))).encode()).hexdigest()
 
 
+# ---------------------------------------------------------------- the signing key
+
+ALGORITHM = "Ed25519"
+KEY_FILE = "seal_ed25519.pem"          # the private key, in key_dir() only
+PUBLIC_FILE = "seal_ed25519.pub"       # its public key, beside it
+PUBLISHED = "seal_key.pub"             # the public key, next to every chain that holds a line it signed
+ROTATION_SCHEMA = "kapacitet.seal-key-rotation/1"
+_ROTATION_FIELDS = ("schema", "algorithm", "at", "old_key_id", "old_public_key", "new_key_id", "new_public_key")
+# The sentence a published file carries next to the public key.
+HOW_TO_VERIFY = {
+    "en": ("Each chain line's sig is an Ed25519 signature, in base64, over the SHA-256 hex digest of the "
+           "line's canonical JSON without sig (keys sorted, separators ',' and ':', UTF-8), and key_id is the "
+           "SHA-256 of the raw 32-byte public key; `kapacitet seals verify <folder> --key seal_key.pub` "
+           "checks the hash chain and every signature."),
+    "sv": ("Varje kedjerads sig är en Ed25519-signatur, i base64, över SHA-256-summan (hex) av radens "
+           "kanoniska JSON utan sig (sorterade nycklar, avgränsarna ',' och ':', UTF-8), och key_id är "
+           "SHA-256-summan av den råa publika nyckeln på 32 byte; `kapacitet seals verify <mapp> --key "
+           "seal_key.pub` kontrollerar hashkedjan och varje signatur."),
+}
+_KEYS: dict[str, tuple[int, int, Ed25519PrivateKey]] = {}
+_SIG_OK: dict[tuple[str, bytes, str], bool] = {}
+
+
+class SealKeyError(ValueError):
+    """The signing key cannot be read, or there is none to rotate."""
+
+
+def key_dir() -> Path:
+    """Where the installation's signing key lives (KAPACITET_SEAL_KEY_DIR, HOME/keys by default)."""
+    return SEAL_KEYS
+
+
+def _raw(pub: Ed25519PublicKey) -> bytes:
+    return pub.public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+
+
+def key_id_of(pub: Ed25519PublicKey) -> str:
+    """A key's id: the SHA-256 of its raw 32 bytes."""
+    return hashlib.sha256(_raw(pub)).hexdigest()
+
+
+def public_pem(pub: Ed25519PublicKey) -> str:
+    return pub.public_bytes(serialization.Encoding.PEM, serialization.PublicFormat.SubjectPublicKeyInfo).decode("ascii")
+
+
+def load_public(text: str | bytes) -> Ed25519PublicKey | None:
+    """An Ed25519 public key from its PEM, or None when the text is not one."""
+    try:
+        key = serialization.load_pem_public_key(text.encode("ascii") if isinstance(text, str) else text)
+    except (ValueError, TypeError, UnicodeEncodeError):
+        return None
+    return key if isinstance(key, Ed25519PublicKey) else None
+
+
+def _b64(sig: bytes) -> str:
+    return base64.b64encode(sig).decode("ascii")
+
+
+def _restrict(path: Path) -> None:
+    """Only the owner may read the file, where the OS allows it: mode 0600 on POSIX; on Windows an
+    access list with the current user alone (icacls, best effort: a file system without access
+    lists keeps the folder's)."""
+    if os.name != "nt":
+        os.chmod(path, 0o600)
+        return
+    user = os.environ.get("USERNAME")
+    if not user:
+        return
+    domain = os.environ.get("USERDOMAIN")
+    who = f"{domain}\\{user}" if domain else user
+    try:
+        subprocess.run(["icacls", str(path), "/inheritance:r", "/grant:r", f"{who}:F"],
+                       capture_output=True, timeout=20, check=False)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def _write_private(path: Path, data: bytes, replace: bool) -> bool:
+    """Write a private key that only its owner can read. A new key (`replace` false) never takes the
+    place of one another process wrote first: then this returns False and that one stands."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if os.name != "nt":
+        os.chmod(path.parent, 0o700)
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.{threading.get_ident()}.tmp")
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0), 0o600)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+            fh.flush()
+            os.fsync(fh.fileno())
+        _restrict(tmp)
+        if replace:
+            os.replace(tmp, path)
+            return True
+        try:
+            os.link(tmp, path)          # never over a key that is already there
+        except FileExistsError:
+            return False
+        except OSError:                 # a file system without hard links
+            if path.exists():
+                return False
+            os.replace(tmp, path)
+        return True
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
+def _private_pem(key: Ed25519PrivateKey) -> bytes:
+    return key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                             serialization.NoEncryption())
+
+
+def _write_if_changed(path: Path, text: str) -> None:
+    try:
+        if path.read_text(encoding="ascii") == text:
+            return
+    except (OSError, UnicodeDecodeError):
+        pass
+    write_text_atomic(path, text, encoding="ascii")
+
+
+def signing_key(create: bool = True) -> Ed25519PrivateKey | None:
+    """The installation's private key, created on first use (None when there is none and `create`
+    is false). Its public key is kept beside it as seal_ed25519.pub."""
+    path = key_dir() / KEY_FILE
+    with _LOCK:
+        if not path.exists():
+            if not create:
+                return None
+            _write_private(path, _private_pem(Ed25519PrivateKey.generate()), replace=False)
+        st = path.stat()
+        cached = _KEYS.get(str(path))
+        if cached and cached[:2] == (st.st_size, st.st_mtime_ns):
+            return cached[2]
+        try:
+            key = serialization.load_pem_private_key(path.read_bytes(), password=None)
+        except (ValueError, TypeError):    # never the parser's own words: they could quote the file
+            raise SealKeyError(f"{path} is not a readable signing key") from None
+        if not isinstance(key, Ed25519PrivateKey):
+            raise SealKeyError(f"{path} is not an Ed25519 key")
+        _KEYS[str(path)] = (st.st_size, st.st_mtime_ns, key)
+        _write_if_changed(key_dir() / PUBLIC_FILE, public_pem(key.public_key()))
+        return key
+
+
+def local_keys() -> dict[str, Ed25519PublicKey]:
+    """{key id: public key} of this installation's key and of every key it retired."""
+    key = signing_key(create=False)
+    out = {key_id_of(key.public_key()): key.public_key()} if key else {}
+    for path in sorted((key_dir() / "retired").glob("*.pub")):
+        pub = load_public(path.read_bytes())
+        if pub is not None:
+            out.setdefault(key_id_of(pub), pub)
+    return out
+
+
+def public_key_info(key_id: str | None = None, create: bool = False) -> dict:
+    """What a published file says about the key: algorithm, id, public key (PEM) and how to verify.
+    Without `key_id`, the key in use; with one, that key if this installation holds it."""
+    if key_id is None:
+        key = signing_key(create=create)
+        pub = key.public_key() if key else None
+    else:
+        pub = local_keys().get(key_id)
+    return {"algorithm": ALGORITHM, "key_id": key_id_of(pub) if pub else key_id,
+            "public_key": public_pem(pub) if pub else None, "how_to_verify": HOW_TO_VERIFY}
+
+
+def _line_message(entry: dict) -> bytes:
+    """What a line's signature covers: the hex digest of its canonical JSON without `sig`."""
+    return digest({k: v for k, v in entry.items() if k != "sig"}).encode("ascii")
+
+
+def _sig_valid(pub: Ed25519PublicKey, kid: str, entry: dict) -> bool:
+    sig = entry.get("sig")
+    if not isinstance(sig, str):
+        return False
+    msg = _line_message(entry)
+    memo = (kid, msg, sig)
+    hit = _SIG_OK.get(memo)
+    if hit is None:
+        try:
+            pub.verify(base64.b64decode(sig, validate=True), msg)
+            hit = True
+        except (InvalidSignature, ValueError):
+            hit = False
+        if len(_SIG_OK) > 100_000:
+            _SIG_OK.clear()
+        _SIG_OK[memo] = hit
+    return hit
+
+
+def _rotation_id(rec: dict) -> str:
+    return str(rec["new_key_id"])[:16]
+
+
+def rotation_valid(rec: Any) -> tuple[str, str, Ed25519PublicKey, Ed25519PublicKey] | None:
+    """(old id, new id, old key, new key) of a rotation record signed by both keys, else None."""
+    try:
+        statement = {k: rec[k] for k in _ROTATION_FIELDS}
+        old, new = load_public(rec["old_public_key"]), load_public(rec["new_public_key"])
+        if rec["schema"] != ROTATION_SCHEMA or old is None or new is None:
+            return None
+        if key_id_of(old) != rec["old_key_id"] or key_id_of(new) != rec["new_key_id"]:
+            return None
+        msg = digest(statement).encode("ascii")
+        old.verify(base64.b64decode(rec["sig_old"], validate=True), msg)
+        new.verify(base64.b64decode(rec["sig_new"], validate=True), msg)
+    except (KeyError, TypeError, ValueError, InvalidSignature):
+        return None
+    return rec["old_key_id"], rec["new_key_id"], old, new
+
+
+def _local_rotations() -> dict[str, dict]:
+    """{new key id: rotation record} of every rotation this installation made."""
+    out = {}
+    for path in sorted((key_dir() / "rotations").glob("*.json")):
+        try:
+            rec = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if rotation_valid(rec):
+            out[rec["new_key_id"]] = rec
+    return out
+
+
+def _publish_key(pub: Ed25519PublicKey) -> None:
+    """seal_key.pub next to the chain in use: the key of its latest line."""
+    _write_if_changed(_root() / PUBLISHED, public_pem(pub))
+
+
 def _sealed_path(kind: str, item_id: str) -> Path:
     return _root() / "sealed" / kind / f"{item_id}.json"
 
 
-def seal(kind: str, item_id: str, obj: Any) -> dict:
-    """Seal one record: keep its canonical text and chain its digest. Returns the chain entry."""
+def _safe_id(item_id: str) -> bool:
+    return bool(item_id) and "/" not in item_id and "\\" not in item_id and not item_id.startswith(".")
+
+
+def _check_id(kind: str, item_id: str) -> None:
     if kind not in KINDS:
         raise ValueError(f"unknown seal kind {kind!r}")
-    if not item_id or "/" in item_id or "\\" in item_id or item_id.startswith("."):
+    if not _safe_id(item_id):
         raise ValueError(f"bad seal id {item_id!r}")
-    text = canonical(obj)
+
+
+def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], key: Ed25519PrivateKey) -> dict:
+    """Keep a record's canonical text and append its signed line to the chain in use (under _LOCK,
+    `lines` being the chain as it stands, which this extends)."""
     dig = hashlib.sha256(text).hexdigest()
+    path = _sealed_path(kind, item_id)
+    if path.exists():
+        if path.read_bytes() != text:
+            raise ValueError(f"{kind} {item_id} is already sealed with different content")
+    else:
+        write_bytes_atomic(path, text)
+    prev = lines[-1].get("chain", GENESIS) if lines else GENESIS
+    seq = len(lines) + 1
+    # where signing began in this chain: every line from there on must be signed (verify_chain)
+    since = next((e.get("signed_since") for e in reversed(lines) if e.get("sig")), None)
+    entry = {"seq": seq, "at": datetime.now(timezone.utc).isoformat(), "kind": kind,
+             "id": item_id, "digest": dig, "fingerprint": fp["digest"], "prev": prev}
+    entry["chain"] = _chain_hash(prev, entry)
+    entry["key_id"] = key_id_of(key.public_key())
+    entry["signed_since"] = since if isinstance(since, int) and 1 <= since < seq else seq
+    entry["sig"] = _b64(key.sign(_line_message(entry)))
+    append_line(_chain_file(), json.dumps(entry, sort_keys=True))
+    lines.append(entry)
+    # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
+    fp_path = _root() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
+    if not fp_path.exists():
+        write_json_atomic(fp_path, fp, sort_keys=True)
+    _publish_key(key.public_key())
+    return entry
+
+
+def _carry_rotations(lines: list[dict], key: Ed25519PrivateKey, fp: dict) -> list[dict]:
+    """A chain whose last signed line is by a key this installation has since rotated gets the
+    rotation records that lead from that key to the one in use first, so a verifier who trusts the
+    older key comes to trust the newer one (and the other way round)."""
+    current = key_id_of(key.public_key())
+    last = next((e.get("key_id") for e in reversed(lines) if e.get("sig")), None)
+    if last is None or last == current:
+        return lines
+    rotations, path, kid = _local_rotations(), [], current
+    while kid != last and kid in rotations and len(path) < 256:
+        path.append(rotations[kid])
+        kid = rotations[kid]["old_key_id"]
+    if kid != last:      # no record of this installation joins the two keys: verify says which line
+        return lines
+    have = {e.get("id") for e in lines if e.get("kind") == "key_rotation"}
+    for rec in reversed(path):
+        if _rotation_id(rec) not in have:
+            _append("key_rotation", _rotation_id(rec), canonical(rec), fp, lines, key)
+    return lines
+
+
+def seal(kind: str, item_id: str, obj: Any) -> dict:
+    """Seal one record: keep its canonical text and chain its digest, signed with the installation's
+    key. Returns the chain entry."""
+    _check_id(kind, item_id)
+    text = canonical(obj)
     fp = fingerprint()
     with _LOCK:
-        path = _sealed_path(kind, item_id)
-        if path.exists():
-            if path.read_bytes() != text:
-                raise ValueError(f"{kind} {item_id} is already sealed with different content")
-        else:
-            write_bytes_atomic(path, text)
-        lines = _mend_tail()
-        prev = lines[-1].get("chain", GENESIS) if lines else GENESIS
-        entry = {"seq": len(lines) + 1, "at": datetime.now(timezone.utc).isoformat(), "kind": kind,
-                 "id": item_id, "digest": dig, "fingerprint": fp["digest"], "prev": prev}
-        entry["chain"] = _chain_hash(prev, entry)
-        append_line(_chain_file(), json.dumps(entry, sort_keys=True))
-        # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
-        fp_path = _root() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
-        if not fp_path.exists():
-            write_json_atomic(fp_path, fp, sort_keys=True)
-    return entry
+        key = signing_key()
+        lines = _carry_rotations(_mend_tail(), key, fp)
+        return _append(kind, item_id, text, fp, lines, key)
+
+
+def rotate_key(chain: str | Path | None = None) -> dict:
+    """Replace the installation's key with a new one. The rotation record names both public keys
+    and is signed by both; it is kept in key_dir()/rotations/, the old public key in
+    key_dir()/retired/, and it is sealed into the chain in `chain` (data/requests by default). Any
+    other chain gets it on its next seal. The old private key is gone afterwards."""
+    with _LOCK:
+        old = signing_key(create=False)
+        if old is None:
+            raise SealKeyError(f"no signing key in {key_dir()} yet: the first seal creates one")
+        new = Ed25519PrivateKey.generate()
+        statement = {"schema": ROTATION_SCHEMA, "algorithm": ALGORITHM,
+                     "at": datetime.now(timezone.utc).isoformat(),
+                     "old_key_id": key_id_of(old.public_key()), "old_public_key": public_pem(old.public_key()),
+                     "new_key_id": key_id_of(new.public_key()), "new_public_key": public_pem(new.public_key())}
+        msg = digest(statement).encode("ascii")
+        rec = {**statement, "sig_old": _b64(old.sign(msg)), "sig_new": _b64(new.sign(msg))}
+        folder = key_dir()
+        _write_if_changed(folder / "retired" / f"{statement['old_key_id']}.pub", statement["old_public_key"])
+        write_json_atomic(folder / "rotations" / f"{statement['new_key_id']}.json", rec, sort_keys=True)
+        _write_private(folder / KEY_FILE, _private_pem(new), replace=True)
+        _KEYS.pop(str(folder / KEY_FILE), None)
+        key = signing_key(create=False)
+        assert key is not None and key_id_of(key.public_key()) == statement["new_key_id"]
+        with chain_at(chain) if chain is not None else nullcontext():
+            fp = fingerprint()
+            lines = _carry_rotations(_mend_tail(), key, fp)
+            entry = next((e for e in lines if e.get("kind") == "key_rotation" and e.get("id") == _rotation_id(rec)), None)
+            if entry is None:
+                entry = _append("key_rotation", _rotation_id(rec), canonical(rec), fp, lines, key)
+    return {"old_key_id": statement["old_key_id"], "new_key_id": statement["new_key_id"], "entry": entry}
 
 
 def entry_for(kind: str, item_id: str) -> dict | None:
@@ -259,21 +585,89 @@ def entry_for(kind: str, item_id: str) -> dict | None:
     return found
 
 
-def verify_chain() -> dict:
-    """Every line follows from the one before it. `torn_tail` says that the last append was cut
-    short by a crash; the lines before it still count, and the next seal cuts it off."""
-    prev = GENESIS
+def _trust(trusted: dict[str, Ed25519PublicKey] | None) -> tuple[dict[str, Ed25519PublicKey], str]:
+    """The keys a verification starts from, and where they came from: the ones given (a published
+    seal_key.pub); else this installation's; else, for a chain copied elsewhere, the seal_key.pub in
+    its own folder, which a rewrite of the folder could have replaced too (the result says so)."""
+    if trusted is not None:
+        return dict(trusted), "given"
+    mine = local_keys()
+    if mine:
+        return mine, "installation"
+    path = _root() / PUBLISHED
+    pub = load_public(path.read_bytes()) if path.is_file() else None
+    return ({key_id_of(pub): pub} if pub else {}), "folder"
+
+
+def verify_chain(trusted: dict[str, Ed25519PublicKey] | None = None, require_signed: bool = False) -> dict:
+    """Every line follows from the one before it, and every signed line's signature holds under a
+    trusted key. `torn_tail` says that the last append was cut short by a crash; the lines before
+    it still count, and the next seal cuts it off.
+
+    `trusted` is {key id: public key} to start from (see `_trust` for the default); a rotation
+    record in the chain, signed by both its keys, extends the trust from either key to the other.
+    Lines from before signing began are `legacy`: counted and warned about, not failures, unless
+    `require_signed`. `reason` says why a chain fails: "chain" (a hash or order broken),
+    "signature", "unknown_key" (signed by a key not trusted) or "unsigned" (a line without a
+    signature where every line must have one)."""
     lines, torn, _ = _read_chain()
+    known, source = _trust(trusted)
+    rotations = []
+    for e in lines:
+        rid = e.get("id")
+        if e.get("kind") == "key_rotation" and isinstance(rid, str) and _safe_id(rid):
+            rec = sealed_copy("key_rotation", rid)
+            got = rotation_valid(rec) if rec is not None and digest(rec) == e.get("digest") else None
+            if got:
+                rotations.append(got)
+    grew = True
+    while grew:
+        grew = False
+        for old_id, new_id, old, new in rotations:
+            if (old_id in known) != (new_id in known):
+                known.setdefault(old_id, old)
+                known.setdefault(new_id, new)
+                grew = True
+    head = lines[-1].get("chain", GENESIS) if lines else GENESIS
+    base = {"length": len(lines), "head": head, "torn_tail": torn is not None, "trust": source}
+
+    def broken(at: int, reason: str, signed: int, legacy: int, keys: set) -> dict:
+        return {**base, "ok": False, "broken_at": at, "reason": reason, "signed": signed, "legacy": legacy,
+                "keys": sorted(keys), "warnings": []}
+
+    prev, signed, legacy, last_unsigned, keys = GENESIS, 0, 0, 0, set()
     for i, e in enumerate(lines, start=1):
         try:
             ok = e.get("seq") == i and e.get("prev") == prev and _chain_hash(prev, e) == e.get("chain")
         except KeyError:      # a line without the fields a chain line has
             ok = False
         if not ok:
-            return {"ok": False, "length": len(lines), "broken_at": i,
-                    "head": lines[-1].get("chain", GENESIS) if lines else GENESIS, "torn_tail": torn is not None}
+            return broken(i, "chain", signed, legacy, keys)
+        if "sig" not in e and "key_id" not in e and "signed_since" not in e:
+            if signed or require_signed:
+                return broken(i, "unsigned", signed, legacy, keys)
+            legacy, last_unsigned = legacy + 1, i
+        else:
+            kid = e.get("key_id")
+            pub = known.get(kid) if isinstance(kid, str) else None
+            if pub is None:
+                return broken(i, "unknown_key", signed, legacy, keys)
+            if not _sig_valid(pub, kid, e):
+                return broken(i, "signature", signed, legacy, keys)
+            since = e.get("signed_since")
+            if not isinstance(since, int) or since > i or last_unsigned >= since:
+                # a line from where signing began has lost its signature
+                return broken(last_unsigned or i, "unsigned", signed, legacy, keys)
+            signed += 1
+            keys.add(kid)
         prev = e["chain"]
-    return {"ok": True, "length": len(lines), "broken_at": None, "head": prev, "torn_tail": torn is not None}
+    warnings = []
+    if legacy:
+        warnings.append("legacy_unsigned")
+    if source == "folder" and signed:
+        warnings.append("key_from_folder")
+    return {**base, "ok": True, "broken_at": None, "head": prev, "reason": None, "signed": signed,
+            "legacy": legacy, "keys": sorted(keys), "warnings": warnings}
 
 
 def _erasure_id(kind: str, item_id: str) -> str:
@@ -297,7 +691,7 @@ def erase(kind: str, item_id: str, reason: str) -> dict:
     """Remove a sealed record's copy and seal its erasure: the kind, the id, the digest it had and
     why it went. The chain keeps every line, so it stays valid; `verify` then says `erased`.
     Erasing an erased record again only makes sure its copy is gone."""
-    if kind not in KINDS or kind == "erasure":
+    if kind not in KINDS or kind in ("erasure", "key_rotation"):   # a rotation is what later lines' trust rests on
         raise ValueError(f"cannot erase a seal of kind {kind!r}")
     with _LOCK:
         entry = entry_for(kind, item_id)
@@ -314,14 +708,17 @@ def erase(kind: str, item_id: str, reason: str) -> dict:
 
 def verify(kind: str, item_id: str, current: Any = None) -> dict:
     """Whether a sealed record is intact: its kept copy hashes to the chained digest, the chain
-    holds, and (when given) the working record still says the same as the copy."""
+    holds (hashes and signatures), and (when given) the working record still says the same as the
+    copy. `signed` says whether its own line is signed (a legacy line is not)."""
     entry = entry_for(kind, item_id)
     if entry is None:
         return {"sealed": False}
     chain = verify_chain()
     out = {"sealed": True, "kind": kind, "id": item_id, "digest": entry["digest"], "sealed_at": entry["at"],
            "seq": entry["seq"], "fingerprint": entry["fingerprint"],
-           "chain_ok": chain["ok"], "chain_length": chain["length"], "chain_head": chain["head"], "erased": False}
+           "signed": "sig" in entry, "key_id": entry.get("key_id"),
+           "chain_ok": chain["ok"], "chain_length": chain["length"], "chain_head": chain["head"],
+           "chain_reason": chain["reason"], "chain_warnings": chain["warnings"], "erased": False}
     gone = _erasure_of(kind, item_id)
     if gone is not None:     # nothing left to compare: the chain says it existed and when it went
         why = sealed_copy("erasure", _erasure_id(kind, item_id)) or {}

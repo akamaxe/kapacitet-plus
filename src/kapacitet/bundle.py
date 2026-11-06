@@ -58,7 +58,9 @@ FULL = (("processed",), ("raw",))
 # until the owner decides on its licence (the Transparency Platform's terms are not ODbL, the
 # release's licence); the figures derived from it, in data/processed, may travel. A copy unpacked
 # from a bundle therefore prices the live request on the elprisetjustnu years only.
-EXCLUDED = (re.compile(r"raw/prices/entsoe_[^/]*$"),)
+# A private key (the seals' signing key lives in KAPACITET_HOME/keys, outside processed/ and raw/)
+# never travels either, wherever one has been put.
+EXCLUDED = (re.compile(r"raw/prices/entsoe_[^/]*$"), re.compile(r"(^|/)keys/"), re.compile(r"\.pem$"))
 MANIFEST = "bundle-manifest.json"
 # The folders an archive may write into. The API's own records (data/requests), the imported
 # networks and the choice of network never come from a bundle.

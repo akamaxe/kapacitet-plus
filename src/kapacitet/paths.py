@@ -16,6 +16,11 @@ on the study and RAW on the study's own downloads:
                                         household pool a station reuses when its study has none
                                         (and says so); HOME by default
     (study)    KAPACITET_STUDY          the study folder whose study.toml config.py merges in
+
+And one for the installation's signing key (seals.py), which a study's station processes share
+with the process that starts them:
+
+    SEAL_KEYS  KAPACITET_SEAL_KEY_DIR   the Ed25519 key that signs every seal; HOME/keys by default
 """
 
 from __future__ import annotations
@@ -40,6 +45,7 @@ RAW = _env_dir("KAPACITET_RAW_DIR", DATA / "raw")
 PROCESSED = DATA / "processed"
 REFERENCE = _env_dir("KAPACITET_REFERENCE_DIR", HOME)
 DATASETS = HOME / "datasets"
+SEAL_KEYS = _env_dir("KAPACITET_SEAL_KEY_DIR", HOME / "keys")
 WEB_DIST = ROOT / "web" / "dist"
 
 

@@ -8,6 +8,7 @@ Commands
   compliance  audit trail and annual filing for a computed year
   forecast  what the published envelopes owe to perfect foresight
   redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
+  seals     verify a sealed chain's hashes and signatures, or rotate the signing key
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -497,6 +498,68 @@ def cmd_export_grid(args: argparse.Namespace) -> None:
         log.info("  %s.csv: %d rows", name, len(df))
 
 
+def _chain_folder(path: str | None) -> Path:
+    """The folder of a chain: the one given (or the folder of a seals.jsonl given), else data/requests."""
+    from . import seals
+
+    if not path:
+        return seals.folder()
+    where = Path(path)
+    return where.parent if where.is_file() else where
+
+
+def cmd_seals_verify(args: argparse.Namespace) -> None:
+    """Check a chain's hashes and every signature; exit 1 when it does not hold."""
+    from . import seals
+
+    folder = _chain_folder(args.path)
+    if not (folder / "seals.jsonl").is_file():
+        print(f"no chain in {folder} (seals.jsonl is missing)")
+        sys.exit(2)
+    trusted = None
+    if args.key:
+        trusted = {}
+        for name in args.key:
+            pub = seals.load_public(Path(name).read_bytes()) if Path(name).is_file() else None
+            if pub is None:
+                print(f"{name} is not an Ed25519 public key (PEM)")
+                sys.exit(2)
+            trusted[seals.key_id_of(pub)] = pub
+    with seals.chain_at(folder):
+        out = seals.verify_chain(trusted, require_signed=args.require_signed)
+    trust = {"given": "the key given", "installation": "this installation's keys",
+             "folder": f"{seals.PUBLISHED} in the chain's own folder"}[out["trust"]]
+    print(f"chain {folder / 'seals.jsonl'}: {out['length']} lines, head {out['head']}")
+    print(f"  {out['signed']} signed, checked against {trust}; {out['legacy']} legacy (unsigned, from before signing began)")
+    if out["keys"]:
+        print("  keys: " + ", ".join(out["keys"]))
+    if out["torn_tail"]:
+        print("  the last line was cut short by a crash: the lines before it count, the next seal cuts it off")
+    if "legacy_unsigned" in out["warnings"]:
+        print("  warning: the legacy lines are held by the hash chain only")
+    if "key_from_folder" in out["warnings"]:
+        print(f"  warning: the key came from the chain's own folder; pass --key with the published {seals.PUBLISHED}")
+    if not out["ok"]:
+        why = {"chain": "the hash chain is broken", "signature": "a signature does not hold",
+               "unknown_key": "signed by a key that is not trusted", "unsigned": "a line has lost its signature"}
+        print(f"NOT VALID at line {out['broken_at']}: {why[out['reason']]}")
+        sys.exit(1)
+    print("valid")
+
+
+def cmd_seals_rotate(args: argparse.Namespace) -> None:
+    """Replace the signing key; the rotation record, signed by both keys, goes into the chain."""
+    from . import seals
+
+    try:
+        out = seals.rotate_key(_chain_folder(args.chain) if args.chain else None)
+    except seals.SealKeyError as exc:
+        print(exc)
+        sys.exit(2)
+    print(f"key {out['old_key_id']} retired; signing now with {out['new_key_id']}")
+    print(f"rotation sealed as line {out['entry']['seq']} of the chain; other chains get it on their next seal")
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _Parser(prog="kapacitet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--site", default=None, help="site key from config/site.toml, e.g. olovslund (default: the [site] table, Smedslätten)")
@@ -542,6 +605,19 @@ def main(argv: list[str] | None = None) -> None:
                    help="days to keep (default: KAPACITET_RETENTION_DAYS)")
     p.add_argument("--dry-run", action="store_true", help="say what would go, and remove nothing")
     p.set_defaults(func=cmd_purge)
+
+    p = sub.add_parser("seals", help="check the sealed chain's hashes and signatures, or rotate the signing key")
+    seals_sub = p.add_subparsers(dest="seals_command", required=True)
+    q = seals_sub.add_parser("verify", help="check the hash chain and every signature")
+    q.add_argument("path", nargs="?", default=None,
+                   help="a chain's folder or its seals.jsonl (default: data/requests)")
+    q.add_argument("--key", action="append", default=None, metavar="PUB",
+                   help="a published public key (seal_key.pub) to trust instead of this installation's; repeatable")
+    q.add_argument("--require-signed", action="store_true", help="fail on legacy unsigned lines too")
+    q.set_defaults(func=cmd_seals_verify)
+    q = seals_sub.add_parser("rotate-key", help="replace the signing key, with a record signed by the old and the new")
+    q.add_argument("--chain", default=None, help="the chain that records the rotation (default: data/requests)")
+    q.set_defaults(func=cmd_seals_rotate)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")

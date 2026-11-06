@@ -39,4 +39,8 @@ starlette==1.10.0
 pydantic==2.14.2
 uvicorn==0.54.0
 httpx==0.28.1
+# the seals' Ed25519 signatures (seals.py), with what cryptography needs on CPython
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.11
 pytest==9.2.0
