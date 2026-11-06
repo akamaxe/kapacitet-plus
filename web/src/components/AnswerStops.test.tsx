@@ -17,7 +17,7 @@ function hosting(withForesight: boolean) {
         budget_basis: { doe: "aggregate", doe_installation: "installation" },
         measures: { static: kw(401), timeseries: kw(612), doe: kw(803), doe_installation: kw(733) },
       },
-      ...(withForesight ? { foresight: { median_kw: { climatological: 577 } } } : {}),
+      ...(withForesight ? { foresight: { median_kw: { climatological: 577 }, violation_hours: 0, planning_full_year_violations: 0 } } : {}),
     },
   };
 }
@@ -84,5 +84,10 @@ describe("heroStops", () => {
     expect(b.issuable).toEqual([612, 612]);
     expect(b.perInstallationKw).toBeNull();
     expect(heroStops({ summary: { measures: {} } })).toBeNull();
+    const unaudited = hosting(true).data as any;
+    unaudited.foresight.violation_hours = 3;
+    const u = heroStops(unaudited)!;
+    expect(u.dayAheadKw).toBeNull();
+    expect(u.issuable).toEqual([612, 612]);
   });
 });

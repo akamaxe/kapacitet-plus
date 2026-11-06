@@ -340,7 +340,7 @@ export default function Method() {
                   note={F.at_floor_orders != null ? t("met.fc.withinBudget.note", { n: f(F.at_floor_orders) }) : undefined} />
               )}
               <Tile
-                label={t("met.fc.record", { year: F.exceedance.year ?? "" })}
+                label={F.exceedance.year != null ? t("met.fc.record", { year: F.exceedance.year }) : t("met.fc.record.noYear")}
                 value={f(F.exceedance.pv_aggregate_hours_over)}
                 unit="h"
                 note={F.plan_exceedance?.total

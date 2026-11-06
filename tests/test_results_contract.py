@@ -217,7 +217,10 @@ def test_the_reinforcement_says_which_deployment_it_prices(results):
     keys = ("reinforce_trafo_500_sek", "reinforce_trafo_800_sek", "reinforce_station_800_sek",
             "reinforce_urban_supplement_sek", "reinforce_price_level_year")
     r = reinforcement(results("tornado"), overinstallation_summary(results("overinstallation")), {k: A(k) for k in keys})
-    assert r["basis"]["envelopes"] == "foresight" and r["basis"]["budget"] == "aggregate"
+    oi = results("overinstallation")
+    assert r["basis"]["envelopes"] == oi["envelope_basis"] == "foresight"
+    assert r["basis"]["budget"] == "aggregate"
+    assert r["basis"]["z_star_pct"] == oi["z_star_pct"]
 
 
 # ---------------------------------------------------------------- the three stops of the hero

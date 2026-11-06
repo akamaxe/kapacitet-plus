@@ -170,7 +170,7 @@ export default function Report() {
               }] : []),
               ...binding.map(([el, h]) => ({
                 ok: null, label: t("rep.binding", { el: t(`rep.el.${el}`) }), value: f(h), unit: "h",
-                criterion: needed && (planned[el] ?? h) !== h ? t("rep.bindingPlanNote", { n: f(planned[el] ?? 0) }) : t("rep.bindingNote"),
+                criterion: needed && basis === "dayahead" && (planned[el] ?? h) !== h ? t("rep.bindingPlanNote", { n: f(planned[el] ?? 0) }) : t("rep.bindingNote"),
               })),
               { ok: null, label: t("rep.limits"), value: `${f(R.voltage_limits_pu[0], 2)}–${f(R.voltage_limits_pu[1], 2)}`, unit: "pu", criterion: t("rep.limitsNote", { pct: f(R.thermal_limit_pct) }) },
             ]}

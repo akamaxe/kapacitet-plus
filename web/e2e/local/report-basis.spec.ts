@@ -21,6 +21,12 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
   const pack = page.locator("#ei");
   if (await pack.count()) await expect(pack).not.toContainText("kSEK");
 
+  // on the perfect-foresight basis no day-ahead plan was issued, so no row names one
+  await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" }).click();
+  await expect(page).toHaveURL(/basis=foresight/);
+  await expect(page.getByText(/the plan issued the day before limited/)).toHaveCount(0);
+  await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
+
   await page.getByLabel("Sharing rule").selectOption("prorata");
   await expect(page).toHaveURL(/policy=prorata/);
   await expect(page.getByText(/You are reading the filing as it would be under/)).toBeVisible();

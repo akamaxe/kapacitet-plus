@@ -34,7 +34,8 @@ export function heroStops(H: any): Stops | null {
   const m = H?.summary?.measures;
   if (!m?.static || !m?.doe) return null;
   const ts: number = m.timeseries?.kw_ac?.median ?? m.static.kw_ac.median;
-  const da: number | null = H.foresight?.median_kw?.climatological ?? null;
+  const audited = H.foresight?.violation_hours === 0 && H.foresight?.planning_full_year_violations === 0;
+  const da: number | null = audited ? H.foresight.median_kw?.climatological ?? null : null;
   const lo = da == null ? ts : Math.min(ts, da);
   const hi = da == null ? ts : Math.max(ts, da);
   return {
