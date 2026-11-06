@@ -8,7 +8,7 @@ import { DataTable, type Col } from "../components/DataTable";
 import { SectionMissing, Protocol, ChartOrTable, Chip, Legend, Missing, Status, Tile } from "../components/bits";
 import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
-import { clock, dateTime, monthLong, round, useFmt } from "../lib/format";
+import { clock, dateTime, listJoin, monthLong, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 
@@ -74,6 +74,8 @@ export default function Method() {
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
   const F = host.data?.data?.foresight;
+  // the envelopes re-issued during the day, replayed after the fact (intraday.json)
+  const ID = host.data?.data?.intraday;
   // the MV band, a sensitivity beside the published envelopes (mv_band.json), and what the static
   // figure assumes (hosting_summary.json)
   const MV = host.data?.data?.mv_band;
@@ -348,6 +350,7 @@ export default function Method() {
                   : t("met.fc.record.note", { r: f(F.exceedance.pv_worst_aggregate_ratio, 3) })}
               />
             </div>
+            {ID && <Intraday ID={ID} F={F} />}
             <p className="caption-muted">{t("met.fc.bound")}</p>
             {SD && (
               <section className="block stack">
@@ -560,6 +563,70 @@ function MvBand({ MV }: { MV: any }) {
         </tbody>
       </table>
       <p className="caption-muted">{t("met.mv.note")}</p>
+    </section>
+  );
+}
+
+/** The intraday stop between the day-ahead plan and perfect foresight, and the replica's scorecard. */
+function Intraday({ ID, F }: { ID: any; F: any }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const sc = ID.scorecard;
+  const gain = sc.gain_over_hourly_pct;
+  const agr = sc.agreements_within_pct;
+  return (
+    <section className="block stack" id="intraday">
+      <div className="block-head"><h3>{t("met.id.title")}</h3></div>
+      <p className="caption">
+        {t("met.id.caption", { gates: listJoin(lang, (ID.gates_h as number[]).map((g) => f(g))), lag: f(ID.measurement_lag_h), years: f(ID.years.length - 1) })}
+      </p>
+      <div className="tiles cols-3">
+        <Tile label={t("met.fc.climo")} value={f(F.median_kw.climatological, 0)} unit="kW" />
+        <Tile label={t("met.id.kw")} value={f(ID.median_kw, 0)} unit="kW"
+          note={t("met.id.kw.note", { lo: f(ID.kw_ac_stats.p10, 0), hi: f(ID.kw_ac_stats.p90, 0), inst: f(ID.installation.median_kw, 0) })} />
+        <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
+      </div>
+      <Protocol
+        rows={[
+          {
+            ok: sc.violation_hours.result === "pass",
+            label: t("met.id.sc.violations", { n: f(ID.n_orders) }),
+            value: f(sc.violation_hours.value),
+            unit: "h",
+            criterion: t("met.id.sc.violations.crit", { max: f(sc.violation_hours.threshold) }),
+          },
+          {
+            ok: agr.result !== "fail",
+            label: t("met.id.sc.agreements", { z: f(ID.z_star_pct) }),
+            value: f(agr.value, 1),
+            unit: "%",
+            criterion: t(agr.result === "pass_if_justified" ? "met.id.sc.agreements.justified" : "met.id.sc.agreements.crit",
+              { min: f(agr.threshold), floor: f(agr.justified_threshold) }),
+          },
+          {
+            ok: gain.result === "pass",
+            label: t("met.id.sc.gain"),
+            value: gain.value == null ? "–" : f(gain.value, 1),
+            unit: "%",
+            criterion: t("met.id.sc.gain.crit", { min: f(gain.threshold), kw: f(gain.hourly_kw, 0) }),
+          },
+          {
+            ok: null,
+            label: t("met.id.sc.unnecessary"),
+            value: f(ID.unnecessary_hours),
+            unit: "h",
+            criterion: t("met.id.sc.unnecessary.crit", { h: f(ID.hours_limited) }),
+          },
+          ...(ID.plan_exceedance ? [{
+            ok: null,
+            label: t("met.id.sc.past"),
+            value: f(ID.plan_exceedance.net_aggregate_hours_not_dominated),
+            unit: "h",
+            criterion: t("met.id.sc.past.crit", { pv: f(ID.plan_exceedance.pv_aggregate_hours_over), kw: f(ID.plan_exceedance.net_worst_aggregate_kw, 2) }),
+          }] : []),
+        ]}
+      />
     </section>
   );
 }
