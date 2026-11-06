@@ -469,7 +469,8 @@ def place_phases(study: Study, sid: str, rec: dict, note: Callable[[str, str], N
                 if counts["conflict"] else "")
         note("real", f"phases: {counts['identified']} single-phase services identified from the meters' voltages "
                      f"against {against}, at a confidence of {A('phase_id_min_confidence'):g} or more; {counts['written']} "
-                     f"written where none was recorded{' or preferred' if prefer else ''}{kept}")
+                     f"written where none was recorded{' or preferred' if prefer else ''}{kept}"
+                     f"{'' if counts['applied'] else '; none written, the names are relative to this reference'}")
     return {"meters": int(len(out)), "reference": source, **counts,
             "by_status": {str(k): int(v) for k, v in out["status"].value_counts().items()}}
 

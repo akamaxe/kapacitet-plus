@@ -882,6 +882,8 @@ const sv: Dict = {
   "chk.msg.phase_id_no_voltages": "Inga mätvärden har fasspänningar, så ingen fas identifieras",
   "chk.msg.phase_id_reference_station": "Faserna identifieras mot fasspänningarna i transformatorns sekundärmätare",
   "chk.msg.phase_id_reference_meters": "Ingen sekundärmätare i transformatorn, så faserna identifieras mot de trefasiga mätarna: a, b och c är den fasföljd som flest av dem delar",
+  "chk.msg.phase_id_reference_unusable": "Sekundärmätarens fil har bara {usable} användbara spänningsändringar per kvart i alla tre faserna (minst {n} behövs), så den ignorerades och en annan referens användes",
+  "chk.msg.phase_id_not_applied": "Identifierade enfasmätare vars fas inte skrevs till kunderna: mot en annan referens än stationsmätaren är namnen a, b och c relativa; underlaget finns kvar i phase_id.parquet",
   "chk.msg.phase_id_reference_clusters": "Varken en sekundärmätare i transformatorn eller tre trefasiga mätare, så de enfasiga mätarna delas i tre grupper efter korrelation: namnen a, b och c är godtyckliga",
   "chk.msg.phase_id_no_reference": "Mätare som lämnas oidentifierade i brist på referens: ingen sekundärmätare i transformatorn, för få trefasiga mätare och för få enfasiga att gruppera",
   "chk.msg.phase_id_identified": "Enfasiga mätare vars fas har identifierats, med en konfidens på {threshold} eller mer",

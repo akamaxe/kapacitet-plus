@@ -184,7 +184,8 @@ def test_the_recorded_phase_wins_unless_the_identified_one_is_preferred():
     report = phase_id.Report()
     kept, counts = phase_id.apply(customers, ident, report=report)
     assert kept["phase"].to_list() == ["c", "b", "a", ""]
-    assert counts == {"identified": 3, "written": 1, "agree": 1, "conflict": 1, "prefer_identified": False}
+    assert counts == {"identified": 3, "written": 1, "agree": 1, "conflict": 1, "prefer_identified": False,
+                      "applied": True}
     assert [f.code for f in report.findings] == ["phase_id_conflict_recorded"]
     preferred, counts = phase_id.apply(customers, ident, prefer_identified=True)
     assert preferred["phase"].to_list() == ["c", "c", "a", ""]
@@ -220,3 +221,40 @@ def test_the_identification_is_written_with_its_report(flow, tmp_path):
 
     doc = json.loads((tmp_path / "phase_id.json").read_text(encoding="utf-8"))
     assert doc["reference"] == "station" and doc["report"]["findings"]
+
+
+def test_relative_references_never_write_phases(flow):
+    """Against groups or three-phase meters the names a, b, c are relative: evidence only."""
+    out, report = phase_id.identify(meters(flow), None, threshold=0.1)
+    assert (out["reference"].isin(["", "clusters", "three_phase_meters"])).all()
+    ids = out["customer_id"].to_list()
+    customers = pd.DataFrame({"osm_id": ids, "phase": [""] * len(ids)})
+    merged, counts = phase_id.apply(customers, out, report=report)
+    assert counts["identified"] > 0 and counts["written"] == 0 and counts["applied"] is False
+    assert merged["phase"].eq("").all()
+    assert "phase_id_not_applied" in {f.code for f in report.findings}
+    merged, counts = phase_id.apply(customers, out, prefer_identified=True)
+    assert counts["written"] == 0
+
+
+def test_a_station_file_too_short_is_reported_as_ignored(flow):
+    hourly = station(flow).iloc[::4].reset_index(drop=True)
+    out, report = phase_id.identify(meters(flow), hourly, threshold=0.1)
+    assert "station" not in set(out["reference"])
+    assert "phase_id_reference_unusable" in {f.code for f in report.findings}
+
+
+def test_a_three_phase_meter_with_an_empty_column_is_left_out_with_evidence(flow):
+    m = meters(flow)
+    three = m.loc[m["v_l2"].notna(), "customer_id"].iloc[0]
+    m.loc[m["customer_id"] == three, "v_l3"] = np.nan
+    out, report = phase_id.identify(m, station(flow), threshold=0.1)
+    assert out.set_index("customer_id").loc[three, "status"] == "channels"
+    assert "phase_id_channels" in {f.code for f in report.findings}
+
+
+def test_identified_meters_are_right_at_moderate_noise(flow):
+    for noise, seed in ((2.0, 5), (4.0, 6)):
+        out, _ = phase_id.identify(meters(flow, noise=noise, seed=seed), station(flow))
+        ok = out[(out["service"] == "single") & (out["status"] == "identified")]
+        assert len(ok) and share_right(flow, ok) >= 0.95

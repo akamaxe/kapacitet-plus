@@ -103,6 +103,8 @@ MESSAGES = {
     "phase_id_no_voltages": "no meter reading carries phase voltages, so no phase is identified",
     "phase_id_reference_station": "phases identified against the transformer secondary meter's phase voltages",
     "phase_id_reference_meters": "no transformer secondary meter, so phases are identified against the three-phase meters: a, b and c are the phase order most of them share",
+    "phase_id_reference_unusable": "the transformer secondary meter file has only {usable} usable quarter-hour voltage changes in all three phases (at least {n} needed), so it was ignored and another reference used",
+    "phase_id_not_applied": "identified single-phase meters whose phase was not written to the customers: against a reference other than the station meter the names a, b and c are relative; the evidence stays in phase_id.parquet",
     "phase_id_reference_clusters": "neither a transformer secondary meter nor three three-phase meters, so the single-phase meters are grouped in three by correlation: the names a, b and c are arbitrary",
     "phase_id_no_reference": "meters left unidentified for want of a reference: no transformer secondary meter, too few three-phase meters and too few single-phase ones to group",
     "phase_id_identified": "single-phase meters whose phase is identified, at a confidence of {threshold} or more",

@@ -34,7 +34,9 @@ with too few changes "too_few"; neither is identified. Below `phase_id_min_confi
 
 `apply` writes the identified phases into the network's customers: where the DSO recorded none,
 always; where it recorded another, only with `prefer_identified` (`--prefer-identified`), and
-the conflict is reported either way.
+the conflict is reported either way. Only an identification against the station meter is written:
+with the other two references the names a, b, c are relative, so the evidence stays in
+phase_id.parquet and nothing goes into the customers (`phase_id_not_applied`).
 """
 
 from __future__ import annotations
@@ -52,6 +54,7 @@ PHASES = ("a", "b", "c")
 CHANNELS = ("v_l1", "v_l2", "v_l3")
 STEP = pd.Timedelta(minutes=15)
 MIN_CHANGES = 96 * 7            # a week of quarter-hour changes, at the least, to say anything
+MIN_FILLED = 0.05               # a voltage column counts for a meter only with this share of readings
 FLAT_SHARE = 0.01               # a meter whose voltage changes in fewer of its quarter-hours is flat
 MIN_REFERENCE_METERS = 3        # three-phase meters it takes to stand in for the station meter
 ORDERS = tuple(itertools.permutations(range(3)))
@@ -181,7 +184,7 @@ def _best_order(z3: np.ndarray, ref: np.ndarray) -> tuple[tuple[int, int, int], 
 
 def _service(cube: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Per meter: how many voltage columns it fills, and the column of a single-phase one."""
-    filled = np.isfinite(cube).sum(axis=2) > 0                     # (M, 3)
+    filled = np.isfinite(cube).mean(axis=2) >= MIN_FILLED          # (M, 3): a column with a real share
     n = filled.sum(axis=1)
     channel = np.where(n == 1, filled.argmax(axis=1), -1)
     return n, channel
@@ -234,11 +237,13 @@ def identify(volt: pd.DataFrame, reference: pd.DataFrame | None = None, threshol
     # the three-phase meters or, failing both, groups of the single-phase ones
     ref = common = None
     source = ""
+    rejected = -1                                                  # usable changes of a refused reference
     loo: dict[int, np.ndarray] = {}
     if reference is not None and len(reference):
         r = reference.set_index("start").reindex(grid)[list(CHANNELS)].to_numpy(dtype=float).T
         rd = _changes(r)
-        if np.isfinite(rd).all(axis=0).sum() >= MIN_CHANGES:
+        rejected = int(np.isfinite(rd).all(axis=0).sum())
+        if rejected >= MIN_CHANGES:
             with np.errstate(invalid="ignore"):
                 common = np.nanmean(rd, axis=0)
             ref, source = _z(_differential(rd)), "station"
@@ -285,6 +290,8 @@ def identify(volt: pd.DataFrame, reference: pd.DataFrame | None = None, threshol
         pv = pv_phase.astype(str).str.strip().str.lower()
         on_one = out["customer_id"].map(pv).isin(PHASES)
         out["matters"] = on_one & out["service"].eq("three") & out["order"].ne("") & out["order"].ne("abc")
+    if rejected >= 0 and source != "station":
+        report.add(WARNING, "reference", "phase_id_reference_unusable", rejected, usable=str(rejected), n=str(MIN_CHANGES))
     _report(out, report, source, threshold)
     return out, report
 
@@ -442,16 +449,20 @@ def apply(customers: pd.DataFrame, ident: pd.DataFrame, prefer_identified: bool 
     if "phase" not in out.columns:
         out["phase"] = ""
     recorded = out["phase"].fillna("").astype(str).str.strip().str.lower()
+    relative = "reference" in ident.columns and bool((set(ident["reference"]) - {"", "station"}))
     ok = ident.loc[ident["status"].eq("identified") & ident["service"].eq("single") & ident["phase"].isin(PHASES)]
     found = out["osm_id"].astype(str).map(ok.set_index("customer_id")["phase"]).fillna("")
     have = found != ""
     blank = have & (recorded == "")
     agree = have & (recorded == found)
     conflict = have & (recorded != "") & (recorded != found)
-    write_mask = blank | (conflict if prefer_identified else False)
+    write_mask = (blank | (conflict if prefer_identified else False)) & (not relative)
     out.loc[write_mask, "phase"] = found[write_mask]
     counts = {"identified": int(have.sum()), "written": int(write_mask.sum()), "agree": int(agree.sum()),
-              "conflict": int(conflict.sum()), "prefer_identified": bool(prefer_identified)}
+              "conflict": int(conflict.sum()), "prefer_identified": bool(prefer_identified),
+              "applied": not relative}
+    if report is not None and relative and have.any():
+        report.add(WARNING, "recorded phase", "phase_id_not_applied", int(have.sum()))
     if report is not None and conflict.any():
         j = int(np.flatnonzero(conflict.to_numpy())[0])
         code = "phase_id_conflict_identified" if prefer_identified else "phase_id_conflict_recorded"

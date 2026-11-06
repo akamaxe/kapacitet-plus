@@ -881,6 +881,8 @@ const en: Dict = {
   "chk.msg.phase_id_no_voltages": "No meter reading carries phase voltages, so no phase is identified",
   "chk.msg.phase_id_reference_station": "Phases identified against the transformer secondary meter's phase voltages",
   "chk.msg.phase_id_reference_meters": "No transformer secondary meter, so phases are identified against the three-phase meters: a, b and c are the phase order most of them share",
+  "chk.msg.phase_id_reference_unusable": "The transformer secondary meter file has only {usable} usable quarter-hour voltage changes in all three phases (at least {n} needed), so it was ignored and another reference used",
+  "chk.msg.phase_id_not_applied": "Identified single-phase meters whose phase was not written to the customers: against a reference other than the station meter the names a, b and c are relative; the evidence stays in phase_id.parquet",
   "chk.msg.phase_id_reference_clusters": "Neither a transformer secondary meter nor three three-phase meters, so the single-phase meters are grouped in three by correlation: the names a, b and c are arbitrary",
   "chk.msg.phase_id_no_reference": "Meters left unidentified for want of a reference: no transformer secondary meter, too few three-phase meters and too few single-phase ones to group",
   "chk.msg.phase_id_identified": "Single-phase meters whose phase is identified, at a confidence of {threshold} or more",
