@@ -511,7 +511,7 @@ def test_an_approval_firm_or_with_an_envelope_writes_no_address(client, stubbed,
         def pq(self, model, y, hp, ev):
             return np.zeros((n, hours)), np.zeros((n, hours))
 
-    monkeypatch.setattr(qu, "context", lambda: Ctx("static", label={"version": qu.load()["version"]}))
+    monkeypatch.setattr(qu, "context", lambda where=None: Ctx("static", label={"version": qu.load()["version"]}))
 
     def run(model, req, hp, ev, ctx=None, verify_years=None):
         d = {"load": np.full(hours, 0.4), "hp": np.zeros(hours), "ev_want": np.zeros(hours),

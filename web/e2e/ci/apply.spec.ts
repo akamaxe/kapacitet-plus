@@ -21,7 +21,7 @@ test("the portal opens on its own, without the map or the chart library", async 
 // application sent from another site, or as plain text, is refused before it reaches the portal,
 // while the portal's own origin goes through to the route, which knows no such answer.
 test("a write from another site, or not as JSON, is refused before it reaches the route", async ({ request, baseURL }) => {
-  const body = { assessment: "0123456789ab", key: "e2e-guard-key-1" };
+  const body = { assessment: "0123456789ab", key: "e2e-guard-key-0123456789" };
   const foreign = await request.post("/api/v1/apply/submit", { data: body, headers: { Origin: "https://evil.example" } });
   expect(foreign.status()).toBe(403);
   expect((await foreign.json()).detail.code).toBe("bad_origin");
