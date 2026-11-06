@@ -17,6 +17,10 @@ an unknown section or key is an error rather than a setting silently ignored. Th
     [disclosure]   level = "station" | "grid" | "zone", grid_m, min_customers = 5, hidden stations
     [cases]        processing_days, protection = "dppower" | "kapacitet"
     [output]       csv_dialect = "sv-excel" (beside the machine copy, always written), retention_days
+    [costs]        the DSO's own contract prices for `study options`: transformer_swap_sek by the new
+                   unit's kVA, curtailment_sek_per_kwh, price_level_year, deferral_years and source.
+                   A price left out is "not entered", never guessed (Ei's norm values are shown only
+                   as a labelled reference)
     [assumptions]  key = {value, unit, source}: an override of config/assumptions.toml. The key must
                    exist there and take effect in a station (NOT_IN_A_STUDY lists those that do
                    not), the unit must be the one it has, and the source must be stated.
@@ -139,6 +143,36 @@ class Output(_Section):
     retention_days: int | None = Field(None, gt=0)
 
 
+class Costs(_Section):
+    transformer_swap_sek: dict[str, float] = Field(default_factory=dict)
+    curtailment_sek_per_kwh: float | None = Field(None, ge=0)
+    price_level_year: int | None = Field(None, ge=2000, le=2100)
+    deferral_years: int | None = Field(None, ge=1, le=40)
+    source: str = ""
+
+    @field_validator("transformer_swap_sek")
+    @classmethod
+    def _kva(cls, v: dict[str, float]) -> dict[str, float]:
+        for kva, sek in v.items():
+            if not kva.isdigit() or int(kva) <= 0:
+                raise ValueError(f"[costs] transformer_swap_sek is keyed by the new unit's kVA, not {kva!r}")
+            if sek < 0:
+                raise ValueError(f"[costs] transformer_swap_sek {kva} is negative")
+        return {str(int(k)): float(x) for k, x in v.items()}
+
+    @model_validator(mode="after")
+    def _sourced(self):
+        if (self.transformer_swap_sek or self.curtailment_sek_per_kwh is not None) and not self.source.strip():
+            raise ValueError("[costs] a price needs its source (the DSO's contract, its date)")
+        return self
+
+    def swap_sek(self, sn_mva: float | None) -> float | None:
+        """The DSO's price for a swap to a unit of `sn_mva`, or None when it is not entered."""
+        if sn_mva is None:
+            return None
+        return self.transformer_swap_sek.get(str(int(round(float(sn_mva) * 1000))))
+
+
 class Override(_Section):
     value: Any
     unit: str
@@ -161,6 +195,7 @@ class StudyConfig(_Section):
     disclosure: Disclosure = Field(default_factory=Disclosure)
     cases: Cases = Field(default_factory=Cases)
     output: Output = Field(default_factory=Output)
+    costs: Costs = Field(default_factory=Costs)
     assumptions: dict[str, Override] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -318,6 +353,16 @@ def template(name: str = "", site: dict | None = None) -> str:
         "[output]",
         'csv_dialect = "sv-excel"        # ; and decimal comma, UTF-8 with BOM, beside an RFC 4180 copy',
         "# retention_days = 365          # off unless set",
+        "",
+        "[costs]",
+        "# The DSO's own contract prices, which `study options` reads; a price left out is \"not",
+        "# entered\" and no option that needs it is recommended. Ei's norm values are shown beside them",
+        "# only as a labelled reference.",
+        '# transformer_swap_sek = { "630" = 0, "800" = 0 }   # the whole swap, by the new unit\'s kVA',
+        "# curtailment_sek_per_kwh = 0    # what curtailed energy costs the DSO (its compensation)",
+        "# price_level_year = 2026",
+        "# deferral_years = 4             # the horizon of waiting (one regulatory period by default)",
+        '# source = "the contract and its date"',
         "",
         "[assumptions]",
         "# An override of config/assumptions.toml, with the unit it has there and its source:",

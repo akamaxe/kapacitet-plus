@@ -149,7 +149,9 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
     station = cost["reinforce_station_800_sek"] + cost["reinforce_urban_supplement_sek"]
     budget = over["budget"]
     curt = budget["curtailed_sek"]
-    per_year = (lambda x: x / curt) if curt > 0 else (lambda x: None)
+
+    def per_year(x: float) -> float | None:
+        return years_of_curtailment(x, curt)
     return {
         "price_level_year": int(cost["reinforce_price_level_year"]),
         "transformer_sek": [t_lo, t_hi], "station_sek": station, "with_station_sek": [t_lo + station, t_hi + station],
@@ -168,6 +170,18 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
     }
 
 
+# Ei's real rates a deferral is priced at: the one in force and the two Ei has put forward for
+# 2028-2031 (assumptions.toml, with their sources); /business and `study options` both use them
+RATES = ("ei_wacc_real_pct", "ei_wacc_real_pct_2028_prelim", "ei_wacc_real_pct_2028_current_method")
+
+
+def years_of_curtailment(cost: float | None, curtailed_sek_per_year: float | None) -> float | None:
+    """How many years of curtailment a one-off cost would buy (undiscounted); None without both."""
+    if cost is None or not curtailed_sek_per_year or curtailed_sek_per_year <= 0:
+        return None
+    return cost / curtailed_sek_per_year
+
+
 def annuity(rate: float, years: int) -> float:
     """Present value of 1 a year for `years` years at `rate`, paid at the end of each year."""
     return (1 - (1 + rate) ** -years) / rate if rate else float(years)
@@ -176,6 +190,17 @@ def annuity(rate: float, years: int) -> float:
 def deferral_value(cost: float, rate: float, years: int) -> float:
     """Present value of paying `cost` `years` years later instead of now."""
     return cost * (1 - (1 + rate) ** -years)
+
+
+def deferral_case(cost: float, curtailed_sek_per_year: float | None, rate: float, years: int) -> dict:
+    """Deferring `cost` by `years` at `rate` against curtailing `curtailed_sek_per_year` meanwhile:
+    {"years", "deferral_sek", "curtailment_sek", "net_sek"}; without the curtailment's value the
+    last two are None. The one implementation behind business() and `study options`."""
+    d = deferral_value(cost, rate, years)
+    if curtailed_sek_per_year is None:
+        return {"years": years, "deferral_sek": d, "curtailment_sek": None, "net_sek": None}
+    c = curtailed_sek_per_year * annuity(rate, years)
+    return {"years": years, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
 
 
 def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20,
@@ -198,8 +223,7 @@ def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20,
     slo, shi = reinf["with_station_sek"]
 
     def point(cost: float, t: int, k: float = k) -> dict:
-        d, c = deferral_value(cost, r, t), k * annuity(r, t)
-        return {"years": t, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
+        return deferral_case(cost, k, r, t)
 
     k_spread = (reinf["envelopes"].get("spread") or {}).get("curtailed_sek")
     rng = None
@@ -222,8 +246,7 @@ def business(reinf: dict, rate_pct: float, horizon: int, max_years: int = 20,
     for key, pct in (rates or {}).items():
         rr = pct / 100.0
         def at(cost: float, rr=rr) -> dict:
-            d, c = deferral_value(cost, rr, horizon), k * annuity(rr, horizon)
-            return {"years": horizon, "deferral_sek": d, "curtailment_sek": c, "net_sek": d - c}
+            return deferral_case(cost, k, rr, horizon)
         at_rates[key] = {"rate_pct": pct, "transformer": [at(lo), at(hi)], "with_station": [at(slo), at(shi)]}
     return {
         "rate_pct": rate_pct, "rate_basis": "real", "price_level_year": reinf["price_level_year"],

@@ -293,15 +293,16 @@ Runner = Callable[[Study, str, str, str], "int | None"]
 
 
 def run_stations(study: Study, action: str, batch: str, work: dict[str, dict], jobs: int | None = None,
-                 runner: Runner | None = None, allow_git: bool = False) -> dict[str, dict]:
+                 runner: Runner | None = None, allow_git: bool = False, work_dir: Path | None = None) -> dict[str, dict]:
     """Write each station's work file and run its process (at most `jobs` at a time); returns what
     each wrote, or {"failed": code} for a station whose process did not finish. `runner` stands in
-    for the process in a test: runner(study, sid, action, batch) -> exit code."""
+    for the process in a test: runner(study, sid, action, batch) -> exit code. The work files go
+    in cases/<batch>/work, or in `work_dir`."""
     import os
 
     from .portfolio import MAX_JOBS
 
-    folder = batch_dir(study, batch) / "work"
+    folder = work_dir or batch_dir(study, batch) / "work"
     for sid, doc in work.items():
         write_json_atomic(folder / f"{sid}.json", doc)
         (study.station_dir(sid) / action / f"{batch}.json").unlink(missing_ok=True)

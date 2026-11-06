@@ -106,3 +106,38 @@ queue from the DSO's own list: the approved file has a case's columns plus `deci
 `nonfirm`) and `decided_at`. The connections are reserved in the order they were approved, at
 each end of the band, and re-verified on every weather year; one that fails is kept and flagged in
 `cases/sync-<name>/sync_report.csv`, and one taken off the list leaves the grid.
+
+## The portfolio and the options: `runs/<quarter>/`
+
+`study portfolio <dir> --run 2026Q4` and `study options <dir> --run 2026Q4` read a collected
+quarter. Neither is published: they are for the DSO's own planning, and Kapacitet+ only proposes.
+
+| file | content |
+| --- | --- |
+| `portfolio.csv` (+ `.machine.csv`) | one row per station, the least margin per customer first (`rank`; a station without a figure on either side first, ties by station id). The margins are the published generation and consumption capacity, after the upstream caps and the reviewer's corrections, and each per customer. The risk: the generation capacity at each end of the MV band and the binding end, the hours today's grid already breaks a limit, the verification, and the metered customers' peak against Velander's estimate for the same customers. The trend: `pending_cases` (cases in `cases/*/verdicts.csv` without `decision_dso`, and pending rows of a sync report, less any case a sync report approved), the existing equipment and its `connected_on` dates, and the station's future scenarios when it has a `scenarios.json` |
+| `portfolio_sv.md` | the same table in Swedish |
+| `options.csv` (+ `.machine.csv`) | one row per station, the three options below, the `recommendation` (`reinforce`, `condition` or `wait`) or, without one, `why_none` |
+| `options/<station>.sv.md` | a Swedish note per station |
+
+The three options of a station:
+
+- **Reinforce now:** the next of pandapower's standard transformers for the same voltages, with
+  the station's capacities computed again on it by its own process (`kapacitet station options`),
+  hourly over the build's weather years and orders: generation at both ends of the band and
+  consumption at the low end. Its price is the DSO's own, `[costs] transformer_swap_sek` by the
+  new unit's kVA; Ei's norm values are given beside it only as a labelled reference.
+- **Connect with conditions:** the station's envelopes at the per-installation curtailment budget,
+  only with `[method] approval_reference` and only when they verify on every hour, with their mean
+  curtailed energy a year, valued at `[costs] curtailment_sek_per_kwh`.
+- **Wait:** what deferring the swap `[costs] deferral_years` is worth (one regulatory period by
+  default) at Ei's real rates in `config/assumptions.toml` (4.53 % for 2024–2027, and the
+  preliminary 1.99 % and 4.57 % for 2028–2031), and the net after the curtailment meanwhile: the same
+  arithmetic as the business case of the reference network (`engine/summaries.deferral_case`).
+
+A price left out is written `not entered`, never guessed, and no option is recommended without
+every input it rests on. The proposal is `wait` when nobody is waiting and both margins are above
+zero; otherwise `condition` when the envelopes verify and the net at the rate in force is above
+zero, and `reinforce` when it is not or when there are no verified envelopes; none when the bigger
+transformer adds no capacity on either side. Each station's computation is kept in
+`stations/<id>/options/<quarter>.json` and reused while the station's build and the method
+approval are the same.

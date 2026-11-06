@@ -1,7 +1,7 @@
 """The study commands: `kapacitet study init|demo|fetch|import|check|build|status|collect|validate|
-review|sign|publish|diff|cases|sync|sign-rule <dir>`, and the hidden `kapacitet station
-build|validate|cases|sync <sid> --study <dir>` that a study's build, validation, case check and
-queue rebuild start once per station.
+review|sign|publish|diff|cases|sync|sign-rule|portfolio|options <dir>`, and the hidden `kapacitet
+station build|validate|cases|sync|options <sid> --study <dir>` that a study's build, validation,
+case check, queue rebuild and options start once per station.
 
 pipeline.py registers them with one call to `register`; nothing heavy is imported until a command
 runs.
@@ -85,10 +85,17 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--kinds", required=True, help="the kinds of request it covers: pv,ev,hp,battery")
     q.add_argument("--max-pv-kwp", type=float, required=True, help="the largest solar system it covers (kWp)")
     q.add_argument("--valid-until", required=True, help="the last day it holds, as 2027-06-30")
+    q = add("portfolio", "runs/<quarter>/portfolio.csv and portfolio_sv.md: per station its margins, risk and "
+                         "trend, the least margin per customer first")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
+    q = add("options", "runs/<quarter>/options.csv and a Swedish note per station: reinforce now, connect with "
+                       "conditions or wait, priced from study.toml [costs]")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
+    q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
-    p.add_argument("action", choices=["build", "validate", "cases", "sync"])
+    p.add_argument("action", choices=["build", "validate", "cases", "sync", "options"])
     p.add_argument("sid")
     p.add_argument("--study", required=True)
     p.add_argument("--batch", default=None)
@@ -109,7 +116,7 @@ def cmd_study(args: argparse.Namespace) -> None:
         {"init": _init, "demo": _demo, "fetch": _fetch, "import": _import, "check": _check, "build": _build,
          "status": _status, "collect": _collect, "validate": _validate, "review": _review, "sign": _sign,
          "publish": _publish, "diff": _diff, "cases": _cases, "sync": _sync,
-         "sign-rule": _sign_rule}[args.study_command](args)
+         "sign-rule": _sign_rule, "portfolio": _portfolio, "options": _options}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -360,6 +367,32 @@ def _sign_rule(args) -> None:
           f"{doc['max_pv_kwp']:g} kWp until {doc['valid_until']}, sealed as {doc['seal']['id']}")
 
 
+def _portfolio(args) -> None:
+    from . import open_study
+    from .decision import portfolio
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = portfolio(study, _quarter(args.quarter))
+    print(f"{len(out['rows'])} stations in {out['paths'][0]}, the least margin per customer first")
+
+
+def _options(args) -> None:
+    from . import open_study
+    from .decision import options
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = options(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    counts = {k: sum(1 for r in out["rows"] if r["recommendation"] == k) for k in ("reinforce", "condition", "wait")}
+    none = sum(1 for r in out["rows"] if not r["recommendation"])
+    print(f"{len(out['rows'])} stations in {out['paths'][0]} ({len(out['computed'])} computed now): "
+          f"{counts['reinforce']} reinforce, {counts['condition']} condition, {counts['wait']} wait, "
+          f"{none} without a proposal")
+    for sid in out["failed"]:
+        print(f"  {sid}: failed (see its build.log)")
+    if out["failed"]:
+        sys.exit(1)
+
+
 def cmd_station(args: argparse.Namespace) -> None:
     """One station's build or validation, in this process (started by `study build|validate`)."""
     import logging
@@ -371,6 +404,13 @@ def cmd_station(args: argparse.Namespace) -> None:
         study = open_study(args.study, allow_git=args.allow_git)
         if args.action == "validate":
             validate(study, args.sid)
+            sys.exit(0)
+        if args.action == "options":
+            from .decision import station_options
+
+            if not args.batch:
+                raise StudyError("bad_batch", batch="")
+            station_options(study, args.sid, args.batch)
             sys.exit(0)
         if args.action in ("cases", "sync"):
             from .cases import station_cases

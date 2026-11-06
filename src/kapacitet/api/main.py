@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 from .. import __version__, geo
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
+from ..engine.summaries import RATES as SUMMARY_RATES
 from . import jobs, records
 from .guard import ERRORS as GUARD_ERRORS
 from .guard import Guard
@@ -911,8 +912,8 @@ def reinforcement() -> dict:
 
 
 # the rates /business also prices the horizon at: the one in force and the two Ei has put forward
-# for 2028-2031 (assumptions.toml, with their sources)
-BUSINESS_RATES = ("ei_wacc_real_pct", "ei_wacc_real_pct_2028_prelim", "ei_wacc_real_pct_2028_current_method")
+# for 2028-2031 (assumptions.toml, with their sources), the same as `study options`
+BUSINESS_RATES = SUMMARY_RATES
 
 
 @app.get(f"{API}/business", tags=["hosting"])

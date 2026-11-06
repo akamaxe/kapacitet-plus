@@ -235,16 +235,18 @@ def verified_count_band(models: dict[float, NetModel], n: int, states_of, side: 
 
 def generation_capacity(band: tuple[float, float], years=None, n_orders: int = STUDY_ORDERS,
                         percentile: float = 50.0, hp=None, ev=None, *, approval_reference: str = "",
-                        budget: str = "aggregate", z_star: float | None = None) -> dict:
+                        budget: str = "aggregate", z_star: float | None = None,
+                        trafo_type: str | None = None) -> dict:
     """The station's generation capacity over the MV band (see the module's docstring): each
     order's value is the lower of its two ends, the percentile is taken over those, and the
     published order is checked on every hour at both ends. Returns {"status", "kw",
     "binding_mv_pu", "order", "adopters", "static_kw", "binding" (the limit the next adopter
-    breaks), "by_end", "per_order", "verification", "doe"}."""
+    breaks), "by_end", "per_order", "verification", "doe"}. `trafo_type` computes it with another
+    transformer (a pandapower standard type), as `study options` prices a reinforcement."""
     years = _years(years)
     lo_pu, hi_pu = float(band[0]), float(band[1])
     ends = sorted({lo_pu, hi_pu})
-    models = {v: get_model(vm_slack=v) for v in ends}
+    models = {v: get_model(vm_slack=v, trafo_type=trafo_type) for v in ends}
     C = models[ends[0]].C
     hp, ev = _masks(C, hp, ev)
     cand = candidates()
@@ -304,9 +306,10 @@ def _doe_run(m: NetModel, order, ms: int, k: int, hp, ev, years, verify_: str) -
         p_c += arr["pv"][nf].astype(float).sum(axis=1)
     curt, pot = float(c_c.sum()), float(p_c.sum())
     share = np.where(p_c > 0, 100.0 * c_c / np.where(p_c > 0, p_c, 1.0), 0.0)
+    n = max(len(years), 1)
     return {"z_pct": 100.0 * curt / pot if pot > 0 else 0.0,
             "z_customer_max_pct": float(share.max()) if len(nf) else 0.0, "full_year_violations": full,
-            "nonconverged_hours": nonconv}
+            "nonconverged_hours": nonconv, "curtailed_kwh_per_year": curt / n, "potential_kwh_per_year": pot / n}
 
 
 def doe_column(m: NetModel, order, r: dict, hp, ev, years, approval_reference: str, budget: str,
@@ -337,7 +340,9 @@ def doe_column(m: NetModel, order, r: dict, hp, ev, years, approval_reference: s
     cap = doe.customer_caps()
     return {"status": "ok", "approval_reference": approval_reference, "budget": budget, "z_star_pct": z_star,
             "firm_adopters": ms, "adopters": int(k), "kw": float(cap[order[:k]].sum()), "z_pct": full["z_pct"],
-            "z_customer_max_pct": full["z_customer_max_pct"], "full_year_violations": 0, "nonconverged_hours": 0}
+            "z_customer_max_pct": full["z_customer_max_pct"], "full_year_violations": 0, "nonconverged_hours": 0,
+            "curtailed_kwh_per_year": full["curtailed_kwh_per_year"],
+            "potential_kwh_per_year": full["potential_kwh_per_year"]}
 
 
 # ---------------------------------------------------------------- consumption
