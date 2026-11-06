@@ -52,7 +52,8 @@ from typing import Any
 
 import pandas as pd
 
-from .from_pandapower import ContractError, contract_tables, lv_graph, lv_island
+from .from_pandapower import (ContractError, contract_tables, geo_point, geojson_coords, lv_graph, lv_island,
+                              point_geojson)
 from .validate import ERROR, NOTE, WARNING, Report, validate
 
 LV_MAX_KV = 1.0
@@ -247,34 +248,28 @@ def _crs(cim: dict) -> str | None:
     return f"EPSG:{codes.pop()}"
 
 
-def _point(value) -> tuple[float, float] | None:
-    """The first point of a converter `coords` value ([[x, y], ...]), if it has a finite one."""
-    if isinstance(value, (list, tuple)) and value and isinstance(value[0], (list, tuple)) and len(value[0]) >= 2:
-        x, y = float(value[0][0]), float(value[0][1])
-        if math.isfinite(x) and math.isfinite(y):
-            return x, y
-    return None
-
-
 def _place(net, crs: str | None) -> None:
-    """net.bus_geodata in WGS84, with a place for every bus the GL profile lets us place (see the
-    module's docstring), and nothing for the rest."""
+    """net.bus["geo"] in WGS84, with a place for every bus the GL profile lets us place (see the
+    module's docstring), and nothing for the rest. pandapower 3's converter writes GeoJSON text in
+    each table's `geo` column: a Point for a bus (its substation's) and a load, a LineString for a
+    line."""
     pos: dict[int, tuple[float, float]] = {}
     if crs is not None:
-        if "coords" in net.load.columns:
-            for bus, coords in zip(net.load["bus"], net.load["coords"]):
-                pt = _point(coords)
+        if "geo" in net.load.columns:
+            for bus, geo in zip(net.load["bus"], net.load["geo"]):
+                pt = geo_point(geo)
                 if pt is not None and pd.notna(bus):
                     pos.setdefault(int(bus), pt)
-        geo = net.bus_geodata
-        if len(geo) and {"x", "y"} <= set(geo.columns):
-            for bus, x, y in zip(geo.index, geo["x"], geo["y"]):
-                if pd.notna(x) and pd.notna(y):
-                    pos.setdefault(int(bus), (float(x), float(y)))
+        if "geo" in net.bus.columns:
+            for bus, geo in net.bus["geo"].items():
+                pt = geo_point(geo)
+                if pt is not None:
+                    pos.setdefault(int(bus), pt)
         cables = []
-        if len(net.line_geodata) and "coords" in net.line_geodata.columns:
-            for li, coords in net.line_geodata["coords"].items():
-                if isinstance(coords, (list, tuple)) and len(coords) >= 2 and li in net.line.index:
+        if "geo" in net.line.columns:
+            for li, geo in net.line["geo"].items():
+                coords = geojson_coords(geo)
+                if isinstance(coords, (list, tuple)) and len(coords) >= 2:
                     ends = (tuple(map(float, coords[0][:2])), tuple(map(float, coords[-1][:2])))
                     cables.append((int(net.line.at[li, "from_bus"]), int(net.line.at[li, "to_bus"]), ends))
         sw = net.switch
@@ -298,9 +293,8 @@ def _place(net, crs: str | None) -> None:
 
         to_wgs = Transformer.from_crs(crs, WGS84, always_xy=True)
         pos = {b: tuple(to_wgs.transform(x, y)) for b, (x, y) in pos.items()}
-    buses = sorted(pos)
-    net.bus_geodata = pd.DataFrame({"x": [pos[b][0] for b in buses], "y": [pos[b][1] for b in buses]},
-                                   index=pd.Index(buses, dtype="int64"))
+    net.bus["geo"] = pd.Series([point_geojson(*pos[b]) if b in pos else None for b in net.bus.index],
+                               index=net.bus.index, dtype=object)
 
 
 def _vector_groups(net) -> None:

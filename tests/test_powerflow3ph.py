@@ -30,7 +30,7 @@ def build_feeder() -> tuple[pp.pandapowerNet, np.ndarray]:
     # pandapower's three-phase flow accepts the bare vector group, without the clock number,
     # and needs the zero-sequence data that the standard type does not carry.
     net.trafo["vector_group"] = "Dyn"
-    for col, val in (("vk0_percent", 4.0), ("vkr0_percent", 1.325), ("mag0_percent", 100.0),
+    for col, val in (("vk0_percent", 4.0), ("vkr0_percent", 1.325), ("mag0_percent", 10000.0),
                      ("mag0_rx", 0.0), ("si0_hv_partial", 0.9)):
         net.trafo[col] = val
     cust_bus, prev = [], lv
@@ -80,7 +80,10 @@ def test_sequence_matrices_are_finite():
     y0, y1, y2 = s0["y"], s1["y"], s2["y"]
     assert y0.shape == y1.shape == y2.shape
     assert np.isfinite(y0).all() and np.isfinite(y1).all()
-    assert np.allclose(y1, y2)                     # passive network
+    # passive network: the same admittances, except that pandapower 3 turns the Dyn transformer's
+    # phase shift the other way in the negative sequence (2.14 gave both sequences the same one)
+    assert np.allclose(np.diag(y1), np.diag(y2)) and np.allclose(np.abs(y1), np.abs(y2))
+    assert not np.allclose(y1, y2)
     assert not np.allclose(y0, y1)                 # the Dyn transformer blocks zero sequence
     # the branch matrices are padded so all three sequences index the same branches
     assert s0["yf"].shape == s1["yf"].shape == s2["yf"].shape
@@ -247,12 +250,12 @@ def test_real_network_solves_unbalanced_and_matches_pandapower():
 
 @needs_grid
 def test_branch_flows_match_pandapower():
-    """Lines, neutral current and transformer power against pandapower on the real feeder.
+    """Lines, neutral current, transformer power and transformer loading against pandapower on
+    the real feeder.
 
-    The transformer current deliberately does not match, and the test shows why: pandapower's
-    res_trafo_3ph adds the magnitudes of the feeder currents, while Kirchhoff adds the
-    phasors. Reproducing their number from our own currents is what proves the difference is
-    a convention and not an error.
+    pandapower 2.14's res_trafo_3ph added the magnitudes of the feeder currents, where Kirchhoff
+    adds the phasors, so its loading came out higher than ours. pandapower 3 adds the phasors as
+    well, and the two agree; the scalar sum stays here to show what the old figure was.
     """
     from kapacitet.grid.builder import load_net, load_tables
 
@@ -278,17 +281,15 @@ def test_branch_flows_match_pandapower():
     ref_p = -sum(float(net.res_trafo_3ph[f"p_{c}_lv_mw"].iloc[0]) for c in "abc")
     assert abs(res.trafo_p_mw[0] - ref_p) < 1e-3
 
-    # Kirchhoff gives less than pandapower, and pandapower's value is reproducible as the
-    # scalar sum of our own feeder magnitudes, to the last digit.
     ref_trafo = float(net.res_trafo_3ph["loading_percent"].iloc[0])
-    assert res.trafo_loading[0] < ref_trafo
+    assert np.isclose(res.trafo_loading[0], ref_trafo, rtol=1e-4)
     v_all = np.empty((3 * model.n_bus, 1), dtype=complex)
     v_all[(3 * model.bus_ppc[:, None] + np.arange(3)).ravel()] = res.v
     rows = (3 * model.lv_from[:, None] + np.arange(3)).ravel()
     per_feeder = (model.Yf @ v_all)[rows].reshape(-1, 3, 1)
     i_base = model.i_base_to[model.trafo_row]
     scalar_sum = np.abs(per_feeder).sum(axis=0)[:, 0] * i_base
-    assert np.isclose(100.0 * scalar_sum.max() / model.trafo_i_lv_rated, ref_trafo, rtol=1e-4)
+    assert 100.0 * scalar_sum.max() / model.trafo_i_lv_rated > ref_trafo * 1.05     # what 2.14 reported
 
 
 @needs_grid

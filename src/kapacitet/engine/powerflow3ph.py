@@ -58,11 +58,9 @@ class PF3Result:
     i_neutral_ka: np.ndarray = None     # (n_line, H), return current in the neutral
     trafo_p_mw: np.ndarray = None       # (H,), active power MV to LV (negative = reverse)
 
-    # Kirchhoff at the LV busbar: the phasor sum of what leaves on the feeders. Reads lower
-    # than pandapower's res_trafo_3ph under unbalance because that one adds the feeder
-    # current *magnitudes* instead of the phasors, which is only the same thing when every
-    # feeder is in phase. Both agree on a balanced case for exactly that reason. The test
-    # suite reproduces pandapower's number from our own currents to show where it comes from.
+    # Kirchhoff at the LV busbar: the phasor sum of what leaves on the feeders, which is what
+    # pandapower 3's res_trafo_3ph reports too. (pandapower 2.14 added the feeder current
+    # *magnitudes* instead, which read higher under unbalance; the test suite keeps that sum.)
     trafo_loading: np.ndarray = None    # (H,), percent, worst phase
 
     @property

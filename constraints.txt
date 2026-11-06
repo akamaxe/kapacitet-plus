@@ -1,28 +1,33 @@
-# Versions of the project's own virtual environment (.venv), resolved 2026-10-09.
+# Versions of the project's own virtual environment (.venv), resolved 2026-11-06.
 #
-# Until then this file pinned whatever happened to be in the base Anaconda env, so that
-# installing the project would not disturb the other tools sharing it. That stopped working:
-# the base env moved to pandas 3.0, where Copy-on-Write is mandatory, and pandapower 2.14
-# writes its results through `DataFrame["col"].values[:]`, so every `pp.runpp` raised
-# "assignment destination is read-only" and the whole engine was dead. The base env had also
-# drifted to scipy 1.18, which pandapower 2.14 does not support (it requires scipy < 1.14).
-#
-# The project now has its own environment instead, with a combination every package declares
-# as supported:
+# The project has its own environment because the base Anaconda env drifted to pandas 3.0 and
+# scipy 1.18 (2026-10-09), and the engine needs a combination every package declares as supported:
 #
 #     python -m venv .venv
 #     .venv/Scripts/python -m pip install -c constraints.txt -e ".[dev]"
 #
-# numpy stays below 2 because pandapower 2.14 and scipy < 1.14 both predate it, which also
-# makes the alias shim in `_compat.py` a no-op rather than a dependency.
+# Until 2026-11-06 that combination was pandapower 2.14 with numpy below 2 and scipy below 1.14,
+# the only line pandapower 2.14 supports. It now is pandapower 3.5, whose own ceilings set the rest:
+#
+# - numpy 2.4: pandapower 3.5 declares numpy below 2.5.
+# - scipy 1.18: pandapower 3.5 requires scipy 1.15 or later and sets no ceiling.
+# - pandas 2.3: pandapower 3.5 declares pandas ~=2.3, so not pandas 3, whose mandatory
+#   copy-on-write still conflicts with how it writes result tables.
+# - networkx 3.7: pandapower 3.5 declares networkx ~=3.6.
+# - cvxpy 1.9: from 1.8 on it requires numpy 2, which is now the case.
+# - pyarrow 26: past the 23.0.1 fix of GHSA-rgxp-2hwp-jwgg, so the audit needs no ignore.
+# - duckdb stays on 1.5: 2.0 is a major version, a decision of its own.
+# - lxml 6.1: pandapower 3's CGMES converter needs it and no longer brings it along (it sits in
+#   pandapower's `converter` extra, with pypowsybl, which the project does not use).
 
-numpy==1.26.4
-scipy==1.13.1
+numpy==2.4.6
+scipy==1.18.1
 pandas==2.3.3
-pandapower==2.14.11
-pyarrow==20.0.0
+pandapower==3.5.6
+lxml==6.1.3
+pyarrow==26.0.1
 duckdb==1.5.6
-cvxpy==1.7.5
+cvxpy==1.9.3
 clarabel==0.11.1
 networkx==3.7
 shapely==2.2.0

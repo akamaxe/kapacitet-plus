@@ -79,10 +79,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install pip-audit==2.10.1
-      # GHSA-rgxp-2hwp-jwgg (PYSEC-2026-113, CVE-2026-25087; pyarrow below 23.0.1) is in Arrow's
-      # IPC file reader with pre-buffering, which the project never calls: it reads only Parquet.
-      # Remove the two ignores when constraints.txt moves pyarrow to 23.0.1 or later.
-      - run: pip-audit -r constraints.txt --ignore-vuln GHSA-rgxp-2hwp-jwgg --ignore-vuln PYSEC-2026-113
+      - run: pip-audit -r constraints.txt
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24

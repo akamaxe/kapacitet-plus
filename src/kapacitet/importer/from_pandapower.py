@@ -15,7 +15,8 @@ The island is what an operator would draw for that station:
 
 Identifiers. A bus, line or load with an `origin_id` (what pandapower's CIM converter keeps,
 the mRID) is written with it; otherwise with `B<index>`, `L<index>` and `C<index>`, unless the
-customer map names the customer. Coordinates are written only when `net.bus_geodata` holds plausible WGS84 values.
+customer map names the customer. Coordinates are written only when `net.bus["geo"]` (pandapower 3's
+GeoJSON points) holds plausible WGS84 values.
 
 `customer_map` gives, per load index, the contract's customer columns (`customer_id`, `fuse_a`,
 `phase`, `footprint_m2`, `annual_kwh`). A pandapower load carries none of them; without a map the
@@ -29,11 +30,13 @@ Electrical data are written as they are in the network, so the built network is 
   build.py takes a library type's own values over the given ones;
 - the transformer's tap is written as the contract's position (steps of 2.5 % on the HV side,
   -2..2, neutral 0) that gives the same ratio, whatever the network's neutral, step and side; a
-  ratio the contract cannot give is an error.
+  ratio the contract cannot give is an error. As in pandapower 3, a transformer without a
+  `tap_changer_type` has no tap changer, and so is at neutral.
 """
 
 from __future__ import annotations
 
+import json
 import math
 from typing import Any, Mapping
 
@@ -150,17 +153,27 @@ def transformer_id(net, trafo_idx: int = 0) -> str | None:
 def contract_tap(trafo) -> int:
     """The contract's tap position with the transformer's voltage ratio: its offset from neutral
     in the network's own steps and side, as a whole number of 2.5 % steps on the HV side. A tap
-    pandapower itself ignores (no position, step, neutral or side) is 0."""
+    pandapower itself ignores (no tap changer type, position, step, neutral or side) is 0.
+
+    pandapower 3 applies a tap only through `tap_changer_type`: "Ratio" changes the ratio, while
+    "Symmetrical" and "Ideal" shift the phase as well. A network from before pandapower 3 has
+    `tap_phase_shifter` instead, which pandapower still reads when the type column is missing."""
     def num(key: str) -> float:
         value = trafo.get(key)
         return float(value) if value is not None and pd.notna(value) else math.nan
 
     pos, neutral, step = num("tap_pos"), num("tap_neutral"), num("tap_step_percent")
     side = trafo.get("tap_side")
+    typed = "tap_changer_type" in trafo.index if hasattr(trafo, "index") else "tap_changer_type" in trafo
+    changer = trafo.get("tap_changer_type") if typed else None
+    changer = changer if isinstance(changer, str) and changer else None
+    if typed and changer is None:
+        return 0                                           # no tap changer: pandapower applies no tap
     if any(math.isnan(v) for v in (pos, neutral, step)) or pos == neutral or step == 0.0 or side not in ("hv", "lv"):
         return 0                                           # at neutral, or a tap pandapower does not apply
     degree = num("tap_step_degree")
-    if bool(trafo.get("tap_phase_shifter", False)) or (not math.isnan(degree) and degree != 0.0):
+    shifts = changer != "Ratio" if typed else bool(trafo.get("tap_phase_shifter", False))
+    if shifts or (not math.isnan(degree) and degree != 0.0):
         raise ContractError("the transformer's tap changer shifts the phase, which the contract cannot express")
     offset = (pos - neutral) * step / 100.0
     # a tap on the LV winding raises its voltage, which lowers the ratio
@@ -230,14 +243,47 @@ def _name(value, fallback: str) -> str:
     return str(value) if isinstance(value, str) and value.strip() else fallback
 
 
+def geojson_coords(value):
+    """The `coordinates` of a pandapower 3 `geo` value (GeoJSON text, or the dict it parses to),
+    or None when it holds none."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return None
+    return value.get("coordinates") if isinstance(value, dict) else None
+
+
+def geo_point(value) -> tuple[float, float] | None:
+    """The first finite point of a `geo` value: a Point's own, a LineString's first."""
+    c = geojson_coords(value)
+    if isinstance(c, (list, tuple)) and c and isinstance(c[0], (list, tuple)):
+        c = c[0]
+    if isinstance(c, (list, tuple)) and len(c) >= 2:
+        try:
+            x, y = float(c[0]), float(c[1])
+        except (TypeError, ValueError):
+            return None
+        if math.isfinite(x) and math.isfinite(y):
+            return x, y
+    return None
+
+
+def point_geojson(x: float, y: float) -> str:
+    """A GeoJSON Point as pandapower 3 keeps it in a `geo` column."""
+    return json.dumps({"coordinates": [float(x), float(y)], "type": "Point"})
+
+
 def _lonlat(net) -> tuple[dict[int, float], dict[int, float]] | None:
-    geo = getattr(net, "bus_geodata", None)
-    if geo is None or not len(geo) or not {"x", "y"} <= set(geo.columns):
+    if "geo" not in net.bus.columns:
         return None
-    x, y = geo["x"].astype(float), geo["y"].astype(float)
-    if not (x.between(-180, 180).all() and y.between(-90, 90).all()):
+    points = {int(i): geo_point(v) for i, v in net.bus["geo"].items()}
+    points = {i: p for i, p in points.items() if p is not None}
+    if not points:
         return None
-    return {int(i): float(v) for i, v in x.items()}, {int(i): float(v) for i, v in y.items()}
+    if not all(-180 <= x <= 180 and -90 <= y <= 90 for x, y in points.values()):
+        return None
+    return {i: p[0] for i, p in points.items()}, {i: p[1] for i, p in points.items()}
 
 
 @memo(maxsize=1)

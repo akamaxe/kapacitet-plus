@@ -8,6 +8,7 @@ houses, plus an MV customer that belongs to no station. Nothing here needs the p
 
 from __future__ import annotations
 
+import copy
 import shutil
 import warnings
 
@@ -120,7 +121,7 @@ def test_the_engine_solves_the_station_as_pandapower_solves_the_cgmes_network(tm
     res = model.solve(p_kw, q_kvar, vm_slack=1.0)
     vm = np.abs(res.v[model.cust_bus_row])
 
-    src = conversion.net.deepcopy()
+    src = copy.deepcopy(conversion.net)
     load_of = {mrid_key(m): i for i, m in src.load["origin_id"].items()}
     rows = [load_of[mrid_key(m)] for m in fx.mapping["energyconsumer_mrid"]]
     built = model.pf.net
@@ -166,9 +167,12 @@ def test_a_mapping_row_for_no_consumer_is_noted(tmp_path):
 def test_a_second_transformer_on_the_same_lv_network_and_consumers_no_station_reaches(tiny):
     fx, conversion = tiny
     mapping = read_mapping(fx.mapping_file)
-    net = conversion.net.deepcopy()
+    net = copy.deepcopy(conversion.net)
     k1 = int(net.bus.index[net.bus["origin_id"] == fx.nodes["K1"]][0])
     hv = int(net.trafo.at[0, "hv_bus"])
+    # pandapower 3's converter leaves nullable-boolean flags that create_transformer cannot extend
+    flags = [c for c in net.trafo.columns if str(net.trafo[c].dtype) == "boolean"]
+    net.trafo[flags] = net.trafo[flags].fillna(False).astype(bool)
     pp.create_transformer(net, hv, k1, "0.4 MVA 10/0.4 kV", name="T2")
     net.trafo.loc[1, "origin_id"] = "_t2"
     out, overall = stations(net, mapping)
@@ -176,7 +180,7 @@ def test_a_second_transformer_on_the_same_lv_network_and_consumers_no_station_re
         [("cim_shared_island", "_t2"), ("cim_shared_island", fx.trafo)]
     assert all(st.tables is None for st in out) and not overall.findings
 
-    net = conversion.net.deepcopy()
+    net = copy.deepcopy(conversion.net)
     f2 = net.switch.index[net.switch["element"] == int(net.bus.index[net.bus["name"] == "Feeder 2 head"][0])]
     net.switch.loc[f2, "closed"] = False                                   # feeder 2's fuse taken out
     [st], overall = stations(net, mapping)

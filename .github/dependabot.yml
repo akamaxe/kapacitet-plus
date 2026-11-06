@@ -35,23 +35,18 @@ updates:
       python-minor:
         patterns: ["*"]
         update-types: [minor, patch]
-    # the ceilings constraints.txt explains: pandapower 2.14 predates numpy 2 and supports scipy
-    # below 1.14 only, pandas 3's copy-on-write breaks how it writes results, and pandapower 3 is a
-    # migration of its own
-    # and cvxpy 1.8 onwards requires numpy 2
+    # the ceilings constraints.txt explains, all set by pandapower 3.5: it declares numpy below
+    # 2.5 and pandas ~=2.3 (pandas 3's copy-on-write breaks how it writes results), and its next
+    # major is a migration of its own, as 2.14 to 3 was
     ignore:
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
       - dependency-name: numpy
-        versions: [">=2"]
-      - dependency-name: cvxpy
-        versions: [">=1.8"]
-      - dependency-name: scipy
-        versions: [">=1.14"]
+        versions: [">=2.5"]
       - dependency-name: pandas
         versions: [">=3"]
       - dependency-name: pandapower
-        versions: [">=3"]
+        versions: [">=4"]
 
   - package-ecosystem: docker
     directory: /

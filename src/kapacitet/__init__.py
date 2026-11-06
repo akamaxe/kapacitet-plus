@@ -5,8 +5,6 @@ Dynamic Operating Envelopes (DOE) on a synthetic LV grid built on real OpenStree
 buildings, driven by real SMHI weather and SE3 spot prices.
 """
 
-from . import _compat  # noqa: F401  (NumPy 2.x aliases for pandapower 2.14; must run first)
-
 from importlib.metadata import PackageNotFoundError, version
 
 try:  # one source of truth: the version in pyproject.toml, as installed

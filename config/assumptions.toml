@@ -446,15 +446,15 @@ note = "A Dyn transformer keeps zero-sequence current on the LV side, so this ra
 note_sv = "En Dyn-transformator håller kvar nollföljdsströmmen på lågspänningssidan, så förhållandet avgör hur styv den vägen är."
 
 [trafo_mag0_percent]
-value = 100.0
+value = 10000.0
 unit = "%"
 tag = "team-assumption"
 label = "Zero-sequence magnetising impedance of the transformer, over its short-circuit impedance"
 label_sv = "Transformatorns magnetiseringsimpedans i nollföljd, i förhållande till dess kortslutningsimpedans"
-source = "Set high on purpose, so the delta winding provides the zero-sequence path and the magnetising branch does not"
-url = ""
-note = "pandapower's split of the zero-sequence impedance between windings (si0_hv_partial) is kept at the 0.9 its own Dyn examples use."
-note_sv = "Fördelningen av nollföljdsimpedansen mellan lindningarna i pandapower (si0_hv_partial) hålls kvar på de 0,9 som bibliotekets egna Dyn-exempel använder."
+source = "Set high on purpose (100 times the short-circuit impedance), so the delta winding provides the zero-sequence path and the magnetising branch does not"
+url = "https://pandapower.readthedocs.io/en/latest/elements/trafo.html"
+note = "pandapower's split of the zero-sequence impedance between windings (si0_hv_partial) is kept at the 0.9 its own Dyn examples use. pandapower 2.14 read mag0_percent as a plain ratio and pandapower 3 reads it as a percentage, so the 100 of before is 10 000 % now: the same impedance."
+note_sv = "Fördelningen av nollföljdsimpedansen mellan lindningarna i pandapower (si0_hv_partial) hålls kvar på de 0,9 som bibliotekets egna Dyn-exempel använder. pandapower 2.14 läste mag0_percent som ett rent förhållande och pandapower 3 läser det som procent, så tidigare 100 är nu 10 000 %: samma impedans."
 
 # ---------------------------------------------------------------- households
 [household_kwh_per_year]

@@ -81,6 +81,7 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         vkr_percent=_get(trafo_in, "vkr_percent", 1.325, note, "transformer vkr assumed"),
         pfe_kw=0.95, i0_percent=0.2375, shift_degree=150, name="T1",
         tap_side="hv", tap_neutral=0, tap_min=-2, tap_max=2, tap_step_percent=2.5,
+        tap_changer_type="Ratio",                  # pandapower 3 applies no tap without one
         tap_pos=int(trafo_in.get("tap_pos") or 0))
 
     line_rows = _create_lines(net, lines_in, index, note)

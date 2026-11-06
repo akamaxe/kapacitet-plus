@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib
 import json
 import re
+from pathlib import Path
 
 import pandapower as pp
 import pytest
@@ -200,3 +201,20 @@ def test_the_built_network_loads_and_holds_only_the_allowed_objects():
     assert pairs <= NET_JSON_OBJECTS
     net = load_net()
     assert len(net.bus) > 0 and len(net.trafo) == 1
+
+
+def test_a_network_pandapower_2_14_wrote_loads_as_pandapower_3_reads_it(no_imports):
+    """The data bundles published before the move to pandapower 3 hold net.json files 2.14 wrote
+    (tests/fixtures/net_pandapower_2_14.json is one, a tap above neutral and bus coordinates). The
+    checked load converts them: the tap keeps its ratio through `tap_changer_type`, the coordinates
+    move into the bus table's `geo`, and the flow is the one pandapower 2.14 solved."""
+    from kapacitet.importer.from_pandapower import geo_point
+
+    path = Path(__file__).parent / "fixtures" / "net_pandapower_2_14.json"
+    check_net_json(json.loads(path.read_text(encoding="utf-8")), path.name)
+    net = safe_load_net(path)
+    assert net.trafo.at[0, "tap_changer_type"] == "Ratio" and net.trafo.at[0, "tap_pos"] == 1
+    assert "bus_geodata" not in net and geo_point(net.bus.at[2, "geo"]) == (17.951, 59.331)
+    pp.runpp(net, calculate_voltage_angles=False)
+    # what pandapower 2.14.10 solved for the same file, before it was written
+    assert net.res_bus.vm_pu.round(9).tolist() == [1.0, 0.974552166, 0.962038354]

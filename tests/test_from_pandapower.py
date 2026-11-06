@@ -14,7 +14,7 @@ import pytest
 
 from kapacitet.importer.build import build_from_export
 from kapacitet.importer.from_pandapower import (ContractError, contract_tables, contract_tap, transformer_id,
-                                                write_contract)
+                                                write_contract, point_geojson)
 from kapacitet.importer.validate import ERROR, read_export, validate
 
 warnings.filterwarnings("ignore")
@@ -117,9 +117,17 @@ def test_a_tap_pandapower_ignores_is_neutral_and_a_phase_shifting_one_is_refused
     assert contract_tap(net.trafo.loc[0]) == 0
     trafo = pn.kb_extrem_dorfnetz().trafo.loc[0].copy()
     trafo["tap_pos"] = 1
-    trafo["tap_phase_shifter"] = True
+    assert contract_tap(trafo) == 1
+    for shifter in ("Ideal", "Symmetrical"):                        # pandapower 3's phase shifters
+        trafo["tap_changer_type"] = shifter
+        with pytest.raises(ContractError, match="phase"):
+            contract_tap(trafo)
+    trafo["tap_changer_type"] = None                                 # no tap changer: at neutral
+    assert contract_tap(trafo) == 0
+    old = trafo.drop("tap_changer_type")                             # a network from before pandapower 3
+    old["tap_phase_shifter"] = True
     with pytest.raises(ContractError, match="phase"):
-        contract_tap(trafo)
+        contract_tap(old)
 
 
 def test_the_transformers_own_id_is_kept():
@@ -183,12 +191,10 @@ def test_without_a_map_the_missing_fuse_is_reported_by_the_check():
 def test_coordinates_only_when_they_are_wgs84():
     net = pn.kb_extrem_landnetz_kabel_trafo()
     assert "lon" not in contract_tables(net, 0, _map(net))["buses"].columns
-    net.bus_geodata = net.bus_geodata.reindex(net.bus.index)
-    net.bus_geodata["x"] = 17.9 + np.arange(len(net.bus)) * 1e-4
-    net.bus_geodata["y"] = 59.3
+    net.bus["geo"] = [point_geojson(17.9 + i * 1e-4, 59.3) for i in range(len(net.bus))]
     buses = contract_tables(net, 0, _map(net))["buses"]
     assert buses["lon"].between(17.9, 18.0).all() and (buses["lat"] == 59.3).all()
-    net.bus_geodata["x"] = 650000.0                                 # projected metres are not written
+    net.bus["geo"] = [point_geojson(650000.0, 59.3) for _ in range(len(net.bus))]   # projected metres are not written
     assert "lon" not in contract_tables(net, 0, _map(net))["buses"].columns
 
 
