@@ -844,6 +844,29 @@ url = ""
 note = "Applied in the published and the issued day-ahead figures. The bound stays empirical: every issue counts the hours the year still came in under it."
 note_sv = "Används både i de publicerade och i de utfärdade siffrorna för dagen före. Gränsen förblir empirisk: varje utfärdande räknar de timmar då året ändå låg under den."
 
+# ---------------------------------------------------------------- envelopes re-issued during the day
+[intraday_gates_h]
+value = [6, 9, 12, 15, 18]
+unit = "h, local standard time (UTC+1)"
+tag = "team-assumption"
+label = "Hours of the day at which the envelopes are re-issued with the latest measurements"
+label_sv = "Timmar på dygnet då exportgränserna utfärdas på nytt med de senaste mätningarna"
+source = "Modelling assumption: five gates spanning the hours with solar, between the day-ahead issue and the evening"
+url = ""
+note = "Used by the intraday replica (intraday.json) only; a gate at hour g sets the envelopes from hour g to the end of the day, and before the first gate the day-ahead envelope holds. The published envelopes stay on perfect foresight and the issued ones on the day-ahead basis."
+note_sv = "Används bara av efterhandsrepliken under dygnet (intraday.json); en tidpunkt g sätter exportgränserna från timme g till dygnets slut, och före den första gäller gränsen från dagen före. De publicerade exportgränserna bygger fortfarande på perfekt framförhållning och de utfärdade på dagen före."
+
+[intraday_measurement_lag_h]
+value = 1
+unit = "h"
+tag = "team-assumption"
+label = "Delay before a metered hour reaches the intraday re-issue"
+label_sv = "Fördröjning innan en mätt timme når omutfärdandet under dygnet"
+source = "Modelling assumption: hourly meter values collected within the next hour"
+url = ""
+note = "At a gate at hour g the last measured hour is g − 1 − this delay; the replay never reads a later hour of the replayed day."
+note_sv = "Vid tidpunkten g är den senast mätta timmen g − 1 − denna fördröjning; uppspelningen läser aldrig en senare timme av det uppspelade dygnet."
+
 # ---------------------------------------------------------------- the static reference
 [static_pv_factor]
 value = 1.0

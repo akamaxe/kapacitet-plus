@@ -384,14 +384,14 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
     return per_order, summary
 
 
-EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "mvband", "foresight", "overinstallation",
-                "consumption", "phases", "validation", "protection", "operation")
+EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "mvband", "foresight", "intraday",
+                "overinstallation", "consumption", "phases", "validation", "protection", "operation")
 
 
 def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] | None = None,
                   workers: int = 4) -> None:
     """Stages that build on the showcase: request baselines, 2030 scenarios, tornado, MV band,
-    foresight, over-installation, consumption capacity, validation. `only` runs a subset of
+    foresight, the intraday replica, over-installation, consumption capacity, validation. `only` runs a subset of
     EXTRA_STAGES and leaves meta.json alone.
 
     Heavy stages use `workers` processes (4 fits next to a desktop session in 16 GB).
@@ -423,6 +423,9 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
     if want("foresight"):
         run_extra.foresight(years, z_star, workers=workers)
         log.info("foresight done (%.0f s)", time.perf_counter() - t0)
+    if want("intraday"):
+        run_extra.intraday(years, z_star, workers=workers)
+        log.info("intraday replica done (%.0f s)", time.perf_counter() - t0)
     if want("overinstallation"):
         run_extra.overinstallation(workers=workers)
         log.info("over-installation done (%.0f s)", time.perf_counter() - t0)

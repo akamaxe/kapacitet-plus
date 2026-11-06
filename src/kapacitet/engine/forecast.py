@@ -80,6 +80,9 @@ class Issued:
     # hours the envelopes broke a limit beyond the firm state against the planning state they
     # were allocated on, every hour of the year solved (doe.verify_full_year); None unchecked
     planning_full_year_violations: int | None = None
+    # limited hours in which the real state with nobody curtailed breaks no export-side limit
+    # (a full nonlinear solve of those hours); None unchecked
+    unnecessary_hours: int | None = None
     # (N,) kWh curtailed per non-firm customer, in the order issued; not part of the payload
     curtailed_by_customer: np.ndarray | None = field(default=None, repr=False, compare=False)
 
@@ -304,8 +307,11 @@ def planning_state(scheme: str, year: int, pv_mask: np.ndarray, hp: np.ndarray, 
         return persistence(year, pv_mask, hp, ev)
     if scheme == "foresight":
         return actual
-    raise ValueError(f"{scheme!r} issues no envelope; expected climatological, persistence "
-                     f"or foresight")
+    if scheme == "intraday":
+        from . import intraday
+        return intraday.planning_state(year, pv_mask, hp, ev, window_days)
+    raise ValueError(f"{scheme!r} issues no envelope; expected climatological, persistence, "
+                     f"intraday or foresight")
 
 
 def forecast_error(actual: dict[str, np.ndarray], predicted: dict[str, np.ndarray]) -> dict:
@@ -421,7 +427,9 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
     critical hours and reality is checked through the linear screen.
 
     Either way the issue audits its own premise: `exceedance` (`plan_exceedance`) counts where
-    what happened beat the planning state, which is how a state issued ahead can fail.
+    what happened beat the planning state, which is how a state issued ahead can fail. With
+    `check_safety` it also counts the activations nothing needed (`unnecessary_hours`): hours
+    somebody was cut although the real state, nobody cut, breaks no export-side limit.
     """
     r = doe.compute(model, planning, nonfirm, policy=policy, verify="full" if check_safety else "critical")
     H = actual["p_net"].shape[1]
@@ -442,6 +450,15 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
 
     curtailed = desired - granted
     export = float(desired.sum())
+    limited = curtailed.sum(axis=0) > 1e-3
+    unnecessary = None
+    if check_safety:
+        unnecessary = 0
+        hrs = np.flatnonzero(limited)
+        if len(hrs):
+            pa = np.asarray(actual["p_net"], dtype=float)[:, hrs]
+            v = model.violations(model.solve(pa, np.asarray(actual["q"], dtype=float)[:, hrs]), pa)
+            unnecessary = int((~v.export_side & ~v.nonconverged).sum())
     return Issued(
         scheme=scheme,
         critical_hours=int(len(r.hours)),
@@ -449,9 +466,10 @@ def issue(model: NetModel, planning: dict[str, np.ndarray], actual: dict[str, np
         curtailed_kwh=float(curtailed.sum()),
         curtailed_share_pct=float(curtailed.sum() / export * 100.0) if export else 0.0,
         export_kwh=export,
-        hours_limited=int((curtailed.sum(axis=0) > 1e-3).sum()),
+        hours_limited=int(limited.sum()),
         exceedance=plan_exceedance(planning, actual, nonfirm),
         planning_full_year_violations=r.full_year_violations,
+        unnecessary_hours=unnecessary,
         curtailed_by_customer=curtailed.sum(axis=1),
     )
 
@@ -481,6 +499,9 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
     Every year issued against a planning state carries its audit (`plan_exceedance`) in
     `per_year`, and `exceedance` adds them up; the static rung issues nothing, so has none.
 
+    `hours_limited` adds up the hours somebody was cut; with `check_safety`, `unnecessary_hours`
+    the ones among them the real state did not need (`Issued.unnecessary_hours`), else None.
+
     Both bases of the budget come from the same run, as in `run.curtailment`: `z_pct` is the
     aggregate share, `z_customer_max_pct` the highest share of one installation over the years
     and `z_customer_year_max_pct` its highest in one year, with the energies in `per_customer`.
@@ -491,6 +512,8 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
     curt = pot = 0.0
     violations = 0
     planning = 0 if check_safety else None
+    limited = 0
+    unnecessary = 0 if check_safety and scheme != "static" else None
     per_year = []
     cust_curt, cust_pot, year_max = np.zeros(len(nf)), np.zeros(len(nf)), np.zeros(len(nf))
     for y in years:
@@ -498,7 +521,8 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
         pot_y = float(actual["pv"][nf].sum())
         if len(nf) == 0:
             per_year.append({"year": y, "curtailed_kwh": 0.0, "potential_kwh": pot_y,
-                             "violation_hours": 0, "exceedance": None})
+                             "violation_hours": 0, "exceedance": None,
+                             "hours_limited": 0, "unnecessary_hours": 0 if unnecessary is not None else None})
             continue
         if scheme == "static":
             p_s, q_s = _static_snapshot(order, ms, C)
@@ -508,13 +532,17 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
             c_y, c_c = float(cut.sum()), cut.astype(float).sum(axis=1)
             v_y = 0                     # worst-case feasible by construction
             ex_y = None
+            l_y, u_y = int((cut.sum(axis=0) > 1e-3).sum()), None
         else:
             plan = planning_state(scheme, y, pvm, hp, ev, actual, window_days)
             r = issue(model, plan, actual, nf, scheme, policy=policy, check_safety=check_safety)
             c_y, v_y, ex_y = r.curtailed_kwh, r.violation_hours, r.exceedance
+            l_y, u_y = r.hours_limited, r.unnecessary_hours
             c_c = np.asarray(r.curtailed_by_customer, dtype=float)
             if planning is not None:
                 planning += r.planning_full_year_violations
+            if unnecessary is not None:
+                unnecessary += u_y
         p_c = actual["pv"][nf].astype(float).sum(axis=1)
         year_max = np.maximum(year_max, share_pct(c_c, p_c))
         cust_curt += c_c
@@ -522,8 +550,10 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
         curt += c_y
         pot += pot_y
         violations += v_y
+        limited += l_y
         per_year.append({"year": y, "curtailed_kwh": c_y, "potential_kwh": pot_y,
-                         "violation_hours": v_y, "exceedance": ex_y})
+                         "violation_hours": v_y, "exceedance": ex_y,
+                         "hours_limited": l_y, "unnecessary_hours": u_y})
     cust_share = share_pct(cust_curt, cust_pot)
     return {"scheme": scheme, "adopters": int(k), "non_firm": int(len(nf)),
             "curtailed_kwh": curt, "potential_kwh": pot,
@@ -532,6 +562,7 @@ def multiyear(model: NetModel, order: np.ndarray, ms: int, k: int, years, hp: np
             "z_customer_year_max_pct": float(year_max.max()) if len(nf) else 0.0,
             "violation_hours": violations if (check_safety or scheme != "static") else 0,
             "planning_full_year_violations": planning,
+            "hours_limited": limited, "unnecessary_hours": unnecessary,
             "exceedance": total_exceedance([p["exceedance"] for p in per_year]),
             "per_year": per_year,
             "per_customer": {"curtailed_kwh": cust_curt, "potential_kwh": cust_pot, "share_pct": cust_share,
@@ -557,8 +588,9 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
     energy to `z_star`, "installation" each one's own share over the years. Every count the
     search runs goes into `memo` (count -> `multiyear`), which carries both shares, so a second
     search on the other basis, given the same memo, pays only for the counts the first did not
-    measure. The memo is keyed by (scheme, window_days, policy, count), so a memo passed to
-    searches of another configuration never hands one of them the other's runs.
+    measure. The memo is keyed by (scheme, window_days, policy, count), and for "intraday" by its
+    gates and lag as well, so a memo passed to searches of another configuration never hands one
+    of them the other's runs.
 
     `lo` is where the search starts: the published one passes the time-series capacity, the
     count that needs no curtailment with perfect foresight. A planning state issued ahead can
@@ -577,11 +609,16 @@ def adopters(model: NetModel, order: np.ndarray, ms: int, lo: int, years, hp: np
         raise ValueError(f"budget must be one of {BUDGETS}, not {budget!r}")
     share = _SHARE[budget]
     runs = {} if memo is None else memo
+    if scheme == "intraday":
+        from . import intraday
+        extra = intraday.memo_key()
+    else:
+        extra = ()
 
     def ok(k: int) -> bool:
         if k == int(ms):
             return True                 # nobody holds an envelope, so nobody is curtailed
-        key = (scheme, int(window_days), policy, int(k))
+        key = (scheme, int(window_days), policy, *extra, int(k))
         if key not in runs:
             runs[key] = multiyear(model, order, ms, k, years, hp, ev, scheme,
                                   window_days=window_days, policy=policy)

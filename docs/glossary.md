@@ -38,6 +38,7 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | adoption order | anslutningsordning | the order in which houses add solar |
 | weather year, reference year | väderår, referensår | |
 | spot price, day-ahead | spotpris, dagen före | |
+| re-issued during the day (intraday), gate | utfärdat på nytt under dygnet, tidpunkt | envelopes re-planned at fixed hours with the latest meter readings |
 | forecast, perfect foresight | prognos, perfekt framförhållning | |
 | reinforcement | förstärkning | |
 | audit trail, annual report | granskningsspår, årsrapport | not årsredovisning, which reads as a company's accounts |

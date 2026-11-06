@@ -931,6 +931,21 @@ better than the climatological extreme, so the honest reading is a bracket: the 
 figure is what a perfect forecast buys, this one is what no forecast at all still carries
 (about what the hourly study already allows), and an operator lands between them.
 
+`compute --stage extra --only intraday` measures one step past the day-ahead bound without a
+weather forecast: an after-the-fact replica in which the day-ahead envelopes are re-issued at
+fixed gates of the day (`intraday_gates_h`, 06–18 local standard time by default) with the
+meter readings as they would have arrived (`intraday_measurement_lag_h` late). At each gate the
+rest of the day is planned from the last reading plus the largest change the other weather
+years showed over the same horizon, hour of the day and fortnight, never above the day-ahead
+plan and with the same 3 % margins. Every year is then replayed against what happened with a
+full nonlinear solve, and the same capacity search runs on that basis. `intraday.json` holds
+the capacity per adoption order on both budget bases, the audit of the hours past the plan,
+the limited hours nothing needed, and a scorecard against the replica's thresholds (no hour
+above a limit, every agreement within 3 % per installation, at least 15 % over the hourly
+study), each marked pass or fail; the Method screen reads it. Nothing is written unless every
+envelope held in every replayed hour. The measured solar is the available output, so the
+replica assumes a limited inverter still reports what it could have produced.
+
 ## Limitations
 
 Stated openly on the Method screen and repeated here: the published envelopes use perfect

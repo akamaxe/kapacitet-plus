@@ -177,6 +177,7 @@ _WRITTEN_BY = {
     "tornado.json": "compute --stage extra --only tornado",
     "mv_band.json": "compute --stage extra --only mvband",
     "foresight.json": "compute --stage extra --only foresight",
+    "intraday.json": "compute --stage extra --only intraday",
     "overinstallation.json": "compute --stage extra --only overinstallation",
     "consumption.json": "compute --stage extra --only consumption",
     "phases.json": "compute --stage extra --only phases",
@@ -818,7 +819,7 @@ def hosting_summary() -> dict:
     names = ["hosting_summary.json", "zcurve.json", "nodal.json"]
     out = {"summary": result("hosting_summary.json"), "curve": result("zcurve.json"), "nodal": result("nodal.json")}
     # each optional part is left out until its stage has run, and the screens say which one to run
-    for name in ("tornado.json", "foresight.json", "mv_band.json", "consumption.json"):
+    for name in ("tornado.json", "foresight.json", "intraday.json", "mv_band.json", "consumption.json"):
         if processed("results", name).exists():
             out[name.split(".")[0]] = result(name)
             names.append(name)

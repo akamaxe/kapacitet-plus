@@ -370,6 +370,153 @@ def foresight(years, z_star: float, window_days: int | None = None, workers: int
              published["doe"] - climatological_kw, sum(r["violation_hours"] for r in rows))
 
 
+# ------------------------------------------------------------------- re-issued during the day
+
+def _intraday_case(args) -> dict:
+    """The capacity one adoption order carries on envelopes re-issued during the day
+    (`intraday.planning_state`), on both bases of the budget from one memo, as `_foresight_case`.
+
+    The search starts at the day-ahead count (`lo`, the time-series count when foresight.json is
+    missing), since the intraday plan is never more pessimistic than the day-ahead one, and stops
+    at the perfect-foresight count (`hi`): a plan the year beats can carry more on paper only by
+    breaking limits, which the replay would then count.
+    """
+    warnings.filterwarnings("ignore")
+    o, ms, mts, yd, yd_i, lo, lo_i, years, z_star, window = args
+    from . import forecast
+    from .run import background_masks, model, within_pct
+    m = model()
+    hp, ev = background_masks(m.C)
+    order = adoption_order(o, m.C)
+    cap = doe.customer_caps()
+    t0 = time.perf_counter()
+    runs: dict[tuple, dict] = {}
+    k, det = forecast.adopters(m, order, ms, min(lo, yd), years, hp, ev, "intraday", z_star,
+                               window_days=window, hi=yd, memo=runs)
+    if det["z_customer_max_pct"] <= z_star and k <= yd_i:
+        k_i, det_i = k, det
+    else:
+        hi_i = min(k, yd_i)
+        k_i, det_i = forecast.adopters(m, order, ms, min(lo_i, hi_i), years, hp, ev, "intraday", z_star,
+                                       window_days=window, hi=hi_i, budget="installation", memo=runs)
+
+    def row(kk: int, d: dict) -> dict:
+        return {"adopters": int(kk), "kw_ac": float(cap[order[:kk]].sum()),
+                "z_pct": d["z_pct"], "z_customer_max_pct": d["z_customer_max_pct"],
+                "z_customer_year_max_pct": d["z_customer_year_max_pct"],
+                "agreements_within_pct": within_pct(d, z_star),
+                "violation_hours": d["violation_hours"],
+                "planning_full_year_violations": d["planning_full_year_violations"],
+                "hours_limited": d["hours_limited"], "unnecessary_hours": d["unnecessary_hours"],
+                "exceedance": d["exceedance"]}
+
+    return {"order": o, **row(k, det), "installation": row(k_i, det_i),
+            "timeseries_adopters": int(mts), "dayahead_adopters": int(lo),
+            "exceedance_per_year": [{"year": p["year"], **p["exceedance"]} for p in det["per_year"] if p["exceedance"]],
+            "seconds": time.perf_counter() - t0}
+
+
+def intraday(years, z_star: float, window_days: int | None = None, workers: int = 4) -> dict:
+    """The after-the-fact replica: day-ahead envelopes re-issued at the intraday gates with the
+    measurements as they would have arrived (`engine/intraday.py`), every year replayed.
+
+    The capacity search is the day-ahead one (`forecast.adopters`) on the intraday basis, on both
+    bases of the budget, over the adoption orders of hosting_summary.json. At the count it settles
+    on, every year is replayed with a full nonlinear solve against the real state: the violation
+    hours, the full-year check against the planning states, the audit of where the year beat the
+    plan (`forecast.plan_exceedance`) and the activations nothing needed. Nothing is written unless
+    every envelope held in every hour (`doe.require_verified`).
+
+    `scorecard` judges the replica against `intraday.REPLICA_THRESHOLDS` on each basis: no violation
+    hour, the agreements inside the budget per installation, and the capacity over the hourly study.
+    """
+    from concurrent.futures import ProcessPoolExecutor
+
+    from . import forecast
+    from . import intraday as intra
+    from .run import _init_worker, background_masks, spread
+    window = forecast.WINDOW_DAYS if window_days is None else window_days
+    gates, lag = intra.gates_and_lag()
+    summary = json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8"))
+    fs_path = processed("results", "foresight.json")
+    fs = json.loads(fs_path.read_text(encoding="utf-8")) if fs_path.exists() else None
+    fs_by = {r["order"]: r for r in fs["per_order"]} if fs else {}
+    installation = lambda r: r.get("doe_installation", r["doe"])
+    jobs = []
+    for r in summary["per_order"]:
+        mts = r["timeseries"]["adopters"]
+        da = fs_by.get(r["order"])
+        lo = da["adopters"] if da else mts
+        lo_i = da["installation"]["adopters"] if da and "installation" in da else mts
+        jobs.append((r["order"], r["static"]["adopters"], mts, r["doe"]["adopters"], installation(r)["adopters"],
+                     lo, lo_i, tuple(years), z_star, window))
+    with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
+        rows = list(ex.map(_intraday_case, jobs))
+
+    med = lambda xs: float(np.median(xs))
+    by_order = {r["order"]: r for r in rows}
+    hourly = med([r["timeseries"]["kw_ac"] for r in summary["per_order"]])
+    published = {"timeseries": hourly, "doe": med([r["doe"]["kw_ac"] for r in summary["per_order"]]),
+                 "doe_installation": med([installation(r)["kw_ac"] for r in summary["per_order"]])}
+    dayahead = ({"aggregate": fs["median_kw"].get("climatological"),
+                 "installation": fs.get("installation", {}).get("median_kw", {}).get("climatological")}
+                if fs else None)
+
+    def basis(name: str, rs: list[dict]) -> dict:
+        kw = med([r["kw_ac"] for r in rs])
+        violations = int(sum(r["violation_hours"] for r in rs))
+        share = "z_pct" if name == "aggregate" else "z_customer_max_pct"
+        return {
+            "budget_basis": name,
+            "median_kw": kw, "kw_ac_stats": spread([r["kw_ac"] for r in rs]),
+            "median_adopters": med([r["adopters"] for r in rs]),
+            "within_budget_orders": int(sum(r[share] <= z_star + 1e-9 for r in rs)),
+            "violation_hours": violations,
+            "planning_full_year_violations": int(sum(r["planning_full_year_violations"] for r in rs)),
+            "hours_limited": int(sum(r["hours_limited"] for r in rs)),
+            "unnecessary_hours": int(sum(r["unnecessary_hours"] for r in rs)),
+            "agreements_within_pct": spread([r["agreements_within_pct"] for r in rs]),
+            "plan_exceedance": forecast.total_exceedance([r["exceedance"] for r in rs]),
+            "scorecard": intra.scorecard(kw, hourly, violations, [r["agreements_within_pct"] for r in rs]),
+        }
+
+    agg = basis("aggregate", rows)
+    inst = basis("installation", [r["installation"] for r in rows])
+    by_year = {y: forecast.total_exceedance([next((p for p in r["exceedance_per_year"] if p["year"] == y), None)
+                                             for r in rows]) for y in years}
+    per_order = []
+    for r in summary["per_order"]:
+        row = {k: v for k, v in by_order[r["order"]].items() if k != "exceedance_per_year"}
+        da = fs_by.get(r["order"])
+        per_order.append({**row, "timeseries_kw": r["timeseries"]["kw_ac"], "doe_kw": r["doe"]["kw_ac"],
+                          "dayahead_kw": da["kw_ac"] if da else None})
+    pv_margin, load_margin = forecast.day_ahead_margins()
+    out = {
+        "years": list(years), "z_star_pct": z_star, "window_days": window,
+        "gates_h": list(gates), "measurement_lag_h": lag,
+        "margins": {"pv_pct": round(pv_margin * 100.0, 6), "load_pct": round(load_margin * 100.0, 6)},
+        "n_orders": len(rows), "thresholds": dict(intra.REPLICA_THRESHOLDS),
+        # the top level holds the aggregate share to the budget (the headline's basis)
+        **agg,
+        "installation": inst,
+        "median_kw_reference": {**published, "dayahead": dayahead},
+        "plan_exceedance_by_year": {str(y): ex for y, ex in by_year.items()},
+        "per_order": per_order,
+    }
+    for b in (agg, inst):
+        sc = b["scorecard"]
+        log.info("intraday (%s budget): %.0f kW against %.0f kW hourly (%+.1f %%), %d violation hours, "
+                 "agreements within the budget %.1f %% at worst, %d of %d limited hours unnecessary; "
+                 "scorecard %s", b["budget_basis"], b["median_kw"], hourly, sc["gain_over_hourly_pct"]["value"] or 0.0,
+                 b["violation_hours"], sc["agreements_within_pct"]["value"], b["unnecessary_hours"],
+                 b["hours_limited"], sc["result"])
+    doe.require_verified(agg["planning_full_year_violations"] + inst["planning_full_year_violations"],
+                         "intraday envelopes against their planning states")
+    doe.require_verified(agg["violation_hours"] + inst["violation_hours"], "intraday replay against the real state")
+    _write("intraday.json", out)
+    return out
+
+
 # ------------------------------------------------------------------- over-installation
 
 def _overinstall_point(args) -> dict:
