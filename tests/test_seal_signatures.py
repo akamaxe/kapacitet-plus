@@ -124,6 +124,20 @@ def test_a_changed_line_or_signature_is_detected_even_with_the_hashes_rebuilt():
     assert seals.verify_chain()["ok"]
 
 
+def test_stripping_every_signature_is_caught_by_the_installation_that_signed():
+    from kapacitet import seals
+
+    for i in range(1, 4):
+        seals.seal("decision", f"d0000000000{i}", {"decision": "firm", "n": i})
+    lines = _read(seals)
+    for e in lines:
+        for k in ("sig", "key_id", "signed_since"):
+            e.pop(k)
+    _write(seals, _rehash(seals, lines))
+    out = seals.verify_chain()
+    assert not out["ok"] and out["reason"] == "unsigned"
+
+
 def test_a_chain_with_legacy_unsigned_lines_verifies_with_a_warning():
     from kapacitet import seals
 
@@ -291,6 +305,7 @@ def test_the_api_publishes_the_key_and_the_ei_pack_carries_it():
     entry = seals.seal("eipack", "dayahead-maxmin-test", {"conditions": []})
     resp = operation._sealed_pack({"conditions": []}, entry, "dayahead", "maxmin")
     body = json.loads(resp.body)
+    assert not any(f in resp.body for f in _secret_forms(seals.signing_key(create=False)))
     assert resp.headers["X-Seal-Key-Id"] == entry["key_id"]
     assert body["seal"]["key"]["public_key"] == key["public_key"] and body["seal"]["line"]["sig"] == entry["sig"]
     assert set(body["seal"]["key"]["how_to_verify"]) == {"en", "sv"}

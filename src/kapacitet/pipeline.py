@@ -544,7 +544,7 @@ def cmd_seals_verify(args: argparse.Namespace) -> None:
                "unknown_key": "signed by a key that is not trusted", "unsigned": "a line has lost its signature"}
         print(f"NOT VALID at line {out['broken_at']}: {why[out['reason']]}")
         sys.exit(1)
-    print("valid")
+    print("valid (key unchecked: pass --key)" if out["trust"] == "folder" and out["signed"] else "valid")
 
 
 def cmd_seals_rotate(args: argparse.Namespace) -> None:

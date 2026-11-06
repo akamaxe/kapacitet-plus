@@ -503,12 +503,38 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     entry["sig"] = _b64(key.sign(_line_message(entry)))
     append_line(_chain_file(), json.dumps(entry, sort_keys=True))
     lines.append(entry)
+    _note_signed(sum(1 for e in lines if e.get("sig")))
     # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
     fp_path = _root() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
     if not fp_path.exists():
         write_json_atomic(fp_path, fp, sort_keys=True)
     _publish_key(key.public_key())
     return entry
+
+
+def _marks_file() -> Path:
+    return key_dir() / "signed_marks.json"
+
+
+def _read_marks() -> dict:
+    try:
+        got = json.loads(_marks_file().read_text(encoding="utf-8"))
+        return got if isinstance(got, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _note_signed(count: int) -> None:
+    """Keep, next to the key and outside the data, how many signed lines this chain has had, so a
+    rewrite that strips every signature (and rebuilds the hashes) is caught by this installation."""
+    marks = _read_marks()
+    name = str(_chain_file())
+    if count > marks.get(name, 0):
+        marks[name] = count
+        try:
+            write_json_atomic(_marks_file(), marks, sort_keys=True)
+        except OSError:
+            pass
 
 
 def _carry_rotations(lines: list[dict], key: Ed25519PrivateKey, fp: dict) -> list[dict]:
@@ -661,6 +687,9 @@ def verify_chain(trusted: dict[str, Ed25519PublicKey] | None = None, require_sig
             signed += 1
             keys.add(kid)
         prev = e["chain"]
+    if source == "installation" and signed < _read_marks().get(str(_chain_file()), 0):
+        # this installation signed more lines than the chain holds now: signatures were stripped
+        return broken(1, "unsigned", signed, legacy, keys)
     warnings = []
     if legacy:
         warnings.append("legacy_unsigned")
