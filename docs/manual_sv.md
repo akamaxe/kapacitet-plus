@@ -246,6 +246,12 @@ Inställningarna är nätbolagets. Varje ändring förseglas. De sparas i `data/
 eller i PostgreSQL när installationen använder en databas. Administratören och beslutsfattaren får
 ändra dem.
 
+Alla inställningar finns samlade under Drift › Inställningar, ordnade efter vad de styr: ansökningarna
+och regeln, exportgränserna och avtalen, marknaden och omdirigeringen, portalen och intygen till Ei.
+Där står varje inställnings värde, vad den betyder och standardvärdet när det skiljer sig, och när
+inställningarna senast ändrades och med vilken roll. De som har en egen kontroll någon annanstans
+visas där med en länk till den:
+
 | Inställning | Var den ändras |
 |---|---|
 | Automatiska beslut, på eller av | Drift › Ansökningar, *Automatiska beslut* |
@@ -254,7 +260,12 @@ eller i PostgreSQL när installationen använder en databas. Administratören oc
 | Importgränsernas fönster | Drift › En dag, blocket *Importgränser för elbilsladdare* |
 | Fördelningsregeln | Årsrapport, *Fördelningsregel* och *Gör den till nätbolagets regel* |
 | Nätbolagets intyg till Ei | Årsrapport › Till Ei, *Det som bara nätbolaget kan intyga* |
-| Regelns trösklar, tiden för marknadsresultatet, den avtalade nivån och de övriga | API:t, `PUT /api/v1/settings` (dokumentationen på `/docs`) |
+| Regelns trösklar, nätet som ansökningar bedöms mot, den avtalade nivån och antalet år som förstärkningen skjuts upp | Drift › Inställningar, grupperna *Ansökningar och regeln* och *Exportgränser och avtal* |
+| Tiden för resultatet från dagen före-marknaden och den utbetalda ersättningen för omdirigering | Drift › Inställningar, gruppen *Marknaden och omdirigering* |
+
+Varje grupp sparas för sig, och bara det som ändrats skickas. En tröskel som lämnas tom följer den
+avtalade nivån. Gränserna för varje fält kommer från servern. Den som inte har rätt roll ser värdena men
+kan inte ändra dem.
 
 Accentfärgen och logotypen har krav som blocket *Portal* anger. Logotypen rensas från text och
 metadata innan den sparas.

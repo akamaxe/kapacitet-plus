@@ -29,6 +29,8 @@ REQUEST_KINDS = ("pv", "ev", "hp", "battery")
 IMPORT_WINDOW_DEFAULT = 14
 IMPORT_WINDOW_MAX = 91
 _LOCK = threading.Lock()
+# what a numeric setting is counted in and the step its control takes (GET /settings `schema`)
+_PCT = {"unit": "%", "step": 0.1}
 
 
 class SignedThresholds(BaseModel):
@@ -77,20 +79,22 @@ class DsoSettings(BaseModel):
     allocation_policy: Literal["maxmin", "prorata", "propfair", "maxtotal"] = "maxmin"
     # the most curtailment an agreement promises, as a share of the house's solar energy in a year;
     # by default the budget the capacity search itself is held to (z_star_pct)
-    agreed_level_pct: float = Field(default_factory=lambda: float(_assumption("z_star_pct")), ge=0, le=100)
+    agreed_level_pct: float = Field(default_factory=lambda: float(_assumption("z_star_pct")), ge=0, le=100, json_schema_extra=_PCT)
     # applications are decided by engine/rules.py when this is on and a signed rule covers them
     # (advisor mode, the default, leaves every decision to a person); the rule never declines
     auto_decisions: bool = False
     # the rule's thresholds: a house's curtailment on average and in one year in ten (none: the agreed
     # level), and the EV charging an envelope may leave unserved
-    auto_curtailment_mean_pct: float | None = Field(None, ge=0, le=100)
-    auto_curtailment_p90_pct: float | None = Field(None, ge=0, le=100)
-    auto_ev_unserved_pct: float = Field(default_factory=lambda: float(_assumption("ev_unserved_limit_pct")), ge=0, le=100)
+    auto_curtailment_mean_pct: float | None = Field(None, ge=0, le=100, json_schema_extra=_PCT)
+    auto_curtailment_p90_pct: float | None = Field(None, ge=0, le=100, json_schema_extra=_PCT)
+    auto_ev_unserved_pct: float = Field(default_factory=lambda: float(_assumption("ev_unserved_limit_pct")), ge=0, le=100,
+                                        json_schema_extra=_PCT)
     # the published grid an application is evaluated against while the queue is empty
     inbox_baseline: Literal["static", "doe"] = "static"
     # how many years the envelopes defer the reinforcement, for the business case (by default one
     # regulatory period)
-    deferral_years: int = Field(default_factory=lambda: int(_assumption("regulatory_period_years")), ge=1, le=40)
+    deferral_years: int = Field(default_factory=lambda: int(_assumption("regulatory_period_years")), ge=1, le=40,
+                                json_schema_extra={"unit": "years", "step": 1})
     # what only the DSO can state for Ei (engine/eipack.py): empty means not stated, never met
     market_alternative_statement: str = Field("", max_length=2000)
     method_approval_reference: str = Field("", max_length=200)
@@ -98,15 +102,16 @@ class DsoSettings(BaseModel):
     # when the day-ahead market's result is known, on Stockholm's wall clock on the day before
     # delivery: a schedule is issued only after it (kapacitet/market.py)
     market_result_local: str = Field(default_factory=lambda: str(_assumption("dayahead_market_result_local")),
-                                     pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
+                                     pattern=r"^([01]\d|2[0-3]):[0-5]\d$", json_schema_extra={"kind": "time"})
     # what the DSO paid in the report year for the curtailment its conditional agreements imposed,
     # for the redispatch report (engine/redispatch.py); zero unless the DSO enters it
-    redispatch_compensation_sek: float = Field(0.0, ge=0, le=1e12)
+    redispatch_compensation_sek: float = Field(0.0, ge=0, le=1e12, json_schema_extra={"unit": "SEK", "step": 1})
     # the half-window, in days either side, of the other weather years' demand ceiling the issued
     # import envelopes (EV chargers) are planned against: wider is a higher ceiling, so tighter
     # envelopes and fewer exceedances; 0 takes the same calendar day only. A change leaves the
     # published import envelopes stale until `compute --stage extra --only operation` issues them again
-    import_window_days: int = Field(IMPORT_WINDOW_DEFAULT, ge=0, le=IMPORT_WINDOW_MAX)
+    import_window_days: int = Field(IMPORT_WINDOW_DEFAULT, ge=0, le=IMPORT_WINDOW_MAX,
+                                    json_schema_extra={"unit": "days", "step": 1})
     # the DSO's brand on the applicant's portal (kapacitet/brand.py, which checks a change of them):
     # its name (empty: the product's), how to reach its customer service, and its accent (empty: the
     # product's, or #rrggbb legible on the portal). The logo is kept beside the settings (brand.set_logo)
@@ -123,8 +128,66 @@ def _assumption(key: str) -> float:
     return A(key)
 
 
+def _kind(annotation) -> tuple[str, bool, list | None]:
+    """A field's kind for a control (number, integer, choice, boolean, text or object), whether it
+    may be none, and a choice's options."""
+    import types
+    import typing
+
+    args = typing.get_args(annotation)
+    union = typing.get_origin(annotation) in (typing.Union, types.UnionType)
+    inner = [a for a in args if a is not type(None)] if union else [annotation]
+    nullable = union and len(inner) < len(args)
+    base = inner[0] if len(inner) == 1 else annotation
+    if typing.get_origin(base) is Literal:
+        return "choice", nullable, list(typing.get_args(base))
+    kind = {bool: "boolean", int: "integer", float: "number", str: "text"}.get(base, "object")
+    return kind, nullable, None
+
+
+def schema() -> dict:
+    """Every setting's control as the model defines it: its kind, its default and, for a number,
+    the bounds, step and unit pydantic validates and the field declares (the screen types none of
+    them); a text's length and pattern; a choice's options."""
+    out = {}
+    for name, field in DsoSettings.model_fields.items():
+        kind, nullable, options = _kind(field.annotation)
+        default = field.get_default(call_default_factory=True)
+        spec: dict = {"kind": kind, "nullable": nullable,
+                      "default": default.model_dump(mode="json") if isinstance(default, BaseModel) else default}
+        for m in field.metadata:
+            for attr, key in (("ge", "min"), ("le", "max"), ("max_length", "max_length"), ("pattern", "pattern")):
+                if getattr(m, attr, None) is not None:
+                    spec[key] = getattr(m, attr)
+        if isinstance(field.json_schema_extra, dict):
+            spec.update(field.json_schema_extra)
+        if options is not None:
+            spec["options"] = options
+        out[name] = spec
+    return out
+
+
+def last_change() -> dict | None:
+    """When the settings were last changed and under which role (none with sign-in off), from the
+    latest seal of a change; none when they never were or the chain cannot be read."""
+    try:
+        lines = seals._lines()
+    except (OSError, ValueError):
+        return None
+    for e in reversed(lines):
+        if e.get("kind") == "settings":
+            return {"at": e.get("at"), "role": (e.get("actor") or {}).get("role") or None}
+    return None
+
+
+# the settings that may be none, and whose none means something (the rule's thresholds: the agreed
+# level): a change that gives one of them as null sets it back to none, where any other null is "unchanged"
+RESETTABLE = ("auto_curtailment_mean_pct", "auto_curtailment_p90_pct")
+
+
 class DsoSettingsChange(BaseModel):
-    """A partial change: only the fields given are changed."""
+    """A partial change: only the fields given are changed. A null leaves a field as it is, except
+    for the fields in RESETTABLE, which it sets back to none."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -181,6 +244,7 @@ def update(change: DsoSettingsChange) -> DsoSettings:
     from .brand import check_settings
 
     given = check_settings(change.model_dump(exclude_none=True))
+    given.update({k: None for k in RESETTABLE if k in change.model_fields_set and getattr(change, k) is None})
     with _LOCK, _doc().locked():
         before = load()
         after = DsoSettings.model_validate({**before.model_dump(), **given})

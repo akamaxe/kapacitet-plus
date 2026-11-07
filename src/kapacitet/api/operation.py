@@ -88,7 +88,10 @@ def import_status(meta: dict | None = None, settings: dso.DsoSettings | None = N
 
 
 def _settings_reply(s: dso.DsoSettings) -> dict:
-    return {"settings": s.model_dump(), "policies": list(dso.POLICIES), "import_envelopes": import_status(settings=s)}
+    """The settings, the controls the model defines for them (`schema`: kind, default, bounds, step and
+    unit), when they were last changed and under which role (`changed`), and the import envelopes."""
+    return {"settings": s.model_dump(), "policies": list(dso.POLICIES), "schema": dso.schema(),
+            "changed": dso.last_change(), "import_envelopes": import_status(settings=s)}
 
 
 @router.get("/settings")

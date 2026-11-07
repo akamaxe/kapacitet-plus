@@ -1042,7 +1042,12 @@ the signature's digest. A planner's decision can say who made it (`decided_by`, 
 An approval by the rule goes through `queue.decide` like a person's, so it is verified on every
 weather year before the house enters the grid, under the queue's write lock (a manual decision
 waits for it, and it waits for a manual decision). The thresholds and the switch are the DSO's
-settings (`PUT /api/v1/settings`, sealed). Every step is an event in
+settings (Operation › Settings or `PUT /api/v1/settings`, sealed). Operation's Settings section lists
+every DSO setting with its value, meaning and default, and takes the ones no other screen has: the
+rule's thresholds (an emptied one, sent as null, follows the agreed level again), the inbox's baseline,
+the agreed level, the deferral years, the market result's time and the redispatch compensation. Its
+bounds, steps and units come from the model through `GET /api/v1/settings` (`schema`), with the
+latest sealed change and its role (`changed`). Every step is an event in
 `data/requests/applications.jsonl`, appended and never rewritten. `GET /api/v1/inbox` folds them
 into each application's state, and `GET /api/v1/inbox/kpis` measures the inbox from the same
 events: the median and P90 time to a decision, the share the rule decided, and the kW connected

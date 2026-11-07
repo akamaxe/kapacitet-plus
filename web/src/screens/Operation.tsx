@@ -7,6 +7,7 @@ import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, Tile } from "../components/bits";
 import { ImportEnvelopes } from "../components/ImportEnvelopes";
+import { SettingsSection } from "../components/DsoSettings";
 import { InboxSection } from "../components/Inbox";
 import { CoverNote, MarketAlternatives } from "../components/MarketAlternatives";
 import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
@@ -117,6 +118,7 @@ export default function Operation() {
     { id: "market", label: t("op.sec.market") },
     { id: "shadow", label: t("op.sec.shadow") },
     { id: "meter", label: t("op.sec.meter") },
+    { id: "settings", label: t("op.sec.settings") },
   ];
 
   return (
@@ -223,6 +225,17 @@ export default function Operation() {
           </div>
           <MeterCheck cid={house} date={day} name={name(house)} />
           <FleetCompliance name={name} onHouse={select} />
+        </section>
+
+        {/* ---------------------------------------------------------------- the DSO's settings */}
+        <section className="region" id="settings">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("op.settings")}</h2>
+              <p className="caption">{t("op.settings.caption")}</p>
+            </div>
+          </div>
+          <SettingsSection />
         </section>
       </div>
     </div>

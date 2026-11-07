@@ -50,6 +50,7 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | audit trail, annual report | granskningsspår, årsrapport | not årsredovisning, which reads as a company's accounts |
 | real, synthetic | verklig, syntetisk | the label on every figure's data |
 | DSO | nätbolag | |
+| settings (of the DSO) | inställningar | changed in Operation › Settings; every change is sealed |
 | screen (of the interface) | vy | as in "Gå till en vy" |
 | application (to connect) | ansökan | an assessment answers "what if"; an application asks for the connection |
 | reference code | referenskod | how a household follows its application, without a name or contact details |
