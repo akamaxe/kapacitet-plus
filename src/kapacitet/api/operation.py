@@ -223,12 +223,13 @@ def _has_charging_profile(cid: int) -> bool:
     if not path.exists():
         return False
     meta = json.loads(path.read_text(encoding="utf-8"))
-    return bool(meta.get("verified")) and cid in meta.get("cids", [])
+    return bool(meta.get("verified")) and not meta.get("actual_violation_hours") and cid in meta.get("cids", [])
 
 
 @router.get("/operation/schedule.ocpp.json")
 def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN)) -> Response:
-    """A house's EV charger limits for one date as an OCPP 1.6J `SetChargingProfile` request payload
+    """A preview, like the XML route's GET: never sealed and never sent anywhere. A house's EV charger
+    limits for one date as an OCPP 1.6J `SetChargingProfile` request payload
     (modelled on OCPP 1.6J, not certified; no charge point is connected): a ChargePointMaxProfile
     on connector 0, in watts from local midnight, one period per schedule step. The limits are the
     import envelopes issued the day before; a step without one keeps the firm import limit (the
@@ -244,8 +245,9 @@ def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     if not meta_path.exists() or not env_path.exists():
         raise not_computed("operation/dayahead/import.json")
     meta = json.loads(meta_path.read_text(encoding="utf-8"))
-    if not meta.get("verified"):
-        raise _refusal(409, "import_unverified", hours=int(meta.get("planning_violation_hours", 0)))
+    if not meta.get("verified") or meta.get("actual_violation_hours"):
+        raise _refusal(409, "import_unverified", hours=int(meta.get("planning_violation_hours", 0)
+                                                           or meta.get("actual_violation_hours", 0)))
     if cid not in meta["cids"]:
         raise _refusal(404, "no_charger", cid=cid)
     year = int(meta["year"])

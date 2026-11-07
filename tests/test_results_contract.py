@@ -533,3 +533,12 @@ def test_the_overinstallation_prices_cover_every_weather_year_once_recomputed(re
     if set(d["price_years"]) == set(settings().price_years):
         pytest.skip("only the 2023-2025 prices were fetched: fetch --only prices with ENTSOE_API_TOKEN set, then recompute")
     assert set(d["price_years"]) == set(settings().weather_years)
+
+
+@needs_results
+def test_published_import_envelopes_hold_on_the_real_year():
+    path = processed("results", "operation", "dayahead", "import.json")
+    if not path.exists():
+        pytest.skip("run: python -m kapacitet compute --stage extra --only operation")
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    assert meta["verified"] and meta["actual_violation_hours"] == 0

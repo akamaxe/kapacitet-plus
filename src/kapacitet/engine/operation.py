@@ -259,17 +259,3 @@ def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.nd
     log.info("operation import: %d chargers, %d h limited, %d planning / %d real violation h (%.1f s)",
              len(r.flex), r.limited_hours, r.planning_violation_hours, r.actual_violation_hours, summary["seconds"])
     return {k: summary[k] for k in ("verified", "limited_hours", "planning_violation_hours", "actual_violation_hours")}
-
-
-def build_import() -> dict:
-    """Only the issued import envelopes, on the year the operation stage already computed."""
-    from .run import background_masks, model
-
-    show = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
-    m = model()
-    y = int(show["year"])
-    pv = np.zeros(m.C, dtype=bool)
-    pv[show["pv_cids"]] = True
-    hp, ev = background_masks(m.C)
-    arr = Scenario(year=y, pv=pv, hp=hp, ev=ev).arrays()
-    return write_import(m, y, hp, ev, arr, customers()["cid"].to_numpy())

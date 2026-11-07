@@ -19,7 +19,7 @@ from kapacitet.config import A, settings
 from kapacitet.engine import forecast
 from kapacitet.engine.netmodel import get_model
 from kapacitet.engine.run import background_masks
-from kapacitet.engine.scenario import Scenario, adoption_order
+from kapacitet.engine.scenario import Scenario, adoption_order, year_profiles
 from kapacitet.paths import processed
 
 
@@ -33,6 +33,24 @@ def case():
     hp, ev = background_masks(model.C)
     actual = Scenario(year=show["year"], pv=pv, hp=hp, ev=ev).arrays()
     return model, show, pv, hp, ev, actual
+
+
+@needs_results
+def test_the_import_planning_state_dominates_for_import(case):
+    """For import the dominating state has no generation and at least the real load: its net
+    injection is no greater than the real one, hour by hour, for every house, and the day-ahead
+    load margin is really applied."""
+    _, show, pv, hp, ev, actual = case
+    plan = forecast.import_planning_state(show["year"], hp, np.zeros_like(ev))
+    ev_load = np.where(ev[:, None], year_profiles(show["year"])["ev"], 0.0)
+    real = actual["p_net"].astype(float) + ev_load
+    loose = int((plan["p_net"] > real + 1e-4).sum())
+    assert loose / plan["p_net"].size < 1e-3, f"{loose} customer-hours not dominated"
+    assert (plan["p_net"] <= 1e-6).all()
+    _, lm = forecast.day_ahead_margins()
+    assert lm > 0
+    bare = forecast.import_planning_state(show["year"], hp, np.zeros_like(ev), load_margin=0.0)
+    assert (plan["p_net"] <= bare["p_net"] + 1e-6).all() and (plan["p_net"] < bare["p_net"]).any()
 
 
 @needs_results

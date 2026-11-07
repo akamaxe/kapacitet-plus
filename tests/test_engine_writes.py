@@ -79,3 +79,11 @@ def test_the_stages_leave_whole_files_and_no_temporary_one(tiny_processed, tmp_p
         n = header["n_bus"] + header["n_line"] + header["n_cust"]
         assert len(f.with_suffix(".bin").read_bytes()) == header["hours"] * n, f
     assert not [f.name for f in folder.rglob("*.tmp")]
+    # the issued import envelopes: write_import's own output, field by field
+    meta = json.loads((folder / "results" / "operation" / "dayahead" / "import.json").read_text(encoding="utf-8"))
+    env = np.load(folder / "ui" / "operation" / "dayahead" / "import_envelopes.npy")
+    assert meta["verified"] is True and meta["cids"]
+    assert meta["planning_state"]["load_margin_pct"] > 0
+    assert env.shape[0] == len(meta["cids"]) and env.shape[1] % 24 == 0
+    assert (env >= 0).all() and (env <= meta["firm_kw"] + 1e-6).all()
+    assert np.allclose(env * 1000.0, np.round(env * 1000.0), atol=1e-2)      # the 3-decimal floor
