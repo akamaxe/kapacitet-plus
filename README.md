@@ -223,6 +223,13 @@ transactions take the place of the file locks: a queue decision holds the queue'
 `db export-files` copy a `data/requests/` folder in and back out byte for byte.
 [docs/postgres.md](docs/postgres.md) has the setup and a `pg_dump` backup recipe.
 
+A DSO runs an installation of its own: one image, data volume, database, sign-in app, seal key and
+TSA settings per DSO, and nothing shared. [docs/deployment.md](docs/deployment.md) is the guide
+and [deploy/instance.env.example](deploy/instance.env.example) lists every variable. `kapacitet
+instance check` validates an installation and exits 1 on an error. `kapacitet instance backup`
+takes a consistent backup, with the seal key apart and labelled secret, and `kapacitet instance
+restore` puts it into an empty installation.
+
 Live evaluations share one pool: `KAPACITET_MAX_JOBS` (4) run at once, `KAPACITET_MAX_QUEUED` (8)
 more wait their turn, and anything beyond is refused at once with 429 `busy`. One that waits is
 told its place in line (a `queued` event on its stream, shown on screen). Each stops after
@@ -255,6 +262,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet method-dossier [--study DIR] [--out DIR]` | The method dossier for Ei, in Swedish: `method_dossier_sv.md`, with every value it cites, and its source, in `method_dossier.json` (in `results/`, or the study's folder) |
 | `kapacitet metrics [--study DIR]` | The metrics an investor asks for that the product computes itself, each with its source file and period: `metrics.json`, `metrics.md` and `metrics_sv.md` (in `results/`, or the study's folder); also `GET /api/v1/kpis` |
 | `kapacitet db migrate\|status\|import-files\|export-files` | The PostgreSQL store: apply the schema, report it, copy `data/requests/` in or back out ([docs/postgres.md](docs/postgres.md)) |
+| `kapacitet instance check\|backup DIR\|restore DIR` | One installation per DSO: validate it (exit 1 on an error), back it up (`pg_dump` or `data/requests/`, the seal key apart and labelled secret), restore a backup into an empty one ([docs/deployment.md](docs/deployment.md)) |
 | `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet study …` | A DSO's study of many secondary substations, each built in its own process (below) |

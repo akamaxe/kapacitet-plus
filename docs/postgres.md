@@ -103,6 +103,10 @@ up separately, kept as secret as it is. The public key is in the dump (`store_me
 holding the dump can verify the chain. A dump without the key cannot add a signed line. An
 `export-files` folder is a second, plain-file backup that needs no PostgreSQL to read.
 
+`kapacitet instance backup <dir>` does both in one step: the `pg_dump` and the key apart, in a
+folder labelled secret, with the SHA-256 of every file. `kapacitet instance restore <dir>` puts
+them into an empty database ([deployment.md](deployment.md)).
+
 ## Tests
 
 The state tests run on both backends when `KAPACITET_TEST_DATABASE_URL` names a test database. The

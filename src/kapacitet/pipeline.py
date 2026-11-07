@@ -12,6 +12,7 @@ Commands
   method-dossier  the method dossier for Ei, in Swedish, every value from the data (--study for a study)
   seals     verify a sealed chain's hashes and signatures, or rotate the signing key
   db        the PostgreSQL store: migrate, status, import-files, export-files
+  instance  one installation per DSO: check it, back it up, restore it into an empty one
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -690,6 +691,42 @@ def cmd_db(args: argparse.Namespace) -> None:
         sys.exit(1)
 
 
+def cmd_instance(args: argparse.Namespace) -> None:
+    """One installation per DSO (kapacitet/instance.py): check it, back it up, restore it."""
+    from . import instance
+
+    if args.instance_command == "check":
+        found = instance.check()
+        print(instance.findings_json(found) if args.json else instance.report(found))
+        sys.exit(1 if any(f.level == "error" for f in found) else 0)
+    try:
+        if args.instance_command == "backup":
+            out = instance.backup(Path(args.dir), key_out=Path(args.key_out) if args.key_out else None,
+                                  include_key=not args.no_key)
+            print(f"backup of the {out['backend']} backend (scope {out['scope']}) in {args.dir}: "
+                  f"{len(out['files'])} files")
+            key = out["seal_key"]
+            if key["included"]:
+                print(f"SECRET: the seal key {key['key_id'][:16]} is in {key['folder']}; keep it apart, "
+                      "encrypted, as you keep the database's password")
+            elif key["key_id"]:
+                print(f"the seal key {key['key_id'][:16]} is NOT in this backup: keep a copy of it apart")
+            else:
+                print("no seal key yet: back it up once the first seal has made one")
+        else:
+            out = instance.restore(Path(args.dir), key_from=Path(args.key_from) if args.key_from else None,
+                                   include_key=not args.no_key)
+            chain = out["chain"]
+            print(f"restored {out['files']} files ({out['backend']} backend); seal key "
+                  f"{(out['seal_key'] or 'not restored')[:16]}; chain {chain['length']} lines, "
+                  f"{'valid' if chain['ok'] else 'NOT VALID'}")
+            for text in out["warnings"]:
+                print(f"warning: {text}")
+    except instance.InstanceError as exc:
+        print(exc)
+        sys.exit(1)
+
+
 def main(argv: list[str] | None = None) -> None:
     parser = _Parser(prog="kapacitet", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--site", default=None, help="site key from config/site.toml, e.g. olovslund (default: the [site] table, Smedslätten)")
@@ -778,6 +815,24 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--url", default=None, help="the database (default: KAPACITET_DATABASE_URL)")
     p.add_argument("--scope", default=None, help="the data folder's key in the database (default: from the data folder)")
     p.set_defaults(func=cmd_db)
+
+    p = sub.add_parser("instance", help="one installation per DSO: check it, back it up, restore it")
+    inst_sub = p.add_subparsers(dest="instance_command", required=True)
+    q = inst_sub.add_parser("check", help="validate this instance and print a report; exit 1 on an error")
+    q.add_argument("--json", action="store_true", help="the findings as JSON")
+    q.set_defaults(func=cmd_instance)
+    q = inst_sub.add_parser("backup", help="a consistent backup: pg_dump or data/requests, and the seal key apart")
+    q.add_argument("dir", help="an empty or new folder")
+    q.add_argument("--key-out", default=None, metavar="DIR",
+                   help="write the secret seal key into this folder instead of <dir>/SECRET-seal-key")
+    q.add_argument("--no-key", action="store_true", help="leave the seal key out")
+    q.set_defaults(func=cmd_instance)
+    q = inst_sub.add_parser("restore", help="restore a backup into an empty instance")
+    q.add_argument("dir", help="the backup's folder")
+    q.add_argument("--key-from", default=None, metavar="DIR",
+                   help="the backup's secret seal-key folder (default: <dir>/SECRET-seal-key)")
+    q.add_argument("--no-key", action="store_true", help="restore without the seal key")
+    q.set_defaults(func=cmd_instance)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")
