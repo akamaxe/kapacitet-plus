@@ -1020,6 +1020,21 @@ def redispatch_text() -> Response:
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-omdirigering-{year}.txt"'})
 
 
+@app.get(f"{API}/kpis", tags=["compliance"])
+def kpis() -> dict:
+    """The investor metrics the product computes itself (kapacitet/metrics.py), from this data
+    folder as it stands: each with its source file and its period, `not_available` with the
+    command that writes a missing source, and the owner's own metrics listed, never filled in.
+    The same document `kapacitet metrics` writes to results/metrics.json. A read: with sign-in
+    on, any role."""
+    from .. import metrics
+
+    doc = metrics.build()
+    sources = [processed().parent / m["source"] for m in doc["metrics"]
+               if m["status"] == "ok" and "*" not in m["source"]]
+    return with_prov(doc, *([] if doc["subject"].get("imported") else ["synthetic_grid"]), files=sources)
+
+
 @memo(maxsize=4)
 def _audit_table(path: str, stamp: float) -> tuple[list[str], list[dict]]:
     with open(path, encoding="utf-8", newline="") as fh:

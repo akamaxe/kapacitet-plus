@@ -496,6 +496,25 @@ def cmd_method_dossier(args: argparse.Namespace) -> None:
         print(f"  missing {m['file']}: run {m['command']}")
 
 
+def cmd_metrics(args: argparse.Namespace) -> None:
+    """The investor metrics the product computes itself: metrics.json, metrics.md and metrics_sv.md
+    (kapacitet/metrics.py)."""
+    from . import metrics
+    from .study import StudyError
+
+    try:
+        written = metrics.write(args.study)
+    except StudyError as err:
+        print(f"No metrics: {err}")
+        sys.exit(1)
+    doc = json.loads(written["json"].read_text(encoding="utf-8"))
+    got = sum(1 for m in doc["metrics"] if m["status"] == "ok")
+    print(f"Written: {written['json']}, {written['en'].name} and {written['sv'].name} "
+          f"({got} of {len(doc['metrics'])} metrics computed, {len(doc['entered_by_owner'])} entered by the owner)")
+    for m in doc["not_available"]:
+        print(f"  {m['id']}: not available ({m['reason']}); run {m['command']}")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -669,6 +688,10 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--study", default=None, help="a study's folder (default: this data folder's demo)")
     p.add_argument("--out", default=None, help="the folder to write into (default: results/, or the study's folder)")
     p.set_defaults(func=cmd_method_dossier)
+
+    p = sub.add_parser("metrics", help="the investor metrics the product computes itself, each with its source and period")
+    p.add_argument("--study", default=None, help="a study's folder (default: this data folder)")
+    p.set_defaults(func=cmd_metrics)
 
     p = sub.add_parser("purge", help="remove saved assessments older than N days, and erase their seals")
     p.add_argument("--older-than", type=_days, default=None, metavar="N",

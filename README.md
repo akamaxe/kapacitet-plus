@@ -249,6 +249,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet redispatch-report [--year Y]` | The annual report on non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4), on the day-ahead basis that is issued: `results/redispatch.json` and `redispatch_sv.txt` |
 | `kapacitet method-dossier [--study DIR] [--out DIR]` | The method dossier for Ei, in Swedish: `method_dossier_sv.md`, with every value it cites, and its source, in `method_dossier.json` (in `results/`, or the study's folder) |
+| `kapacitet metrics [--study DIR]` | The metrics an investor asks for that the product computes itself, each with its source file and period: `metrics.json`, `metrics.md` and `metrics_sv.md` (in `results/`, or the study's folder); also `GET /api/v1/kpis` |
 | `kapacitet db migrate\|status\|import-files\|export-files` | The PostgreSQL store: apply the schema, report it, copy `data/requests/` in or back out ([docs/postgres.md](docs/postgres.md)) |
 | `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
@@ -891,6 +892,21 @@ the limitations. It is generated from the code, `config/assumptions.toml` and th
 by hand: `method_dossier.json` holds each value with its source, `tests/test_dossier.py` checks that
 every number in the Swedish text is one of them, and a result that is missing is said to be missing,
 with the command that writes it. With `--study DIR` it describes a study's stations instead.
+
+`kapacitet metrics` (and `GET /api/v1/kpis`, a read that any role may make when sign-in is on)
+gathers the metrics an investor asks for every month, as far as the product can compute them from
+what it already writes. Use: the assessments pre-checked (the records index), how often the DSO's
+decision agreed with the rule's proposal (the applications log in advisor mode; in a study, the case
+batches run with `--compare-decisions`) and the median days from application to decision. Model
+quality: voltage and transformer-load error against measurements and the match with a dpPower
+snapshot (each station's `validation_measured.json`, from `study validate`). Envelopes: the hours
+activated against the hours needed (the redispatch report), the station-hours in which production
+beat the day-ahead or intraday planning bound (their audits), the share of agreements within the
+per-installation budget while the headline uses the aggregate one, and the capacity with envelopes
+over the hourly study and over a fixed export cap (the hosting summary). Each metric names its
+source file and its period; one whose source is missing is `not_available`, with the command that
+writes it. Discovery, sales, onboarding and security are listed as entered by the owner and never
+given a value.
 
 ## Applications and the DSO's rule
 
