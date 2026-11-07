@@ -24,6 +24,10 @@ an unknown section or key is an error rather than a setting silently ignored. Th
     [devplan]      the scenario `study devplan` checks beside today's grid: scenario_year (2030),
                    pv_share, ev_share, hp_share of the station's customers in that year (existing
                    ones counted) and source. Without a share there is no scenario ("not entered")
+    [scenarios]    the growth `study scenarios` runs each station forward with, from the quarter's
+                   year to `year` (2030): pv_per_year, ev_per_year, hp_per_year, battery_per_year,
+                   each the share of the station's customers who add the device in a year, and
+                   source. A rate left out is the default of config/assumptions.toml, labelled so
     [assumptions]  key = {value, unit, source}: an override of config/assumptions.toml. The key must
                    exist there and take effect in a station (NOT_IN_A_STUDY lists those that do
                    not), the unit must be the one it has, and the source must be stated.
@@ -194,6 +198,26 @@ class Devplan(_Section):
         return any(x is not None for x in (self.pv_share, self.ev_share, self.hp_share))
 
 
+class Scenarios(_Section):
+    year: int = Field(2030, ge=2000, le=2100)
+    pv_per_year: float | None = Field(None, ge=0.0, le=1.0)
+    ev_per_year: float | None = Field(None, ge=0.0, le=1.0)
+    hp_per_year: float | None = Field(None, ge=0.0, le=1.0)
+    battery_per_year: float | None = Field(None, ge=0.0, le=1.0)
+    source: str = ""
+
+    @model_validator(mode="after")
+    def _sourced(self):
+        if self.entered() and not self.source.strip():
+            raise ValueError("[scenarios] growth rates need their source (the DSO's forecast, its date)")
+        return self
+
+    def entered(self) -> bool:
+        """At least one rate is the DSO's own; the others are config/assumptions.toml's defaults."""
+        return any(x is not None for x in (self.pv_per_year, self.ev_per_year, self.hp_per_year,
+                                           self.battery_per_year))
+
+
 class Override(_Section):
     value: Any
     unit: str
@@ -218,6 +242,7 @@ class StudyConfig(_Section):
     output: Output = Field(default_factory=Output)
     costs: Costs = Field(default_factory=Costs)
     devplan: Devplan = Field(default_factory=Devplan)
+    scenarios: Scenarios = Field(default_factory=Scenarios)
     assumptions: dict[str, Override] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -395,6 +420,17 @@ def template(name: str = "", site: dict | None = None) -> str:
         "# pv_share = 0.0",
         "# ev_share = 0.0",
         "# hp_share = 0.0",
+        '# source = "the forecast and its date"',
+        "",
+        "[scenarios]",
+        "# The growth `study scenarios` runs each station forward with, from the quarter's year to",
+        "# `year`: the share of the station's customers who add each device in a year. A rate left",
+        "# out is the default of config/assumptions.toml (scenario_*_growth_per_year), labelled so.",
+        "year = 2030",
+        "# pv_per_year = 0.0",
+        "# ev_per_year = 0.0",
+        "# hp_per_year = 0.0",
+        "# battery_per_year = 0.0",
         '# source = "the forecast and its date"',
         "",
         "[assumptions]",

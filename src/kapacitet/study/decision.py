@@ -23,7 +23,10 @@ The portfolio, per station:
 - the trend: the cases received and not known to be decided (cases/<batch>/verdicts.csv without
   decision_dso, and sync reports' pending rows, less every case a sync report lists as approved),
   the existing equipment with its connection dates when the equipment table has them, and the
-  future scenarios when the station has a scenarios.json;
+  station's electrification scenario when `study scenarios` has computed it for the station's
+  current build (processed/results/scenarios.json, study/scenarios.py): its last year, whose growth
+  rates it runs on, the generation and consumption capacity left in that year, the first year the
+  grown state breaks a limit and the first a capacity is used up;
 - `rank`: by the smaller of the two margins per customer, the least first; a station without a
   figure on either side comes first, and ties go by station id, so the ranking is deterministic.
 
@@ -85,7 +88,8 @@ PORTFOLIO_COLUMNS = [
     "measured_peak_ratio",
     "pending_cases", "equipment_rows", "equipment_pv_kwp", "equipment_dated", "equipment_first_connected_on",
     "equipment_last_connected_on", "equipment_per_year",
-    "scenarios_year", "scenarios_cases", "scenarios_static_ok", "scenarios_envelopes_ok",
+    "scenarios_year", "scenarios_rates", "scenarios_generation_kw", "scenarios_consumption_kw",
+    "scenarios_first_violation_year", "scenarios_first_exhausted_year",
     "flags",
 ]
 OPTIONS_COLUMNS = [
@@ -149,8 +153,9 @@ SV = {
     "portfolio.header": ("Rang | Nätstation | Kunder | Produktion (kW) | Förbrukning (kW) | Marginal per kund (kW) | "
                          "Produktion vid låg / hög mellanspänning (kW) | Timmar med överträdelse i dag | "
                          "Uppmätt topp mot Velander | Väntande ärenden | Befintlig utrustning (senast ansluten) | "
-                         "Framtidsscenarier klarade statiskt / med dynamiska gränser"),
-    "portfolio.scenarios": "{static} / {doe} av {n}",
+                         "Scenario: kvar för produktion / förbrukning (kW) det sista året"),
+    "portfolio.scenarios": "{year}: {gen} / {cons}",
+    "portfolio.scenarios_violation": "{year}: {gen} / {cons}; överträdelse från {first}",
     "limit.voltage": "spänningen",
     "limit.cable": "en kabel",
     "limit.transformer": "transformatorn",
@@ -214,6 +219,21 @@ def equipment_trend(study: Study, sid: str) -> dict:
     return out
 
 
+def scenario_trend(scen: dict, cap: dict) -> dict:
+    """The portfolio's scenario columns from a station's scenarios.json (study/scenarios.py), only
+    when it was computed on the station's current build; {} otherwise. Pure."""
+    from .scenarios import SCHEMA, rates_label
+
+    if scen.get("schema") != SCHEMA or not scen.get("years") or scen.get("fingerprint") != cap.get("fingerprint"):
+        return {}
+    last = scen["years"][-1]
+    return {"scenarios_year": last.get("year"), "scenarios_rates": rates_label(scen.get("scenario") or {}),
+            "scenarios_generation_kw": (last.get("generation") or {}).get("kw_left"),
+            "scenarios_consumption_kw": (last.get("consumption") or {}).get("kw_left"),
+            "scenarios_first_violation_year": scen.get("first_violation_year"),
+            "scenarios_first_exhausted_year": scen.get("first_exhausted_year")}
+
+
 def _json(path: Path) -> dict:
     try:
         return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
@@ -259,17 +279,14 @@ def station_facts(study: Study, row: dict, fix: dict, pending: dict[str, int]) -
         out.update(measured_customers=measured.get("customers"), measured_peak_kw=measured["max_kw"],
                    measured_velander_kw=ref, measured_peak_ratio=measured["max_kw"] / ref if ref else None)
     out.update(equipment_trend(study, sid))
-    scen = _json(results / "scenarios.json")
-    if scen.get("cases"):
-        cases = scen["cases"]
-        out.update(scenarios_year=scen.get("year"), scenarios_cases=len(cases),
-                   scenarios_static_ok=sum(1 for x in cases if x.get("static_ok")),
-                   scenarios_envelopes_ok=sum(1 for x in cases if x.get("doe_ok")))
+    out.update(scenario_trend(_json(results / "scenarios.json"), cap))
     risk = flags(row, study.config.dso.method_version)
     if (out["measured_peak_ratio"] or 0) > 1:
         risk.append("measured_above_velander")
     if out["pending_cases"]:
         risk.append("pending_cases")
+    if out["scenarios_first_violation_year"] is not None:
+        risk.append("scenario_violates")
     out["flags"] = ",".join(risk) or None
     return out
 
@@ -325,8 +342,11 @@ def portfolio_markdown(study: Study, q: str, rows: list[dict]) -> str:
     lines = ["| " + " | ".join(header) + " |", "|" + "---|" * len(header)]
     for r in rows:
         viol = sum(v or 0 for v in (r["generation_baseline_violation_hours"], r["consumption_baseline_violation_hours"]))
-        scen = (SV["portfolio.scenarios"].format(static=r["scenarios_static_ok"], doe=r["scenarios_envelopes_ok"],
-                                                 n=r["scenarios_cases"]) if r["scenarios_cases"] else "–")
+        scen = "–"
+        if r["scenarios_year"] is not None:
+            key = "portfolio.scenarios_violation" if r["scenarios_first_violation_year"] is not None else "portfolio.scenarios"
+            scen = SV[key].format(year=r["scenarios_year"], gen=_cell(r["scenarios_generation_kw"]),
+                                  cons=_cell(r["scenarios_consumption_kw"]), first=r["scenarios_first_violation_year"])
         equip = (f"{r['equipment_rows']} ({_cell(r['equipment_last_connected_on'])})"
                  if r["equipment_rows"] is not None else "–")
         lines.append("| " + " | ".join([

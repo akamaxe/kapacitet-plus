@@ -98,10 +98,14 @@ def register(sub: argparse._SubParsersAction) -> None:
                        "list per station, inputs for the network development plan (run `study options` first)")
     q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
     q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
+    q = add("scenarios", "runs/<quarter>/scenarios.csv: each station grown a year at a time to [scenarios] year "
+                         "from its own equipment and meters, with what is left of its published capacity")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
+    q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
-    p.add_argument("action", choices=["build", "validate", "cases", "sync", "options", "devplan"])
+    p.add_argument("action", choices=["build", "validate", "cases", "sync", "options", "devplan", "scenarios"])
     p.add_argument("sid")
     p.add_argument("--study", required=True)
     p.add_argument("--batch", default=None)
@@ -124,7 +128,7 @@ def cmd_study(args: argparse.Namespace) -> None:
          "status": _status, "collect": _collect, "validate": _validate, "review": _review, "sign": _sign,
          "publish": _publish, "diff": _diff, "cases": _cases, "sync": _sync,
          "sign-rule": _sign_rule, "portfolio": _portfolio, "options": _options,
-         "devplan": _devplan}[args.study_command](args)
+         "devplan": _devplan, "scenarios": _scenarios}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -421,6 +425,22 @@ def _devplan(args) -> None:
         sys.exit(1)
 
 
+def _scenarios(args) -> None:
+    from . import open_study
+    from .scenarios import rates_label, scenarios
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = scenarios(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    g = out["growth"]
+    stations = len({r["station_id"] for r in out["rows"]})
+    print(f"{stations} stations in {out['paths'][0]} ({len(out['computed'])} computed now), "
+          f"{g['start_year']}-{g['year']}, {rates_label(g)} growth rates")
+    for sid in out["failed"]:
+        print(f"  {sid}: failed (see its build.log)")
+    if out["failed"]:
+        sys.exit(1)
+
+
 def cmd_station(args: argparse.Namespace) -> None:
     """One station's build or validation, in this process (started by `study build|validate`)."""
     import logging
@@ -446,6 +466,13 @@ def cmd_station(args: argparse.Namespace) -> None:
             if not args.batch:
                 raise StudyError("bad_batch", batch="")
             station_devplan(study, args.sid, args.batch)
+            sys.exit(0)
+        if args.action == "scenarios":
+            from .scenarios import station_scenarios
+
+            if not args.batch:
+                raise StudyError("bad_batch", batch="")
+            station_scenarios(study, args.sid, args.batch)
             sys.exit(0)
         if args.action in ("cases", "sync"):
             from .cases import station_cases

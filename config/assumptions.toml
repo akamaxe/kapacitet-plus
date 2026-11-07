@@ -843,6 +843,62 @@ url = ""
 note = "Background demand in the PV analyses; varied in the 2030 scenarios."
 note_sv = "Bakgrundslast i solcellsanalyserna; varieras i scenarierna för 2030."
 
+# the default growth of a study's scenarios (study.toml [scenarios]), used only for a rate the DSO
+# leaves out; every output says which rates are these defaults
+[scenario_pv_growth_per_year]
+value = 0.02
+unit = "share of customers per year"
+tag = "team-assumption"
+label = "Customers adding solar each year (a study's scenarios, by default)"
+label_sv = "Kunder som skaffar solceller varje år (en studies scenarier, som standard)"
+source = "Scenario assumption: an order of magnitude, not a forecast, for a study that enters no rate of its own"
+url = ""
+note = "Replace it with the DSO's own forecast in study.toml [scenarios] pv_per_year."
+note_sv = "Ersätt den med nätföretagets egen prognos i study.toml [scenarios] pv_per_year."
+
+[scenario_ev_growth_per_year]
+value = 0.03
+unit = "share of customers per year"
+tag = "team-assumption"
+label = "Customers adding an EV charger each year (a study's scenarios, by default)"
+label_sv = "Kunder som skaffar laddbox för elbil varje år (en studies scenarier, som standard)"
+source = "Scenario assumption: an order of magnitude, not a forecast, for a study that enters no rate of its own"
+url = ""
+note = "Replace it with the DSO's own forecast in study.toml [scenarios] ev_per_year."
+note_sv = "Ersätt den med nätföretagets egen prognos i study.toml [scenarios] ev_per_year."
+
+[scenario_hp_growth_per_year]
+value = 0.01
+unit = "share of customers per year"
+tag = "team-assumption"
+label = "Customers adding a heat pump each year (a study's scenarios, by default)"
+label_sv = "Kunder som skaffar värmepump varje år (en studies scenarier, som standard)"
+source = "Scenario assumption: an order of magnitude, not a forecast, for a study that enters no rate of its own"
+url = ""
+note = "Replace it with the DSO's own forecast in study.toml [scenarios] hp_per_year."
+note_sv = "Ersätt den med nätföretagets egen prognos i study.toml [scenarios] hp_per_year."
+
+[scenario_battery_growth_per_year]
+value = 0.01
+unit = "share of customers per year"
+tag = "team-assumption"
+label = "Customers adding a home battery each year (a study's scenarios, by default)"
+label_sv = "Kunder som skaffar hembatteri varje år (en studies scenarier, som standard)"
+source = "Scenario assumption: an order of magnitude, not a forecast, for a study that enters no rate of its own"
+url = ""
+note = "A battery goes only to a house with solar, and runs for self-consumption. Replace the rate with the DSO's own in study.toml [scenarios] battery_per_year."
+note_sv = "Ett batteri hamnar bara hos ett hus med solceller och används för egenförbrukning. Ersätt takten med nätföretagets egen i study.toml [scenarios] battery_per_year."
+
+[scenario_battery_kwh]
+value = 10.0
+unit = "kWh"
+tag = "team-assumption"
+label = "Usable capacity of a home battery in a study's scenarios"
+label_sv = "Användbar kapacitet för ett hembatteri i en studies scenarier"
+source = "Chosen inside the range of the 26 systems measured by Orth et al. (2023), whose largest usable capacity is 16.7 kWh"
+url = "https://doi.org/10.1016/j.est.2023.107299"
+note = ""
+
 [z_star_pct]
 value = 3.0
 unit = "% of annual PV energy"

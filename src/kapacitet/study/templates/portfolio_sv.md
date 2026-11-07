@@ -19,7 +19,11 @@ Så läses kolumnerna:
 - Uppmätt topp mot Velander: den uppmätta toppen hos de mätta kunderna delad med Velanders
   uppskattning för samma kunder; över ett betyder att Velander underskattar toppen.
 - Väntande ärenden: ärenden som har tagits emot och inte är kända som beslutade.
-- Framtidsscenarier: hur många av stationens beräknade scenarier som klaras statiskt och med
-  dynamiska gränser, när de är beräknade.
+- Scenario: stationen framskriven år för år från sin egen utrustning och sina mätare
+  (`kapacitet study scenarios`), med nätföretagets tillväxttakt eller standardvärdena i
+  config/assumptions.toml (kolumnen scenarios_rates säger vilka). Värdet är det sista årets
+  kvarvarande effekt för ny produktion och ny förbrukning, före begränsningarna i överliggande nät,
+  och det första år då det framskrivna nätet går över en gräns, när det gör det. Visas bara när
+  scenariot är beräknat på stationens nuvarande beräkning.
 
 Varje värde kommer från stationens egna resultat; maskinläsbara värden finns i portfolio.machine.csv.

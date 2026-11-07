@@ -189,3 +189,33 @@ end. The flexibility is the same share of every customer's PV (generation) or of
 EV charging (consumption) in that hour. Each station's computation is kept in
 `stations/<id>/devplan/<quarter>.json` and `.npz` and reused while the station's build and the
 scenario are the same.
+
+## Electrification scenarios: `runs/<quarter>/scenarios.csv`
+
+`study scenarios <dir> --run 2026Q4` grows each station a year at a time, from the quarter's year
+to `study.toml [scenarios] year` (2030 by default), starting from what it has today by its own
+equipment table and metered load. In each year a device has today's count plus
+`round(rate × customers × years since the start)`, at most every customer that can take it. New
+PV goes on the candidates in the order of the station's published generation capacity; heat pumps
+and EV chargers go to the first customers without one of the fixed orders today's are drawn from;
+batteries (`scenario_battery_kwh` each) go only to houses with PV and run for self-consumption,
+never to or from the grid.
+
+The rates are `pv_per_year`, `ev_per_year`, `hp_per_year` and `battery_per_year` in
+`[scenarios]`, each the share of the station's customers who add the device in a year, with their
+`source`. A rate left out is the default of `config/assumptions.toml`
+(`scenario_*_growth_per_year`: a team assumption, an order of magnitude and not a forecast), and the
+`rates` column says whose rates a station runs on (`entered`, `default` or `mixed`).
+
+| column | content |
+| --- | --- |
+| `year`, `years_from_start` | the scenario year; the first row is today's grid |
+| `pv`, `ev`, `hp`, `battery` and `new_*` | the devices in that year, and how many the growth added |
+| `generation_kw_left`, `consumption_kw_left` | what is left of the station's published capacity with the year's devices: the published deployment verified again on every hour (generation at both ends of the MV band, consumption at the low end), less what the growth put on it. Never more than today's figure; with no growth, today's figure |
+| `export_violation_hours`, `import_violation_hours` | hours, summed over the weather years, in which the year's grid itself (nobody else added) breaks a limit; `*_status` is `state_violates` then and the capacity left is zero |
+
+The figures are the station's own, before the upstream caps and the reviewer's corrections, and on
+the firm basis: no envelopes are computed here. Each station's computation is kept in
+`stations/<id>/scenarios/<quarter>.json` (and `processed/results/scenarios.json`, which the
+portfolio reads for its scenario column while it belongs to the station's current build) and reused
+while the station's build and the growth are the same.

@@ -554,6 +554,7 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study portfolio nb-2026 --run 2026Q4   # runs/<quarter>/portfolio.csv: margins, risk and trend per station
 .venv/Scripts/python -m kapacitet study options nb-2026 --run 2026Q4     # reinforce, connect with conditions or wait, priced from [costs]
 .venv/Scripts/python -m kapacitet study devplan nb-2026 --run 2026Q4     # hourly profiles, flexibility need and ten-year investments (after options)
+.venv/Scripts/python -m kapacitet study scenarios nb-2026 --run 2026Q4   # each station grown to [scenarios] year: capacity left per year
 ```
 
 Every input file and column, and what each step of a quarter writes, is in
@@ -570,6 +571,10 @@ contract prices in `study.toml [costs]` (a price left out is "not entered", and 
 recommended without its inputs). `devplan` then writes the inputs of the network development plan
 (EIFS 2026:4, cited by name only): hourly profiles with their P50 and P90 over the weather years,
 the flexibility need today and in the DSO's own `[devplan]` scenario, and a ten-year investment list.
+`scenarios` grows each station a year at a time to `[scenarios] year` from its own equipment and
+meters, with the DSO's growth rates or, for a rate left out, labelled defaults from
+`config/assumptions.toml`, and gives what is left of its published capacity each year; the
+portfolio shows the last year in its trend column.
 
 `study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
 the method's choices (percentile, curtailment basis, the consumption device), the MV band, what may

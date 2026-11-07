@@ -103,8 +103,11 @@ def test_the_portfolio_reads_the_risk_and_the_trend_of_each_station(tmp_path):
         {"velander_kw": 90.0, "modelled_peak_kw": 80.0,
          "measured": {"customers": 10, "max_kw": 33.0, "velander_kw": 30.0}}), encoding="utf-8")
     (results / "scenarios.json").write_text(json.dumps(
-        {"year": 2025, "cases": [{"static_ok": True, "doe_ok": True}, {"static_ok": False, "doe_ok": True},
-                                 {"static_ok": False, "doe_ok": False}]}), encoding="utf-8")
+        {"schema": "kapacitet.station-scenarios/1", "fingerprint": "f",
+         "scenario": {"basis": {"pv": "default", "ev": "default", "hp": "default", "battery": "default"}},
+         "years": [{"year": 2026, "generation": {"kw_left": 80.0}, "consumption": {"kw_left": 40.0}},
+                   {"year": 2030, "generation": {"kw_left": 12.5}, "consumption": {"kw_left": 0.0}}],
+         "first_violation_year": None, "first_exhausted_year": 2030}), encoding="utf-8")
     (study.inputs / "equipment.csv").write_text(
         "customer_id,pv_kwp,connected_on\nc1,5,2023-04-01\nc2,7.5,2024-06-01\nc3,,2024-09-01\n", encoding="utf-8")
     batch = study.root / "cases" / "b1"
@@ -119,7 +122,9 @@ def test_the_portfolio_reads_the_risk_and_the_trend_of_each_station(tmp_path):
     s1 = rows["S1"]
     assert (s1["generation_kw_mv_low"], s1["generation_kw_mv_high"]) == (140.0, 120.0)
     assert s1["measured_peak_ratio"] == pytest.approx(1.1) and "measured_above_velander" in s1["flags"]
-    assert (s1["scenarios_cases"], s1["scenarios_static_ok"], s1["scenarios_envelopes_ok"]) == (3, 1, 2)
+    assert (s1["scenarios_year"], s1["scenarios_rates"], s1["scenarios_generation_kw"], s1["scenarios_consumption_kw"]) \
+        == (2030, "default", 12.5, 0.0)
+    assert (s1["scenarios_first_violation_year"], s1["scenarios_first_exhausted_year"]) == (None, 2030)
     # k2 decided, k3 approved by the sync, k4 not checked: only k1 waits
     assert (s1["pending_cases"], rows["S2"]["pending_cases"], rows["S4"]["pending_cases"]) == (1, 1, 1)
     assert rows["S3"]["pending_cases"] == 0
@@ -128,7 +133,7 @@ def test_the_portfolio_reads_the_risk_and_the_trend_of_each_station(tmp_path):
     assert (s1["equipment_first_connected_on"], s1["equipment_last_connected_on"]) == ("2023-04-01", "2024-09-01")
     assert s1["equipment_per_year"] == "2023: 1; 2024: 2"
     md = decision.portfolio(study, Q)["paths"][-1].read_text(encoding="utf-8")
-    assert "Testnät AB" in md and "1 / 2 av 3" in md and "{{" not in md
+    assert "Testnät AB" in md and "2030: 12,5 / 0 |" in md and "{{" not in md
 
 
 # ---------------------------------------------------------------- the options
