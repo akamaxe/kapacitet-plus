@@ -799,8 +799,9 @@ to a time-stamping authority (FreeTSA's `https://freetsa.org/tsr` is one, free a
 account; nothing is contacted while it is unset), every new line is sent to it as the SHA-256 of
 its canonical JSON, signature included: only that hash leaves the machine. The token the TSA signs
 is kept next to the chain as `sealed/<seq>.tsr` (with PostgreSQL, in `seal_timestamps`). A TSA that
-cannot be reached never holds a seal back: the line is written, the token it is owed is recorded
-as `sealed/<seq>.tsa_pending`, and for a minute the next seals do not wait on the TSA either.
+cannot be reached, or answers slowly, never holds a seal back: the line is written, the token it is
+owed is recorded as `sealed/<seq>.tsa_pending`, and the request runs on a thread of its own; after a
+failure, the next seals skip the TSA for a minute.
 `seals verify` checks each token against its line and, with the TSA's certificate, its signature,
 and says when the latest stamped line provably existed; a token for a line the chain no longer has
 shows that lines were cut off its end. The certificate is never fetched: download it from the TSA
