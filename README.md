@@ -579,12 +579,13 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study check nb-2026     # the contract's report, per station
 .venv/Scripts/python -m kapacitet study build nb-2026 --quick
 .venv/Scripts/python -m kapacitet study status nb-2026
-.venv/Scripts/python -m kapacitet study collect nb-2026   # every station's figures, caps applied: runs/<quarter>/stations.parquet
+.venv/Scripts/python -m kapacitet study collect nb-2026   # every station's figures, caps applied: runs/<run>/stations.parquet
 .venv/Scripts/python -m kapacitet study validate nb-2026  # the model against the meters, dpPower and the DSO's static results
-.venv/Scripts/python -m kapacitet study review nb-2026    # runs/<quarter>/review.csv, the least margin first
+.venv/Scripts/python -m kapacitet study review nb-2026    # runs/<run>/review.csv, the least margin first
 .venv/Scripts/python -m kapacitet study sign nb-2026 --by "name, role"
-.venv/Scripts/python -m kapacitet study publish nb-2026   # runs/<quarter>/publication (UTKAST unless signed)
+.venv/Scripts/python -m kapacitet study publish nb-2026   # runs/<run>/publication, with the embeddable map (UTKAST unless signed)
 .venv/Scripts/python -m kapacitet study diff nb-2026 --from 2026Q3 --to 2026Q4
+.venv/Scripts/python -m kapacitet study collect nb-2026 --run 2026-11   # a monthly run; diff --to 2026-11 compares with the run before
 .venv/Scripts/python -m kapacitet study cases nb-2026 cases.csv --compare-decisions   # cases/<batch>/verdicts.csv, annexes, drafts
 .venv/Scripts/python -m kapacitet study sync nb-2026 --approved approved.csv --pending pending.csv
 .venv/Scripts/python -m kapacitet study sign-rule nb-2026 --by "name, role" --kinds pv,ev --max-pv-kwp 10 --valid-until 2027-06-30
@@ -710,8 +711,27 @@ hold k customers, a merged cell showing its stations' lowest figure, hidden stat
 conditional (envelope) column appears only with `[method] approval_reference` set and verified
 envelopes. The three-phase columns (`three_phase_generation_kw`, `three_phase_consumption_kw`)
 appear only when a published station's check is `ok` or `limited`. They are capped by the same
-upstream chain, and the grunder say which figure comes from which model. `study diff` lists what changed between two quarters with the inputs behind each change
-(`runs/<Q>/inputs.json`) and a sentence in Swedish.
+upstream chain, and the grunder say which figure comes from which model. `study diff` lists what changed between two runs with the inputs behind each change
+(`runs/<run>/inputs.json`) and a sentence in Swedish.
+
+A run is a quarter (`2026Q4`) or a month (`2026-11`), for a DSO that follows the European
+recommendation to update its capacity maps monthly: `--run` takes either in `collect`, `review`,
+`sign`, `publish` and `diff`, `[publication] cadence = "monthly"` makes this month the default, and
+`study diff` without `--from` compares with the run before in time, whatever its kind.
+
+`study publish` also writes `publication/embed/`, a map a DSO embeds on its own website with an
+iframe: dependency-free (no library, no CDN, no inline script or style, so it runs under
+`Content-Security-Policy: default-src 'self'`), it reads `../capacity.geojson` and `../manifest.json`
+and draws the published cells as SVG, coloured by the capacity for generation or consumption, with
+a panel per cell, zoom and pan, a table of every cell for screen readers and browsers without
+script, Swedish by default and English with `?lang=en`, and UTKAST across the map while the
+publication is a draft. It makes no request outside its folder unless `[publication] map_tiles`
+(with `map_attribution`, which `study check` requires) names a raster tile layer. With
+`KAPACITET_PUBLICATIONS=1` and `KAPACITET_STUDY_DIR` set, the server also serves the signed
+publications read-only and without sign-in: `GET /api/v1/publications` and
+`GET /api/v1/publications/{study}/{run|latest}/{file}`, with each file's sha256 as a strong ETag; a
+draft and `disclosure_report.csv` are never served. The iframe snippet, the CSP and how to host
+the folder are in [docs/publication.md](docs/publication.md).
 
 Module 2 is the same engine as the request screen, on files (`study/cases.py`). `study cases`
 takes a CSV of connection cases, finds each connection point's station with DuckDB and checks each

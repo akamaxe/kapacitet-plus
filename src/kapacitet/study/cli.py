@@ -52,21 +52,23 @@ def register(sub: argparse._SubParsersAction) -> None:
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
     q = add("status", "what each station is and how its last build went")
     q.add_argument("--json", action="store_true", help="the records as JSON")
-    q = add("collect", "every station's capacity, upstream caps applied, into runs/<quarter>/stations.parquet")
-    q.add_argument("--quarter", default=None, help="the run's quarter, as 2026Q4 (default: this quarter)")
+    q = add("collect", "every station's capacity, upstream caps applied, into runs/<run>/stations.parquet")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run: a quarter as 2026Q4 or a month as 2026-11 (default: this quarter, or this month with [publication] cadence = \"monthly\")")
     q = add("validate", "replay each station's metered hours and compare with the measurements and dpPower")
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
-    q = add("review", "runs/<quarter>/review.csv, the least margin first, with runs/<quarter>/corrections.csv overlaid")
-    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
-    q = add("sign", "seal the quarter's outputs in the study's evidence chain: runs/<quarter>/signoff.json")
+    q = add("review", "runs/<run>/review.csv, the least margin first, with runs/<run>/corrections.csv overlaid")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run: a quarter as 2026Q4 or a month as 2026-11 (default: this quarter, or this month with [publication] cadence = \"monthly\")")
+    q = add("sign", "seal the run's outputs in the study's evidence chain: runs/<run>/signoff.json")
     q.add_argument("--by", required=True, help='who signs, as "name, role"')
-    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
-    q = add("publish", "runs/<quarter>/publication: capacity.csv and .geojson, the basis of calculation, the "
-                       "validation report and the manifest (a draft, UTKAST, unless signed)")
-    q.add_argument("--quarter", default=None, help="the run's quarter (default: this quarter)")
-    q = add("diff", "runs/<to>/changes.csv: what changed since another quarter, and why")
-    q.add_argument("--from", dest="q_from", required=True, help="the earlier quarter, as 2026Q3")
-    q.add_argument("--to", dest="q_to", default=None, help="the later quarter (default: this quarter)")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run: a quarter as 2026Q4 or a month as 2026-11 (default: this quarter, or this month with [publication] cadence = \"monthly\")")
+    q = add("publish", "runs/<run>/publication: capacity.csv and .geojson, the basis of calculation, the "
+                       "validation report, the manifest and the embeddable map, embed/ (a draft, UTKAST, "
+                       "unless signed)")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run: a quarter as 2026Q4 or a month as 2026-11 (default: this quarter, or this month with [publication] cadence = \"monthly\")")
+    q = add("diff", "runs/<to>/changes.csv: what changed since another run, and why")
+    q.add_argument("--from", dest="q_from", default=None,
+                   help="the earlier run, as 2026Q3 or 2026-10 (default: the run before --to in time, of either kind)")
+    q.add_argument("--to", dest="q_to", default=None, help="the later run (default: this quarter or month)")
     q = add("cases", "check a batch of connection cases, station by station, into cases/<batch>: verdicts.csv, "
                      "the Swedish annexes and the drafts")
     q.add_argument("csv", help="the cases: case_id, received_at, connection_point_id, pv_kwp, pv_kw_ac, pv_phases, "
@@ -287,10 +289,11 @@ def _validate(args) -> None:
         sys.exit(1)
 
 
-def _quarter(q: str | None) -> str:
-    from .collect import quarter
+def _quarter(q: str | None, study=None) -> str:
+    """The run given, or this quarter (this month with [publication] cadence = "monthly")."""
+    from . import runs
 
-    return q or quarter()
+    return q or runs.current(study.config.publication.cadence if study is not None else "quarterly")
 
 
 def _review(args) -> None:
@@ -298,7 +301,7 @@ def _review(args) -> None:
     from .review import review
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = review(study, _quarter(args.quarter))
+    out = review(study, _quarter(args.quarter, study))
     print(f"{len(out['rows'])} stations in {out['paths'][0]}, the least margin first")
     for f in out["findings"]:
         print(f"  [correction not applied] {f}")
@@ -309,7 +312,7 @@ def _sign(args) -> None:
     from .publish import sign
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    doc = sign(study, _quarter(args.quarter), args.by)
+    doc = sign(study, _quarter(args.quarter, study), args.by)
     print(f"Signed by {doc['by']}: {len(doc['outputs'])} files sealed as publication {doc['seal']['id']} "
           f"in {study.evidence}")
 
@@ -319,7 +322,7 @@ def _publish(args) -> None:
     from .publish import DRAFT, publish
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = publish(study, _quarter(args.quarter))
+    out = publish(study, _quarter(args.quarter, study))
     print(f"{out['cells']} cells published in {out['folder']} ({out['status']})")
     if out["status"] == DRAFT:
         why = f": changed since the signature: {', '.join(out['changed'])}" if out["changed"] else ": not signed"
@@ -333,8 +336,8 @@ def _diff(args) -> None:
     from .diff import diff
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = diff(study, args.q_from, _quarter(args.q_to))
-    print(f"{len(out['rows'])} changes in {out['paths'][0]}")
+    out = diff(study, args.q_from, _quarter(args.q_to, study))
+    print(f"{len(out['rows'])} changes in {out['paths'][0]}, since {out['from']}")
 
 
 def _cases(args) -> None:
@@ -385,7 +388,7 @@ def _portfolio(args) -> None:
     from .decision import portfolio
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = portfolio(study, _quarter(args.quarter))
+    out = portfolio(study, _quarter(args.quarter, study))
     print(f"{len(out['rows'])} stations in {out['paths'][0]}, the least margin per customer first")
 
 
@@ -394,7 +397,7 @@ def _options(args) -> None:
     from .decision import options
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = options(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    out = options(study, _quarter(args.quarter, study), jobs=args.jobs, allow_git=args.allow_git)
     counts = {k: sum(1 for r in out["rows"] if r["recommendation"] == k) for k in ("reinforce", "condition", "wait")}
     none = sum(1 for r in out["rows"] if not r["recommendation"])
     print(f"{len(out['rows'])} stations in {out['paths'][0]} ({len(out['computed'])} computed now): "
@@ -413,7 +416,7 @@ def _devplan(args) -> None:
     from .devplan import devplan
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = devplan(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    out = devplan(study, _quarter(args.quarter, study), jobs=args.jobs, allow_git=args.allow_git)
     folder = study.runs / out["quarter"] / "devplan"
     print(f"{len(out['investments'])} stations in {folder} ({len(out['computed'])} computed now), reference year "
           f"{out['reference_year'] or '-'}")
@@ -430,7 +433,7 @@ def _scenarios(args) -> None:
     from .scenarios import rates_label, scenarios
 
     study = open_study(args.dir, allow_git=args.allow_git)
-    out = scenarios(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    out = scenarios(study, _quarter(args.quarter, study), jobs=args.jobs, allow_git=args.allow_git)
     g = out["growth"]
     stations = len({r["station_id"] for r in out["rows"]})
     print(f"{stations} stations in {out['paths'][0]} ({len(out['computed'])} computed now), "

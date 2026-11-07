@@ -366,6 +366,30 @@ def _check_hosts(out: list[Finding], signin: bool | None) -> None:
         out.append(Finding("hosts", "warn", "KAPACITET_CORS_ORIGINS=* lets any site read the API's answers"))
 
 
+def _check_publications(out: list[Finding]) -> None:
+    """Whether the server serves the studies' signed publications (api/publications.py), and from where."""
+    asked = _env("KAPACITET_PUBLICATIONS").lower()
+    if asked not in ("1", "true", "yes", "on"):
+        out.append(Finding("publications", "ok", "off: set KAPACITET_PUBLICATIONS=1 and KAPACITET_STUDY_DIR to "
+                                                 "serve the studies' signed publications"))
+        return
+    folder = _env("KAPACITET_STUDY_DIR")
+    if not folder:
+        out.append(Finding("publications", "error", "KAPACITET_PUBLICATIONS=1 without KAPACITET_STUDY_DIR: "
+                                                    "nothing is served"))
+        return
+    from .api.publications import signed_runs, study_roots
+
+    root = Path(folder)
+    if not root.is_dir():
+        out.append(Finding("publications", "error", f"KAPACITET_STUDY_DIR={folder} is not a folder"))
+        return
+    studies = study_roots(root)
+    signed = sum(1 for s in studies if signed_runs(s))
+    out.append(Finding("publications", "ok" if signed else "warn",
+                       f"on, without sign-in: {signed} of {len(studies)} studies in {root} have a signed publication"))
+
+
 def _check_seals(inst: Instance, out: list[Finding], state_readable: bool) -> None:
     from . import seals
 
@@ -513,6 +537,7 @@ def check(inst: Instance | None = None) -> list[Finding]:
     readable = _check_database(out)
     signin = _check_signin(out)
     _check_hosts(out, signin)
+    _check_publications(out)
     _check_seals(inst, out, readable)
     _check_tsa(inst, out)
     _check_telemetry(out)

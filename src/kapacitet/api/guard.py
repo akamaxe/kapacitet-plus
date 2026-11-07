@@ -16,13 +16,14 @@
    asking first, are refused, so every write from another site needs a preflight that the
    server never grants.
 4. **Who asks.** With sign-in on (`KAPACITET_AUTH=oidc`, kapacitet/auth.py), every API request
-   but the public ones (`PUBLIC`: health, the sign-in routes and the applicant's portal) needs a
+   but the public ones (`PUBLIC`: health, the sign-in routes, the applicant's portal and the studies'
+   signed publications, api/publications.py) needs a
    session: none is `auth_required` (401), a role the route does not take is `role_required` (403,
    naming the roles it does). A write needs one of its policy's `roles`, a read any role. The person
    and the role they act under are then the request's actor (kapacitet/actor.py), which the seals
    and the queue's decisions record. With sign-in off nothing here changes and there is no actor.
 5. **How often.** A sliding window per client address and bucket: an application's status 10 a
-   minute, an evaluation 10, any other write 30. The answer to one too many is 429 with
+   minute, an evaluation 10, any other write 30, a read of the studies' publications 120. The answer to one too many is 429 with
    `Retry-After` and the code `rate_limited`. Uvicorn takes the client from `X-Forwarded-For` only
    when the proxy is on 127.0.0.1 (a codespace's port forwarding).
 
@@ -68,7 +69,7 @@ ERRORS = {
 # Requests a client may make per minute in each bucket; "upload" (the setup page's chunks) is not
 # counted: it is open only on an empty copy that asked for it, and a bundle is dozens of chunks.
 WINDOW_S = 60.0
-LIMITS = {"status": 10, "compute": 10, "write": 30, "upload": None}
+LIMITS = {"status": 10, "compute": 10, "write": 30, "upload": None, "public": 120}
 
 
 # Who may call a route when sign-in is on (kapacitet/auth.py ROLES), in the order a person holding
@@ -90,7 +91,8 @@ class Policy:
     roles: tuple[str, ...] = ADMIN   # who may call it with sign-in on; every entry below names its own
 
 
-# Every POST, PUT and DELETE of the API, by method and route.
+# Every POST, PUT and DELETE of the API, by method and route. (The studies' signed publications,
+# api/publications.py, are reads: public in PUBLIC_READS and limited in LIMITED_READS.)
 ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("POST", f"{API}/check"): Policy("compute", "nothing: checks the four CSV tables in memory", roles=PLANNER_UP),
     ("POST", f"{API}/requests"): Policy(
@@ -149,9 +151,16 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
 }
 # Reads anyone may make with sign-in on: the server's health, the sign-in itself and the applicant's
 # portal (its answers are behind the application's code). Every other read needs one of ANY_ROLE.
-PUBLIC_READS = (f"{API}/health", f"{API}/auth/me", f"{API}/auth/login", f"{API}/auth/callback", f"{API}/apply/")
+PUBLIC_READS = (f"{API}/health", f"{API}/auth/me", f"{API}/auth/login", f"{API}/auth/callback", f"{API}/apply/",
+                f"{API}/publications", f"{API}/publications/")
 # Reads that are limited too: guessing an application's code is the one read worth slowing down.
-LIMITED_READS: dict[tuple[str, str], str] = {("GET", f"{API}/apply/status/{{reference}}"): "status"}
+# The studies' publications are public and framed on other sites: 120 a minute per address (a page
+# view of the embed is five requests).
+LIMITED_READS: dict[tuple[str, str], str] = {
+    ("GET", f"{API}/apply/status/{{reference}}"): "status",
+    ("GET", f"{API}/publications"): "public",
+    ("GET", f"{API}/publications/{{study}}/{{run}}/{{file:path}}"): "public",
+}
 # Reads held to fewer roles than ANY_ROLE: what a DSO hands on to devices is a planner's to fetch.
 ROLE_READS: dict[tuple[str, str], tuple[str, ...]] = {
     ("GET", f"{API}/operation/schedule.ocpp.json"): PLANNER_UP,
@@ -162,7 +171,8 @@ DEFAULT = Policy("write", "unknown route", roles=ADMIN)
 
 def _pattern(template: str) -> re.Pattern:
     parts = re.split(r"(\{[^}]+\})", template)
-    return re.compile("".join("[^/]+" if p.startswith("{") else re.escape(p) for p in parts))
+    return re.compile("".join((".+" if p.endswith(":path}") else "[^/]+") if p.startswith("{") else re.escape(p)
+                              for p in parts))
 
 
 _ROUTES = [(m, _pattern(t), p) for (m, t), p in ROUTE_POLICY.items()]

@@ -1,4 +1,4 @@
-"""`study review`: one quarter's figures as a person checks them before they are signed.
+"""`study review`: one run's figures as a person checks them before they are signed.
 
     runs/<Q>/review.csv          every station of runs/<Q>/stations.parquet, the one with the least
                                  margin first, with what to look at (`flags`) and the corrections
@@ -47,10 +47,10 @@ COLUMNS = [
 
 
 def run_dir(study: Study, q: str) -> Path:
-    from .collect import QUARTER
+    from . import runs
 
-    if not QUARTER.match(q or ""):
-        raise StudyError("config", message=f"{q!r} is not a quarter such as 2026Q4")
+    if not runs.valid(q):
+        raise StudyError("config", message=f"{q!r} is not a run id: {runs.EXAMPLE}")
     return study.runs / q
 
 

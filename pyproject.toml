@@ -61,7 +61,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "kapacitet" = ["templates/*.md"]
-"kapacitet.study" = ["templates/*.md", "templates/cases_sv/*.md"]
+"kapacitet.study" = ["templates/*.md", "templates/cases_sv/*.md", "templates/embed/*"]
 "kapacitet.store" = ["migrations/*.sql"]
 
 [tool.pytest.ini_options]

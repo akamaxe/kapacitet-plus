@@ -117,7 +117,7 @@ def test_an_unsigned_publication_is_a_draft_and_writes_every_file(study):
     folder = out["folder"]
     names = {p.name for p in folder.iterdir()}
     assert names == {"capacity.csv", "capacity.machine.csv", "capacity.geojson", "grunder_for_berakning.md",
-                     "validation_report.sv.md", "manifest.json"}
+                     "validation_report.sv.md", "manifest.json", "embed"}
     assert "disclosure_report.csv" not in names and (study.runs / Q2 / "disclosure_report.csv").is_file()
     manifest = json.loads((folder / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == DRAFT and manifest["signoff"] is None

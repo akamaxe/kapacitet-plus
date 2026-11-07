@@ -6,7 +6,7 @@ beslut. Kapacitet+ föreslår endast: varje beslut fattas av en person hos nätf
 | | |
 |---|---|
 | Nätstation | {{station}} ({{station_id}}) |
-| Kvartal | {{quarter}} |
+| {{period_label}} | {{quarter}} |
 | Plats i portföljen | {{rank}} |
 | Effekt för ny produktion i dag | {{generation_kw}} |
 | Effekt för ny förbrukning i dag | {{consumption_kw}} |

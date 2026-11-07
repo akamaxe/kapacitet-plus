@@ -58,7 +58,7 @@ from pathlib import Path
 import numpy as np
 
 from ..atomic import write_json_atomic, write_text_atomic
-from . import Study, StudyError, csvio, value_digest
+from . import Study, StudyError, csvio, runs, value_digest
 from .config import METHOD_VERSION
 
 SCHEMA = "kapacitet.station-devplan/1"
@@ -449,7 +449,8 @@ def summary_markdown(study: Study, q: str, n_stations: int, reference_year: int 
                                              hp=share(scenario["hp_share"]))
     span = (f"{years[0]}–{years[-1]}" if len(years) > 1 else str(years[0])) if years else SV["none"]
     return render(TEMPLATE.read_text(encoding="utf-8"), {
-        "dso_name": study.config.dso.name or study.id, "quarter": q, "regulation": REGULATION,
+        "dso_name": study.config.dso.name or study.id, "quarter": q, "period_word": runs.word_sv(q),
+        "regulation": REGULATION,
         "stations": str(n_stations), "reference_year": str(reference_year) if reference_year else SV["none"],
         "years": span, "scenario": scen, "p_median": "P50", "p_high": "P90", "machine_dialect": "RFC 4180",
         "horizon": str(HORIZON_YEARS), "first_year": str(first_year), "last_year": str(first_year + HORIZON_YEARS - 1),

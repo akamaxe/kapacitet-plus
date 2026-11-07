@@ -28,6 +28,10 @@ an unknown section or key is an error rather than a setting silently ignored. Th
                    year to `year` (2030): pv_per_year, ev_per_year, hp_per_year, battery_per_year,
                    each the share of the station's customers who add the device in a year, and
                    source. A rate left out is the default of config/assumptions.toml, labelled so
+    [publication]  cadence = "quarterly" | "monthly" (only the run id the commands take when none is
+                   given: 2026Q4 or 2026-11), map_tiles (an https://…/{z}/{x}/{y}.png raster template the
+                   embedded map draws under its cells) and map_attribution (required with it). Without
+                   map_tiles the embed makes no request outside its own folder
     [assumptions]  key = {value, unit, source}: an override of config/assumptions.toml. The key must
                    exist there and take effect in a station (NOT_IN_A_STUDY lists those that do
                    not), the unit must be the one it has, and the source must be stated.
@@ -151,6 +155,30 @@ class Output(_Section):
     retention_days: int | None = Field(None, gt=0)
 
 
+class Publication(_Section):
+    cadence: Literal["quarterly", "monthly"] = "quarterly"
+    map_tiles: str = ""
+    map_attribution: str = ""
+
+    @model_validator(mode="after")
+    def _tiles(self):
+        tiles, attribution = self.map_tiles.strip(), self.map_attribution.strip()
+        if not tiles:
+            if attribution:
+                raise ValueError("map_attribution is set without map_tiles")
+            return self
+        if not tiles.startswith("https://") or any(c in tiles for c in " \"'<>"):
+            raise ValueError(f"map_tiles must be an https:// address (a template such as "
+                             f"https://tiles.example/{{z}}/{{x}}/{{y}}.png), not {tiles!r}")
+        missing = [p for p in ("{z}", "{x}", "{y}") if p not in tiles]
+        if missing:
+            raise ValueError(f"map_tiles has no {', '.join(missing)}: the template names the tile as {{z}}/{{x}}/{{y}}")
+        if not attribution:
+            raise ValueError("map_tiles needs map_attribution: the tiles' licence names who to credit, and the "
+                             "map shows it")
+        return self
+
+
 class Costs(_Section):
     transformer_swap_sek: dict[str, float] = Field(default_factory=dict)
     curtailment_sek_per_kwh: float | None = Field(None, ge=0)
@@ -244,6 +272,7 @@ class StudyConfig(_Section):
     costs: Costs = Field(default_factory=Costs)
     devplan: Devplan = Field(default_factory=Devplan)
     scenarios: Scenarios = Field(default_factory=Scenarios)
+    publication: Publication = Field(default_factory=Publication)
     assumptions: dict[str, Override] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -259,7 +288,7 @@ class StudyConfig(_Section):
 
     def computation(self) -> dict:
         """What a station's computation reads: its digest decides whether the station is built again
-        (a change of the DSO's name, [disclosure], [cases] or [output] rebuilds nothing)."""
+        (a change of the DSO's name, [disclosure], [cases], [output] or [publication] rebuilds nothing)."""
         out = self.model_dump(include={"site", "time", "method", "mv", "assumptions"}, mode="json")
         out["method_version"] = self.dso.method_version
         return out
@@ -347,7 +376,8 @@ def template(name: str = "", site: dict | None = None) -> str:
         "#                                [, v_l1..v_l3]: the transformer secondary meter's phase voltages",
         "#   dppower/snapshot.csv         start, mrid, kind (bus|line|transformer), vm_pu, loading_pct",
         "#   dppower/static.csv           customer_id, gen_kw, load_kw: the DSO's own static results",
-        "# A quarter: study collect, review, sign --by \"name, role\", publish (runs/<quarter>/).",
+        "# A run (a quarter as 2026Q4, or a month as 2026-11): study collect, review, sign --by \"name, role\",",
+        "# publish (runs/<run>/).",
         "",
         "[dso]",
         f"name = {_toml(name)}",
@@ -433,6 +463,13 @@ def template(name: str = "", site: dict | None = None) -> str:
         "# hp_per_year = 0.0",
         "# battery_per_year = 0.0",
         '# source = "the forecast and its date"',
+        "",
+        "[publication]",
+        'cadence = "quarterly"           # or "monthly": the run id the commands take when none is given',
+        "# The embedded map (runs/<run>/publication/embed/) draws its cells on nothing unless a raster",
+        "# tile layer is named here; without one it makes no request outside its own folder.",
+        '# map_tiles = "https://tiles.example/{z}/{x}/{y}.png"',
+        '# map_attribution = "© the tile provider"   # required with map_tiles',
         "",
         "[assumptions]",
         "# An override of config/assumptions.toml, with the unit it has there and its source:",

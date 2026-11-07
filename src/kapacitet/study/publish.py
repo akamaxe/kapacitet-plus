@@ -1,17 +1,20 @@
-"""Module 1's publication: `study sign` and `study publish`, from one collected quarter.
+"""Module 1's publication: `study sign` and `study publish`, from one collected run (a quarter such
+as 2026Q4 or a month such as 2026-11, study/runs.py).
 
-    runs/<Q>/stations.parquet, inputs.json     `study collect`
-    runs/<Q>/review.csv, corrections.csv       `study review` (study/review.py)
-    runs/<Q>/signoff.json                      `study sign --by "name, role"`
-    runs/<Q>/publication/                      `study publish`:
+    runs/<run>/stations.parquet, inputs.json   `study collect`
+    runs/<run>/review.csv, corrections.csv     `study review` (study/review.py)
+    runs/<run>/signoff.json                    `study sign --by "name, role"`
+    runs/<run>/publication/                    `study publish`:
         capacity.csv, capacity.machine.csv     one row per published cell (study/csvio.py)
         capacity.geojson                       the same cells on the map (WGS84)
         grunder_for_berakning.md               how the figures were computed, every value from the data
         validation_report.sv.md                the model against the DSO's measurements
+        embed/                                 the embeddable map: index.html, embed.js, embed.css
+                                               (study/embed.py), reading the two files above
         manifest.json                          what was published, from what, with each file's sha256
-    runs/<Q>/disclosure_report.csv             which station is in which cell: kept, never published
+    runs/<run>/disclosure_report.csv           which station is in which cell: kept, never published
 
-Signing seals the quarter's outputs: the sha256 of the run's files and of every station's results
+Signing seals the run's outputs: the sha256 of the run's files and of every station's results
 (`outputs`), as a seal of kind `publication` in the study's own chain (evidence/, kapacitet.seals).
 A publication is signed only while every one of those files is what was signed: a station
 computed again, a correction added or a cap changed after the signature makes it a draft again,
@@ -35,7 +38,7 @@ from pathlib import Path
 from .. import geo, seals
 from ..atomic import write_json_atomic, write_text_atomic
 from . import Study, StudyError, code_version, file_digest
-from . import csvio, disclosure
+from . import csvio, disclosure, embed, runs
 from .config import METHOD_VERSION
 from .review import corrections, load_rows, run_dir
 
@@ -363,6 +366,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
     pct = sorted({float(r["percentile"]) for r in rows if r.get("percentile") is not None}) or [cfg.method.percentile]
     return {
         "status": status, "dso_name": cfg.dso.name or study.id, "study_id": study.id, "quarter": q,
+        "period_label": runs.label_sv(q),
         "published_at": published_at, "method_version": cfg.dso.method_version,
         "code_version": str(code.get("version")), "code_commit": (code.get("commit") or "okänd")[:12],
         "consumption_device": device, "consumption_device_capitalised": "En " + device,
@@ -403,7 +407,7 @@ def validation_report(study: Study, q: str, rows: list[dict], result: dict, stat
     """validation_report.sv.md: each station published on its own, against the DSO's measurements
     (study validate); stations in merged cells are only counted."""
     lines = ["# Valideringsrapport", "", status_line, "",
-             f"Studie {study.id}, kvartal {q}, metodversion {study.config.dso.method_version}.", "",
+             f"Studie {study.id}, {runs.word_sv(q)} {q}, metodversion {study.config.dso.method_version}.", "",
              "Modellen jämförs med nätföretagets mätningar: uppmätta timmar spelas upp i modellen vid uppmätt "
              "mellanspänning, eller vid båda ändarna av spänningsbandet, och avvikelsen redovisas som modell minus "
              "mätning. Kunder redovisas aldrig enskilt.", ""]
@@ -476,8 +480,12 @@ def publish(study: Study, q: str) -> dict:
     values = criteria_values(study, q, rows, result, fixes, state, published_at)
     write_text_atomic(tmp / "grunder_for_berakning.md", render(TEMPLATE.read_text(encoding="utf-8"), values))
     write_text_atomic(tmp / "validation_report.sv.md", validation_report(study, q, rows, result, values["status"]))
-    files = {p.name: {"sha256": file_digest(p), "bytes": p.stat().st_size} for p in sorted(tmp.iterdir())}
     signoff = state["signoff"]
+    embed.write(tmp, table, columns, {**meta, "published_at": published_at,
+                                      "signoff": {"by": signoff["by"], "valid": state["signed"]} if signoff else None},
+                cfg.publication)
+    files = {p.relative_to(tmp).as_posix(): {"sha256": file_digest(p), "bytes": p.stat().st_size}
+             for p in sorted(tmp.rglob("*")) if p.is_file()}
     manifest = {
         "schema": MANIFEST_SCHEMA, "status": status, "study": study.id, "dso": cfg.dso.name, "quarter": q,
         "published_at": published_at, "method_version": cfg.dso.method_version, "code": code_version(),
@@ -491,6 +499,9 @@ def publish(study: Study, q: str) -> dict:
         "three_phase_columns": three_phase_shown(shown),
         "corrections": sum(len(v) for v in fixes.values()), "correction_findings": len(findings),
         "outputs": public_outputs(study, q, rows), "files": files,
+        "period": {"kind": runs.kind(q), "first_day": runs.period(q)[0].isoformat(),
+                   "last_day": runs.period(q)[1].isoformat()},
+        "embed": embed.manifest_block(cfg.publication),
         # the public key that checks the signoff's signed seal, and how (never the private key)
         "seal_key": _seal_key(signoff),
     }

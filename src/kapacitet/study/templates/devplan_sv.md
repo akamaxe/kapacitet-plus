@@ -1,6 +1,6 @@
 # Underlag för nätutvecklingsplanen: {{dso_name}}
 
-UNDERLAG framtaget av Kapacitet+ för {{dso_name}}, kvartal {{quarter}}: internt, inte en projektering
+UNDERLAG framtaget av Kapacitet+ för {{dso_name}}, {{period_word}} {{quarter}}: internt, inte en projektering
 och inte ett beslut. Filerna är tänkta som indata till den nätutvecklingsplan som {{regulation}}
 beskriver. Kapacitet+ påstår inte att de uppfyller föreskriftens krav: det prövar nätföretaget.
 

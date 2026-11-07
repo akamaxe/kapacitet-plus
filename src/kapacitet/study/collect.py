@@ -1,4 +1,6 @@
-"""`study collect`: every station's capacity.json in one table, runs/<Q>/stations.parquet.
+"""`study collect`: every station's capacity.json in one table, runs/<run>/stations.parquet.
+
+A run is a quarter (2026Q4) or a month (2026-11): study/runs.py.
 
 The upstream caps of the current inputs/upstream.csv are applied to each station first (they
 apply after the computation and build nothing again, study/upstream.py), and a capacity.json
@@ -6,9 +8,9 @@ whose `upstream` or `published` they change is rewritten with them. A station th
 computed yet is listed with its status and no figures. The table is built with pyarrow on a fixed
 schema and written by DuckDB (beside, then moved in), so a reader never sees half a file.
 
-Beside it, runs/<Q>/inputs.json keeps what each station's figures were computed from (the input
+Beside it, runs/<run>/inputs.json keeps what each station's figures were computed from (the input
 digests its build recorded, and the upstream.csv the caps came from), so `study diff` can say why a
-figure changed between two quarters. Each row also carries the station's position (its
+figure changed between two runs. Each row also carries the station's position (its
 transformer's busbar, WGS84) and the DSO's zone from inputs/stations.csv, which the disclosure of
 a publication groups by, and the envelope (conditional) capacity when the method is approved and
 its envelopes verified, capped by the same upstream chain. The three-phase figures (capacity.json's
@@ -20,12 +22,12 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
-import re
 
 from . import Study, StudyError
+from . import runs as runs_mod
 from . import upstream as up_mod
 
-QUARTER = re.compile(r"^\d{4}Q[1-4]$")
+QUARTER = runs_mod.QUARTER
 FIELDS = (
     ("station_id", "string"), ("name", "string"), ("status", "string"), ("hidden", "bool_"),
     ("customers", "int64"), ("method_version", "string"), ("fingerprint", "string"), ("computed_at", "string"),
@@ -61,8 +63,7 @@ def _hours(block: dict) -> int | None:
 
 
 def quarter(today: dt.date | None = None) -> str:
-    today = today or dt.date.today()
-    return f"{today.year}Q{(today.month - 1) // 3 + 1}"
+    return runs_mod.current("quarterly", today)
 
 
 def _schema():
@@ -149,16 +150,17 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
 
 
 def collect(study: Study, q: str | None = None) -> dict:
-    """runs/<q>/stations.parquet (q by default this quarter, as 2026Q4); returns {"path", "rows",
-    "rewritten": stations whose capacity.json took new caps}."""
+    """runs/<q>/stations.parquet (q a quarter as 2026Q4 or a month as 2026-11, by default this quarter
+    or this month as [publication] cadence says); returns {"path", "rows", "rewritten": stations
+    whose capacity.json took new caps, "quarter": the run id}."""
     import duckdb
     import pyarrow as pa
 
     from ..atomic import write_json_atomic
 
-    q = q or quarter()
-    if not QUARTER.match(q):
-        raise StudyError("config", message=f"{q!r} is not a quarter such as 2026Q4")
+    q = q or runs_mod.current(study.config.publication.cadence)
+    if not runs_mod.valid(q):
+        raise StudyError("config", message=f"{q!r} is not a run id: {runs_mod.EXAMPLE}")
     up = up_mod.read(study)
     rows, rewritten = [], []
     for sid in study.station_ids():

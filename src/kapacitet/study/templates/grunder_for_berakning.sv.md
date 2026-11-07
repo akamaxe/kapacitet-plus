@@ -6,7 +6,7 @@
 |---|---|
 | Nätföretag | {{dso_name}} |
 | Studie | {{study_id}} |
-| Kvartal | {{quarter}} |
+| {{period_label}} | {{quarter}} |
 | Publicerad | {{published_at}} |
 | Metodversion | {{method_version}} |
 | Programvara | Kapacitet+ {{code_version}}, incheckning {{code_commit}} |

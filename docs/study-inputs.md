@@ -58,16 +58,21 @@ wired in another order matters where `equipment.csv` gives the customer a single
 The upstream caps apply after the computation, so a change of `upstream.csv` or `stations.csv`
 builds no station again: `study collect` applies the current files.
 
-## What a quarter writes: `runs/<quarter>/`
+## What a run writes: `runs/<run>/`
+
+A run is a quarter (`2026Q4`) or a month (`2026-11`), given with `--run` (or `--quarter`); without it
+the commands take this quarter, or this month with `[publication] cadence = "monthly"`. Both kinds can
+sit side by side, ordered by the start of their period and then its end, and the Swedish texts say
+*kvartal* or *månad* accordingly.
 
 | step | files |
 | --- | --- |
-| `study collect --quarter 2026Q4` | `stations.parquet` (one row per station, the upstream caps applied), `inputs.json` (what each station's figures were computed from: the digests of its inputs, the upstream file, the method and the code) |
+| `study collect --run 2026Q4` (or `--run 2026-11`) | `stations.parquet` (one row per station, the upstream caps applied), `inputs.json` (what each station's figures were computed from: the digests of its inputs, the upstream file, the method and the code) |
 | `study review` | `review.csv` and `review.machine.csv`: the stations with the least margin first (the smaller published figure; a station without one comes first), with `flags` saying what to look at |
 | the reviewer | `corrections.csv`: `station_id`, `field`, `value`, `reason`, `by`. A correction is an overlay shown beside the computed value, never in its place, and can only make a figure more cautious: `generation_kw` or `consumption_kw` lowered, `hidden` set to true, or a `note`. One that cannot apply is listed and not applied |
 | `study sign --by "name, role"` | `signoff.json`: the sha256 of `study.toml`, the run's files and every station's results, sealed as a `publication` in the study's own chain (`evidence/seals.jsonl`), signed with the installation's key (`evidence/seal_key.pub`; `kapacitet seals verify <study>/evidence`) |
-| `study publish` | `publication/`: `capacity.csv` (the `[output]` dialect) and `capacity.machine.csv` (RFC 4180), `capacity.geojson`, `grunder_for_berakning.md`, `validation_report.sv.md`, `manifest.json` (each file's sha256 and the sign-off); `disclosure_report.csv` beside it, which says which station is in which cell and is never published |
-| `study diff --from 2026Q3 --to 2026Q4` | `changes.csv`: one row per station and figure that changed, the inputs that changed (`causes`) and a sentence in Swedish |
+| `study publish` | `publication/`: `capacity.csv` (the `[output]` dialect) and `capacity.machine.csv` (RFC 4180), `capacity.geojson`, `grunder_for_berakning.md`, `validation_report.sv.md`, `manifest.json` (each file's sha256 and the sign-off), and `embed/`, the embeddable map (`index.html`, `embed.js`, `embed.css`; [publication.md](publication.md)); `disclosure_report.csv` beside it, which says which station is in which cell and is never published |
+| `study diff --to 2026-11` (`--from` defaults to the run before in time, of either kind) | `changes.csv`: one row per station and figure that changed, the inputs that changed (`causes`) and a sentence in Swedish |
 
 A publication is signed only while every file the signature covers is unchanged; otherwise every
 file of it says UTKAST (draft). A study pinned to another method version than the code's, or with

@@ -64,7 +64,7 @@ from pathlib import Path
 from .. import procs
 from ..atomic import write_json_atomic, write_text_atomic
 from . import Study, StudyError
-from . import csvio
+from . import csvio, runs
 from .config import METHOD_VERSION
 
 OPTIONS_SCHEMA = "kapacitet.station-options/1"
@@ -612,6 +612,7 @@ def options_note(study: Study, q: str, r: dict, doc: dict | None, rates: dict[st
     costs = study.config.costs
     return render(OPTIONS_TEMPLATE.read_text(encoding="utf-8"), {
         "station": r["name"] or r["station_id"], "station_id": r["station_id"], "quarter": q,
+        "period_label": runs.label_sv(q),
         "dso_name": study.config.dso.name or study.id, "rank": str(r["rank"]),
         "generation_kw": sv_kw(r["generation_kw"]), "consumption_kw": sv_kw(r["consumption_kw"]),
         "pending": SV["pending"].format(n=r["pending_cases"] or 0),

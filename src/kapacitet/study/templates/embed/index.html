@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="sv">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>{{title}}</title>
+<link rel="stylesheet" href="embed.css">
+<script src="embed.js" defer></script>
+</head>
+<body class="{{body_class}}">
+<main class="embed" aria-labelledby="embed-title">
+  <header class="head">
+    <h1 id="embed-title"><span data-i18n="title">Ledig kapacitet i elnätet</span><span class="dso">{{dso}}</span></h1>
+    <p class="meta" id="embed-meta">{{meta}}</p>
+    <p class="draft-note" id="embed-draft-note"{{draft_hidden}} data-i18n="draftNote">UTKAST: inte signerat, får inte användas som fastställt underlag.</p>
+  </header>
+
+  <div class="controls" id="embed-controls" hidden>
+    <fieldset class="switch">
+      <legend data-i18n="show">Visa</legend>
+      <div class="switch-options" id="embed-switch"></div>
+    </fieldset>
+  </div>
+
+  <div class="stage" id="embed-stage" hidden>
+    <div class="map" id="embed-map">
+      <div class="tiles" id="embed-tiles" aria-hidden="true"></div>
+      <svg class="cells" id="embed-svg" role="group" aria-labelledby="embed-map-label" focusable="false"></svg>
+      <p class="sr-only" id="embed-map-label" data-i18n="mapLabel">Karta: varje cell kan väljas för att visa sina värden.</p>
+      <div class="zoom" role="group" aria-label="Zoom" id="embed-zoom">
+        <button type="button" id="embed-zoom-in" data-i18n-label="zoomIn" aria-label="Zooma in">+</button>
+        <button type="button" id="embed-zoom-out" data-i18n-label="zoomOut" aria-label="Zooma ut">−</button>
+        <button type="button" id="embed-zoom-fit" data-i18n-label="zoomFit" aria-label="Visa alla celler">⤢</button>
+      </div>
+      <p class="scale" id="embed-scale" aria-hidden="true" hidden><span class="scale-bar" id="embed-scale-bar"></span><span id="embed-scale-text"></span></p>
+      <p class="draft-mark" id="embed-draft-mark" aria-hidden="true"{{draft_hidden}}>UTKAST</p>
+      <p class="attribution" id="embed-attribution"{{attribution_hidden}}>{{attribution}}</p>
+    </div>
+    <aside class="panel" id="embed-panel" aria-live="polite" aria-labelledby="embed-panel-title">
+      <h2 id="embed-panel-title" data-i18n="panelEmpty">Välj en cell på kartan</h2>
+      <dl class="figures" id="embed-figures"></dl>
+      <div class="legend" id="embed-legend"></div>
+      <p class="unplaced" id="embed-unplaced" hidden></p>
+    </aside>
+  </div>
+
+  <noscript><p class="noscript">Kartan behöver JavaScript. Alla värden finns i tabellen nedan.</p></noscript>
+
+  <section class="table-wrap" aria-labelledby="embed-table-title">
+    <div class="table-head">
+      <h2 id="embed-table-title" data-i18n="tableTitle">Alla celler</h2>
+      <button type="button" class="toggle" id="embed-table-toggle" aria-controls="embed-table" aria-expanded="true" hidden data-i18n="showTable">Visa som tabell</button>
+    </div>
+    <div class="table-scroll" id="embed-table">
+      <table>
+        <caption>{{caption}}</caption>
+        <thead><tr>{{head}}</tr></thead>
+        <tbody>{{rows}}</tbody>
+      </table>
+    </div>
+  </section>
+
+  <footer class="foot">
+    <p>{{footer}} <a href="../grunder_for_berakning.md" data-i18n="basis">Grunder för beräkningen</a> · <a href="../capacity.csv" data-i18n="download">Ladda ner (CSV)</a></p>
+  </footer>
+</main>
+</body>
+</html>

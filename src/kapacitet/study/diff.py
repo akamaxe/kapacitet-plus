@@ -1,9 +1,13 @@
-"""`study diff --from Q1 --to Q2`: what changed between two collected quarters, and why.
+"""`study diff [--from R1] --to R2`: what changed between two collected runs, and why.
 
-    runs/<Q2>/changes.csv (and its machine copy): one row per station and figure that changed,
+A run is a quarter (2026Q4) or a month (2026-11). Without --from the earlier run is the one before
+R2 in time, whatever its kind (study/runs.py): a DSO that goes from quarterly to monthly runs
+compares its first month with its last quarter.
+
+    runs/<R2>/changes.csv (and its machine copy): one row per station and figure that changed,
     with the cause tags and a sentence in Swedish
 
-The causes come from runs/<Q>/inputs.json, which `study collect` writes: a figure that changed
+The causes come from runs/<run>/inputs.json, which `study collect` writes: a figure that changed
 while the station's network digest changed is tagged `network`, and so on for every input a
 station's build reads (study.Study.digests), the upstream caps (`upstream`, applied at collect),
 inputs/stations.csv (`stations`: a feeder, a zone or a hidden flag), the method version (`method`)
@@ -17,7 +21,7 @@ from __future__ import annotations
 import json
 
 from . import Study, StudyError
-from . import csvio
+from . import csvio, runs
 from .publish import sv
 from .review import load_rows, run_dir
 
@@ -86,10 +90,16 @@ def sentence(sid: str, field: str, old, new, tags: list[str]) -> str:
             f"Orsak: {why}.")
 
 
-def diff(study: Study, q_from: str, q_to: str) -> dict:
-    """runs/<q_to>/changes.csv; returns {"paths", "rows"}."""
+def diff(study: Study, q_from: str | None, q_to: str) -> dict:
+    """runs/<q_to>/changes.csv against q_from, or without it against the collected run before q_to in
+    time (study/runs.previous); returns {"paths", "rows", "from", "to"}."""
+    run_dir(study, q_to)                        # a run id, or the same refusal as everywhere
+    if q_from is None:
+        q_from = runs.previous(study.runs, q_to)
+        if q_from is None:
+            raise StudyError("config", message=f"no run before {q_to} has been collected: give --from")
     if q_from == q_to:
-        raise StudyError("config", message="--from and --to are the same quarter")
+        raise StudyError("config", message="--from and --to are the same run")
     old = {r["station_id"]: r for r in load_rows(study, q_from)}
     new = {r["station_id"]: r for r in load_rows(study, q_to)}
     ins_old, ins_new = _inputs(study, q_from), _inputs(study, q_to)
@@ -108,7 +118,7 @@ def diff(study: Study, q_from: str, q_to: str) -> dict:
                          "to_quarter": q_to, "from_value": va, "to_value": vb, "delta_kw": delta,
                          "causes": ";".join(tags), "sentence_sv": sentence(sid, field, va, vb, tags)})
     paths = csvio.write(run_dir(study, q_to), "changes", rows, COLUMNS, study.config.output.csv_dialect)
-    return {"paths": paths, "rows": rows}
+    return {"paths": paths, "rows": rows, "from": q_from, "to": q_to}
 
 
 __all__ = ["CAUSE_SV", "COLUMNS", "FIELDS", "causes", "diff", "sentence"]

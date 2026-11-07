@@ -44,6 +44,7 @@ from . import jobs, records
 from ..brand import ERRORS as BRAND_ERRORS
 from .auth import ERRORS as AUTH_ERRORS
 from .guard import ERRORS as GUARD_ERRORS
+from .publications import ERRORS as PUBLICATION_ERRORS
 from .guard import Guard
 from .. import seals
 from ..ingest.provenance import load_manifest
@@ -163,7 +164,8 @@ async def etag(request, call_next):
             return Response(status_code=204)
         raise
     if (request.method != "GET" or not request.url.path.startswith("/api/v1/") or response.status_code != 200
-            or not response.headers.get("content-type", "").startswith("application/json")):
+            or not response.headers.get("content-type", "").startswith("application/json")
+            or response.headers.get("etag")):        # a route's own ETag (a publication's sha256) stays
         return response
     body = b"".join([chunk async for chunk in response.body_iterator])
     tag = 'W/"' + hashlib.sha1(body).hexdigest()[:20] + '"'
@@ -188,6 +190,7 @@ from .auth import router as auth_router  # noqa: E402
 from .datasets import router as datasets_router  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
+from .publications import router as publications_router  # noqa: E402
 from .setup import closed_because as setup_closed_because  # noqa: E402
 from .setup import router as setup_router  # noqa: E402
 
@@ -198,6 +201,7 @@ app.include_router(apply_router)
 app.include_router(datasets_router)
 app.include_router(setup_router)
 app.include_router(auth_router)
+app.include_router(publications_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -231,6 +235,16 @@ _WRITTEN_BY = {
     "redispatch_sv.txt": "redispatch-report",
     "meter_compliance.json": "meter-compliance",
     "meter_compliance_sv.txt": "meter-compliance",
+    # a study's publication (api/publications.py), signed first with `study sign <dir> --by "name, role"`
+    "publication/manifest.json": "study publish <dir> --run <run>",
+    "publication/capacity.csv": "study publish <dir> --run <run>",
+    "publication/capacity.machine.csv": "study publish <dir> --run <run>",
+    "publication/capacity.geojson": "study publish <dir> --run <run>",
+    "publication/grunder_for_berakning.md": "study publish <dir> --run <run>",
+    "publication/validation_report.sv.md": "study publish <dir> --run <run>",
+    "publication/embed/index.html": "study publish <dir> --run <run>",
+    "publication/embed/embed.js": "study publish <dir> --run <run>",
+    "publication/embed/embed.css": "study publish <dir> --run <run>",
 }
 
 
@@ -253,6 +267,7 @@ API_ERRORS = {
     **GUARD_ERRORS,
     **AUTH_ERRORS,
     **BRAND_ERRORS,
+    **PUBLICATION_ERRORS,
 }
 
 
