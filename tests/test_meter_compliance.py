@@ -234,3 +234,31 @@ def test_the_endpoint_serves_the_file_and_names_the_command_without_it(root, mon
     assert body["data"]["readings"] == "synthetic" and "provenance" in body
     text = client.get("/api/v1/operation/meter-compliance_sv.txt")
     assert text.status_code == 200 and "Efterlevnad" in text.text
+
+
+def test_quarter_hours_and_hourly_rows_are_merged_per_customer(root):
+    _operation(root)
+    t0 = year_index(YEAR)[24 * 150 + 11]
+    q = pd.date_range(t0, periods=4, freq="15min")
+    (root / "meters").mkdir()
+    rows = [("C3", t.isoformat(), 0.5) for t in q] + [("C3", (t0 + pd.Timedelta(hours=1)).isoformat(), 1.0)]  # 1 incomplete
+    pd.DataFrame({"customer_id": [r[0] for r in rows], "start": pd.to_datetime([r[1] for r in rows], utc=True),
+                  "kwh_export": [r[2] for r in rows]}).to_parquet(root / "meters" / "export_15min.parquet")
+    _hourly_file(root, [("C5", t0.isoformat(), 6.0), ("C3", t0.isoformat(), 99.0)])   # C3 stays on its quarters
+    r = mc.build(root, "maxmin")
+    assert r["reading_resolution_min"] == 15 and r["summary"]["incomplete_hours"] == 1
+    assert _by_cid(r)[3]["status"] == "compliant" and _by_cid(r)[3]["intervals_checked"] == 1
+    p5 = _by_cid(r)[5]
+    assert p5["status"] == "non_compliant" and p5["energy_above_kwh"] == pytest.approx(1.0)
+
+
+def test_a_compliant_customer_has_no_worst_hour_and_a_missing_envelope_is_unchecked(root):
+    _, env = _operation(root)
+    t0 = year_index(YEAR)[24 * 150 + 11]
+    _hourly_file(root, [("C3", t0.isoformat(), 3.1), ("C5", t0.isoformat(), 1.0)])
+    p = _by_cid(mc.build(root, "maxmin", tolerance_kw=0.25))
+    assert p[3]["status"] == "compliant" and p[3]["worst"] is None
+    bad = env.copy()
+    bad[0, 24 * 150 + 11] = np.nan
+    r = mc.check(pd.DataFrame({"cid": [3], "hour": [24 * 150 + 11], "kwh_export": [9.0]}), bad, CIDS, YEAR, 0.25)
+    assert _by_cid(r)[3]["intervals_checked"] == 0 and _by_cid(r)[3]["status"] == "no_readings"

@@ -58,35 +58,49 @@ class MeterComplianceError(RuntimeError):
 
 # ---------------------------------------------------------------- readings
 
-def readings(root: Path | None = None) -> tuple[pd.DataFrame, int] | None:
-    """The metered export in processed/meters/ as (customer_id, start, kwh_export), with the
-    minutes each reading covers (15 or 60); None when there is no export reading at all."""
+def _read(path: Path) -> pd.DataFrame:
+    df = pd.read_parquet(path, columns=["customer_id", "start", "kwh_export"]).dropna(subset=["kwh_export"])
+    return df.assign(customer_id=df["customer_id"].astype(str))
+
+
+def readings(root: Path | None = None) -> tuple[pd.DataFrame, int, int] | None:
+    """The metered export in processed/meters/ as complete hours (customer_id, start, kwh_export), the
+    minutes the readings cover (15 when any come from quarter-hours, else 60) and the number of
+    incomplete quarter-hour hours dropped; None when there is no export reading at all. Quarter-hours
+    are summed to hours; a customer with no complete hour that way falls back to its hourly rows."""
     folder = Path(root or paths.PROCESSED) / "meters"
-    quarters = folder / "export_15min.parquet"
-    if quarters.is_file():
-        df = pd.read_parquet(quarters, columns=["customer_id", "start", "kwh_export"]).dropna(subset=["kwh_export"])
-        if len(df):
-            return df, 15
-    hourly = folder / "hourly.parquet"
-    if hourly.is_file():
-        df = pd.read_parquet(hourly, columns=["customer_id", "start", "kwh_export"]).dropna(subset=["kwh_export"])
-        if len(df):
-            return df, 60
+    quarters, hourly = folder / "export_15min.parquet", folder / "hourly.parquet"
+    q = _read(quarters) if quarters.is_file() else None
+    h = _read(hourly) if hourly.is_file() else None
+    if q is not None and len(q):
+        hours, dropped = _hours_dropped(q)
+        if h is not None and len(h):
+            extra = h[~h["customer_id"].isin(set(hours["customer_id"]))]
+            extra = extra.assign(start=pd.to_datetime(extra["start"], utc=True))
+            hours = pd.concat([hours, extra[["customer_id", "start", "kwh_export"]]], ignore_index=True)
+        return hours, 15, dropped
+    if h is not None and len(h):
+        return h.assign(start=pd.to_datetime(h["start"], utc=True)), 60, 0
     return None
 
 
-def to_hours(quarters: pd.DataFrame) -> pd.DataFrame:
-    """Quarter-hour export summed to complete hours (all four quarters present): customer_id,
-    start (the hour's start in UTC), kwh_export. An hour in UTC is an hour in UTC+1 as well."""
+def _hours_dropped(quarters: pd.DataFrame) -> tuple[pd.DataFrame, int]:
     df = quarters[["customer_id", "start", "kwh_export"]].copy()
     df["customer_id"] = df["customer_id"].astype(str)
     df["start"] = pd.to_datetime(df["start"], utc=True)
     df = df.drop_duplicates(["customer_id", "start"])
     df["hour"] = df["start"].dt.floor("h")
     g = df.groupby(["customer_id", "hour"], sort=True)["kwh_export"].agg(["sum", "count"]).reset_index()
+    dropped = int((g["count"] != 4).sum())
     g = g[g["count"] == 4]
     out = g.rename(columns={"hour": "start", "sum": "kwh_export"})[["customer_id", "start", "kwh_export"]]
-    return out.astype({"kwh_export": float}).reset_index(drop=True)
+    return out.astype({"kwh_export": float}).reset_index(drop=True), dropped
+
+
+def to_hours(quarters: pd.DataFrame) -> pd.DataFrame:
+    """Quarter-hour export summed to complete hours (all four quarters present): customer_id,
+    start (the hour's start in UTC), kwh_export. An hour in UTC is an hour in UTC+1 as well."""
+    return _hours_dropped(quarters)[0]
 
 
 def on_year(hourly: pd.DataFrame, year: int) -> pd.DataFrame:
@@ -130,11 +144,18 @@ def check(hourly: pd.DataFrame, envelopes: np.ndarray, cids: list[int], year: in
         h = g["hour"].to_numpy(dtype=np.int64)
         export = g["kwh_export"].to_numpy(dtype=float)        # kWh in an hour = mean kW
         limit = np.asarray(envelopes[agreement[c]], dtype=float)[h]
+        finite = np.isfinite(limit)
+        if not finite.all():                       # an hour without a usable envelope is not checked
+            h, export, limit = h[finite], export[finite], limit[finite]
+            if not len(h):
+                per.append(entry | {"intervals_checked": 0, "intervals_above": 0, "energy_above_kwh": 0.0,
+                                    "worst": None, "status": "no_readings"})
+                continue
         excess = export - limit
         above = excess > tolerance_kw
         k = int(np.argmax(excess))
         worst = None
-        if excess[k] > 0:
+        if excess[k] > tolerance_kw:
             worst = {"hour": int(h[k]), "start": idx[int(h[k])].isoformat(),
                      "export_kw": round(float(export[k]), 3), "limit_kw": round(float(limit[k]), 3),
                      "excess_kw": round(float(excess[k]), 3)}
@@ -265,23 +286,21 @@ def build(root: Path | None = None, policy: str | None = None, start: str | None
             raise MeterComplianceError(f"ui/operation/desired.npy is missing: run {OPERATION}")
         hourly = synthetic_hourly(np.load(desired_path), env, cids, inject)
         source, step = "synthetic", INTERVAL_MIN
-        extra = {"injected": {str(c): s for c, s in sorted((inject or {}).items())}, "unmatched_meters": 0,
+        extra = {"injected": {str(c): s for c, s in sorted((inject or {}).items())}, "unmatched_meters": 0, "incomplete_hours": 0,
                  "outside_period": int(((hourly["hour"] < span[0]) | (hourly["hour"] >= span[1])).sum())}
     else:
-        df, step = metered
-        hours = to_hours(df) if step == 15 else df.assign(customer_id=df["customer_id"].astype(str),
-                                                          start=pd.to_datetime(df["start"], utc=True))
+        hours, step, incomplete = metered
         lookup = {cid_text: i for i, cid_text in enumerate(ids or [])}
         hours = hours.assign(cid=hours["customer_id"].map(lookup))
         unmatched = int(hours.loc[hours["cid"].isna(), "customer_id"].nunique())
         hours = hours[hours["cid"].notna()].astype({"cid": np.int64})
         placed = on_year(hours, year)
         in_span = (placed["hour"] >= span[0]) & (placed["hour"] < span[1])
-        extra = {"unmatched_meters": unmatched, "outside_period": int(len(hours) - int(in_span.sum()))}
+        extra = {"unmatched_meters": unmatched, "incomplete_hours": incomplete, "outside_period": int(len(hours) - int(in_span.sum()))}
         hourly = placed
         source = "metered"
     out = check(hourly, env, cids, year, tol, span, ids)
-    out["summary"].update({k: extra.pop(k) for k in ("unmatched_meters", "outside_period")})
+    out["summary"].update({k: extra.pop(k) for k in ("unmatched_meters", "incomplete_hours", "outside_period")})
     return {
         "schema": SCHEMA,
         "year": year,
