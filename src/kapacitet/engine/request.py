@@ -421,11 +421,35 @@ def _reactive(d: dict) -> np.ndarray:
     return -(d["load"] + d["hp_s"] + d["ev_s"]) * np.tan(np.arccos(A("load_power_factor")))
 
 
+def _screened_hours(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict, side: str,
+                    active: np.ndarray) -> np.ndarray:
+    """(H,) bool: the hours where the applicant is `active` that the linear screen of `side` keeps
+    with its injection in the grid, less those the baseline itself already breaks on that side.
+
+    The headrooms are linear estimates (`import_headroom` keeps a 2 % margin, `export_headroom`
+    none), so an hour where the envelope does not bind can still break a limit: the drop of an
+    11 kW charger below its headroom took a customer to 0.907 pu on the tiny grid (found by
+    tests/test_properties_queue.py). The screens never skip a violating hour, so every such hour
+    is among these and gets the nonlinear check."""
+    p, q = p0.copy(), q0.copy()
+    p[j], q[j] = _injection(d), _reactive(d)
+    keep = np.zeros(p.shape[1], dtype=bool)
+    keep[getattr(model, f"screen_{side}")(p, q)] = True
+    keep &= active
+    hrs = np.flatnonzero(keep)
+    if len(hrs):
+        base = getattr(model.violations(model.solve(p0[:, hrs], q0[:, hrs]), p0[:, hrs]), f"{side}_side")
+        keep[hrs[base]] = False
+    return keep
+
+
 def _verify_import(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
-    """Re-check the hours where the import envelope binds; scale the served import down where it fails."""
+    """Re-check the hours where the import envelope binds, and every other hour with new import the
+    import screen keeps (`_screened_hours`); scale the served import down where it fails."""
     demand = d["hp"] + d["ev_want"]
     served = d["hp_s"] + d["ev_s"]
-    hrs = np.flatnonzero((demand > 1e-6) & (d["head"] < demand - 1e-6))
+    binding = (demand > 1e-6) & (d["head"] < demand - 1e-6)
+    hrs = np.flatnonzero(binding | _screened_hours(model, p0, q0, j, d, "import", served > 1e-6))
     if not len(hrs):
         return {"hours_checked": 0, "hours_tightened": 0, "violations_after": 0}
     p, q = p0[:, hrs].copy(), q0[:, hrs].copy()
@@ -453,12 +477,16 @@ def _verify_import(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: d
 
 
 def _verify_export(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
-    """Re-check the hours where the export envelope binds; bisect the envelope down where it fails."""
+    """Re-check the hours where the export envelope binds, and every other hour of export the export
+    screen keeps (`_screened_hours`); bisect the envelope down where it fails."""
     p, q = p0.copy(), q0.copy()
     p[j], q[j] = _injection(d), _reactive(d)
     net_j = _net(d)
-    # hours where the applicant exports and its envelope is below the inverter capacity
-    hrs = np.flatnonzero((d["desired"] > 0) & (d["env"] < d["cap"] - 1e-6))
+    # hours where the applicant exports and its envelope is below the inverter capacity, and those
+    # where it is not but the screen cannot rule a violation out
+    exporting = d["desired"] > 0
+    hrs = np.flatnonzero((exporting & (d["env"] < d["cap"] - 1e-6))
+                         | _screened_hours(model, p0, q0, j, d, "export", exporting))
     n_bad = n_tightened = n_baseline = 0
     if len(hrs):
         qh = q[:, hrs]
@@ -779,7 +807,7 @@ def run(model: NetModel, req: Request, hp: np.ndarray, ev: np.ndarray, emit=None
     for y in years:
         if bp is not None and y not in checks:
             _battery_dispatch(detail[y], bp)
-    method = "Z-bus nonlinear power flow on every hour where an envelope binds"
+    method = "Z-bus nonlinear power flow on every hour where an envelope binds or the linear screen keeps"
     verify: dict = {}
     if ref in checks:
         cr = checks[ref]

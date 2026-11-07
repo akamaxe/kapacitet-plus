@@ -240,3 +240,28 @@ def test_recover_finishes_a_swap_a_crash_interrupted(tiny_queue):
     where.with_name(where.name + ".next").mkdir()
     qu.recover(where)
     assert _files(where) == kept and not old.exists() and not where.with_name(where.name + ".next").exists()
+
+
+def test_an_hour_below_the_linear_import_headroom_is_verified_too(tiny_queue):
+    """Found by tests/test_properties_queue.py: an 11 kW charger served below its linear import
+    headroom (which keeps a 2 % margin) still took a customer to 0.907 pu in 15 hours of the two
+    years, and only the hours where the headroom bound were checked, so the queue approved it.
+    Every hour the import screen keeps is checked now, and the grid with the house in it breaks
+    no import limit the baseline was within."""
+    from kapacitet.config import settings
+    from kapacitet.engine import request as rq
+
+    m, hp, ev, name, _ = tiny_queue
+    ctx = rq.Context(name)
+    years = list(settings().weather_years)
+    out, detail = rq.run(m, rq.Request(cid=17, pv_kwp=1.0, ev_kw=11.0, baseline=name), hp, ev, ctx=ctx,
+                         verify_years=years)
+    assert out["verification"]["all_years"]["import_violations_after"] == 0
+    assert out["verification"]["import"]["hours_tightened"] > 0
+    for y in years:
+        d = detail[y]
+        p0, q0 = ctx.pq(m, y, hp, ev)
+        p, q = p0.copy(), q0.copy()
+        p[17], q[17] = rq._injection(d), rq._reactive(d)
+        new = m.violations(m.solve(p, q), p).import_side & ~m.violations(m.solve(p0, q0), p0).import_side
+        assert not new.any(), f"{y}: {int(new.sum())} hours below v_min with the charger in"
