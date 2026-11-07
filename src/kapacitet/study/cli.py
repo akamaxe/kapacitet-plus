@@ -398,6 +398,8 @@ def _options(args) -> None:
           f"{none} without a proposal")
     for sid in out["failed"]:
         print(f"  {sid}: failed (see its build.log)")
+    for sid in out["profiles_skipped"]:
+        print(f"  {sid}: no profile, its reference year differs from the study's")
     if out["failed"]:
         sys.exit(1)
 

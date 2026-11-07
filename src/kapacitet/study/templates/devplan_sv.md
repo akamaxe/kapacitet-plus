@@ -27,4 +27,9 @@ båda ändar av mellanspänningsbandet och den ände som kräver mest redovisas;
 lägre. Flexibiliteten är lika stor andel av varje kunds solproduktion (produktion), eller av
 värmepumpens och elbilsladdningens last (förbrukning), den timmen.
 
+Behovet uppstår med den utrustning som respektive tillstånd har (dagens, eller scenariots), inte med
+den publicerade kapaciteten, som bara redovisas som jämförelse. Timmar som ingen flexibilitet löser
+(status `unresolved`) räknas inte i energin: noll energi tillsammans med sådana timmar betyder att
+gränsen inte kan hållas, inte att behovet saknas.
+
 Kapacitet+ föreslår endast: varje beslut fattas av en person hos nätföretaget.

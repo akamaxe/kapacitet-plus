@@ -272,3 +272,38 @@ def test_the_flexibility_need_clears_every_hour_it_counts():
     # without anything to turn down, no hour is cleared
     none = es.flexibility_need(m, p, q, np.zeros_like(pv), "export")
     assert none["unresolved_hours"] == none["hours"] and none["energy_kwh"] == 0.0
+
+
+@needs_results
+@pytest.mark.parametrize("entered", [True, False])
+def test_the_station_process_wires_the_need_the_profiles_and_the_scenario(tmp_path, monkeypatch, entered):
+    from kapacitet import paths
+    from kapacitet.engine.scenario import Scenario
+    from kapacitet.engine import run
+    from kapacitet.study import station as st
+
+    study = make(tmp_path / "s", scenario=SCENARIO if entered else "")
+    monkeypatch.setattr(st, "isolated", lambda *_: True)
+    cap = tmp_path / "capacity.json"
+    cap.write_text(json.dumps({"years": [2025], "mv_band_pu": [1.0, 1.06], "generation": {"order": 0},
+                               "fingerprint": "x"}), encoding="utf-8")
+    monkeypatch.setattr(st, "capacity_path", lambda: cap)
+    out_dir = tmp_path / "out"
+    monkeypatch.setattr(paths, "DATA", out_dir)
+    try:
+        doc = devplan.station_devplan(study, "s1", Q)
+    finally:
+        from kapacitet.config import set_overrides
+        set_overrides(None, layer="study")
+    assert ("scenario" in doc["flexibility"]) is entered
+    assert ("scenario_customers" in doc) is entered
+    assert set(doc["flexibility"]["today"]) == {"generation", "consumption"}
+    assert doc["flexibility"]["today"]["generation"]["mv_pu"] in doc["mv_band_pu"]
+    ref = doc["reference_year"]
+    with np.load(out_dir / "devplan" / f"{Q}.npz") as z:
+        m = run.model()
+        hp, ev = run.background_masks(m.C)
+        arr = Scenario(year=ref, pv=np.zeros(m.C, dtype=bool), hp=hp, ev=ev).arrays()
+        assert float(z[f"load_{ref}"].sum()) == pytest.approx(float(arr["load"].sum()))
+        assert float(z[f"generation_{ref}"].sum()) == pytest.approx(float(arr["pv"].sum()))
+    assert doc["energy"]["load_kwh_reference_year"] == pytest.approx(float(arr["load"].sum()))

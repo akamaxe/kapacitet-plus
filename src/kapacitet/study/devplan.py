@@ -157,7 +157,10 @@ def _worse_end(by_end: dict[float, dict]) -> tuple[float, dict]:
 
 def station_devplan(study: Study, sid: str, q: str) -> dict:
     """`kapacitet station devplan`: this station's hourly profiles in every weather year and its
-    flexibility need today and in the scenario, on its own folder, into devplan/<q>.json and .npz."""
+    flexibility need today and in the scenario, on its own folder, into devplan/<q>.json and .npz.
+    The need arises with the devices of each state (today's, or the scenario's), not with the published
+    capacity, which only appears as a reference column; hours no flexibility clears are counted apart
+    (unresolved_hours) and carry no energy."""
     import warnings
 
     from ..config import set_overrides, settings
@@ -319,7 +322,8 @@ def flex_rows(facts: dict, doc: dict | None, scenario_year: int, scenario: bool)
                 if s is None:
                     r["status"] = "not_computed"
                 else:
-                    r.update(status="ok", hours_per_year_mean=s.get("hours_mean"), hours_per_year_max=s.get("hours_max"),
+                    r.update(status="unresolved" if int(s.get("unresolved_hours") or 0) > 0 else "ok",
+                             hours_per_year_mean=s.get("hours_mean"), hours_per_year_max=s.get("hours_max"),
                              hours_reference_year=s.get("hours_reference_year"),
                              energy_kwh_per_year_mean=s.get("energy_kwh_mean"),
                              energy_kwh_per_year_max=s.get("energy_kwh_max"),
@@ -408,7 +412,7 @@ def investment_row(facts: dict, option: dict | None, flex: list[dict], first_yea
     last = first_year + horizon - 1
 
     def need(state: str) -> bool:
-        return any(r["state"] == state and r["status"] == "ok" and (r["hours_per_year_max"] or 0) > 0 for r in flex)
+        return any(r["state"] == state and r["status"] in ("ok", "unresolved") and (r["hours_per_year_max"] or 0) > 0 for r in flex)
 
     when = []
     if need("today"):
@@ -497,11 +501,13 @@ def devplan(study: Study, q: str, jobs: int | None = None, runner=None, allow_gi
     ref_years = sorted({int(d["reference_year"]) for d in ok.values()})
     reference_year = ref_years[-1] if ref_years else None
     paths: list[Path] = []
+    skipped: list[str] = []
     total: dict[int, tuple[np.ndarray, np.ndarray]] | None = None
     years_all: set[int] | None = None
     for sid, d in sorted(ok.items()):
         per_year = _load_arrays(study, sid, q)
         if int(d["reference_year"]) != reference_year:
+            skipped.append(sid)
             continue
         paths += write_profile(folder / "profiles", sid, profile_frame(per_year, reference_year), dialect)
         aligned = {y: (align(v[0], y, reference_year), align(v[1], y, reference_year)) for y, v in per_year.items()}
@@ -528,7 +534,7 @@ def devplan(study: Study, q: str, jobs: int | None = None, runner=None, allow_gi
     paths.append(md)
     failed = sorted(sid for sid, d in docs.items() if d and "failed" in d)
     return {"flexibility": flex_all, "investments": inv, "paths": paths, "computed": sorted(todo), "failed": failed,
-            "options_missing": not options, "quarter": q, "reference_year": reference_year}
+            "options_missing": not options, "profiles_skipped": skipped, "quarter": q, "reference_year": reference_year}
 
 
 __all__ = ["FLEX_COLUMNS", "HORIZON_YEARS", "INVESTMENT_COLUMNS", "PROFILE_COLUMNS", "REGULATION", "SCHEMA", "SV",
