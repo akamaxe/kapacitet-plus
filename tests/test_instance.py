@@ -247,6 +247,39 @@ def test_the_key_is_never_restored_over_another_nor_left_out_by_accident(healthy
     assert out["seal_key"] is None and out["files"] == len(manifest["files"])
 
 
+def test_a_restore_whose_state_fails_takes_the_key_back_so_it_can_be_retried(healthy, tmp_path, monkeypatch):
+    _fill(healthy)
+    dest = tmp_path / "backup"
+    instance.backup(dest, healthy)
+    target = _make(tmp_path / "b", monkeypatch)
+    target.requests.mkdir(parents=True)
+    (target.requests / "stray.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(InstanceError, match="already holds state"):
+        instance.restore(dest, target)
+    assert not (target.keys / seals.KEY_FILE).exists() and _tree(target.keys) == {}
+    (target.requests / "stray.json").unlink()
+    out = instance.restore(dest, target)
+    assert out["chain"]["ok"] and _tree(target.keys) == _tree(healthy.keys)
+
+
+def test_a_manifest_short_of_its_entries_gives_a_message_not_a_traceback(healthy, tmp_path, monkeypatch):
+    dest = tmp_path / "backup"
+    instance.backup(dest, healthy)
+    path = dest / instance.MANIFEST
+    whole = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({k: v for k, v in whole.items() if k != "files"}), encoding="utf-8")
+    with pytest.raises(InstanceError, match="incomplete"):
+        instance.restore(dest, _make(tmp_path / "b", monkeypatch))
+    path.write_text(json.dumps({k: v for k, v in whole.items() if k != "seal_key"}), encoding="utf-8")
+    assert instance.restore(dest, _make(tmp_path / "c", monkeypatch))["chain"]["ok"]
+
+
+def test_a_public_host_with_sign_in_not_configured_is_an_error_too(healthy, monkeypatch):
+    monkeypatch.delenv("KAPACITET_AUTH")
+    monkeypatch.setenv("KAPACITET_ALLOWED_HOSTS", "kapacitet.dso.example")
+    assert sorted(a for a, _ in _errors(instance.check(healthy))) == ["hosts", "sign-in"]
+
+
 def test_a_backup_goes_into_an_empty_folder_and_never_beside_a_running_server(healthy, tmp_path):
     full = tmp_path / "full"
     full.mkdir()

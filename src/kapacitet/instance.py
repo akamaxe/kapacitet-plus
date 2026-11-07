@@ -36,6 +36,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import logging
 import os
 import shutil
 import subprocess
@@ -46,6 +47,8 @@ from pathlib import Path
 from urllib.parse import urlsplit
 
 from .atomic import write_bytes_atomic, write_json_atomic, write_text_atomic
+
+log = logging.getLogger(__name__)
 
 SCHEMA = "kapacitet.instance-backup/1"
 MANIFEST = "MANIFEST.json"
@@ -354,7 +357,7 @@ def _check_hosts(out: list[Finding], signin: bool | None) -> None:
         out.append(Finding("hosts", "warn", "the server answers only to localhost: a reverse proxy in front "
                                             "must reach it by that name, or list its public name in "
                                             "KAPACITET_ALLOWED_HOSTS"))
-    elif signin is False:
+    elif not signin:            # off, or not configured (which the server takes as off)
         out.append(Finding("hosts", "error", f"the server answers to {', '.join(public)} with sign-in off: "
                                              "anyone who reaches it can approve; set KAPACITET_AUTH=oidc"))
     else:
@@ -667,6 +670,10 @@ def _read_manifest(src: Path) -> dict:
         raise InstanceError(f"{src} holds no readable {MANIFEST}: is it a Kapacitet+ instance backup?") from None
     if not isinstance(manifest, dict) or manifest.get("schema") != SCHEMA:
         raise InstanceError(f"{src / MANIFEST} is not a {SCHEMA} manifest")
+    if manifest.get("backend") not in ("files", "postgres") or not isinstance(manifest.get("files"), dict):
+        raise InstanceError(f"{src / MANIFEST} names no backend or no files: the backup is incomplete")
+    if not isinstance(manifest.get("seal_key", {}), dict):
+        raise InstanceError(f"{src / MANIFEST} has a seal_key entry that is not an object")
     return manifest
 
 
@@ -713,13 +720,15 @@ def restore(src: Path, inst: Instance | None = None, key_from: Path | None = Non
         try:
             key_manifest = json.loads((key_src / KEY_MANIFEST).read_text(encoding="utf-8"))
         except (OSError, ValueError):
-            if manifest["seal_key"].get("key_id"):
+            if (manifest.get("seal_key") or {}).get("key_id"):
                 raise InstanceError(f"no seal key in {key_src}: pass --key-from with the backup's secret folder, "
                                     "or --no-key to restore without it (the chain's lines then verify only "
                                     "against its published key, and new seals start a new key)") from None
     # 1. everything is checked before anything is written
     _verify_files(src, manifest["files"])
     if key_manifest is not None:
+        if not isinstance(key_manifest, dict) or not isinstance(key_manifest.get("files", {}), dict):
+            raise InstanceError(f"{key_src / KEY_MANIFEST} is not a key manifest")
         _verify_files(key_src, key_manifest.get("files", {}))
     if manifest["backend"] != store.backend():
         if manifest["backend"] == "postgres":
@@ -730,7 +739,59 @@ def restore(src: Path, inst: Instance | None = None, key_from: Path | None = Non
     if key_manifest is not None and (inst.keys / seals.KEY_FILE).exists():
         raise InstanceError(f"{inst.keys} already holds a signing key: restore into an instance without one")
     out = {"backend": manifest["backend"], "files": 0, "seal_key": None, "warnings": []}
-    # 2. the state
+    # 2. the key first: a key that cannot be written then leaves the state untouched, and if the state
+    #    fails after it, what was written is taken back, so a retry finds the instance as it was
+    undo: list[tuple[Path, bytes | None]] = []
+    if key_manifest is not None:
+        try:
+            for rel in key_manifest.get("files", {}):
+                data = (key_src / rel).read_bytes()
+                target = inst.keys / rel
+                undo.append((target, target.read_bytes() if target.exists() else None))
+                if rel == seals.KEY_FILE:
+                    if not seals._write_private(target, data, replace=False):
+                        undo.pop()          # another process's key: never taken back out
+                        raise InstanceError(f"{target} appeared during the restore: another process made a key")
+                else:
+                    write_bytes_atomic(target, data)
+        except BaseException:
+            _take_back(undo)
+            raise
+        out["seal_key"] = key_manifest.get("key_id")
+    try:
+        _restore_state(src, manifest, inst, out)
+    except BaseException:
+        _take_back(undo)
+        raise
+    if manifest["backend"] == "postgres" and manifest.get("scope") != store.scope():
+        out["warnings"].append(f"the backup's rows are under the scope {manifest.get('scope')} and this data folder "
+                               f"is {store.scope()}: set KAPACITET_STORE_SCOPE={manifest.get('scope')}")
+    # 4. the restored chain, verified with the restored keys
+    keys, _current, _error = _keys_in(inst.keys)
+    got = _verify_chain(inst, keys or None)
+    out["chain"] = {"length": got["length"], "signed": got["signed"], "ok": got["ok"]}
+    if not got["ok"]:
+        out["warnings"].append(f"the restored chain does not verify (line {got.get('broken_at')}: "
+                               f"{got.get('reason')})")
+    return out
+
+
+def _take_back(undo: list[tuple[Path, bytes | None]]) -> None:
+    """Undo the key files a failed restore wrote: delete the new ones, put back what they replaced."""
+    for target, before in reversed(undo):
+        try:
+            if before is None:
+                target.unlink(missing_ok=True)
+            else:
+                write_bytes_atomic(target, before)
+        except OSError:
+            log.warning("could not take %s back after the failed restore", target)
+
+
+def _restore_state(src: Path, manifest: dict, inst: Instance, out: dict) -> None:
+    """The restore's state: the database dump, or the requests folder's files."""
+    from . import store
+
     if store.is_pg():
         if not _pg_empty():
             raise InstanceError("the database is not empty: restore into a new database")
@@ -758,28 +819,6 @@ def restore(src: Path, inst: Instance | None = None, key_from: Path | None = Non
                 out["files"] += 1
         finally:
             procs.let_go(lock)
-    # 3. the key: the private one never over another
-    if key_manifest is not None:
-        for rel in key_manifest["files"]:
-            data = (key_src / rel).read_bytes()
-            target = inst.keys / rel
-            if rel == seals.KEY_FILE:
-                if not seals._write_private(target, data, replace=False):
-                    raise InstanceError(f"{target} appeared during the restore: another process made a key")
-            else:
-                write_bytes_atomic(target, data)
-        out["seal_key"] = key_manifest.get("key_id")
-    if manifest["backend"] == "postgres" and manifest.get("scope") != store.scope():
-        out["warnings"].append(f"the backup's rows are under the scope {manifest.get('scope')} and this data folder "
-                               f"is {store.scope()}: set KAPACITET_STORE_SCOPE={manifest.get('scope')}")
-    # 4. the restored chain, verified with the restored keys
-    keys, _current, _error = _keys_in(inst.keys)
-    got = _verify_chain(inst, keys or None)
-    out["chain"] = {"length": got["length"], "signed": got["signed"], "ok": got["ok"]}
-    if not got["ok"]:
-        out["warnings"].append(f"the restored chain does not verify (line {got.get('broken_at')}: "
-                               f"{got.get('reason')})")
-    return out
 
 
 def _pg_restore(dump: Path) -> None:
