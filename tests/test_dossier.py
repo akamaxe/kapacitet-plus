@@ -22,7 +22,14 @@ def assert_every_number_is_a_fact(text: str, doc: dict) -> None:
         if "decimals" in fact:     # a number's text is its value, formatted, and nothing else
             assert fact["text"] == sv_number(fact["value"], fact["decimals"], fact.get("fixed", False)), fact
         assert fact["source"].strip(), fact
-    stray = sorted({n for n in numbers(text) if n not in allowed})
+    # positional: take every fact's text out of the rendered text, longest first; whatever digit is
+    # left was typed into the prose (list markers, SHA-256 and the Ei document number are the only ones)
+    rest = re.sub(r"(?m)^\s*(?:[-*]\s+)?\d+\. ", "", text)
+    for t in sorted({fact["text"] for fact in doc["facts"].values() if re.search(r"\d", str(fact["text"]))},
+                    key=len, reverse=True):
+        rest = re.sub(r"(?<![\d,])" + re.escape(str(t)) + r"(?![\d]|,\d)", "\u0001", rest)
+    rest = rest.replace("SHA-256", "").replace(doc["facts"]["ei.document"]["text"], "")
+    stray = re.findall(r"[^\s\u0001]*\d[^\s\u0001]*", rest)
     assert not stray, f"numbers in the text that no fact holds: {stray}"
     assert "{{" not in text and "}}" not in text
     json.dumps(doc)

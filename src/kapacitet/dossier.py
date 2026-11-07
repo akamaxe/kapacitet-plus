@@ -294,7 +294,7 @@ def _budget_demo(f: Facts, res: Path) -> str:
     h = _read(res, "hosting_summary.json")
     agreed = f.num("dso.agreed_level_pct", dso.load().agreed_level_pct, "DSO settings: agreed_level_pct", 1, "%")
     text = [f"Budgeten är högst {z} % av en anläggnings årliga solel. Den kan räknas på två sätt:", "",
-            "- **Summerad** (huvudresultatet): andelen av den sammanlagda solelen hos alla villkorade anläggningar.",
+            "- **Summerad:** andelen av den sammanlagda solelen hos alla villkorade anläggningar.",
             "- **Per anläggning:** varje anläggnings egen andel över alla väderår. Det sämsta enskilda året redovisas "
             "men styr inte.", "",
             f"Det som ett avtal utlovar är nätbolagets nivå, {agreed} % (nätbolagets inställningar)."]
@@ -314,6 +314,10 @@ def _budget_demo(f: Facts, res: Path) -> str:
     i_year = f.num("budget.installation_customer_year_max_pct",
                    max((i.get("customer_year_max_pct") or 0) for i in inst) if inst else None,
                    src + ": per_order[].z_doe_installation.customer_year_max_pct (max)", 1, "%")
+    head = basis.get("doe")
+    text += ["", {"aggregate": "Huvudresultatet räknas med summerad budget.",
+                  "installation": "Huvudresultatet räknas med budget per anläggning."}.get(
+                      head, "Det publicerade resultatet anger inte vilken budget huvudresultatet räknas med.")]
     return "\n".join(text + [
         "",
         f"Med summerad budget är den nedreglerade andelen i median {z_med} %, men en enskild anläggning kan få upp "
@@ -342,6 +346,8 @@ def _dayahead(f: Facts, res: Path, ei: dict) -> str:
         src = "results/foresight.json"
         e = fs.get("exceedance") or {}
         win = f.num("dayahead.window_days", fs.get("window_days") or e.get("window_days"), src + ": window_days", 0, "dagar")
+        if (fs.get("median_kw") or {}).get("climatological") is None:
+            text += ["", f.lack("foresight.json") + " Nyckeln `median_kw.climatological` saknas i den."]
         kw = f.num("dayahead.median_kw", (fs.get("median_kw") or {}).get("climatological"),
                    src + ": median_kw.climatological", 0, "kW AC")
         kw_i = f.num("dayahead.median_kw_installation",
@@ -677,14 +683,15 @@ def _allocation_study(f: Facts, study, caps: list[dict], ei: dict) -> str:
     ok = f.num("study.doe_ok", sum(1 for c in caps if ((c.get("generation") or {}).get("doe") or {}).get("status") == "ok"), src)
     bad = f.num("study.doe_not_verified",
                 sum(1 for c in caps if ((c.get("generation") or {}).get("doe") or {}).get("status") == "not_verified"), src)
-    lines += ["", f"Studiens villkorade kapacitet fördelas med regeln "
-                  f"**{f.text('study.allocation_policy', POLICY_SV[rule], 'kapacitet/engine/doe.py: compute(policy=...)')}**. "
-                  f"Villkoren ska ange hur och när överföringen får begränsas: {_cite(ei, 'terms_how_when')}.", ""]
+    terms = f"Villkoren ska ange hur och när överföringen får begränsas: {_cite(ei, 'terms_how_when')}."
     if ref:
+        lines += ["", f"Studiens villkorade kapacitet fördelas med regeln "
+                      f"**{f.text('study.allocation_policy', POLICY_SV[rule], 'kapacitet/engine/doe.py: compute(policy=...)')}**. "
+                      f"{terms}", ""]
         lines.append(f"Stationer med verifierad villkorad kapacitet: {ok}; stationer vars exportgränser inte "
                      f"verifierades och därför saknar värde: {bad}.")
     else:
-        lines.append("Villkorad kapacitet räknas inte: nätbolaget har inte angett något godkännande av metoden.")
+        lines += ["", "Villkorad kapacitet räknas inte: nätbolaget har inte angett något godkännande av metoden. " + terms]
     return "\n".join(lines)
 
 
