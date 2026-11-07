@@ -19,7 +19,9 @@ and every file of it says UTKAST until someone signs anew. A study pinned to ano
 version than this code's, or with a station computed by another, is not published at all.
 
 The conditional (envelope) column appears only when [method] approval_reference is set, and a
-station has a value in it only when its envelopes verified on every hour.
+station has a value in it only when its envelopes verified on every hour. The three-phase columns
+appear only when at least one published station's three-phase check is "ok" or "limited"
+(capacity.json's `three_phase`); a station whose phases are unknown has no value in them.
 """
 
 from __future__ import annotations
@@ -47,10 +49,12 @@ TEMPLATE = Path(__file__).with_name("templates") / "grunder_for_berakning.sv.md"
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 CAPACITY_COLUMNS = ["status", "quarter", "cell_id", "level", "name", "stations", "customers",
                     "generation_kw", "generation_limited_by", "consumption_device", "consumption_kw",
-                    "consumption_limited_by", "conditional_generation_kw", "corrected_generation_kw",
+                    "consumption_limited_by", "three_phase_generation_kw", "three_phase_consumption_kw",
+                    "conditional_generation_kw", "corrected_generation_kw",
                     "corrected_consumption_kw", "correction_note", "upstream_complete", "finding", "lon", "lat"]
 DEVICE_SV = {"ev": "laddbox för elbil", "heat_pump": "värmepump"}
 LEVEL_SV = {"station": "nätstation", "grid": "ruta", "zone": "område", "study": "hela studien"}
+THREE_PHASE_COLUMNS = ("three_phase_generation_kw", "three_phase_consumption_kw")
 
 
 # ---------------------------------------------------------------- checks
@@ -166,6 +170,20 @@ def _conditional(study: Study, m: dict) -> float | None:
     return m.get("published_conditional_generation_kw")
 
 
+def _three_phase(m: dict, side: str) -> float | None:
+    """A station's three-phase figure, capped by the upstream chain, when its check publishes one."""
+    from .collect import THREE_PHASE_FIGURES
+
+    if m.get("three_phase_status") not in THREE_PHASE_FIGURES:
+        return None
+    return m.get(f"published_three_phase_{side}_kw")
+
+
+def three_phase_shown(rows: list[dict]) -> bool:
+    """Whether the publication has the three-phase columns: a station's check published a figure."""
+    return any(_three_phase(r, side) is not None for r in rows for side in ("generation", "consumption"))
+
+
 def _effective(row: dict, fix: dict, side: str) -> float | None:
     if side in ("generation", "consumption") and f"{side}_kw" in fix:
         return float(fix[f"{side}_kw"]["value"])
@@ -176,6 +194,7 @@ def cells(study: Study, q: str, rows: list[dict], fixes: dict, result: dict, sta
     """One row per published cell (suppressed cells are left out)."""
     by_id = {r["station_id"]: r for r in rows}
     approved = bool(study.config.method.approval_reference.strip())
+    show3 = three_phase_shown([r for r in rows if result["stations"][r["station_id"]]["cell"]])
     out = []
     for cid, c in sorted(result["cells"].items(), key=lambda kv: (disclosure.LEVELS.index(kv[1]["level"]), kv[0])):
         if c["suppressed"]:
@@ -207,6 +226,10 @@ def cells(study: Study, q: str, rows: list[dict], fixes: dict, result: dict, sta
         }
         if approved:
             row["conditional_generation_kw"] = disclosure.lowest([_conditional(study, m) for m in members])
+        if show3:
+            # the same deployments checked with the unbalanced model, where the check publishes a figure
+            for side in ("generation", "consumption"):
+                row[f"three_phase_{side}_kw"] = disclosure.lowest([_three_phase(m, side) for m in members])
         out.append(row)
     return out
 
@@ -241,6 +264,32 @@ def _assumption(study: Study, key: str):
 
     o = study.config.assumptions.get(key)
     return o.value if o is not None else assumptions()[key].value
+
+
+def _three_phase_text(study: Study, shown: list[dict]) -> str:
+    """The grunder's paragraph on the three-phase columns: which figure is which, and how many have one."""
+    share = sv(100.0 * float(_assumption(study, "three_phase_min_known_share")), 0)
+    with_figure = sum(1 for r in shown if any(_three_phase(r, s) is not None for s in ("generation", "consumption")))
+    limited = sum(1 for r in shown if any(r.get(f"three_phase_{s}_status") == "limited" and _three_phase(r, s) is not None
+                                          for s in ("generation", "consumption")))
+    unknown = sum(1 for r in shown if r.get("three_phase_status") == "phases_unknown")
+    rule = ("Kolumnerna generation_kw och consumption_kw är beräknade med en symmetrisk modell, där varje "
+            "anslutning fördelas lika på de tre faserna. ")
+    if not three_phase_shown(shown):
+        return (rule + "Ingen trefaskontroll publiceras: ingen publicerad station har tillräckligt många kunder med "
+                f"känd fas (minst {share} procent), eller så har kontrollen inte gjorts. Med enfasiga anslutningar "
+                "kan den verkliga kapaciteten vara lägre än den symmetriska.")
+    return (rule + "Kolumnerna three_phase_generation_kw och three_phase_consumption_kw gäller samma utbyggnad, "
+            "kontrollerad med en osymmetrisk trefasmodell där varje kund ligger på sin registrerade fas (nya "
+            "enfasiga växelriktare utan registrerad fas fördelas enligt programmets regel), varje timme vid båda "
+            "ändarna av spänningsbandet för produktion och vid den lägre änden för förbrukning. Där trefasmodellen "
+            "överskrider en gräns, även gränsen för spänningsosymmetri, minskas utbyggnaden tills den klarar "
+            "varje timme; trefasvärdet är därför aldrig "
+            f"högre än det symmetriska. {with_figure} av {len(shown)} publicerade stationer har ett trefasvärde, "
+            f"varav {limited} är lägre än det symmetriska. {unknown} stationer saknar tillräckligt många kunder med "
+            f"känd fas (minst {share} procent) och har inget värde i kolumnerna. En fas räknas som känd när "
+            "anslutningen är registrerad på en fas, av nätföretaget eller identifierad från mätarnas spänningar mot "
+            "transformatorns sekundärmätare, eller när den identifieringen bekräftar en trefasanslutning.")
 
 
 def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes: dict, state: dict,
@@ -286,6 +335,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
                        f"{sv(_assumption(study, 'z_star_pct'))} procent begränsad produktion räknat på {basis}. "
                        f"{n_ok} av {len(shown)} publicerade stationer har ett verifierat värde; övriga saknar värde "
                        "i kolumnen.")
+    three_phase = _three_phase_text(study, shown)
     n_fix = sum(len(v) for v in fixes.values())
     corrections_text = (f"Granskaren har gjort {n_fix} korrigeringar. En korrigering ändrar aldrig ett beräknat "
                         "värde: den redovisas i en egen kolumn bredvid och kan bara sänka ett värde eller dölja en "
@@ -327,7 +377,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         "mv_low_pu": sv(cfg.mv.band_low_pu), "mv_high_pu": sv(cfg.mv.band_high_pu), "mv_source": cfg.mv.source,
         "load_power_factor": sv(_assumption(study, "load_power_factor")),
         "orders": " eller ".join(str(o) for o in orders) or "–", "percentile": " eller ".join(sv(p) for p in pct),
-        "upstream": upstream, "conditional": conditional, "corrections": corrections_text,
+        "upstream": upstream, "conditional": conditional, "three_phase": three_phase, "corrections": corrections_text,
         "disclosure": disclosure_text, "overrides": overrides,
         "equipment": equipment, "load_basis": load_basis,
     }
@@ -415,7 +465,10 @@ def publish(study: Study, q: str) -> dict:
     tmp.mkdir(parents=True)
 
     table = cells(study, q, rows, fixes, result, status)
-    columns = [c for c in CAPACITY_COLUMNS if c != "conditional_generation_kw" or cfg.method.approval_reference.strip()]
+    shown = [r for r in rows if result["stations"][r["station_id"]]["cell"]]
+    columns = [c for c in CAPACITY_COLUMNS
+               if (c != "conditional_generation_kw" or cfg.method.approval_reference.strip())
+               and (c not in THREE_PHASE_COLUMNS or three_phase_shown(shown))]
     csvio.write(tmp, "capacity", table, columns, cfg.output.csv_dialect)
     meta = {"status": status, "study": study.id, "dso": cfg.dso.name, "quarter": q,
             "method_version": cfg.dso.method_version}
@@ -435,6 +488,7 @@ def publish(study: Study, q: str) -> dict:
                        "suppressed_cells": len([c for c in result["cells"].values() if c["suppressed"]]),
                        "stations_hidden": sum(1 for s in result["stations"].values() if s["hidden_by"])},
         "conditional_column": bool(cfg.method.approval_reference.strip()),
+        "three_phase_columns": three_phase_shown(shown),
         "corrections": sum(len(v) for v in fixes.values()), "correction_findings": len(findings),
         "outputs": public_outputs(study, q, rows), "files": files,
         # the public key that checks the signoff's signed seal, and how (never the private key)

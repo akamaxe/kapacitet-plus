@@ -43,7 +43,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 # The version of the station method this code computes. A study pins one in [dso]; a study pinned
 # to another version is computed by the code that implements it, never silently by this one.
-METHOD_VERSION = "1.1.0"      # 1.1.0: the phases step (ingest/phase_id.py) is part of a station build
+METHOD_VERSION = "1.2.0"      # 1.1.0: the phases step (ingest/phase_id.py) is part of a station build
+                              # 1.2.0: the three-phase check in capacity.json and the publication
 
 # Assumptions an override of which would change nothing in a station, so it is refused
 # (tests/test_study_config.py keeps both lists in step with the code): those read only by the

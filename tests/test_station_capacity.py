@@ -429,6 +429,34 @@ def check_capacity(doc: dict) -> None:
     assert doc["consumption"]["mv_pu"] == lo
     pc = doc["peak_check"]
     assert pc["velander_kw"] > 0 and pc["modelled_peak_kw"] > 0
+    check_three_phase(doc)
+
+
+def check_three_phase(doc: dict) -> None:
+    """capacity.json's `three_phase` block, when the station was computed with it (kapacitet study
+    build, or `study compute`, from F1 on): a figure only for "ok"/"limited", never above the
+    balanced one, and verified on every hour."""
+    from kapacitet.engine import station as es
+
+    three = doc.get("three_phase")
+    if three is None:
+        return
+    assert three["status"] in es.THREE_PHASE_STATUSES
+    assert 0.0 <= three["known_share"] <= 1.0 and 0.0 <= three["min_known_share"] <= 1.0
+    if three["status"] == "phases_unknown":
+        assert three["known_share"] < three["min_known_share"] and three["reason"]
+        assert three["generation"]["kw"] is None and three["consumption"]["kw"] is None
+        return
+    for side in ("generation", "consumption"):
+        t, block = three[side], doc[side]
+        if t["status"] == "not_checked":
+            assert block["status"] != "ok" and t["kw"] is None
+            continue
+        assert t["balanced_kw"] == pytest.approx(block["kw"])
+        if t["kw"] is not None:
+            assert t["kw"] <= block["kw"] + 1e-9 and t["verification"]["full_year_violations"] == 0
+        if t["status"] != "ok":
+            assert three["status"] == "limited" and t["binding"]["limit"]
 
 
 def test_a_station_computes_its_capacity_json_and_the_study_collects_it(equipped, tmp_path):
@@ -454,6 +482,8 @@ def test_a_station_computes_its_capacity_json_and_the_study_collects_it(equipped
     assert doc["published"]["generation"]["limited_by"] == "feeder:F1"
     assert out["consumption_kw"] == doc["consumption"]["kw"] and doc["consumption"]["device"] == "ev"
     assert not set(doc["generation"]["cids"]) & set(EXISTING_PV)
+    # the tiny grid records no phase: the three-phase check says so and publishes no figure
+    assert doc["three_phase"]["status"] == "phases_unknown" and out["three_phase_status"] == "phases_unknown"
 
     # collected: the station's folder holds the file as a built station's would
     results = study.station_dir("tiny") / "processed" / "results"
@@ -470,6 +500,7 @@ def test_a_station_computes_its_capacity_json_and_the_study_collects_it(equipped
     assert r["published_generation_kw"] == pytest.approx(doc["generation"]["kw"])     # the cap is now blank
     assert r["published_generation_limited_by"] == "station" and not r["upstream_complete"]
     assert r["consumption_status"] == doc["consumption"]["status"]
+    assert r["three_phase_status"] == "phases_unknown" and pd.isna(r["published_three_phase_generation_kw"])
     again = json.loads((results / "capacity.json").read_text(encoding="utf-8"))
     assert again["published"]["generation"]["not_entered"] == ["feeder:F1"]
     with pytest.raises(Exception, match="quarter"):

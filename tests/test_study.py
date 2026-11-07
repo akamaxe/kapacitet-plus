@@ -107,7 +107,7 @@ def test_the_demo_is_three_synthetic_stations_ready_to_build(demo):
 def test_a_changed_network_makes_its_station_stale_and_only_it(demo):
     for sid in demo.station_ids():
         rec = demo.record(sid)
-        rec.update(status="ready", inputs=demo.digests(sid), method_version="1.1.0", quick=True)
+        rec.update(status="ready", inputs=demo.digests(sid), method_version="1.2.0", quick=True)
         demo.save(rec)
     assert set(portfolio.plan(demo, quick=True).values()) == {"unchanged"}
     lines = demo.inputs / "network" / "contract" / "demo-landnetz" / "lines.csv"
@@ -207,7 +207,7 @@ def test_a_station_is_refused_outside_its_own_process_or_on_another_method(demo)
     with pytest.raises(StudyError) as err:
         station.build(demo, "demo-dickert")                        # this process's data folder is not its own
     assert err.value.code == "not_isolated"
-    text = demo.toml.read_text(encoding="utf-8").replace('method_version = "1.1.0"', 'method_version = "0.9.0"')
+    text = demo.toml.read_text(encoding="utf-8").replace('method_version = "1.2.0"', 'method_version = "0.9.0"')
     demo.toml.write_text(text, encoding="utf-8")
     with pytest.raises(StudyError) as err:
         station.build(open_study(demo.root), "demo-dickert", steps={})
@@ -391,7 +391,7 @@ def test_the_reference_weather_is_copied_and_never_written_through(placed, monke
 def test_fetching_weather_makes_a_built_station_stale(placed):
     study = placed
     study.save(study.record("demo-dickert") | {"status": "ready", "inputs": study.digests("demo-dickert"),
-                                               "method_version": "1.1.0", "quick": False})
+                                               "method_version": "1.2.0", "quick": False})
     assert portfolio.reason(study, "demo-dickert") == "unchanged"
     _fetched(study)
     assert station.weather_source(study)["source"] == "study"

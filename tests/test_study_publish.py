@@ -129,8 +129,10 @@ def test_an_unsigned_publication_is_a_draft_and_writes_every_file(study):
     assert all(r["status"] == DRAFT for r in rows_of(folder / "capacity.csv"))
     gj = json.loads((folder / "capacity.geojson").read_text(encoding="utf-8"))
     assert gj["type"] == "FeatureCollection" and gj["status"] == DRAFT
-    # without an approval there is no conditional column at all
+    # without an approval there is no conditional column at all, and no three-phase one without a check
     assert "conditional_generation_kw" not in rows_of(folder / "capacity.machine.csv")[0]
+    assert "three_phase_generation_kw" not in rows_of(folder / "capacity.machine.csv")[0]
+    assert manifest["three_phase_columns"] is False
     text = (folder / "grunder_for_berakning.md").read_text(encoding="utf-8")
     assert "{{" not in text and "0,98" in text and "1,06" in text and "laddbox" in text
 
@@ -214,6 +216,44 @@ def test_the_conditional_column_appears_only_with_an_approval_and_a_verified_env
     assert caps["S5"]["conditional_generation_kw"] == "" and caps["S6"]["conditional_generation_kw"] == ""
     text = (pub["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
     assert "Board decision 2026-10" in text
+
+
+def _three_phase(study, sid: str, status: str, gen: float | None = None, cons: float | None = None) -> None:
+    """A three-phase block in station `sid`'s capacity.json, as engine/station.three_phase_check writes it."""
+    path = study.station_dir(sid) / "processed" / "results" / "capacity.json"
+    doc = json.loads(path.read_text(encoding="utf-8"))
+    side = lambda kw, balanced: ({"status": "ok" if kw == balanced else "limited", "kw": kw, "balanced_kw": balanced}
+                                 if status != "phases_unknown" else {"status": "not_checked", "kw": None})
+    doc["three_phase"] = {"status": status, "known_share": 0.5 if status == "phases_unknown" else 1.0,
+                          "min_known_share": 0.8, "generation": side(gen, doc["generation"]["kw"]),
+                          "consumption": side(cons, doc["consumption"]["kw"])}
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+
+def test_the_three_phase_columns_appear_only_with_a_checked_figure(tmp_path):
+    s = init_study(tmp_path / "nb", "Testnät AB", allow_git=True)
+    put(s, "S1", 40, 17.955, 59.335, 120.0, 80.0)
+    put(s, "S4", 60, 17.64, 59.86, 200.0, 150.0)
+    _three_phase(s, "S4", "phases_unknown")
+    collect.collect(s, Q2)
+    pub = publish(s, Q2)
+    assert "three_phase_generation_kw" not in rows_of(pub["folder"] / "capacity.machine.csv")[0]
+    assert "Ingen trefaskontroll publiceras" in (pub["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+
+    _three_phase(s, "S1", "limited", gen=95.5, cons=80.0)
+    collect.collect(s, Q2)
+    pub = publish(s, Q2)
+    caps = {r["cell_id"]: r for r in rows_of(pub["folder"] / "capacity.machine.csv")}
+    assert caps["S1"]["three_phase_generation_kw"] == "95.5" and caps["S1"]["three_phase_consumption_kw"] == "80"
+    assert caps["S1"]["generation_kw"] == "120"                # the balanced figure stays in its own column
+    assert caps["S4"]["three_phase_generation_kw"] == "" and caps["S4"]["three_phase_consumption_kw"] == ""
+    swedish = {r["cell_id"]: r for r in rows_of(pub["folder"] / "capacity.csv")}
+    assert swedish["S1"]["three_phase_generation_kw"] == "95,5"
+    text = (pub["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "## Trefaskontroll" in text and "three_phase_generation_kw" in text and "symmetrisk modell" in text
+    assert "1 av 2 publicerade stationer har ett trefasvärde, varav 1 är lägre" in text and "minst 80 procent" in text
+    manifest = json.loads((pub["folder"] / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["three_phase_columns"] is True
 
 
 # ---------------------------------------------------------------- diff

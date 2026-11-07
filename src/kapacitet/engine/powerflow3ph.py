@@ -62,6 +62,7 @@ class PF3Result:
     # pandapower 3's res_trafo_3ph reports too. (pandapower 2.14 added the feeder current
     # *magnitudes* instead, which read higher under unbalance; the test suite keeps that sum.)
     trafo_loading: np.ndarray = None    # (H,), percent, worst phase
+    trafo_loading_phase: np.ndarray = None    # (3, H), percent, each phase
 
     @property
     def vm(self) -> np.ndarray:
@@ -279,7 +280,8 @@ class PowerFlow3Ph:
         if len(self.lv_to):
             leaving += i_t[_phase_rows(self.lv_to)].reshape(-1, 3, v_all.shape[1]).sum(axis=0)
         i_lv = np.abs(leaving) * self.i_base_to[self.trafo_row]
-        res.trafo_loading = 100.0 * (i_lv / self.trafo_i_lv_rated).max(axis=0)
+        res.trafo_loading_phase = 100.0 * i_lv / self.trafo_i_lv_rated
+        res.trafo_loading = res.trafo_loading_phase.max(axis=0)
         # Active power through the transformer, positive from the MV side into the LV network.
         v_lv = v_all[3 * int(self.net_lv_bus) + np.arange(3)]
         res.trafo_p_mw = (v_lv * np.conj(leaving)).real.sum(axis=0) * self.base_mva
@@ -309,6 +311,7 @@ class PowerFlow3Ph:
             line_loading=cat("line_loading", 1) if flows else None,
             i_neutral_ka=cat("i_neutral_ka", 1) if flows else None,
             trafo_loading=cat("trafo_loading", 0) if flows else None,
+            trafo_loading_phase=cat("trafo_loading_phase", 1) if flows else None,
             trafo_p_mw=cat("trafo_p_mw", 0) if flows else None,
         )
         check_converged(res, strict)

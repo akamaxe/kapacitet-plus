@@ -11,7 +11,8 @@ digests its build recorded, and the upstream.csv the caps came from), so `study 
 figure changed between two quarters. Each row also carries the station's position (its
 transformer's busbar, WGS84) and the DSO's zone from inputs/stations.csv, which the disclosure of
 a publication groups by, and the envelope (conditional) capacity when the method is approved and
-its envelopes verified, capped by the same upstream chain.
+its envelopes verified, capped by the same upstream chain. The three-phase figures (capacity.json's
+`three_phase`) are carried, capped the same way, only when the check is "ok" or "limited".
 """
 
 from __future__ import annotations
@@ -41,10 +42,16 @@ FIELDS = (
     ("upstream_complete", "bool_"), ("full_year_violations", "int64"), ("nonconverged_hours", "int64"),
     ("conditional_generation_status", "string"), ("conditional_generation_kw", "float64"),
     ("published_conditional_generation_kw", "float64"), ("approval_reference", "string"),
+    ("three_phase_status", "string"), ("three_phase_known_share", "float64"),
+    ("three_phase_generation_status", "string"), ("three_phase_generation_kw", "float64"),
+    ("three_phase_consumption_status", "string"), ("three_phase_consumption_kw", "float64"),
+    ("published_three_phase_generation_kw", "float64"), ("published_three_phase_consumption_kw", "float64"),
     ("lon", "float64"), ("lat", "float64"), ("zone", "string"),
     ("years", "string"), ("orders", "int64"), ("percentile", "float64"),
 )
 INPUTS_SCHEMA = "kapacitet.run-inputs/1"
+# the three-phase check's statuses that publish a figure (engine/station.three_phase_check)
+THREE_PHASE_FIGURES = ("ok", "limited")
 
 
 def _hours(block: dict) -> int | None:
@@ -127,6 +134,17 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
         _, capped = up_mod.apply(up, sid, doe["kw"], None)
         base.update(conditional_generation_kw=float(doe["kw"]),
                     published_conditional_generation_kw=capped["generation"]["kw"])
+    three = cap.get("three_phase") or {}
+    if three:
+        base.update(three_phase_status=three.get("status"), three_phase_known_share=three.get("known_share"))
+    if three.get("status") in THREE_PHASE_FIGURES:
+        # the three-phase figures, capped by the same chain as the balanced ones
+        g, c = (three.get(side) or {} for side in ("generation", "consumption"))
+        _, capped = up_mod.apply(up, sid, g.get("kw"), c.get("kw"))
+        base.update(three_phase_generation_status=g.get("status"), three_phase_generation_kw=g.get("kw"),
+                    three_phase_consumption_status=c.get("status"), three_phase_consumption_kw=c.get("kw"),
+                    published_three_phase_generation_kw=capped["generation"]["kw"],
+                    published_three_phase_consumption_kw=capped["consumption"]["kw"])
     return base, cap
 
 

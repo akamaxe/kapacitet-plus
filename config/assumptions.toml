@@ -422,6 +422,17 @@ url = ""
 note = "The alternative value is 'random', the unfavourable case where nobody keeps track. The gap between the two is the cost of not recording the phase of each service, and it is worth reporting."
 note_sv = "Det alternativa värdet är 'random', det ogynnsamma fallet där ingen håller reda på faserna. Skillnaden mellan de två är kostnaden för att inte registrera fasen för varje servisledning, och den är värd att redovisa."
 
+[three_phase_min_known_share]
+value = 0.8
+unit = "share of customers"
+tag = "team-assumption"
+label = "Share of a station's customers whose phase has to be known before the three-phase check of its published capacity is run"
+label_sv = "Andel av en stations kunder vars fas måste vara känd innan den publicerade kapaciteten kontrolleras med trefasmodellen"
+source = "Modelling choice: below it the unbalanced model would place most connections by the allocation rule, so its figure would say more about the rule than about the network"
+url = ""
+note = "A phase counts as known when the service is recorded on a, b or c (by the DSO, or identified from meter voltages against the transformer secondary meter), or when that identification confirms a three-phase service. A blank phase is three-phase by the export contract's default, which nothing has confirmed."
+note_sv = "En fas räknas som känd när anslutningen är registrerad på a, b eller c (av nätföretaget, eller identifierad från mätarspänningar mot transformatorns sekundärmätare), eller när den identifieringen bekräftar en trefasanslutning. En tom fas är trefasig enligt exportkontraktets standardval, men ingenting har bekräftat den."
+
 [phase_id_min_confidence]
 value = 0.1
 unit = "-"

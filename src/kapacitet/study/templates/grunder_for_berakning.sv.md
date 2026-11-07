@@ -57,6 +57,10 @@ av spänningsbandet, där spänningsfallet och strömmen genom transformatorn ä
 redan i dag överskrider en gräns får ingen kapacitet: det redovisas som ett fynd med antalet
 timmar, aldrig som noll.
 
+## Trefaskontroll
+
+{{three_phase}}
+
 ## Gränser längre upp i nätet
 
 {{upstream}}

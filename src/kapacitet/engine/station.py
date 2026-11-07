@@ -23,6 +23,13 @@ winter snapshot's count as a reference. A grid that already breaks an import lim
 anyone adds load, has no consumption capacity to publish: it is a finding, with its hours, never
 0 kW. The same holds on the export side for a grid whose existing PV already breaks a limit.
 
+The three-phase check (`three_phase_check`). Both figures come from the balanced model. The
+published deployments are then solved again with the unbalanced model (netmodel3ph), every customer
+on its recorded phase, generation at both ends of the band and consumption at the low end. Where it
+breaks a limit (a balanced one or the voltage unbalance factor), the count is bisected down until it holds on every hour, and that figure is
+published beside the balanced one with the phase and component that bind. Without enough known
+phases (three_phase_min_known_share) there is no three-phase figure, and the block says why.
+
 The weakest point (`worst_point`). Each customer's residual headroom for a constant addition, by
 the linear model (request.export_headroom_all / import_headroom_all) on today's grid in every
 hour of the record; the WORST_K lowest are then searched with the nonlinear flow and confirmed on
@@ -55,7 +62,8 @@ EXPORT_LIMITS = ("voltage", "cable", "transformer", "nonconverged")
 IMPORT_LIMITS = EXPORT_LIMITS
 
 __all__ = ["METHOD_VERSION", "SCHEMA", "DEVICES", "engine_device", "candidates", "candidate_order",
-           "generation_capacity", "consumption_capacity", "worst_point", "peak_check", "flexibility_need"]
+           "generation_capacity", "consumption_capacity", "three_phase_check", "known_phases", "worst_point",
+           "peak_check", "flexibility_need"]
 
 
 def engine_device(name: str) -> str:
@@ -429,6 +437,246 @@ def consumption_capacity(model: NetModel, device: str = "ev", years=None, n_orde
                            f"{check['full_year_violations']} hours that the screens did not see")
     out.update(status="ok", kw=kw, adopters=n, order=r["order"], static_kw=static_kw, binding=binding,
                verification=check, stepped_back=stepped, per_order=rows, cids=[int(c) for c in new[:n]])
+    return out
+
+
+# ---------------------------------------------------------------- the three-phase check
+
+THREE_PHASE_STATUSES = ("ok", "limited", "phases_unknown", "not_checked")
+_TOTALS = ("full_year_violations", "unbalance_hours", "nonconverged_hours", "hours_checked")
+# the limits of the unbalanced model: the balanced ones plus the voltage unbalance factor (vuf_limit_pct)
+THREE_PHASE_LIMITS = EXPORT_LIMITS + ("unbalance",)
+
+
+def _bad_hours3(m3, res, p: np.ndarray, side: str):
+    """(violations, the hours above the unbalance limit, every hour that breaks a limit on `side`) of
+    `res` on the unbalanced model: the balanced limits and the voltage unbalance factor, which only
+    this model can see (an hour without an answer counts through the balanced ones)."""
+    v = m3.violations(res, p)
+    vuf = m3.unbalance(res).over_limit & ~v.nonconverged
+    return v, vuf, (v.export_side if side == "export" else v.import_side) | vuf
+
+
+def known_phases() -> dict:
+    """Which customers' phase is known: a service recorded on a, b or c in customers.phase (by the
+    DSO, or by the phase identification against the transformer secondary meter, which writes it
+    there), or a three-phase service that identification confirmed (processed/meters/phase_id.parquet).
+    A blank is three-phase by the export contract's default, which nothing has confirmed, so it is
+    not counted. {"customers", "known", "recorded_single", "confirmed_three", "known_share"}."""
+    import pandas as pd
+
+    from ..grid.builder import load_tables
+    from ..paths import processed
+    from .phases import UNRECORDED, _recorded
+
+    _, _, cust = load_tables()
+    single = _recorded(cust, "phase", three=False) != UNRECORDED
+    confirmed = np.zeros(len(cust), dtype=bool)
+    path = processed("meters", "phase_id.parquet")
+    if path.is_file() and "osm_id" in cust.columns:
+        ident = pd.read_parquet(path)
+        need = {"status", "reference", "service", "customer_id"}
+        if need <= set(ident.columns):
+            ok = ident["status"].eq("identified") & ident["reference"].eq("station") & ident["service"].eq("three")
+            confirmed = cust["osm_id"].astype(str).isin(set(ident.loc[ok, "customer_id"].astype(str))).to_numpy()
+    known = single | confirmed
+    C = len(cust)
+    return {"customers": C, "known": int(known.sum()), "recorded_single": int(single.sum()),
+            "confirmed_three": int((confirmed & ~single).sum()),
+            "known_share": float(known.sum() / C) if C else 0.0}
+
+
+def _band_passes(models: dict, states_of, n: int, side: str) -> tuple[bool, dict]:
+    """Count `n`'s deployment solved on every hour of every year at each end of `models`, stopping
+    at the first year that breaks a limit on `side` (an hour without an answer counts):
+    (it holds, the verification summed over the ends with each end's in `by_end`)."""
+    by_end = {}
+    for e, m in models.items():
+        bad = unb = nonconv = hours = 0
+        for _y, p, q in states_of(n):
+            v, vuf, hit = _bad_hours3(m, m.solve(p, q), p, side)
+            bad += int(hit.sum())
+            unb += int(vuf.sum())
+            nonconv += int(v.nonconverged.sum())
+            hours += p.shape[1]
+            if bad:
+                break
+        by_end[f"{e:.2f}"] = {"full_year_violations": bad, "unbalance_hours": unb, "nonconverged_hours": nonconv,
+                              "hours_checked": hours}
+        if bad:
+            break
+    total = {k: sum(c[k] for c in by_end.values()) for k in _TOTALS}
+    return not total["full_year_violations"], {**total, "by_end": by_end}
+
+
+def _largest_holding(models: dict, states_of, n: int, side: str) -> tuple[int, dict, int | None]:
+    """A count at most `n` whose deployment holds at every end, by bisection between 0 and `n` (a
+    count is published only after it held on every hour): (count, its verification, the count above
+    it that broke a limit, None when `n` itself holds). With single-phase placement one more adopter
+    can rebalance the phases, so holding need not be monotone in the count: the figure is verified,
+    and the largest one this bisection finds, not necessarily the largest that holds. Count -1: even nobody added
+    breaks a limit, and the verification is that of count 0."""
+    ok, check = _band_passes(models, states_of, n, side)
+    if ok:
+        return n, check, None
+    ok, lo_check = _band_passes(models, states_of, 0, side)
+    if not ok:
+        return -1, lo_check, 0
+    lo, hi = 0, n
+    while hi - lo > 1:
+        mid = (lo + hi) // 2
+        ok, c = _band_passes(models, states_of, mid, side)
+        if ok:
+            lo, lo_check = mid, c
+        else:
+            hi = mid
+    return lo, lo_check, hi
+
+
+def _name(frame, pos: int) -> str:
+    name = frame["name"].iloc[pos] if "name" in frame.columns else None
+    return str(name) if isinstance(name, str) and name.strip() else str(frame.index[pos])
+
+
+def _where(m3, res, v, limit: str, side: str, vuf=None) -> dict:
+    """The phase and the component of the worst violation of `limit` among the hours of `res`."""
+    from .phases import PHASE_NAMES
+
+    export = side == "export"
+    ok = ~v.nonconverged
+    if limit == "unbalance":
+        u = res.unbalance_pct[m3.check_buses][:, vuf]
+        b, h = np.unravel_index(int(np.argmax(u)), u.shape)
+        bus, hour = int(m3.check_buses[b]), int(np.flatnonzero(vuf)[h])
+        vm = res.vm[3 * bus:3 * bus + 3, hour]          # the phase furthest from the bus's mean
+        return {"phase": PHASE_NAMES[int(np.argmax(np.abs(vm - vm.mean())))],
+                "component": {"type": "bus", "id": _name(m3.net.bus, bus)}, "value": float(u[b, h]), "unit": "%"}
+    if limit == "voltage":
+        mask = (v.over_v if export else v.under_v) & ok
+        vm = res.vm[m3.check_rows][:, mask]
+        r, h = np.unravel_index(int(np.argmax(vm) if export else np.argmin(vm)), vm.shape)
+        row = int(m3.check_rows[r])
+        return {"phase": PHASE_NAMES[row % 3], "component": {"type": "bus", "id": _name(m3.net.bus, row // 3)},
+                "value": float(vm[r, h]), "unit": "pu"}
+    if limit == "cable":
+        mask = (v.line_rev if export else v.line & ~v.line_rev) & ok
+        load = res.line_loading[:, mask]
+        li, h = np.unravel_index(int(np.argmax(load)), load.shape)
+        per_phase = res.i_line_ka.reshape(load.shape[0], 3, -1)[li, :, np.flatnonzero(mask)[h]]
+        return {"phase": PHASE_NAMES[int(np.argmax(per_phase))],
+                "component": {"type": "line", "id": _name(m3.net.line, int(li))},
+                "value": float(load[li, h]), "unit": "%"}
+    if limit == "transformer":
+        mask = (v.trafo_rev if export else v.trafo & ~v.trafo_rev) & ok
+        tl = res.trafo_loading_phase[:, mask]
+        ph, h = np.unravel_index(int(np.argmax(tl)), tl.shape)
+        return {"phase": PHASE_NAMES[int(ph)], "component": {"type": "transformer", "id": _name(m3.net.trafo, 0)},
+                "value": float(tl[ph, h]), "unit": "%"}
+    return {"phase": None, "component": None}
+
+
+def binding_three_phase(m3, states, side: str) -> dict:
+    """As `limit_of` on the unbalanced model, with the phase and the component of the worst hour:
+    {"limit", "year", "hours", "by_limit", "vm_pu", "phase", "component", "value", "unit"}."""
+    for y, p, q in states:
+        crit = np.flatnonzero(_bad_hours3(m3, m3.solve(p, q), p, side)[2])
+        if len(crit):
+            res = m3.solve(p[:, crit], q[:, crit])
+            v, vuf, _ = _bad_hours3(m3, res, p[:, crit], side)
+            by = {**_classify(v, side), "unbalance": int(vuf.sum())}
+            limit = max(THREE_PHASE_LIMITS, key=lambda k: (by[k], -THREE_PHASE_LIMITS.index(k)))
+            return {"limit": limit, "year": int(y), "hours": int(len(crit)), "by_limit": by,
+                    "vm_pu": float(m3.vm_slack), **_where(m3, res, v, limit, side, vuf)}
+    return {"limit": None, "year": None, "hours": 0, "by_limit": {}, "vm_pu": float(m3.vm_slack),
+            "phase": None, "component": None}
+
+
+def _three_phase_side(block: dict, models: dict, states_of, side: str, kw_of) -> dict:
+    """One side's three-phase check of the balanced figure in `block` (its `adopters` the count)."""
+    if block.get("status") != "ok":
+        return {"status": "not_checked", "kw": None,
+                "reason": f"no balanced figure to check ({block.get('status') or 'not computed'})"}
+    n = int(block["adopters"])
+    k, check, broke = _largest_holding(models, states_of, n, side)
+    out = {"balanced_kw": float(block["kw"]), "balanced_adopters": n, "verification": check}
+    if broke is None:
+        return {**out, "status": "ok", "kw": float(block["kw"]), "adopters": n}
+    binding = {"limit": None}
+    for m in models.values():
+        binding = binding_three_phase(m, states_of(broke), side)
+        if binding["limit"]:
+            break
+    if k < 0:
+        return {**out, "status": "baseline_violates", "kw": None, "adopters": None, "binding": binding,
+                "finding": f"today's grid already breaks an {side}-side limit in the unbalanced model"}
+    return {**out, "status": "limited", "kw": float(kw_of(k)), "adopters": k, "binding": binding}
+
+
+def three_phase_check(gen: dict, cons: dict, band: tuple[float, float], years=None, hp=None, ev=None, *,
+                      trafo_type: str | None = None, phase: np.ndarray | None = None,
+                      min_known_share: float | None = None) -> dict:
+    """The published deployments of `gen` (generation_capacity) and `cons` (consumption_capacity)
+    solved with the unbalanced model (netmodel3ph), every customer on its recorded phase: generation
+    at both ends of the MV band, consumption at the low end. Generation places the new single-phase
+    inverters nothing was recorded for by the phase_allocation rule (phases.phase_of); consumption
+    leaves the solar out, so only the recorded single-phase services are single-phase there.
+
+    Status "ok": the balanced figures hold. "limited": the unbalanced model breaks a limit, and the
+    largest count of the same order that holds on every hour (the balanced limits and the voltage
+    unbalance factor, vuf_limit_pct) is published per side with the limit,
+    phase and component the next adopter breaks. "phases_unknown": fewer customers than
+    three_phase_min_known_share have a known phase (known_phases), and no three-phase figure is
+    published. "not_checked": neither side has a balanced figure. `phase` replaces the phases
+    of both sides (tests); a three-phase figure is never above the balanced one, by construction."""
+    from .netmodel3ph import NetModel3Ph
+    from .phases import phase_counts, phase_of
+
+    years = _years(years)
+    if phase is None:
+        known = known_phases()
+    else:                                   # the caller's phases are the ones used, every one known
+        C = len(phase)
+        known = {"customers": C, "known": C, "recorded_single": int(np.count_nonzero(np.asarray(phase) >= 0)),
+                 "confirmed_three": 0, "known_share": 1.0 if C else 0.0}
+    need = float(A("three_phase_min_known_share")) if min_known_share is None else float(min_known_share)
+    out = {"basis": "the published deployment on every hour with the unbalanced model, every customer on its "
+                    "recorded phase; generation at both ends of the MV band, consumption at the low end",
+           "min_known_share": need, **known}
+    if known["known_share"] < need:
+        out.update(status="phases_unknown", generation={"status": "not_checked", "kw": None},
+                   consumption={"status": "not_checked", "kw": None},
+                   reason=(f"{known['known']} of {known['customers']} customers have a known phase "
+                           f"({known['known_share']:.0%}), below the {need:.0%} the three-phase check needs; "
+                           "no three-phase figure is published"))
+        return out
+    lo_pu, hi_pu = float(band[0]), float(band[1])
+    ends = sorted({lo_pu, hi_pu})
+    first = NetModel3Ph(phase=phase, vm_slack=ends[0], trafo_type=trafo_type)
+    C = first.C
+    hp, ev = _masks(C, hp, ev)
+    gen_models = {ends[0]: first}
+    gen_models.update({e: NetModel3Ph(phase=first.phase, vm_slack=e, trafo_type=trafo_type) for e in ends[1:]})
+    cons_phase = phase_of(first.cust, None) if phase is None else np.asarray(phase)
+    out["phase_allocation"] = A("phase_allocation")
+    out["phases"] = {"generation": phase_counts(first.phase), "consumption": phase_counts(cons_phase)}
+
+    cids = np.asarray(gen.get("cids") or [], dtype=int)
+    cap = doe.customer_caps()
+    out["generation"] = _three_phase_side(gen, gen_models, lambda n: _pv_states(cids, n, C, hp, ev, years),
+                                          "export", lambda n: cap[cids[:n]].sum())
+    if cons.get("status") == "ok":
+        device = cons["device"]
+        new = np.asarray(cons.get("cids") or [], dtype=int)
+        kw_each = device_kw(device, years)
+        cons_models = {lo_pu: NetModel3Ph(phase=cons_phase, vm_slack=lo_pu, trafo_type=trafo_type)}
+        out["consumption"] = _three_phase_side(cons, cons_models,
+                                               lambda n: _load_states(new, n, device, hp, ev, years),
+                                               "import", lambda n: kw_each[new[:n]].sum())
+    else:
+        out["consumption"] = _three_phase_side(cons, {}, None, "import", None)
+    sides = [out["generation"]["status"], out["consumption"]["status"]]
+    out["status"] = ("not_checked" if all(s == "not_checked" for s in sides) else
+                     "limited" if any(s in ("limited", "baseline_violates") for s in sides) else "ok")
     return out
 
 

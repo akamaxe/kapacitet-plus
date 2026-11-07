@@ -633,6 +633,16 @@ A station's figures (Module 1, `engine/station.py`) go to `processed/results/cap
   and confirmed with the nonlinear flow on every hour.
 - **Verification**: each published deployment is solved on every hour of every year; a count the
   searches' linear screens accepted but the full check does not is stepped down until it passes.
+- **Three-phase check** (`three_phase`): both published deployments solved again on every hour
+  with the unbalanced model, every customer on its recorded phase (customers' `phase`, including
+  the phases identified from meter voltages against the transformer secondary meter): generation
+  at both ends of the band, consumption at the low end, against the balanced limits and the voltage
+  unbalance factor (`vuf_limit_pct`). `ok`: the balanced figure holds. `limited`: the count is
+  bisected down until it holds, and that figure is published beside the balanced one
+  with the binding limit, phase and component. `phases_unknown`: fewer customers than
+  `three_phase_min_known_share` (0.8) have a known phase, so there is no three-phase figure. A
+  blank phase is three-phase by the export contract, but nothing has confirmed it, so it does not
+  count as known.
 - **Upstream caps** (`inputs/upstream.csv`: `level` feeder, substation or regional, `id`,
   `parent_id`, `gen_headroom_kw`, `load_headroom_kw`, `source`, `as_of`; a station's `feeder_id`
   and `hidden` in `inputs/stations.csv`): the published value is the minimum over the levels, with
@@ -663,7 +673,9 @@ pinned to another method version is refused. What may be shown follows `[disclos
 hold k customers, a merged cell showing its stations' lowest figure, hidden stations left out, and
 `disclosure_report.csv`, which says which station is in which cell, never published. The
 conditional (envelope) column appears only with `[method] approval_reference` set and verified
-envelopes. `study diff` lists what changed between two quarters with the inputs behind each change
+envelopes. The three-phase columns (`three_phase_generation_kw`, `three_phase_consumption_kw`)
+appear only when a published station's check is `ok` or `limited`. They are capped by the same
+upstream chain, and the grunder say which figure comes from which model. `study diff` lists what changed between two quarters with the inputs behind each change
 (`runs/<Q>/inputs.json`) and a sentence in Swedish.
 
 Module 2 is the same engine as the request screen, on files (`study/cases.py`). `study cases`
@@ -1100,7 +1112,8 @@ foresight (measured against a forecast-free alternative in the section above); t
 Swedish voltage limit applies to 10-minute means (covered by a 1 % margin); **every published
 number comes from the balanced three-phase model**, so single-phase unbalance is not in them
 (a request with a single-phase charger or inverter is checked on the unbalanced model, phase by
-phase, at the static study's worst hour); the LV topology is synthetic;
+phase, at the static study's worst hour, and a study's station figures get a three-phase check
+beside them when enough phases are known); the LV topology is synthetic;
 household demand comes from a UK behaviour model scaled to Swedish consumption; the MV supply is
 held at 1.00 pu (`mv_band.json` repeats the showcase order across its planning band); economics
 use the SE3 spot price only.

@@ -24,7 +24,8 @@ them), so every step is the existing pipeline's and writes only into `stations/<
                 year (profiles/metered.py), in place of the pool's profile for them
     profiles    PV, heat pumps and EV charging on that weather (profiles.build)
     compute     Module 1 (engine/station.py): the generation capacity at both ends of the MV band,
-                the lower one published; the consumption capacity at the low end; the weakest
+                the lower one published; the consumption capacity at the low end; both checked
+                again with the unbalanced model on the recorded phases (three_phase); the weakest
                 connection point; the peak check; the "existing" request baseline at each end of
                 the band (what `study cases` checks against); and the upstream caps applied
                 (study/upstream.py), into processed/results/capacity.json
@@ -569,6 +570,8 @@ def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
     cons = es.consumption_capacity(low, es.engine_device(method.consumption_device), years, n_orders,
                                    method.percentile, hp, ev)
     cons["consumption_device"] = method.consumption_device
+    # the published deployments again with the unbalanced model, on the recorded phases
+    three = es.three_phase_check(gen, cons, band, years, hp, ev)
     worst = {"generation": worst_generation(band, years, hp, ev),
              "consumption": es.worst_point(low, "import", years, hp, ev)}
     hourly = paths.PROCESSED / "meters" / "hourly.parquet"
@@ -587,18 +590,20 @@ def compute(study: Study, sid: str, rec: dict, quick: bool = False) -> dict:
         "schema": es.SCHEMA, "station": sid, "computed_at": procs.now(), "method_version": METHOD_VERSION,
         "fingerprint": fingerprint(study, rec, quick), "mv_band_pu": [float(band[0]), float(band[1])],
         "years": list(years), "orders": n_orders, "percentile": float(method.percentile),
-        "generation": gen, "consumption": cons, "worst_point": worst, "upstream": up, "published": published,
-        "peak_check": peak, "request_baselines": baselines,
+        "generation": gen, "consumption": cons, "three_phase": three, "worst_point": worst, "upstream": up,
+        "published": published, "peak_check": peak, "request_baselines": baselines,
         "verification": {"full_year_violations": sum(c["full_year_violations"] for c in checks),
                          "nonconverged_hours": sum(c["nonconverged_hours"] for c in checks),
                          "hours_checked": sum(c["hours_checked"] for c in checks)},
     }
     write_json_atomic(capacity_path(), out, default=run._default)
     rec.setdefault("summary", {}).update(generation_kw=gen.get("kw"), consumption_kw=cons.get("kw"),
-                                         binding_mv_pu=gen.get("binding_mv_pu"))
+                                         binding_mv_pu=gen.get("binding_mv_pu"), three_phase_status=three["status"])
     return {"years": list(years), "orders": n_orders, "generation_kw": gen.get("kw"),
             "generation_status": gen["status"], "binding_mv_pu": gen.get("binding_mv_pu"),
-            "consumption_kw": cons.get("kw"), "consumption_status": cons["status"]}
+            "consumption_kw": cons.get("kw"), "consumption_status": cons["status"],
+            "three_phase_status": three["status"], "three_phase_generation_kw": three["generation"].get("kw"),
+            "three_phase_consumption_kw": three["consumption"].get("kw")}
 
 
 # ---------------------------------------------------------------- measured validation
