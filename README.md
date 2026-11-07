@@ -248,6 +248,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet redispatch-report [--year Y]` | The annual report on non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4), on the day-ahead basis that is issued: `results/redispatch.json` and `redispatch_sv.txt` |
+| `kapacitet method-dossier [--study DIR] [--out DIR]` | The method dossier for Ei, in Swedish: `method_dossier_sv.md`, with every value it cites, and its source, in `method_dossier.json` (in `results/`, or the study's folder) |
 | `kapacitet db migrate\|status\|import-files\|export-files` | The PostgreSQL store: apply the schema, report it, copy `data/requests/` in or back out ([docs/postgres.md](docs/postgres.md)) |
 | `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
@@ -860,6 +861,16 @@ the pack never seals it. The Annual report screen
 holds the section, the statements and a printable method description. It is evidence from a
 simulation, never a legal assessment; the regulation's rule on compensation for non-market
 redispatch is not assessed.
+
+`kapacitet method-dossier` writes the description of the method a DSO needs approved by Ei before it
+signs a conditional agreement: what is computed, how the envelopes are shared, how they are verified,
+both curtailment budgets, the day-ahead planning state and its exceedance audit, the intraday replica
+and its scorecard, activation after the day-ahead market and the market alternatives log, the
+redispatch report, the MV band, the seal chain and its public key, the data with their licences, and
+the limitations. It is generated from the code, `config/assumptions.toml` and the results, never typed
+by hand: `method_dossier.json` holds each value with its source, `tests/test_dossier.py` checks that
+every number in the Swedish text is one of them, and a result that is missing is said to be missing,
+with the command that writes it. With `--study DIR` it describes a study's stations instead.
 
 ## Applications and the DSO's rule
 

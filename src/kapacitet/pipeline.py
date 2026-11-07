@@ -8,6 +8,7 @@ Commands
   compliance  audit trail and annual filing for a computed year
   forecast  what the published envelopes owe to perfect foresight
   redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
+  method-dossier  the method dossier for Ei, in Swedish, every value from the data (--study for a study)
   seals     verify a sealed chain's hashes and signatures, or rotate the signing key
   db        the PostgreSQL store: migrate, status, import-files, export-files
   check     data-quality report on an operator's network export
@@ -479,6 +480,22 @@ def cmd_redispatch_report(args: argparse.Namespace) -> None:
     print(f"Written: {processed('results', 'redispatch.json')} and redispatch_sv.txt")
 
 
+def cmd_method_dossier(args: argparse.Namespace) -> None:
+    """The method dossier for Ei: method_dossier_sv.md and method_dossier.json (kapacitet/dossier.py)."""
+    from . import dossier
+    from .study import StudyError
+
+    try:
+        text, facts = dossier.write(args.study, args.out)
+    except (StudyError, dossier.DossierError) as err:
+        print(f"No method dossier: {err}")
+        sys.exit(1)
+    doc = json.loads(facts.read_text(encoding="utf-8"))
+    print(f"Written: {text} and {facts.name} ({len(doc['facts'])} values, each with its source)")
+    for m in doc["missing"]:
+        print(f"  missing {m['file']}: run {m['command']}")
+
+
 def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
@@ -647,6 +664,11 @@ def main(argv: list[str] | None = None) -> None:
                                                  "(EU 2019/943, art. 13.4), on the day-ahead basis")
     p.add_argument("--year", type=int, default=None, help="the report year (default: the operation stage's)")
     p.set_defaults(func=cmd_redispatch_report)
+
+    p = sub.add_parser("method-dossier", help="the method dossier for Ei, in Swedish, every value from the data")
+    p.add_argument("--study", default=None, help="a study's folder (default: this data folder's demo)")
+    p.add_argument("--out", default=None, help="the folder to write into (default: results/, or the study's folder)")
+    p.set_defaults(func=cmd_method_dossier)
 
     p = sub.add_parser("purge", help="remove saved assessments older than N days, and erase their seals")
     p.add_argument("--older-than", type=_days, default=None, metavar="N",

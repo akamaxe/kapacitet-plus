@@ -49,6 +49,7 @@ kapacitet = "kapacitet.pipeline:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
+"kapacitet" = ["templates/*.md"]
 "kapacitet.study" = ["templates/*.md", "templates/cases_sv/*.md"]
 "kapacitet.store" = ["migrations/*.sql"]
 
