@@ -24,8 +24,13 @@ the study's folder, and a study's station processes always use files.
 Every row carries the data folder's *scope*. The reference network's folder is `main`. An
 imported network is `dataset:<id>`. Any other folder is `path:<folder>`, and
 `KAPACITET_STORE_SCOPE` can set the scope by hand. So one database can hold the reference
-network and the imported ones side by side. Deleting an imported network removes its folder but
-leaves its rows. Its seal chain is append-only and stays as evidence.
+network and the imported ones side by side. A `path:` scope follows the folder: a moved or
+unpacked copy pointed at by `KAPACITET_DATA_DIR` starts from an empty view (a fresh queue, no
+seals, default settings). The server warns at start when its scope holds nothing while others do;
+set `KAPACITET_STORE_SCOPE` to the old scope to keep it. Deleting an imported network removes its
+folder but leaves its rows. Its seal chain stays as evidence: a trigger refuses UPDATE, DELETE and
+TRUNCATE on it. The table's owner or a superuser can still switch the trigger off, and then the
+signatures show the rewrite, as they do for a rewritten `seals.jsonl`.
 
 With a database, transactions take the place of the file locks. Each numbered append (an
 application event, a seal, a market record) runs in one transaction under an advisory lock. A
@@ -34,6 +39,12 @@ If two servers decide at the same moment, the second waits for the first, then s
 version and is told to evaluate again. It never reserves the same headroom twice. A decision's
 seal is written once the decision has committed, as with files. If that fails, the seal is owed,
 and the next decision or the next start writes it.
+
+An evaluation against the queue reads the queue's version and its grid states in one read-only
+snapshot, so a decision that commits meanwhile cannot leave it half old and half new. Its record
+names the queue's row, version and a digest of those states in place of the files. A queue rebuilt
+from a study's list is written under a staging name of its own and swapped in only if the queue is
+still the one the rebuild began from; otherwise the rebuild is refused with `queue_changed`.
 
 ## Set it up
 

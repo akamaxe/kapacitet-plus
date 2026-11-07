@@ -41,6 +41,10 @@ ENV_URL = "KAPACITET_DATABASE_URL"
 ENV_SCOPE = "KAPACITET_STORE_SCOPE"
 
 
+class QueueChanged(RuntimeError):
+    """A queue's swap (`replace_with`) refused: the queue changed after its rebuild began."""
+
+
 def database_url() -> str | None:
     """KAPACITET_DATABASE_URL, or None when the server keeps its state in files."""
     url = os.environ.get(ENV_URL, "").strip()

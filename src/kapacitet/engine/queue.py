@@ -45,7 +45,7 @@ import os
 import re
 import shutil
 import threading
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -123,6 +123,12 @@ class FolderQueue:
     @contextmanager
     def transaction(self):
         """The queue's write lock, within this process (one server writes a data folder)."""
+        with _LOCK:
+            yield self
+
+    @contextmanager
+    def snapshot(self):
+        """One consistent view of the queue and its files: `_LOCK`, which `_collect` holds too."""
         with _LOCK:
             yield self
 
@@ -251,7 +257,7 @@ def _need(st, file: str) -> dict[str, np.ndarray]:
 
 def state_files(where: Path | None = None) -> list[Path]:
     """The grid-state files the queue's current version reads (provenance of an assessment); none
-    when the queue is kept in the database."""
+    when the queue is kept in the database, where `provenance_entry` says the same."""
     if store.is_pg():
         return []
     root = _at(where)
@@ -260,6 +266,27 @@ def state_files(where: Path | None = None) -> list[Path]:
     version = load(root).get("version", 0)
     files = sorted(root.glob(f"state_*.v{version}.npz"))
     return files or sorted(p for p in root.glob("state_*.npz") if (m := _STATE.match(p.name)) and m[2] is None)
+
+
+def provenance_entry(where: Path | None = None) -> dict | None:
+    """With the queue in the database: what an assessment against it was computed with, in place of
+    the files `state_files` lists (the row, its version, a digest of the states that version reads
+    and when its last decision was taken). None with files."""
+    if not store.is_pg():
+        return None
+    import hashlib
+
+    st = _store(where)
+    with st.snapshot():
+        q = st.load()
+        version = q.get("version", 0)
+        names = [n for n in st.files() if (m := _STATE.match(n)) and m[2] is not None and int(m[2]) == version]
+        h = hashlib.sha256()
+        for n in names:
+            h.update(n.encode() + b"/" + hashlib.sha256(st.get_bytes(n) or b"").digest())
+    stamps = [it.get("decided") for it in q.get("items", []) if isinstance(it.get("decided"), str)]
+    return {"store": "postgres", "scope": store.scope(), "name": st.name, "version": version,
+            "states": names, "states_digest": h.hexdigest(), "decided_at": max(stamps) if stamps else None}
 
 
 # per queue folder: the version its states and injections were read for
@@ -282,7 +309,8 @@ def _override(it: dict, d: dict[str, np.ndarray], years) -> dict:
 def context(where: Path | None = None) -> rq.Context | None:
     """The grid as the queue has left it, or None when nothing has been decided yet."""
     st = _store(where)
-    with _LOCK if st.backend == "files" else _CACHE_LOCK:
+    # the version and its states read as one; files: _LOCK alone, as decide takes it before this
+    with nullcontext() if st.backend == "files" else _CACHE_LOCK, st.snapshot():
         q = st.load()
         if q["baseline"] is None:
             return None
@@ -294,10 +322,12 @@ def context(where: Path | None = None) -> rq.Context | None:
         if held is None or held["version"] != q["version"]:
             years = settings().weather_years
             states, overrides = {}, {}
-            for y in years:
+            for y in years:             # a year the queue was not verified for (a study's) has none
                 got = _state_of(st, y, q["version"])
                 if got is not None:
                     states[y] = got
+            if not states:              # approvals but no state at all: never answer without them
+                raise FileNotFoundError(f"the states of version {q['version']} are missing from the queue in {st.where()}")
             for it in items:
                 overrides[it["cid"]] = _override(it, _need(st, f"{it['assessment']}.npz"), years)
             held = _CACHE[st.where()] = {"version": q["version"], "states": states, "overrides": overrides}
@@ -484,7 +514,11 @@ def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items
             nxt.put_npz(_state_name(y, version), state, stable=True)
         q = {"version": version, "baseline": baseline, "items": items, "pending": list(pending or [])}
         nxt.commit(json.loads(json.dumps(q, default=_plain)), None)
-        st.replace_with(nxt)
+        try:
+            st.replace_with(nxt)
+        except store.QueueChanged:      # postgres: a decision committed while this was computed
+            nxt.drop()
+            raise QueueError("queue_changed") from None
         _forget(root)
         return load(root)
 

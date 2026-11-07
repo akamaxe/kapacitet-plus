@@ -77,6 +77,8 @@ KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "sc
          "publication", "sync", "rule_signature", "cases", "market_alternatives", "key_rotation")
 # a chain kept somewhere else than data/requests: a study's evidence/ folder (`chain_at`)
 _CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
+# inside _chain_locked: the signed-line counts to note once the chain's lines are there for good
+_UNNOTED: contextvars.ContextVar[dict[str, int] | None] = contextvars.ContextVar("kapacitet_seal_unnoted", default=None)
 
 # What an answer depends on, besides the engine's code: the network, the profiles behind it, the
 # published results and the inputs. A change to any of these changes the fingerprint. The "study"
@@ -587,7 +589,11 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     entry["sig"] = _b64(key.sign(_line_message(entry)))
     ch.append(entry)
     lines.append(entry)
-    _note_signed(sum(1 for e in lines if e.get("sig")))
+    signed, counts = sum(1 for e in lines if e.get("sig")), _UNNOTED.get()
+    if counts is None:
+        _note_signed(signed)
+    else:               # noted when _chain_locked ends: with postgres, after the line has committed
+        counts[ch.name] = max(counts.get(ch.name, 0), signed)
     # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
     ch.fingerprint_put(fp["digest"], json.dumps(fp, indent=1, sort_keys=True))
     _publish_key(key.public_key())
@@ -606,11 +612,32 @@ def _read_marks() -> dict:
         return {}
 
 
-def _note_signed(count: int) -> None:
+@contextmanager
+def _chain_locked():
+    """The chain's lock. The signed lines appended under it raise this installation's count
+    (`_note_signed`) only once they are there for good: with postgres, after the transaction has
+    committed, so a line that rolls back (a failed commit, a raise after the append) never leaves a
+    count the chain does not reach, which verify_chain would report as stripped signatures."""
+    if _UNNOTED.get() is not None:
+        with _chain().locked():
+            yield
+        return
+    counts: dict[str, int] = {}
+    token = _UNNOTED.set(counts)
+    try:
+        with _chain().locked():
+            yield
+    finally:
+        _UNNOTED.reset(token)
+    for name, count in counts.items():
+        _note_signed(count, name)
+
+
+def _note_signed(count: int, name: str | None = None) -> None:
     """Keep, next to the key and outside the data, how many signed lines this chain has had, so a
     rewrite that strips every signature (and rebuilds the hashes) is caught by this installation."""
     marks = _read_marks()
-    name = _chain().name
+    name = name or _chain().name
     if count > marks.get(name, 0):
         marks[name] = count
         try:
@@ -646,7 +673,7 @@ def seal(kind: str, item_id: str, obj: Any) -> dict:
     _check_id(kind, item_id)
     text = canonical(obj)
     fp = fingerprint()
-    with _LOCK, _chain().locked():
+    with _LOCK, _chain_locked():
         key = signing_key()
         lines = _carry_rotations(_mend_tail(), key, fp)
         return _append(kind, item_id, text, fp, lines, key)
@@ -675,7 +702,7 @@ def rotate_key(chain: str | Path | None = None) -> dict:
         _KEYS.pop(str(folder / KEY_FILE), None)
         key = signing_key(create=False)
         assert key is not None and key_id_of(key.public_key()) == statement["new_key_id"]
-        with chain_at(chain) if chain is not None else nullcontext(), _chain().locked():
+        with chain_at(chain) if chain is not None else nullcontext(), _chain_locked():
             fp = fingerprint()
             lines = _carry_rotations(_mend_tail(), key, fp)
             entry = next((e for e in lines if e.get("kind") == "key_rotation" and e.get("id") == _rotation_id(rec)), None)
@@ -804,7 +831,7 @@ def erase(kind: str, item_id: str, reason: str) -> dict:
     Erasing an erased record again only makes sure its copy is gone."""
     if kind not in KINDS or kind in ("erasure", "key_rotation"):   # a rotation is what later lines' trust rests on
         raise ValueError(f"cannot erase a seal of kind {kind!r}")
-    with _LOCK, _chain().locked():
+    with _LOCK, _chain_locked():
         entry = entry_for(kind, item_id)
         if entry is None:
             raise ValueError(f"{kind} {item_id} has no seal")

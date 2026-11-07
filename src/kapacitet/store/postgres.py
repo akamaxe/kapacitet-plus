@@ -218,6 +218,9 @@ class Chain:
 
 # ---------------------------------------------------------------- the queue
 
+STAGING = ".next."                  # a rebuild's staging queue: <name>.next.<unix time>.<random>
+STAGING_STALE_S = 24 * 3600         # left by a rebuild that never swapped once this old
+
 def npz_bytes(arrays: dict, stable: bool = False) -> bytes:
     """numpy's .npz as bytes: the same bytes as atomic.savez_atomic writes to a file."""
     import numpy as np
@@ -281,6 +284,22 @@ class Queue:
             conn.execute("INSERT INTO queues (scope, name) VALUES (%s, %s) ON CONFLICT DO NOTHING",
                          (scope(), self.name))
             conn.execute("SELECT version FROM queues WHERE scope = %s AND name = %s FOR UPDATE", (scope(), self.name))
+            self._conn = conn
+            try:
+                yield self
+            finally:
+                self._conn = None
+
+    @contextmanager
+    def snapshot(self) -> Iterator["Queue"]:
+        """One consistent view of the queue row and its arrays (REPEATABLE READ, read only): a
+        decision that commits meanwhile, and the collection of the old version's states after it,
+        stay invisible until the snapshot ends."""
+        if self._conn is not None:
+            yield self
+            return
+        with db.connection() as conn, conn.transaction():
+            conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
             self._conn = conn
             try:
                 yield self
@@ -361,28 +380,73 @@ class Queue:
             conn.execute("DELETE FROM queues WHERE scope = %s AND name = %s", (scope(), self.name))
 
     def staging(self) -> "Queue":
-        """An empty queue beside this one (`<name>.next`), for `rebuild` to write whole."""
-        nxt = Queue(self.name + ".next")
+        """An empty queue beside this one, for `rebuild` to write whole. Its name is its own
+        (`<name>.next.<unix time>.<random>`), so two servers' rebuilds never share it, and it keeps
+        the live row's doc as it was, which `replace_with` checks before the swap."""
+        import time
+        import uuid
+
+        with db.connection() as conn:
+            row = conn.execute("SELECT doc FROM queues WHERE scope = %s AND name = %s", (scope(), self.name)).fetchone()
+        nxt = Queue(f"{self.name}{STAGING}{int(time.time())}.{uuid.uuid4().hex[:8]}")
         nxt.drop()
+        nxt._from = row[0] if row else None
         return nxt
 
     def replace_with(self, staging: "Queue") -> None:
-        """Put `staging` in this queue's place, in one transaction holding this queue's row."""
+        """Put `staging` in this queue's place, in one transaction holding this queue's row. Refused
+        (store.QueueChanged) when the queue changed after `staging()`: a decision committed while
+        the rebuild ran, or another server swapped first; the rebuild would wipe it."""
+        from . import QueueChanged
+
         with db.connection() as conn, conn.transaction():
             conn.execute("INSERT INTO queues (scope, name) VALUES (%s, %s) ON CONFLICT DO NOTHING", (scope(), self.name))
-            conn.execute("SELECT version FROM queues WHERE scope = %s AND name = %s FOR UPDATE", (scope(), self.name))
+            doc = conn.execute("SELECT doc FROM queues WHERE scope = %s AND name = %s FOR UPDATE",
+                               (scope(), self.name)).fetchone()[0]
+            if doc != getattr(staging, "_from", None):
+                raise QueueChanged(f"{self.name} changed while it was rebuilt")
             conn.execute("DELETE FROM queue_files WHERE scope = %s AND name = %s", (scope(), self.name))
             conn.execute("DELETE FROM queues WHERE scope = %s AND name = %s", (scope(), self.name))
             conn.execute("UPDATE queue_files SET name = %s WHERE scope = %s AND name = %s",
                          (self.name, scope(), staging.name))
             conn.execute("UPDATE queues SET name = %s WHERE scope = %s AND name = %s", (self.name, scope(), staging.name))
 
-    def recover_swap(self) -> None:
-        """A rebuild that never swapped leaves its staging queue: removed."""
-        Queue(self.name + ".next").drop()
+    def recover_swap(self, older_than_s: float = STAGING_STALE_S) -> None:
+        """A rebuild that never swapped leaves its staging queue: removed once it is older than
+        `older_than_s`, so another server's rebuild still running keeps its own."""
+        import time
+
+        cut = time.time() - older_than_s
+        prefix = self.name + STAGING
+        with db.connection() as conn:
+            names = [r[0] for r in conn.execute("SELECT name FROM queues WHERE scope = %s AND starts_with(name, %s)",
+                                                (scope(), prefix)).fetchall()]
+            names += [r[0] for r in conn.execute("SELECT DISTINCT name FROM queue_files WHERE scope = %s"
+                                                 " AND starts_with(name, %s)", (scope(), prefix)).fetchall()]
+        Queue(self.name + ".next").drop()           # the shared name the first version staged under
+        for name in sorted(set(names)):
+            stamp = name[len(prefix):].split(".", 1)[0]
+            if not stamp.isdigit() or int(stamp) < cut:
+                Queue(name).drop()
 
 
 def queue_names() -> list[str]:
     with db.connection() as conn:
         rows = conn.execute("SELECT name FROM queues WHERE scope = %s ORDER BY name", (scope(),)).fetchall()
     return [r[0] for r in rows]
+
+
+_SCOPED = ("assessments", "applications_log", "market_alternatives", "dso_settings", "seal_chain", "queues")
+
+
+def other_scopes_when_empty() -> list[str]:
+    """The scopes that hold rows when this one holds none (else []): a data folder moved or unpacked
+    elsewhere gets a new `path:` scope and so an empty view, which the server warns about."""
+    with db.connection() as conn:
+        for table in _SCOPED:
+            if conn.execute(f"SELECT 1 FROM {table} WHERE scope = %s LIMIT 1", (scope(),)).fetchone():
+                return []
+        found: set[str] = set()
+        for table in _SCOPED:
+            found |= {r[0] for r in conn.execute(f"SELECT DISTINCT scope FROM {table}").fetchall()}
+    return sorted(found)

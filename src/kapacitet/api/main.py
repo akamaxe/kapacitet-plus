@@ -88,6 +88,12 @@ async def lifespan(_app: FastAPI):
             raise RuntimeError(f"the database at KAPACITET_DATABASE_URL needs `kapacitet db migrate` "
                                f"(pending {pending['pending']}, changed {pending['changed']})")
         log.info("server state kept in PostgreSQL, scope %s", store.scope())
+        from ..store import postgres
+
+        others = postgres.other_scopes_when_empty()
+        if others:      # a moved or unpacked data folder: a new path: scope, so an empty queue and chain
+            log.warning("scope %s has nothing in the database yet, while %s do; set KAPACITET_STORE_SCOPE "
+                        "to one of them if this data folder was moved", store.scope(), ", ".join(others[:5]))
     # one server writes a data folder at a time: a second one on the same folder refuses to start
     lock = records.claim_server_lock()
     # a decision committed just before the server last stopped is sealed now, if it was not yet
@@ -1254,8 +1260,16 @@ def _request_files(baseline: str | None = None) -> list[Path]:
 
 def make_record(job_id: str, created: float, request: dict, result: dict) -> dict:
     """records.make_record with the provenance of the grid the API evaluated it against."""
-    return records.make_record(job_id, created, request, result,
-                               provenance(*_REQUEST_SOURCES, files=_request_files(request.get("baseline"))))
+    prov = provenance(*_REQUEST_SOURCES, files=_request_files(request.get("baseline")))
+    if request.get("baseline") == "queue":
+        from ..engine import queue as qu
+
+        held = qu.provenance_entry()      # the queue in the database: its row stands for its files
+        if held is not None:
+            prov["queue"] = held
+            if held["decided_at"] and (prov["computed_at"] is None or held["decided_at"] > prov["computed_at"]):
+                prov["computed_at"] = prov["run_id"] = held["decided_at"]
+    return records.make_record(job_id, created, request, result, prov)
 
 
 def _record(job_id: str, job: dict, result: dict) -> dict:

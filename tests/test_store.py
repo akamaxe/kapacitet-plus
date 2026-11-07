@@ -160,6 +160,25 @@ def test_concurrent_seals_make_one_unbroken_chain(backend):
     assert chain["ok"] and chain["length"] == 12
 
 
+def test_a_seal_that_fails_after_its_line_never_raises_the_signed_count(backend, monkeypatch):
+    """With postgres the line rolls back; the installation's count of signed lines must not stay
+    above the chain, or verify_chain would report stripped signatures for good."""
+    from kapacitet import seals
+
+    seals.seal("decision", "d00000000001", {"decision": "firm"})
+    chain_cls = type(seals._chain())
+
+    def fail(self, *a, **k):
+        raise RuntimeError("the fingerprint could not be kept")
+
+    with monkeypatch.context() as mp, pytest.raises(RuntimeError):
+        mp.setattr(chain_cls, "fingerprint_put", fail)
+        seals.seal("decision", "d00000000002", {"decision": "nonfirm"})
+    out = seals.verify_chain()
+    assert out["ok"], out
+    assert out["length"] == (1 if backend == "postgres" else 2)
+
+
 # ---------------------------------------------------------------- the market alternatives
 
 def _market_body():
@@ -322,6 +341,69 @@ def test_a_rebuild_gives_the_same_queue_on_either_backend(tiny_queue):
     assert qu.load(where)["version"] == 0 and qu.context(where).overrides == {}
 
 
+def test_approvals_without_any_state_are_an_error_and_never_an_empty_grid(tiny_queue):
+    from kapacitet.engine import queue as qu
+
+    m, hp, ev, name, where = tiny_queue
+    qu.decide(m, hp, ev, _assessment(tiny_queue, "ab0000000001", m.C - 1, 4.0), "nonfirm", where=where)
+    st = qu._store(where)
+    for f in st.files():
+        if f.startswith("state_"):
+            st.delete(f)
+    qu._forget(where)
+    with pytest.raises(FileNotFoundError, match="states of version 1"):
+        qu.context(where)
+
+
+def test_a_decision_committed_during_a_rebuild_refuses_the_swap(tiny_queue, monkeypatch):
+    """postgres: the rebuild holds no row lock while it computes, so its swap checks that the queue
+    is still the one it began from instead of wiping the decision."""
+    from kapacitet.engine import queue as qu
+
+    m, hp, ev, name, where = tiny_queue
+    if qu._store(where).backend != "postgres":
+        pytest.skip("files: decide and rebuild share the queue's lock")
+    from kapacitet.store import postgres
+
+    real = postgres.Queue.staging
+
+    def staging_then_a_decision(self):
+        nxt = real(self)
+        qu.decide(m, hp, ev, _assessment(tiny_queue, "ab0000000001", m.C - 1, 4.0), "nonfirm", where=where)
+        return nxt
+
+    monkeypatch.setattr(postgres.Queue, "staging", staging_then_a_decision)
+    items = [{"assessment": "0000000000a1", "cid": m.C - 2, "decision": "nonfirm", "decided": "2026-08-01",
+              "request": {"cid": m.C - 2, "pv_kwp": 3.0}}]
+    with pytest.raises(qu.QueueError) as err:
+        qu.rebuild(m, hp, ev, name, items, where=where)
+    assert err.value.code == "queue_changed"
+    q = qu.load(where)
+    assert q["version"] == 1 and [it["assessment"] for it in q["items"]] == ["ab0000000001"]
+    assert postgres.queue_names() == [where.name]                # the staging queue went with it
+
+
+def test_an_assessment_against_the_queue_in_the_database_records_the_queue(tiny_queue, monkeypatch):
+    from kapacitet.api import main
+    from kapacitet.engine import queue as qu
+
+    m, hp, ev, name, where = tiny_queue
+    if qu._store(where).backend != "postgres":
+        pytest.skip("files: the queue's files are listed instead (test_api_offline)")
+    qu.decide(m, hp, ev, _assessment(tiny_queue, "ab0000000001", m.C - 1, 4.0), "nonfirm", where=where)
+    held = qu.provenance_entry(where)
+    q = qu.load(where)
+    assert held["version"] == 1 and held["name"] == where.name and len(held["states_digest"]) == 64
+    assert held["states"] and all(f.endswith(".v1.npz") for f in held["states"])
+    assert held["decided_at"] == q["items"][0]["decided"]
+    qu.decide(m, hp, ev, _assessment(tiny_queue, "ab0000000002", m.C - 2, 3.0, queue=True), "nonfirm", where=where)
+    assert qu.provenance_entry(where)["states_digest"] != held["states_digest"]
+
+    monkeypatch.setattr(qu, "folder", lambda: where)
+    prov = main.make_record("abc", 0.0, {"baseline": "queue"}, {})["provenance"]
+    assert prov["queue"]["version"] == 2 and prov["computed_at"] == qu.load(where)["items"][-1]["decided"]
+
+
 # ---------------------------------------------------------------- only the database
 
 @pytest.fixture()
@@ -338,6 +420,118 @@ def test_migrate_is_idempotent_and_status_says_so(database):
     out = migrate.status(database)
     assert out["pending"] == [] and out["changed"] == [] and all(r["applied"] for r in out["migrations"])
     assert migrate.migrate(database) == []
+
+
+def test_a_snapshot_of_the_queue_keeps_its_version_and_states_while_a_decision_commits(database):
+    """context() reads the version and its states in one snapshot: the next decision's commit and
+    the collection of the old states after it stay invisible until it ends."""
+    import numpy as np
+
+    from kapacitet.store import postgres
+
+    with postgres.Queue("queue").transaction() as tx:
+        tx.put_npz("state_2025.v1.npz", {"v": np.arange(3)})
+        tx.commit({"version": 1, "baseline": "b", "items": []}, None)
+    with postgres.Queue("queue").snapshot() as snap:
+        assert snap.load()["version"] == 1
+        with postgres.Queue("queue").transaction() as tx:          # another connection, committed
+            tx.put_npz("state_2025.v2.npz", {"v": np.arange(4)})
+            tx.commit({"version": 2, "baseline": "b", "items": []}, None)
+        postgres.Queue("queue").delete("state_2025.v1.npz")       # what _collect does next
+        assert snap.get_npz("state_2025.v1.npz")["v"].tolist() == [0, 1, 2]
+        assert snap.load()["version"] == 1 and "state_2025.v2.npz" not in snap.files()
+    fresh = postgres.Queue("queue")
+    assert fresh.load()["version"] == 2 and fresh.files() == ["state_2025.v2.npz"]
+
+
+def test_a_rebuild_left_unswapped_is_removed_only_once_it_is_stale(database):
+    import numpy as np
+
+    from kapacitet.store import QueueChanged, postgres
+
+    live = postgres.Queue("queue")
+    live.commit({"version": 1, "baseline": "b", "items": []}, None)
+    old, fresh = live.staging(), live.staging()
+    assert old.name != fresh.name                                   # each rebuild stages on its own
+    for nxt in (old, fresh):
+        nxt.put_npz("state_2025.v0.npz", {"v": np.arange(2)})
+        nxt.commit({"version": 0, "baseline": "b", "items": []}, None)
+    stale = "queue" + postgres.STAGING + "1000.deadbeef"            # another server's, long ago
+    postgres.Queue(stale).commit({"version": 0, "baseline": "b", "items": []}, None)
+    live.recover_swap()
+    assert set(postgres.queue_names()) == {"queue", old.name, fresh.name}
+    live.commit({"version": 2, "baseline": "b", "items": []}, None)    # a decision meanwhile
+    with pytest.raises(QueueChanged):
+        live.replace_with(old)
+    assert live.load()["version"] == 2
+    live.recover_swap(older_than_s=-60)
+    assert postgres.queue_names() == ["queue"]
+
+
+def _raw_chain(database, lines: list[dict]) -> None:
+    """What the database's owner (or a superuser) can do: switch the trigger off and rewrite the chain."""
+    import psycopg
+
+    from kapacitet import store
+
+    with psycopg.connect(database) as conn, conn.transaction():
+        conn.execute("ALTER TABLE seal_chain DISABLE TRIGGER USER")
+        conn.execute("DELETE FROM seal_chain WHERE scope = %s", (store.scope(),))
+        for e in lines:
+            conn.execute("INSERT INTO seal_chain (scope, seq, line) VALUES (%s, %s, %s)",
+                         (store.scope(), e["seq"], json.dumps(e, sort_keys=True)))
+        conn.execute("ALTER TABLE seal_chain ENABLE TRIGGER USER")
+
+
+def test_a_rewritten_or_stripped_database_chain_is_caught_by_its_signatures(database, monkeypatch, tmp_path):
+    import psycopg
+
+    from kapacitet import seals, store
+
+    monkeypatch.setattr(seals, "folder", lambda: tmp_path / "nowhere")
+    for i in range(3):
+        seals.seal("decision", f"b{i:011d}", {"decision": "firm", "i": i})
+    good = seals._lines()
+
+    def rehash(lines):
+        prev = seals.GENESIS
+        for i, e in enumerate(lines, start=1):
+            e["seq"], e["prev"] = i, prev
+            e["chain"] = seals._chain_hash(prev, e)
+            prev = e["chain"]
+        return lines
+
+    with psycopg.connect(database, autocommit=True) as conn:
+        with pytest.raises(psycopg.errors.RaiseException, match="append-only"):
+            conn.execute("TRUNCATE seal_chain")
+
+    lines = json.loads(json.dumps(good))
+    lines[1]["digest"] = seals.digest({"decision": "declined", "i": 1})
+    _raw_chain(database, rehash(lines))
+    out = seals.verify_chain()
+    assert not out["ok"] and out["broken_at"] == 2 and out["reason"] == "signature"
+
+    lines = json.loads(json.dumps(good))
+    for e in lines:
+        for k in ("sig", "key_id", "signed_since"):
+            e.pop(k, None)
+    _raw_chain(database, rehash(lines))
+    out = seals.verify_chain()
+    assert not out["ok"] and out["reason"] == "unsigned"
+
+    _raw_chain(database, good)
+    assert seals.verify_chain()["ok"] and store.is_pg()
+
+
+def test_the_server_warns_when_its_scope_is_empty_and_others_are_not(database, monkeypatch):
+    from kapacitet import seals
+    from kapacitet.store import postgres
+
+    seals.seal("decision", "d00000000001", {"decision": "firm"})
+    assert postgres.other_scopes_when_empty() == []
+    here = postgres.scope()
+    monkeypatch.setenv("KAPACITET_STORE_SCOPE", here + ":moved")
+    assert here in postgres.other_scopes_when_empty()
 
 
 def test_the_database_chain_refuses_an_update_and_a_changed_copy_shows(database, monkeypatch, tmp_path):
