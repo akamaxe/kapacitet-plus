@@ -645,9 +645,12 @@ function Intraday({ ID, F }: { ID: any; F: any }) {
         <Tile label={t(fc ? "met.id.kw.worst_change" : "met.id.kw")} value={f(wc.median_kw, 0)} unit="kW"
           note={t("met.id.kw.note", { lo: f(wc.kw_ac_stats.p10, 0), hi: f(wc.kw_ac_stats.p90, 0), inst: f(wc.installation.median_kw, 0) })} />
         {fc && (
-          <Tile label={t("met.id.kw.forecast")} value={f(fc.median_kw, 0)} unit="kW"
-            note={t(fc.verified ? "met.id.kw.note" : "met.id.kw.note.unverified",
-              { lo: f(fc.kw_ac_stats.p10, 0), hi: f(fc.kw_ac_stats.p90, 0), inst: f(fc.installation.median_kw, 0), h: f(fc.violation_hours + fc.installation.violation_hours) })} />
+          // an unverified variant publishes no capacity, only how often its replay broke a limit
+          fc.median_kw == null
+            ? <Tile label={t("met.id.kw.forecast")} value="–" unit="kW"
+                note={t("met.id.kw.note.unverified", { h: f(fc.violation_hours + fc.installation.violation_hours) })} />
+            : <Tile label={t("met.id.kw.forecast")} value={f(fc.median_kw, 0)} unit="kW"
+                note={t("met.id.kw.note", { lo: f(fc.kw_ac_stats.p10, 0), hi: f(fc.kw_ac_stats.p90, 0), inst: f(fc.installation.median_kw, 0) })} />
         )}
         <Tile label={t("met.fc.doe")} value={f(F.median_kw.doe, 0)} unit="kW" />
       </div>

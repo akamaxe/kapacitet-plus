@@ -484,8 +484,8 @@ def test_the_published_replica_holds_both_variants_and_headlines_a_verified_one(
     from kapacitet.engine import nowcast
 
     d = _intraday()
-    if "variants" not in d:
-        pytest.skip(f"intraday.json has no forecast variant yet; {INTRADAY}")
+    if "forecast" not in d.get("variants", {}):
+        pytest.skip(f"intraday.json has no forecast variant (needs the forecast extra); {INTRADAY}")
     v = d["variants"]
     assert set(v) == {"worst_change", "forecast"}
     assert d["quantiles"] == {"pv": pytest.approx(A("nowcast_pv_quantile")),
@@ -496,6 +496,15 @@ def test_the_published_replica_holds_both_variants_and_headlines_a_verified_one(
         assert var["verified"] == (var["violation_hours"] == 0 == var["installation"]["violation_hours"])
         for basis in (var, var["installation"]):
             assert basis["scorecard"]["violation_hours"]["value"] == basis["violation_hours"]
+        if not var["verified"]:
+            # capacity is published only for envelopes that held in every replayed hour
+            assert name == "forecast" and var["capacity_withheld"]
+            for b in (var, var["installation"]):
+                assert b["median_kw"] is None and b["kw_ac_stats"] is None
+                assert b["scorecard"]["gain_over_hourly_pct"]["value"] is None
+            assert all(r[k] is None for r in var["per_order"] for k in ("kw_ac", "adopters"))
+            assert all(r["installation"]["kw_ac"] is None for r in var["per_order"])
+            continue
         for r in var["per_order"]:
             assert r["kw_ac"] <= r["doe_kw"] + 1e-6
     assert v["worst_change"]["verified"], "the worst-change replay held in every hour"
@@ -510,6 +519,9 @@ def test_the_published_replica_holds_both_variants_and_headlines_a_verified_one(
         assert c["customer_hours"] > 0 and 0 <= c["exceeded"] <= c["customer_hours"]
         assert c["realised_exceedance"] == pytest.approx(c["exceeded"] / c["customer_hours"])
         assert sorted(p["year"] for p in c["per_year"]) == sorted(d["years"])
+        if "within_tolerance" in c:
+            off = abs(c["realised_exceedance"] - c["nominal_exceedance"]) <= c["tolerance_rel"] * c["nominal_exceedance"]
+            assert c["within_tolerance"] == off
 
 
 def test_the_overinstallation_prices_cover_every_weather_year_once_recomputed(results):

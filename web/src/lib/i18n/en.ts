@@ -1485,7 +1485,7 @@ const en: Dict = {
   "met.id.fc.caption": "The forecast variant plans each gate from quantile forecasts instead: a gradient-boosted model (LightGBM) of each roof's solar at the {pv}th percentile and of each house's load at the {load}th, for 1 to 12 hours ahead, from what the gate knows (the last reading and its trend, the hour, the day of the year, the roof's clear-sky output and the last temperature). Each year's models never saw that year. The plan stays inside the day-ahead one with the same margins. A quantile is beaten by design in some hours, so the forecast variant is the headline only if the replay finds no hour above a limit.",
   "met.id.kw.worst_change": "Re-issued, largest past change",
   "met.id.kw.forecast": "Re-issued, quantile forecast",
-  "met.id.kw.note.unverified": "{lo}–{hi} kW over the adoption orders; {inst} kW per installation; {h} hours above a limit in the replay, so not the headline",
+  "met.id.kw.note.unverified": "{h} hours above a limit in the replay, so no capacity is published for it and it is not the headline",
   "met.id.headline.forecast": "Headline: the quantile-forecast variant, which broke no limit in any replayed hour.",
   "met.id.headline.worst_change": "Headline: the largest-past-change variant, because the quantile-forecast variant broke a limit in some replayed hour.",
   "met.id.variant.worst_change": "Largest past change",

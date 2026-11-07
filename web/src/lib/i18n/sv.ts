@@ -1486,7 +1486,7 @@ const sv: Dict = {
   "met.id.fc.caption": "Prognosvarianten planerar i stället varje tidpunkt från kvantilprognoser: en gradientförstärkt modell (LightGBM) av varje taks solel vid {pv}:e percentilen och av varje hushålls last vid {load}:e, 1 till 12 timmar framåt, från det som är känt vid tidpunkten (senaste mätvärdet och dess trend, timmen, dagen på året, takets solel vid klar himmel och senaste temperaturen). Varje års modeller har aldrig sett det året. Planen håller sig inom planen från dagen före med samma marginaler. En kvantil slås med avsikt under vissa timmar, så prognosvarianten är huvudsiffran bara om uppspelningen inte hittar någon timme över en gräns.",
   "met.id.kw.worst_change": "Utfärdat på nytt, största tidigare förändring",
   "met.id.kw.forecast": "Utfärdat på nytt, kvantilprognos",
-  "met.id.kw.note.unverified": "{lo}–{hi} kW över anslutningsordningarna; {inst} kW per anläggning; {h} timmar över en gräns i uppspelningen, så inte huvudsiffran",
+  "met.id.kw.note.unverified": "{h} timmar över en gräns i uppspelningen, så ingen kapacitet redovisas för den och den är inte huvudsiffran",
   "met.id.headline.forecast": "Huvudsiffra: kvantilprognosvarianten, som inte bröt någon gräns i någon uppspelad timme.",
   "met.id.headline.worst_change": "Huvudsiffra: varianten med största tidigare förändring, eftersom kvantilprognosvarianten bröt en gräns i någon uppspelad timme.",
   "met.id.variant.worst_change": "Största tidigare förändring",

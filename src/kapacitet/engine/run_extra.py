@@ -418,6 +418,46 @@ def _intraday_case(args) -> dict:
             "seconds": time.perf_counter() - t0}
 
 
+CALIBRATION_TOL = 0.3      # relative; the synthetic calibration test holds the same tolerance
+
+
+def _check_calibration(calibration: dict) -> None:
+    """Mark (and log) each kind whose realised exceedance is off its nominal rate by more than
+    CALIBRATION_TOL, relative, so a miscalibrated forecast shows in the published block
+    (`within_tolerance`) and in the log, not only in the raw rates."""
+    for kind, c in calibration.items():
+        nominal, real = c["nominal_exceedance"], c["realised_exceedance"]
+        c["tolerance_rel"] = CALIBRATION_TOL
+        c["within_tolerance"] = None if real is None else bool(abs(real - nominal) <= CALIBRATION_TOL * nominal)
+        if c["within_tolerance"] is False:
+            log.warning("intraday %s forecast miscalibrated: beaten in %.3f %% of the forecast customer-hours "
+                        "against a nominal %.3f %% (tolerance %.0f %% relative)", kind, 100 * real,
+                        100 * nominal, 100 * CALIBRATION_TOL)
+
+
+def _withhold_capacity(v: dict) -> None:
+    """An unverified forecast variant keeps its violation hours, scorecard verdicts and audits but
+    loses every capacity figure: capacity is published only for envelopes that held in every
+    replayed hour. The scorecard's gain line keeps its verdict and threshold, not its value."""
+    v["capacity_withheld"] = not v["verified"]
+    if v["verified"]:
+        return
+    for b in (v, v["installation"]):
+        b["median_kw"] = b["kw_ac_stats"] = b["median_adopters"] = None
+        gain = b["scorecard"]["gain_over_hourly_pct"]
+        gain["value"] = gain["kw"] = None
+    for r in v["per_order"]:
+        for row in (r, r["installation"]):
+            row["adopters"] = row["kw_ac"] = None
+
+
+def _headline(variants: dict) -> str:
+    """The variant the top level of intraday.json repeats: the forecast one only when it ran and
+    broke no limit in any replayed hour on either basis, otherwise the worst-change one."""
+    fc = variants.get("forecast")
+    return "forecast" if fc is not None and fc["verified"] else "worst_change"
+
+
 def intraday(years, z_star: float, window_days: int | None = None, workers: int = 4) -> dict:
     """The after-the-fact replica: day-ahead envelopes re-issued at the intraday gates with the
     measurements as they would have arrived (`engine/intraday.py`), every year replayed, for the
@@ -438,13 +478,19 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
     Nothing is written unless every envelope held against its own planning state, and the
     worst-change envelopes held in every replayed hour of the real state (`doe.require_verified`).
     The forecast variant is beaten by design in some hours, so its replay may break a limit: it is
-    published with its violation hours either way, and it is the headline (the top level of
-    intraday.json) only with none on both bases; otherwise the worst-change variant is.
+    published with its violation hours, scorecard and calibration either way, but its capacity
+    (the medians, the spread and each order's count and kW) only when it broke none on both bases
+    (`_withhold_capacity`), and only then is it the headline (the top level of intraday.json);
+    otherwise the worst-change variant is.
+
+    Without lightgbm (the `forecast` extra) only the worst-change variant runs, and the file has
+    no `variants.forecast`, `calibration` or `quantiles`.
 
     `scorecard` judges each variant against `intraday.REPLICA_THRESHOLDS` on each basis: no
     violation hour, the agreements inside the budget per installation, and the capacity over the
     hourly study.
     """
+    import importlib.util
     from concurrent.futures import ProcessPoolExecutor
 
     from . import forecast, nowcast
@@ -459,18 +505,26 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
     fs_by = {r["order"]: r for r in fs["per_order"]} if fs else {}
     installation = lambda r: r.get("doe_installation", r["doe"])
 
-    # the forecast models are trained here once, so the workers load them from disk
-    hp, ev = background_masks(get_model().C)
-    t0 = time.perf_counter()
-    nowcast.prepare(years, hp, ev)
-    calibration = nowcast.calibration(years, gates, lag, hp, ev)
-    log.info("intraday forecasts trained and audited (%.0f s): solar beaten in %.3f %% of the forecast "
-             "customer-hours (nominal %.3f %%), load in %.3f %% (nominal %.3f %%)", time.perf_counter() - t0,
-             100 * (calibration["pv"]["realised_exceedance"] or 0), 100 * calibration["pv"]["nominal_exceedance"],
-             100 * (calibration["load"]["realised_exceedance"] or 0), 100 * calibration["load"]["nominal_exceedance"])
+    schemes = dict(intra.VARIANTS)
+    calibration = None
+    if importlib.util.find_spec("lightgbm") is None:
+        schemes.pop("forecast")
+        log.warning("intraday: lightgbm is not installed, so only the worst-change variant runs; the "
+                    "forecast variant needs the forecast extra: pip install -e .[forecast]")
+    else:
+        # the forecast models are trained here once, so the workers load them from disk
+        hp, ev = background_masks(get_model().C)
+        t0 = time.perf_counter()
+        nowcast.prepare(years, hp, ev)
+        calibration = nowcast.calibration(years, gates, lag, hp, ev)
+        _check_calibration(calibration)
+        log.info("intraday forecasts trained and audited (%.0f s): solar beaten in %.3f %% of the forecast "
+                 "customer-hours (nominal %.3f %%), load in %.3f %% (nominal %.3f %%)", time.perf_counter() - t0,
+                 100 * (calibration["pv"]["realised_exceedance"] or 0), 100 * calibration["pv"]["nominal_exceedance"],
+                 100 * (calibration["load"]["realised_exceedance"] or 0), 100 * calibration["load"]["nominal_exceedance"])
 
     jobs = []
-    for scheme in intra.VARIANTS.values():
+    for scheme in schemes.values():
         for r in summary["per_order"]:
             mts = r["timeseries"]["adopters"]
             da = fs_by.get(r["order"])
@@ -526,6 +580,7 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
                "plan_exceedance_by_year": {str(y): ex for y, ex in by_year.items()},
                "per_order": per_order}
         if scheme == "nowcast":
+            _withhold_capacity(out)
             out["calibration"] = calibration
             out["model"] = {"library": "lightgbm", "objective": "quantile", "horizons_h": list(nowcast.HORIZONS),
                             "features": list(nowcast.FEATURES), "rounds": nowcast.ROUNDS,
@@ -533,15 +588,15 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
                             "training": "leave-one-year-out"}
         return out
 
-    variants = {name: variant(name, scheme) for name, scheme in intra.VARIANTS.items()}
-    headline = "forecast" if variants["forecast"]["verified"] else "worst_change"
+    variants = {name: variant(name, scheme) for name, scheme in schemes.items()}
+    headline = _headline(variants)
     pv_margin, load_margin = forecast.day_ahead_margins()
     top = {k: v for k, v in variants[headline].items() if k not in ("calibration", "model")}
     out = {
         "years": list(years), "z_star_pct": z_star, "window_days": window,
         "gates_h": list(gates), "measurement_lag_h": lag,
         "margins": {"pv_pct": round(pv_margin * 100.0, 6), "load_pct": round(load_margin * 100.0, 6)},
-        "quantiles": {"pv": nowcast.quantile("pv"), "load": nowcast.quantile("load")},
+        **({"quantiles": {"pv": nowcast.quantile("pv"), "load": nowcast.quantile("load")}} if calibration else {}),
         "n_orders": len(summary["per_order"]), "thresholds": dict(intra.REPLICA_THRESHOLDS),
         "headline_variant": headline,
         # the top level repeats the headline variant, on the aggregate share to the budget (M10's basis)
@@ -552,6 +607,10 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
     for v in variants.values():
         for b in (v, v["installation"]):
             sc = b["scorecard"]
+            if b["median_kw"] is None:
+                log.info("intraday %s (%s budget): %d violation hours in the replay, capacity withheld; "
+                         "scorecard %s", v["variant"], b["budget_basis"], b["violation_hours"], sc["result"])
+                continue
             log.info("intraday %s (%s budget): %.0f kW against %.0f kW hourly (%+.1f %%), %d violation hours, "
                      "agreements within the budget %.1f %% at worst, %d of %d limited hours unnecessary; "
                      "scorecard %s", v["variant"], b["budget_basis"], b["median_kw"], hourly,

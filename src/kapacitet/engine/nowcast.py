@@ -291,10 +291,17 @@ def quantile_forecast(kind: str, year: int, gates: tuple[int, ...], lag: int,
 
 
 def prepare(years, hp: np.ndarray, ev: np.ndarray) -> None:
-    """Train (or load) every year's two models in this process, so worker processes find them on disk."""
+    """Train (or load) every year's two models in this process, so worker processes find them on
+    disk, then delete any model file on disk no current key names (they are rebuilt deterministically,
+    and data/processed travels in the data bundle)."""
+    keep = set()
     for y in years:
         model("pv", y)
         model("load", y, hp, ev)
+        keep |= {f"pv_{y}_{model_key('pv', y)}.txt", f"load_{y}_{model_key('load', y, hp, ev)}.txt"}
+    for p in processed("nowcast", "x").parent.glob("*.txt"):
+        if p.name not in keep:
+            p.unlink(missing_ok=True)
 
 
 # ------------------------------------------------------------------------------ the audit
