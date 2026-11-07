@@ -44,6 +44,7 @@ the portfolio's margins carry. No envelopes are computed here: the scenarios are
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -73,8 +74,26 @@ COLUMNS = [
 
 def growth_doc(study: Study, start_year: int) -> dict:
     """The growth a station's process reads: the start and end year, each rate with whether it is
-    the DSO's ("entered") or config/assumptions.toml's ("default"), the source and the battery size."""
-    from ..config import A
+    the DSO's ("entered") or config/assumptions.toml's ("default"), the source and the battery size.
+    Read with the study's [assumptions] applied, as the station's process reads it; the previous
+    override layer is restored."""
+    from .. import config
+    from ..config import A, set_overrides
+
+    before = config._STUDY_LAYER
+    set_overrides(study.config.overrides(), layer="study")
+    try:
+        return _growth(study, start_year, A)
+    finally:
+        config._STUDY_LAYER = before
+
+
+def growth_digest(study: Study, start_year: int) -> str:
+    """The digest a station's scenarios.json carries for the study's current growth."""
+    return value_digest(growth_doc(study, start_year))
+
+
+def _growth(study: Study, start_year: int, A) -> dict:
 
     s = study.config.scenarios
     rates, basis = {}, {}
@@ -93,9 +112,9 @@ def rates_label(doc: dict) -> str:
 
 
 def added(rate: float, customers: int, dy: int, room: int) -> int:
-    """How many devices the growth adds in `dy` years: round(rate × customers × dy), at most `room`.
-    Pure."""
-    return int(min(max(room, 0), round(float(rate) * customers * max(dy, 0))))
+    """How many devices the growth adds in `dy` years: rate × customers × dy rounded half up (not
+    to even), at most `room`. Pure."""
+    return int(min(max(room, 0), math.floor(float(rate) * customers * max(dy, 0) + 0.5)))
 
 
 def _first_without(order: np.ndarray, has: np.ndarray, n: int) -> np.ndarray:

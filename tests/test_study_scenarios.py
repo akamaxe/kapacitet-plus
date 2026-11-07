@@ -207,6 +207,47 @@ def test_the_portfolio_shows_the_scenario_when_present(tmp_path):
     assert next(x for x in decision.portfolio_rows(study, Q) if x["station_id"] == sid)["scenarios_year"] is None
 
 
+OVERRIDE = """scenario_pv_growth_per_year = { value = 0.07, unit = "share of customers per year", source = "metering" }
+"""
+
+
+def make_override(tmp_path):
+    study = make(tmp_path, GROWTH)
+    text = study.toml.read_text(encoding="utf-8")
+    head = "[assumptions]" + chr(10)
+    assert head in text
+    study.toml.write_text(text.replace(head, head + OVERRIDE, 1), encoding="utf-8")
+    return open_study(study.root, allow_git=True)
+
+
+def test_an_assumption_override_gives_the_same_growth_in_every_process(tmp_path):
+    study = make_override(tmp_path)
+    mine = sc.growth_doc(study, 2026)
+    assert mine["rates"]["ev"] == 0.05                         # entered
+    calls: list[str] = []
+    first = sc.scenarios(study, Q, runner=runner_for(calls))
+    assert calls and first["growth"] == mine                   # the parent reads the study's value
+    # the runner's docs carry the parent's digest, so a second call finds them current
+    again: list[str] = []
+    assert sc.scenarios(study, Q, runner=runner_for(again))["computed"] == [] and again == []
+
+
+def test_the_portfolio_ignores_a_scenario_of_other_growth(tmp_path):
+    study = make(tmp_path, GROWTH)
+    sid = next(r["station_id"] for r in decision.portfolio_rows(study, Q))
+    sc.scenarios(study, Q, runner=runner_for(docs={sid: station_doc(study, sid)}))
+    assert next(x for x in decision.portfolio_rows(study, Q) if x["station_id"] == sid)["scenarios_year"] == 2028
+    study.toml.write_text(study.toml.read_text(encoding="utf-8").replace("ev_per_year = 0.05", "ev_per_year = 0.06"),
+                          encoding="utf-8")
+    changed = open_study(study.root, allow_git=True)
+    assert next(x for x in decision.portfolio_rows(changed, Q) if x["station_id"] == sid)["scenarios_year"] is None
+
+
+def test_a_small_station_still_grows_and_half_rounds_up():
+    assert sc.added(0.01, 20, 4, 20) == 1 and sc.added(0.01, 50, 1, 50) == 1       # 0.5 is not 0
+    assert sc.added(0.01, 20, 1, 20) == 0
+
+
 def test_the_command_line_runs_the_scenarios(tmp_path, capsys):
     from kapacitet.pipeline import main
 

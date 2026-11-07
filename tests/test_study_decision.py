@@ -93,6 +93,10 @@ def test_a_correction_lowers_the_margin_the_portfolio_ranks_by(tmp_path):
     assert s2["consumption_kw"] == 3.0 and s2["corrected"] and s2["rank"] == 2
 
 
+from kapacitet.study.config import METHOD_VERSION  # noqa: E402
+from kapacitet.study.scenarios import growth_digest  # noqa: E402
+
+
 def test_the_portfolio_reads_the_risk_and_the_trend_of_each_station(tmp_path):
     study = make(tmp_path)
     results = study.station_dir("S1") / "processed" / "results"
@@ -103,8 +107,9 @@ def test_the_portfolio_reads_the_risk_and_the_trend_of_each_station(tmp_path):
         {"velander_kw": 90.0, "modelled_peak_kw": 80.0,
          "measured": {"customers": 10, "max_kw": 33.0, "velander_kw": 30.0}}), encoding="utf-8")
     (results / "scenarios.json").write_text(json.dumps(
-        {"schema": "kapacitet.station-scenarios/1", "fingerprint": "f",
-         "scenario": {"basis": {"pv": "default", "ev": "default", "hp": "default", "battery": "default"}},
+        {"schema": "kapacitet.station-scenarios/1", "fingerprint": "f", "method_version": METHOD_VERSION,
+         "scenario_digest": growth_digest(study, 2026),
+         "scenario": {"start_year": 2026, "basis": {"pv": "default", "ev": "default", "hp": "default", "battery": "default"}},
          "years": [{"year": 2026, "generation": {"kw_left": 80.0}, "consumption": {"kw_left": 40.0}},
                    {"year": 2030, "generation": {"kw_left": 12.5}, "consumption": {"kw_left": 0.0}}],
          "first_violation_year": None, "first_exhausted_year": 2030}), encoding="utf-8")

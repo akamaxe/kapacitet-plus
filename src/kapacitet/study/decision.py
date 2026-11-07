@@ -219,13 +219,24 @@ def equipment_trend(study: Study, sid: str) -> dict:
     return out
 
 
-def scenario_trend(scen: dict, cap: dict) -> dict:
+def scenario_trend(scen: dict, cap: dict, digest=None) -> dict:
     """The portfolio's scenario columns from a station's scenarios.json (study/scenarios.py), only
-    when it was computed on the station's current build; {} otherwise. Pure."""
+    when it was computed on the station's current build, method and growth; {} otherwise.
+    `digest` maps the file's start year to the current growth's digest (None skips that check)."""
+    from .config import METHOD_VERSION
     from .scenarios import SCHEMA, rates_label
 
     if scen.get("schema") != SCHEMA or not scen.get("years") or scen.get("fingerprint") != cap.get("fingerprint"):
         return {}
+    if scen.get("method_version") != METHOD_VERSION:
+        return {}
+    if digest is not None:
+        try:
+            now = digest(int((scen.get("scenario") or {})["start_year"]))
+        except (KeyError, TypeError, ValueError):
+            return {}
+        if scen.get("scenario_digest") != now:
+            return {}
     last = scen["years"][-1]
     return {"scenarios_year": last.get("year"), "scenarios_rates": rates_label(scen.get("scenario") or {}),
             "scenarios_generation_kw": (last.get("generation") or {}).get("kw_left"),
@@ -279,7 +290,9 @@ def station_facts(study: Study, row: dict, fix: dict, pending: dict[str, int]) -
         out.update(measured_customers=measured.get("customers"), measured_peak_kw=measured["max_kw"],
                    measured_velander_kw=ref, measured_peak_ratio=measured["max_kw"] / ref if ref else None)
     out.update(equipment_trend(study, sid))
-    out.update(scenario_trend(_json(results / "scenarios.json"), cap))
+    from .scenarios import growth_digest
+
+    out.update(scenario_trend(_json(results / "scenarios.json"), cap, lambda y: growth_digest(study, y)))
     risk = flags(row, study.config.dso.method_version)
     if (out["measured_peak_ratio"] or 0) > 1:
         risk.append("measured_above_velander")
