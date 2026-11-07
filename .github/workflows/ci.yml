@@ -81,11 +81,11 @@ jobs:
           echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17
           echo "KAPACITET_PG_BIN=/usr/lib/postgresql/17/bin" >> "$GITHUB_ENV"
-      - run: python -m pytest tests/test_store.py tests/test_instance.py -rs
+      - run: python -m pytest tests/test_store.py tests/test_instance.py tests/test_brand.py -rs
       - run: >-
           python -m pytest tests/test_queue.py tests/test_inbox.py tests/test_apply.py tests/test_seals.py
           tests/test_seal_signatures.py tests/test_market.py tests/test_api_offline.py tests/test_atomic.py
-          tests/test_store.py
+          tests/test_store.py tests/test_brand.py
         env:
           KAPACITET_TEST_BACKEND: postgres
 
