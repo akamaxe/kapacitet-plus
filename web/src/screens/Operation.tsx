@@ -6,6 +6,7 @@ import { Icon } from "../components/Icon";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
 import { ChartOrTable, Chip, Legend, Missing, Protocol, SectionMissing, Status, Tile } from "../components/bits";
+import { ImportEnvelopes } from "../components/ImportEnvelopes";
 import { InboxSection } from "../components/Inbox";
 import { CoverNote, MarketAlternatives } from "../components/MarketAlternatives";
 import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
@@ -308,6 +309,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
           ) : (
             <p className="caption-muted">{t("op.ocpp.none")}</p>
           )}
+          <ImportEnvelopes />
           {sealed.refusalCode === "before_market" ? (
             <div className="answer-actions">
               <label className="caption-muted" htmlFor="op-override">{t("op.override.label")}</label>

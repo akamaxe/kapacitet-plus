@@ -10,6 +10,8 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | hosting capacity | acceptansgräns | the term of the Swedish research literature on solar in distribution grids |
 | static limit, static study (worst case) | statisk gräns, statisk studie (värsta fall) | |
 | dynamic operating envelope, envelope | dynamisk exportgräns, exportgräns | an export limit per house that changes hour by hour |
+| import limit (of an EV charger) | importgräns | the import-side envelope, issued the day before |
+| planning floor | planeringsgolv | the most a house is assumed to import when its import limit is set; an hour it imports more is an hour over it |
 | with envelopes | med dynamiska gränser | |
 | curtailment, curtailed | nedreglering, nedreglerad | of solar export |
 | firm connection | fast anslutning | |

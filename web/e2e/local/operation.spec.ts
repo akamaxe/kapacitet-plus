@@ -21,6 +21,13 @@ test("operation shows a day's limits, the summer in shadow and a meter check", a
   expect((await saved).suggestedFilename()).toMatch(/^kapacitet-dercontrols-\d+-\d{4}-\d{2}-\d{2}(-15min)?\.xml$/);
   await expect(main.locator(".seal-receipt").first()).toContainText(/Sealed in the evidence chain/);
 
+  // the EV chargers' import limits: the window they were issued with and the one in the settings,
+  // with the audit of the hours over the planning floor (the figures are the API's, not checked here)
+  const imp = main.getByRole("region", { name: "Import limits for EV chargers" });
+  await expect(imp).toBeVisible();
+  await expect(imp.getByText("Window in the settings")).toBeVisible();
+  await expect(imp.getByLabel(/Window, days either side/)).toBeVisible();
+
   // a day chosen is a day in the link
   await main.getByLabel("Day", { exact: true }).fill(`${year}-06-20`);
   await expect(page).toHaveURL(new RegExp(`date=${year}-06-20`));

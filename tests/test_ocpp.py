@@ -41,7 +41,9 @@ def api(tmp_path):
     (folder / "results" / "operation" / "dayahead").mkdir(parents=True)
     (folder / "ui" / "operation" / "dayahead").mkdir(parents=True)
     meta = {"basis": "dayahead", "year": YEAR, "rule": "maxmin", "cids": [7, 42], "firm_kw": FIRM,
-            "verified": True, "planning_violation_hours": 0}
+            "verified": True, "planning_violation_hours": 0,
+            "exceedance": {"hours_over": 5, "customer_hours_over": 7, "aggregate_hours_over": 1, "worst_customer_kw": 0.42,
+                           "worst_aggregate_kw": 0.1, "first_hours": {"customer": [3, 4], "aggregate": [4]}}}
     (folder / "results" / "operation" / "dayahead" / "import.json").write_text(json.dumps(meta), encoding="utf-8")
     np.save(folder / "ui" / "operation" / "dayahead" / "import_envelopes.npy", _envelopes())
     with processed_at(folder), TestClient(app) as c:
@@ -124,11 +126,16 @@ def test_a_changed_window_leaves_the_import_envelopes_stale_until_issued_again(a
 
     s = api.get("/api/v1/settings").json()
     assert s["settings"]["import_window_days"] == dso.IMPORT_WINDOW_DEFAULT
-    assert s["import_envelopes"] == {"computed": True, "window_days": dso.IMPORT_WINDOW_DEFAULT,
-                                     "setting_window_days": dso.IMPORT_WINDOW_DEFAULT, "stale": False,
-                                     "actual_violation_hours": s["import_envelopes"]["actual_violation_hours"],
-                                     "exceedance_hours": s["import_envelopes"]["exceedance_hours"],
-                                     "command": s["import_envelopes"]["command"]}
+    ie = s["import_envelopes"]
+    assert ie == {"computed": True, "window_days": dso.IMPORT_WINDOW_DEFAULT,
+                  "setting_window_days": dso.IMPORT_WINDOW_DEFAULT, "max_window_days": dso.IMPORT_WINDOW_MAX,
+                  "stale": False, "actual_violation_hours": ie["actual_violation_hours"],
+                  "exceedance_hours": ie["exceedance_hours"], "exceedance": ie["exceedance"],
+                  "command": ie["command"]}
+    # what Operation shows of the audit is the issue's own, field by field
+    meta = json.loads((api.folder / "results" / "operation" / "dayahead" / "import.json").read_text(encoding="utf-8"))
+    assert ie["exceedance"] == {k: v for k, v in meta["exceedance"].items() if k != "first_hours"}
+    assert ie["exceedance"]["hours_over"] == ie["exceedance_hours"] == 5
     r = api.put("/api/v1/settings", json={"import_window_days": 0})
     assert r.status_code == 200 and r.json()["import_envelopes"]["stale"] is True
     assert "--only operation" in r.json()["import_envelopes"]["command"]

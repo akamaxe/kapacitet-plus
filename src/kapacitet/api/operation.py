@@ -67,16 +67,24 @@ def import_status(meta: dict | None = None, settings: dso.DsoSettings | None = N
     """Whether the published import envelopes were issued under the window the DSO's settings hold
     now (`import_window_days`). A change of the setting leaves them stale until the operation stage
     issues them again; until then the OCPP route refuses to send them. An import.json that names no
-    window was issued before it was a setting, with `dso.IMPORT_WINDOW_DEFAULT`."""
+    window was issued before it was a setting, with `dso.IMPORT_WINDOW_DEFAULT`.
+
+    It also carries what Operation shows next to the charging profile: the largest window the
+    setting takes (`max_window_days`) and the issue's audit of where the real import beat the
+    planning floor (`exceedance`: hours, house-hours, the worst kW and the aggregate's hours)."""
     meta = _import_meta() if meta is None else meta
     want = int((settings or dso.load()).import_window_days)
+    base = {"setting_window_days": want, "max_window_days": dso.IMPORT_WINDOW_MAX, "command": COMMAND}
     if meta is None:
-        return {"computed": False, "window_days": None, "setting_window_days": want, "stale": False,
-                "command": COMMAND}
+        return {"computed": False, "window_days": None, "stale": False, **base}
     got = int((meta.get("planning_state") or {}).get("window_days", dso.IMPORT_WINDOW_DEFAULT))
-    return {"computed": True, "window_days": got, "setting_window_days": want, "stale": got != want,
+    ex = meta.get("exceedance") or {}
+    return {"computed": True, "window_days": got, "stale": got != want,
             "actual_violation_hours": meta.get("actual_violation_hours"),
-            "exceedance_hours": (meta.get("exceedance") or {}).get("hours_over"), "command": COMMAND}
+            "exceedance_hours": ex.get("hours_over"),
+            "exceedance": {k: ex.get(k) for k in ("hours_over", "customer_hours_over", "worst_customer_kw",
+                                                   "aggregate_hours_over", "worst_aggregate_kw")} if ex else None,
+            **base}
 
 
 def _settings_reply(s: dso.DsoSettings) -> dict:

@@ -2404,3 +2404,5 @@ main h1:focus, main h1:focus-visible { outline: none; }
 @media (max-width: 900px) { .market-alt-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 480px) { .market-alt-grid { grid-template-columns: minmax(0, 1fr); } }
 .market-alts { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-1); }
+/* the EV chargers' import envelopes, under the charging profile: a part of the payload block, parted by a hairline */
+.import-env { margin-top: var(--space-4); padding-top: var(--space-4); border-top: 1px solid var(--border); }
