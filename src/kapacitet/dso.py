@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from . import seals, store
+from . import actor, seals, store
 from .paths import DATA
 
 POLICIES = ("maxmin", "prorata", "propfair", "maxtotal")
@@ -46,6 +46,9 @@ class RuleSignature(BaseModel):
     max_pv_kwp: float = Field(..., ge=0, le=1000)
     thresholds: SignedThresholds
     valid_until: date
+    # with sign-in on, the signed-in person ({sub, name, role}, kapacitet/actor.py): `signed_by` is
+    # their name, and the digest every automatic decision keeps covers it; `role` stays the job title
+    actor: dict[str, str] | None = None
 
 
 class RuleSignatureIn(BaseModel):
@@ -168,15 +171,26 @@ def signature_of(body: RuleSignatureIn, now: datetime | None = None, s: DsoSetti
                                                 curtailment_p90_pct=th.curtailment_p90_pct,
                                                 ev_unserved_pct=th.ev_unserved_pct)
     stamp = (now or datetime.now(timezone.utc)).isoformat(timespec="seconds")
-    return RuleSignature(signed_by=body.signed_by.strip(), role=body.role.strip(), signed_at=stamp,
+    who = actor.current()     # signed in: the session says who signs, never the request's free text
+    by = {k: str(who.get(k, ""))[:120] for k in ("sub", "name", "role")} if who else None
+    return RuleSignature(signed_by=(by["name"] if by and by["name"] else body.signed_by.strip()),
+                         role=body.role.strip(), signed_at=stamp,
                          request_kinds=sorted(set(body.request_kinds), key=REQUEST_KINDS.index),
-                         max_pv_kwp=body.max_pv_kwp, thresholds=given, valid_until=body.valid_until)
+                         max_pv_kwp=body.max_pv_kwp, thresholds=given, valid_until=body.valid_until, actor=by)
+
+
+def signature_doc(sig: RuleSignature | dict) -> dict:
+    """The signature as sealed and digested: without `actor` when there is none, so a signature made
+    with sign-in off keeps the digest it had before the field existed."""
+    data = sig.model_dump(mode="json") if isinstance(sig, RuleSignature) else dict(sig)
+    if data.get("actor") is None:
+        data.pop("actor", None)
+    return data
 
 
 def signature_digest(sig: RuleSignature | dict) -> str:
     """The digest an automatic decision keeps of the signature it was made under."""
-    data = sig.model_dump(mode="json") if isinstance(sig, RuleSignature) else sig
-    return seals.digest(data)
+    return seals.digest(signature_doc(sig))
 
 
 def sign_rule(body: RuleSignatureIn) -> DsoSettings:
@@ -185,7 +199,7 @@ def sign_rule(body: RuleSignatureIn) -> DsoSettings:
         before = load()
         sig = signature_of(body, s=before)
         after = DsoSettings.model_validate({**before.model_dump(), "rule_signature": sig.model_dump()})
-        seals.seal("rule_signature", signature_digest(sig)[:16], sig.model_dump(mode="json"))
+        seals.seal("rule_signature", signature_digest(sig)[:16], signature_doc(sig))
         return _write(before, after)
 
 

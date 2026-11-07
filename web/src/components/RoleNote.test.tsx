@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { RoleNote } from "./RoleNote";
+import { SignIn } from "./SignIn";
 import { takeSignInError, type Me } from "../lib/auth";
 
 // With sign-in on, an action the person's roles do not cover is shown disabled with the roles it
@@ -44,6 +45,18 @@ describe("actions a role cannot take", () => {
     const el = await render({ enabled: false, user: null, can: { decide: true, evaluate: true }, needs });
     await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
     expect(el.textContent).toBe("");
+  });
+
+  it("shows why sign-in is misconfigured, in the reader's language, with no button to press", async () => {
+    host = document.createElement("div");
+    document.body.appendChild(host);
+    const me: Me = { enabled: true, user: null, can: {}, needs, misconfigured: "KAPACITET_SESSION_SECRET is too short" };
+    await act(async () => {
+      root = createRoot(host as HTMLElement);
+      root.render(<QueryClientProvider client={new QueryClient()}><SignIn me={me} /></QueryClientProvider>);
+    });
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("KAPACITET_SESSION_SECRET is too short");
+    expect(host.querySelector("button")).toBeNull();
   });
 
   it("reads a failed sign-in's reason from the address once, and leaves the hash alone", () => {

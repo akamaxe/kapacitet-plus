@@ -45,7 +45,7 @@ function ScreenSkeleton({ screen }: { screen: Screen }) {
 export default function App() {
   const me = useMe();
   if (me.isPending) return null;
-  const gate = me.data?.enabled && !(me.data.user && me.data.user.roles.length > 0);
+  const gate = me.data?.enabled && (!!me.data.misconfigured || !(me.data.user && me.data.user.roles.length > 0));
   return gate ? <SignIn me={me.data!} /> : <Main />;
 }
 

@@ -20,7 +20,8 @@ signed with HMAC-SHA256 (HttpOnly, SameSite=Lax, Secure when the browser came ov
 the subject, the display name and the roles; logging out clears it and forgets its id here.
 
 Roles: planner (evaluates requests), approver (decides them), admin (configures the installation)
-and auditor (reads everything, changes nothing). Which role each route needs is in
+and auditor (reads everything, changes nothing; exporting the evidence pack counts as reading,
+though it appends a seal of what was exported). Which role each route needs is in
 api/guard.ROUTE_POLICY.
 
 `authlib` gives PKCE and the tokens; `joserfc` (authlib's JOSE library) checks the ID token;
@@ -346,7 +347,10 @@ def finish_login(cfg: Config, tx: dict, code: str, state: str) -> dict:
         # the provider's error code only: its description can echo what was sent
         err = r.json().get("error", "") if r.headers.get("content-type", "").startswith("application/json") else ""
         raise AuthError("login_failed", f"the provider refused the code ({str(err)[:60] or r.status_code})")
-    id_token = r.json().get("id_token")
+    try:
+        id_token = r.json().get("id_token")
+    except (ValueError, AttributeError):
+        raise AuthError("login_failed", "the provider sent no JSON") from None
     if not isinstance(id_token, str):
         raise AuthError("login_failed", "the provider sent no ID token")
     return verify_id_token(cfg, doc, id_token, tx["nonce"])

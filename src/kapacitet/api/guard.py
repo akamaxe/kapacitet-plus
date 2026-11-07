@@ -290,6 +290,10 @@ def signed_in(scope: Scope, headers: Headers, method: str, path: str) -> JSONRes
     """With sign-in on: refuse a request without the session or the role its route needs, and
     leave the person and the role they act under in the scope (ACTOR_KEY). Off: nothing."""
     scope.pop(ACTOR_KEY, None)
+    # the interface's own files and /auth/me answer even when sign-in is misconfigured, so the
+    # interface loads and says what is wrong in the reader's language; every other API path fails closed
+    if not path.startswith(API + "/") or path == f"{API}/auth/me":
+        return None
     try:
         cfg = auth.config()
     except auth.AuthConfigError as exc:      # fail closed: sign-in was asked for

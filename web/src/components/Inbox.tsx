@@ -18,7 +18,7 @@ import { Bar } from "./Skeleton";
 import { Status, Tile } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
-import { useCan } from "../lib/auth";
+import { useCan, useMe } from "../lib/auth";
 import { RoleNote } from "./RoleNote";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, duration, listJoin, studyDate, useFmt } from "../lib/format";
@@ -66,6 +66,8 @@ interface Signature {
   max_pv_kwp: number;
   thresholds: Thresholds;
   valid_until: string;
+  /** with sign-in on: the person signed in who signed (`signed_by` is their name) */
+  actor?: { sub: string; name: string; role: string } | null;
 }
 
 export interface Inbox {
@@ -327,7 +329,11 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
   const f = useFmt();
   const client = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
-  const [by, setBy] = useState(last?.signed_by ?? "");
+  // with sign-in on, the server signs in the session's name, whatever the field says: so it shows that
+  const me = useMe().data;
+  const session = me?.enabled && me.user ? me.user.name : null;
+  const [typed, setBy] = useState(last?.signed_by ?? "");
+  const by = session ?? typed;
   const [role, setRole] = useState(last?.role ?? "");
   const [kinds, setKinds] = useState<Kind[]>(last?.request_kinds ?? ["pv"]);
   const [kwp, setKwp] = useState(last ? String(last.max_pv_kwp) : "");
@@ -362,7 +368,7 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
       <p className="caption">{t("inbox.sign.lead", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
       <div className="field decision-note">
         <label htmlFor="sign-by">{t("inbox.sign.by")}</label>
-        <input id="sign-by" maxLength={120} required autoComplete="name" value={by} onChange={(e) => setBy(e.target.value)} />
+        <input id="sign-by" maxLength={120} required autoComplete="name" value={by} readOnly={session !== null} onChange={(e) => setBy(e.target.value)} />
       </div>
       <div className="field decision-note">
         <label htmlFor="sign-role">{t("inbox.sign.role")}</label>

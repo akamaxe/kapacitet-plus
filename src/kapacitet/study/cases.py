@@ -821,7 +821,7 @@ def sign_rule(study: Study, by: str, kinds: list[str], max_pv_kwp: float, valid_
                                                    thresholds=th, valid_until=valid_until))
     except ValidationError as err:
         raise StudyError("bad_signature", message="; ".join(e["msg"] for e in err.errors())) from None
-    doc = sig.model_dump(mode="json")
+    doc = dso.signature_doc(sig)
     write_json_atomic(study.root / "rule_signature.json", doc)
     with seals.chain_at(study.evidence):
         entry = seals.seal("rule_signature", dso.signature_digest(doc)[:16], doc)

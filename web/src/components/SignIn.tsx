@@ -24,6 +24,13 @@ export function SignIn({ me }: { me: Me }) {
         </span>
       </header>
       <main className="page signin-page" id="main" tabIndex={-1}>
+        {me.misconfigured ? (
+          // sign-in asked for but not configured: only the operator can fix it, so no button
+          <section className="signin" aria-labelledby="signin-title">
+            <h1 className="headline" id="signin-title">{t("auth.title")}</h1>
+            <p className="signin-error" role="alert">{t("err.auth_misconfigured", { detail: me.misconfigured })}</p>
+          </section>
+        ) : (
         <section className="signin" aria-labelledby="signin-title">
           <h1 className="headline" id="signin-title">{t("auth.title")}</h1>
           <p className="headline-sub">{noRole ? t("auth.noRole", { name: me.user!.name }) : t("auth.lead")}</p>
@@ -37,6 +44,7 @@ export function SignIn({ me }: { me: Me }) {
           </div>
           <p className="caption">{t("auth.note")}</p>
         </section>
+        )}
       </main>
     </div>
   );

@@ -459,6 +459,8 @@ function MeterCheck({ cid, date, name }: { cid: number; date: string; name: stri
   const [res, setRes] = useState<{ body: any; synthetic: boolean; of: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const can = useCan("meter_check");
+  const off = busy || !can.ok;
   // a check belongs to its house: another house's readings are not this house's result
   useEffect(() => {
     setRes(null);
@@ -508,12 +510,13 @@ function MeterCheck({ cid, date, name }: { cid: number; date: string; name: stri
   return (
     <div className="stack">
       <div className="answer-actions">
-        <button className="btn small" disabled={busy} onClick={example}>{t("op.meter.example")}</button>
-        <label className="btn ghost small" aria-disabled={busy || undefined}>
+        <button className="btn small" disabled={off} title={can.reason} onClick={example}>{t("op.meter.example")}</button>
+        <label className="btn ghost small" aria-disabled={off || undefined} title={can.reason}>
           <Icon name="upload" size={15} />{t("op.meter.file")}
-          <input type="file" accept=".csv,text/csv" className="sr-only" disabled={busy} onChange={(e) => void fromFile(e.currentTarget)} />
+          <input type="file" accept=".csv,text/csv" className="sr-only" disabled={off} onChange={(e) => void fromFile(e.currentTarget)} />
         </label>
       </div>
+      <RoleNote action="meter_check" />
       <p className="caption-muted">{t("op.meter.format")}</p>
       {error && <p className="caption" role="alert"><Status kind="critical">{error}</Status></p>}
       {res && R && (

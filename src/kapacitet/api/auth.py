@@ -48,6 +48,7 @@ ACTIONS = {
     "settings": ("PUT", f"{API}/settings"),
     "sign_rule": ("PUT", f"{API}/settings/rule-signature"),
     "issue": ("POST", f"{API}/operation/schedule/issue"),
+    "meter_check": ("POST", f"{API}/operation/meter-check"),
     "market": ("POST", f"{API}/operation/market-alternatives"),
     "export": ("POST", f"{API}/eipack/export"),
     "applications": ("POST", f"{API}/applications"),
@@ -88,9 +89,14 @@ def _config() -> auth.Config:
 @router.get("/auth/me")
 def me(request: Request) -> dict:
     """Whether sign-in is on, who is signed in with which roles, and which actions they may take
-    (`can`, by action; `needs`, the roles each action takes)."""
+    (`can`, by action; `needs`, the roles each action takes). Sign-in asked for but misconfigured:
+    `misconfigured` says why (naming no value), so the interface can show it; nothing is allowed."""
     needs = _needs()
-    cfg = _config() if auth.enabled() else None
+    try:                        # memoized: no reading .env on every request
+        cfg = auth.config()
+    except auth.AuthConfigError as exc:
+        return {"enabled": True, "user": None, "can": {a: False for a in needs}, "needs": needs,
+                "misconfigured": str(exc)}
     if cfg is None:
         return {"enabled": False, "user": None, "can": {a: True for a in needs}, "needs": needs}
     s = auth.session_from_cookie(request.headers.get("cookie"), cfg)

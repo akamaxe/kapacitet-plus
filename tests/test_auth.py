@@ -407,6 +407,12 @@ def test_sign_in_asked_for_but_not_configured_fails_closed_and_names_no_value(mo
         auth.config.cache_clear()
         r = _client().get(f"{API}/health")
         assert r.status_code == 503 and "too-short" not in r.text
+        assert _client().get("/").status_code != 503      # the interface still loads, to say so
+        me = _client().get(f"{API}/auth/me")               # and /auth/me tells it why, in its words
+        assert me.status_code == 200 and "too-short" not in me.text
+        body = me.json()
+        assert body["enabled"] and body["user"] is None and "KAPACITET_SESSION_SECRET" in body["misconfigured"]
+        assert not any(body["can"].values())
         monkeypatch.setenv("KAPACITET_AUTH", "saml")
         auth.config.cache_clear()
         with pytest.raises(auth.AuthConfigError):
@@ -431,15 +437,43 @@ def test_a_seal_made_for_a_signed_in_person_carries_them_under_its_signature():
     assert not seals._sig_valid(pub, forged["key_id"], forged) and seals._sig_valid(pub, lines[-2]["key_id"], lines[-2])
 
 
-def test_a_change_made_through_the_api_is_sealed_with_who_made_it(oidc):
+def test_a_change_made_through_the_api_is_sealed_with_who_made_it(oidc, tmp_path, monkeypatch):
+    from kapacitet import dso
+
+    monkeypatch.setattr(dso, "path", lambda: tmp_path / "settings.json")   # never the data folder's
     c = _client()
     _sign_in(c, oidc, roles=["approver", "admin"], name="Bo Approver", sub="subject-0042")
-    r = c.put(f"{API}/settings", json={"deferral_years": 7})
+    before = len(seals._lines())
+    r = c.put(f"{API}/settings", json={"deferral_years": dso.load().deferral_years % 40 + 1})
     assert r.status_code == 200, r.text
+    assert len(seals._lines()) == before + 1          # a real change, so a new line
     last = seals._lines()[-1]
     assert last["kind"] == "settings"
     # settings take admin or approver, in that order: the admin role is the one it is taken under
     assert last["actor"] == {"sub": "subject-0042", "name": "Bo Approver", "role": "admin"}
+
+
+def test_the_rule_signature_names_the_session_and_not_the_free_text(oidc, tmp_path, monkeypatch):
+    from kapacitet import dso
+
+    monkeypatch.setattr(dso, "path", lambda: tmp_path / "settings.json")
+    c = _client()
+    _sign_in(c, oidc, roles=["approver"], name="Bo Approver", sub="subject-0042")
+    r = c.put(f"{API}/settings/rule-signature",
+              json={"signed_by": "Mallory", "role": "head of grid planning", "request_kinds": ["pv"],
+                    "max_pv_kwp": 12, "valid_until": "2099-12-31"})
+    assert r.status_code == 200, r.text
+    sig = dso.load().rule_signature
+    who = {"sub": "subject-0042", "name": "Bo Approver", "role": "approver"}
+    assert sig.signed_by == "Bo Approver" and sig.actor == who and sig.role == "head of grid planning"
+    # the digest the automatic decisions keep covers who signed
+    assert dso.signature_digest(sig) != dso.signature_digest({**dso.signature_doc(sig), "actor": None})
+    sealed = seals.entry_for("rule_signature", dso.signature_digest(sig)[:16])
+    assert sealed["actor"] == who
+    # sign-in off: the free text stays, and the digest is the one it had before `actor` existed
+    plain = dso.signature_of(dso.RuleSignatureIn(signed_by="Mallory", role="x", request_kinds=["pv"],
+                                                 max_pv_kwp=1, valid_until="2099-12-31"))
+    assert plain.signed_by == "Mallory" and plain.actor is None and "actor" not in dso.signature_doc(plain)
 
 
 def test_a_decision_records_the_approver_and_seals_under_them(oidc, monkeypatch):

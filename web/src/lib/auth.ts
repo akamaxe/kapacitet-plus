@@ -9,7 +9,7 @@ export type Role = (typeof ROLES)[number];
 /** What a guarded action is called here and in GET /auth/me (api/auth.py ACTIONS). */
 export type Action =
   | "evaluate" | "check" | "decide" | "reset_queue" | "settings" | "sign_rule"
-  | "issue" | "market" | "export" | "applications" | "datasets";
+  | "issue" | "meter_check" | "market" | "export" | "applications" | "datasets";
 
 export interface Me {
   enabled: boolean;
@@ -18,6 +18,8 @@ export interface Me {
   can: Partial<Record<Action, boolean>>;
   /** by action: the roles it takes, from the server's route policy */
   needs: Partial<Record<Action, Role[]>>;
+  /** sign-in asked for but not configured: why, naming no value (every API call is refused) */
+  misconfigured?: string;
 }
 
 /** Who is signed in, if sign-in is on. Asked once; signing out reloads the page. */

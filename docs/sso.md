@@ -27,7 +27,7 @@ git ignores.
   | planner | evaluate connection requests, check a network's files, enter applications |
   | approver | everything a planner may, decide (approve or decline) and empty the queue, change the DSO's settings, sign the automatic rule, issue schedules, record market alternatives |
   | admin | everything a planner may, change the DSO's settings, sign the rule, issue schedules, record market alternatives, import and switch networks |
-  | auditor | read everything and export the evidence pack for Ei; change nothing |
+  | auditor | read everything and export the evidence pack for Ei (the export appends a seal of what was exported, as it does for every role); change nothing |
 
   A decision needs the approver role and nothing else, so whoever configures the installation does
   not also decide on its requests. Give a person both roles if they really do both. Reading needs
@@ -35,7 +35,10 @@ git ignores.
   application code, as before.
 - **Who decides.** With sign-in on, a decision keeps `actor`: the subject identifier (`sub`), the
   display name and the role it was made under. Every seal line made for a signed-in person
-  carries the same three fields, covered by the line's signature. This is **employee data of the
+  carries the same three fields, covered by the line's signature. The automatic rule's signature
+  takes its signer from the session too: `signed_by` is the signed-in person's name whatever the
+  form says, and its `actor` is inside the digest every automatic decision keeps (the `role` field
+  stays the signer's job title). This is **employee data of the
   DSO**: the name and identifier of the staff member who took a regulated decision. It is kept with
   the records it signs, for as long as they are kept, and nowhere else. The DSO's privacy notice
   for its staff should mention it.
