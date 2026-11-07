@@ -115,7 +115,7 @@ def _brand_refusal(exc: brand.BrandError) -> HTTPException:
 
 
 class BrandLogo(BaseModel):
-    png_base64: str = Field(..., min_length=1, max_length=400_000,
+    png_base64: str = Field(..., min_length=1,
                             description="the PNG, base64 (a data: URL is accepted); at most 256 kB decoded")
 
 

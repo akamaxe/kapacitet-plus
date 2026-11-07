@@ -108,7 +108,7 @@ export function PortalBrand() {
         </div>
       </div>
       <div className="answer-actions">
-        <button className="btn ghost small" disabled={!changed || busy || !canSet.ok} title={canSet.reason} onClick={() => void save()}>{t("brand.save")}</button>
+        <button className="btn ghost small" disabled={!changed || busy || !canSet.ok || (accent !== "" && !ACCENT.test(accent))} title={canSet.reason} onClick={() => void save()}>{t("brand.save")}</button>
         <input ref={file} id="brand-logo" className="sr-only" type="file" accept="image/png" tabIndex={-1} onChange={(e) => void upload(e)} />
         <button className="btn ghost small" disabled={busy || !canSet.ok} title={canSet.reason} aria-describedby="brand-logo-hint" onClick={() => file.current?.click()}>
           {t(hasLogo ? "brand.replace" : "brand.upload")}

@@ -210,6 +210,17 @@ def clean_png(raw: bytes) -> Logo:
         raise BrandError("logo_malformed")
     if colour == 3 and b"PLTE" not in kinds:
         raise BrandError("logo_malformed")
+    first = kinds.index(b"IDAT")
+    idats = [i for i, k in enumerate(kinds) if k == b"IDAT"]
+    if idats != list(range(first, first + len(idats))):
+        raise BrandError("logo_malformed")  # IDAT chunks must be consecutive
+    if b"PLTE" in kinds and kinds.index(b"PLTE") > first:
+        raise BrandError("logo_malformed")  # the palette comes before the image data
+    try:
+        zlib.decompressobj().decompress(b"".join(d for k, d in chunks if k == b"IDAT"),
+                                        width * height * 8 + height + 1024)
+    except zlib.error:
+        raise BrandError("logo_malformed") from None
     kept = b"".join(_chunk(k, d) for k, d in chunks if k in KEPT_CHUNKS)
     png = PNG_SIGNATURE + kept
     return Logo(png=png, sha256=hashlib.sha256(png).hexdigest(), width=width, height=height)
@@ -252,7 +263,15 @@ def set_logo(png_base64: str) -> Logo:
         if before is not None and before.sha256 == logo.sha256:
             return before
         blob.put(logo.png)
-        _seal_logo(before, logo)
+        try:
+            _seal_logo(before, logo)
+        except Exception:
+            # no seal, no change: put the previous logo back
+            if before is not None:
+                blob.put(before.png)
+            else:
+                blob.delete()
+            raise
     return logo
 
 
@@ -263,8 +282,14 @@ def remove_logo() -> None:
         before = load_logo()
         if before is None and blob.get() is None:
             return
+        raw = blob.get()
         blob.delete()
-        _seal_logo(before, None)
+        try:
+            _seal_logo(before, None)
+        except Exception:
+            if raw is not None:
+                blob.put(raw)
+            raise
 
 
 # ---------------------------------------------------------------- what the portal reads

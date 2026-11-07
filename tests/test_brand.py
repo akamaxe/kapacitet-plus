@@ -208,3 +208,55 @@ def test_the_contrast_is_checked_against_the_portals_own_colours():
     token = lambda name: re.search(rf"--{name}:\s*(#[0-9a-fA-F]{{6}})", light)[1].lower()  # noqa: E731
     assert brand.PORTAL_BACKGROUND == token("ground")
     assert brand.PORTAL_ON_ACCENT == token("on-sl")
+
+
+# ---------------------------------------------------------------- order, stream and seal failures
+
+def _plte() -> bytes:
+    return chunk(b"PLTE", b"\x00\x00\x00")
+
+
+def _raw_png(*chunks_: bytes) -> bytes:
+    return b"\x89PNG\r\n\x1a\n" + b"".join(chunks_)
+
+
+_IHDR = chunk(b"IHDR", struct.pack(">IIBBBBB", 2, 1, 8, 2, 0, 0, 0))
+_IDAT = chunk(b"IDAT", zlib.compress(b"\x00" + b"\xd0\x20\x20" * 2))
+
+
+@pytest.mark.parametrize("raw", [
+    _raw_png(_IHDR, _IDAT, _plte(), chunk(b"IEND", b"")),
+    _raw_png(_IHDR, _IDAT, chunk(b"tEXt", b"a\x00b"), _IDAT, chunk(b"IEND", b"")),
+    png(idat=b"this is not zlib"),
+], ids=["plte_after_idat", "idat_not_consecutive", "idat_not_zlib"])
+def test_chunk_order_and_the_image_stream_are_checked(client, raw):
+    c, folder = client
+    r = c.put("/api/v1/settings/brand-logo", json={"png_base64": b64(raw)})
+    assert r.status_code == 422 and _code(r) == "logo_malformed"
+    assert not (folder / "brand-logo.png").exists()
+
+
+def test_an_oversize_text_gets_the_logo_code_not_a_generic_422(client):
+    c, _ = client
+    r = c.put("/api/v1/settings/brand-logo", json={"png_base64": "A" * 500_000})
+    assert r.status_code == 413 and _code(r) == "logo_too_large"
+
+
+def test_a_failed_seal_leaves_the_stored_logo_as_it_was(client, monkeypatch):
+    from kapacitet import seals
+
+    c, folder = client
+    first, second = png(4, 3), png(5, 3)
+    assert c.put("/api/v1/settings/brand-logo", json={"png_base64": b64(first)}).status_code == 200
+    stored = (folder / "brand-logo.png").read_bytes()
+
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(seals, "seal", boom)
+    with pytest.raises(OSError):
+        c.put("/api/v1/settings/brand-logo", json={"png_base64": b64(second)})
+    assert (folder / "brand-logo.png").read_bytes() == stored
+    with pytest.raises(OSError):
+        c.request("DELETE", "/api/v1/settings/brand-logo", json={})
+    assert (folder / "brand-logo.png").read_bytes() == stored
