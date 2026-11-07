@@ -11,10 +11,11 @@ otherwise the DSO's published situation), never the household's.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import dso
+from .. import brand, dso
 from ..config import A
 from ..engine import rules
 from . import inbox
@@ -44,6 +45,27 @@ def _baseline() -> str:
 
     q = qu.load()
     return "queue" if qu.approved(q) else (q["baseline"] or dso.load().inbox_baseline)
+
+
+@router.get("/brand")
+def brand_info() -> dict:
+    """Whose portal this is: the DSO's name (the product's when none is set), how to reach it, its
+    accent and its logo's address and digest. Nothing else of the DSO's settings reaches the portal."""
+    return brand.public()
+
+
+@router.get("/brand/logo.png")
+def brand_logo(if_none_match: str | None = Header(None)) -> Response:
+    """The DSO's logo, as cleaned when it was set; its ETag is its digest."""
+    logo = brand.load_logo()
+    if logo is None:
+        raise HTTPException(404, {"code": "logo_missing", "message": brand.ERRORS["logo_missing"], "params": {}})
+    etag = f'"{logo.sha256}"'
+    headers = {"ETag": etag, "X-Content-Type-Options": "nosniff", "Cache-Control": "no-cache",
+               "Content-Security-Policy": "default-src 'none'; sandbox"}
+    if if_none_match and etag in [t.strip() for t in if_none_match.split(",")]:
+        return Response(status_code=304, headers=headers)
+    return Response(logo.png, media_type="image/png", headers=headers)
 
 
 @router.get("/houses")

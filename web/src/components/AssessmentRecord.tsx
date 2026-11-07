@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import { PRODUCT, isBranded, useBrand } from "../apply/Brand";
 import { Roundel } from "./Shell";
 import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -10,12 +11,15 @@ import { useStore } from "../lib/store";
  *
  * It lives outside the app root (a portal on <body>) and is shown only in print, so Ctrl+P or
  * "Print or save as PDF" on the request screen produces this sheet instead of the map and the
- * panel. Every figure is read from the saved answer; the sheet adds only labels and units.
+ * panel. Every figure is read from the saved answer; the sheet adds only labels and units. It is
+ * headed with the DSO's name and logo when the DSO set them for its portal (GET /apply/brand), and
+ * then names the product only in its footer.
  */
 export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLabel: string }) {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
+  const brand = useBrand().data;
   const c = res.customer ?? {};
   const rq = res.request ?? {};
   const sum = res.summary ?? {};
@@ -34,7 +38,11 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
   return createPortal(
     <article className="print-record" lang={lang} aria-hidden="true">
       <header className="pr-head">
-        <p className="pr-brand"><Roundel />Kapacitet+</p>
+        <p className="pr-brand">
+          {isBranded(brand)
+            ? <>{brand.logo_url && <img className="pr-logo" src={brand.logo_url} alt="" />}{brand.name}</>
+            : <><Roundel />{PRODUCT}</>}
+        </p>
         <h1>{t("rec.title")}</h1>
         <dl className="pr-meta">
           <dt>{t("rec.id")}</dt><dd>{res.id ?? "–"}</dd>
@@ -171,6 +179,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         <p>{t("rec.synthetic")}</p>
         <ul>{(res.provenance?.sources ?? []).map((s: string) => <li key={s}>{s}</li>)}</ul>
         <p>{t("rec.method")}</p>
+        {isBranded(brand) && <p>{t("apply.foot", { product: PRODUCT })}</p>}
       </footer>
     </article>,
     document.body,

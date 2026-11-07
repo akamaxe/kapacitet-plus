@@ -89,7 +89,8 @@ log = logging.getLogger(__name__)
 _LOCK = threading.RLock()
 GENESIS = "0" * 64
 KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure",
-         "publication", "sync", "rule_signature", "cases", "market_alternatives", "key_rotation")
+         "publication", "sync", "rule_signature", "cases", "market_alternatives", "key_rotation",
+         "brand_logo")
 # a chain kept somewhere else than data/requests: a study's evidence/ folder (`chain_at`)
 _CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
 # inside _chain_locked: the signed-line counts to note once the chain's lines are there for good

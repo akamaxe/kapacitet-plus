@@ -3,7 +3,7 @@
 `import_files(root)` copies a data/requests/ folder into the database under the current scope.
 It is one way and idempotent: a row already there is kept, so a second run adds nothing, and it
 refuses to go on (TransferError) when the folder's seal chain and the database's disagree on a line
-they both hold, since one of the two would then be lost. A settings document or a queue that the
+they both hold, since one of the two would then be lost. A settings document, a logo or a queue that the
 database already holds with other content is kept and reported as a conflict, never overwritten.
 
 `export_files(dest)` writes the database back in the same layout, into a folder that is empty or
@@ -73,7 +73,7 @@ def import_files(root: Path) -> dict:
     root = Path(root)
     sc = scope()
     out = {"scope": sc, "records": 0, "index_without_record": 0, "applications": 0, "market_alternatives": 0,
-           "settings": "absent", "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": {},
+           "settings": "absent", "brand_logo": "absent", "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": {},
            "conflicts": []}
     with db.connection() as conn, conn.transaction():
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"{sc}:import",))
@@ -111,6 +111,18 @@ def import_files(root: Path) -> dict:
             else:
                 out["settings"] = "kept"
                 out["conflicts"].append("settings.json")
+        logo = root / "brand-logo.png"
+        if logo.is_file():
+            data = logo.read_bytes()
+            got = conn.execute("SELECT png FROM brand_logo WHERE scope = %s", (sc,)).fetchone()
+            if got is None:
+                conn.execute("INSERT INTO brand_logo (scope, png) VALUES (%s, %s)", (sc, data))
+                out["brand_logo"] = "imported"
+            elif bytes(got[0]) == data:
+                out["brand_logo"] = "same"
+            else:
+                out["brand_logo"] = "kept"
+                out["conflicts"].append("brand-logo.png")
         _import_chain(conn, root, sc, out)
         for folder in _queue_dirs(root):
             out["queues"][folder.name] = _import_queue(conn, folder, sc, out)
@@ -236,7 +248,7 @@ def export_files(dest: Path) -> dict:
     dest.mkdir(parents=True, exist_ok=True)
     sc = scope()
     out = {"scope": sc, "records": 0, "applications": 0, "market_alternatives": 0, "settings": False,
-           "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": []}
+           "brand_logo": False, "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": []}
     with db.connection() as conn, conn.transaction():
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         index = []
@@ -258,6 +270,10 @@ def export_files(dest: Path) -> dict:
         if got:
             write_text_atomic(dest / "settings.json", got[0])
             out["settings"] = True
+        got = conn.execute("SELECT png FROM brand_logo WHERE scope = %s", (sc,)).fetchone()
+        if got:
+            write_bytes_atomic(dest / "brand-logo.png", bytes(got[0]))
+            out["brand_logo"] = True
         chain = [r[0] for r in conn.execute("SELECT line FROM seal_chain WHERE scope = %s ORDER BY seq", (sc,))]
         if chain:
             write_text_atomic(dest / "seals.jsonl", "".join(x + "\n" for x in chain))

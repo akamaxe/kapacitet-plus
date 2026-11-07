@@ -125,6 +125,24 @@ def test_settings_are_replaced_whole_and_every_change_is_sealed(backend):
     assert len(changes) == 1 and changes[0]["record"]["after"]["auto_decisions"] is True
 
 
+def test_the_portals_logo_is_kept_replaced_and_removed_with_a_seal_each_time(backend):
+    from test_brand import b64, png
+
+    from kapacitet import brand, seals
+
+    assert brand.load_logo() is None
+    first = brand.set_logo(b64(png(4, 3)))
+    assert brand.load_logo() == first and brand.logo_store().get() == first.png
+    second = brand.set_logo(b64(png(6, 2)))
+    assert brand.load_logo().sha256 == second.sha256 != first.sha256
+    brand.remove_logo()
+    assert brand.load_logo() is None and brand.logo_store().get() is None
+    brand.remove_logo()                                                             # nothing left: no seal
+    sealed = [s["record"] for s in seals.sealed_of_kind("brand_logo")]
+    assert [(r["before"] or {}).get("sha256") for r in sealed] == [None, first.sha256, second.sha256]
+    assert [(r["after"] or {}).get("sha256") for r in sealed] == [first.sha256, second.sha256, None]
+
+
 # ---------------------------------------------------------------- the seal chain
 
 def test_the_chain_is_signed_verified_and_an_erased_copy_leaves_it_whole(backend):
@@ -606,6 +624,11 @@ def _fill_files(tmp_path, monkeypatch, fake_token: bool = True) -> Path:
     records.save(_record("c00000000002", 4))
     inbox.receive("c00000000001")
     dso.update(dso.DsoSettingsChange(auto_decisions=True))
+    from test_brand import b64, png
+
+    from kapacitet import brand
+
+    brand.set_logo(b64(png()))
     market.record(_market_body())
     q = {"version": 1, "baseline": "static", "items": [{"assessment": "c00000000002", "cid": 4, "decision": "nonfirm"}]}
     folder = requests / "queue"
@@ -636,12 +659,13 @@ def test_import_then_export_round_trips_byte_for_byte_and_import_is_idempotent(t
     use_database(monkeypatch, url)
     first = transfer.import_files(requests)
     assert first["records"] == 2 and first["applications"] == 1 and first["settings"] == "imported"
+    assert first["brand_logo"] == "imported"
     assert first["seal_lines"] == len((requests / "seals.jsonl").read_text(encoding="utf-8").splitlines())
     assert first["queues"] == {"queue": "imported"} and not first["conflicts"] and first["timestamps"] == 2
     again = transfer.import_files(requests)
     assert again["records"] == again["applications"] == again["seal_lines"] == again["sealed_copies"] == 0
     assert again["timestamps"] == 0
-    assert again["settings"] == "same" and again["queues"] == {"queue": "same"}
+    assert again["settings"] == "same" and again["brand_logo"] == "same" and again["queues"] == {"queue": "same"}
 
     # the database now serves what the files held
     assert records.load("c00000000001", resolve=False) == json.loads(

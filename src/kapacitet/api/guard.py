@@ -108,6 +108,10 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("PUT", f"{API}/settings"): Policy("write", "data/requests/settings.json and a seal", roles=ADMIN_APPROVER),
     ("PUT", f"{API}/settings/rule-signature"): Policy("write", "data/requests/settings.json and two seals: "
                                                                "the signature and the change", roles=ADMIN_APPROVER),
+    ("PUT", f"{API}/settings/brand-logo"): Policy("write", "data/requests/brand-logo.png (or its row) and a seal "
+                                                           "of its digest", roles=ADMIN_APPROVER),
+    ("DELETE", f"{API}/settings/brand-logo"): Policy("write", "removes data/requests/brand-logo.png (or its row) and "
+                                                              "a seal of the digest it had", roles=ADMIN_APPROVER),
     ("POST", f"{API}/operation/meter-check"): Policy("write", "nothing: the meter's file is checked in memory",
                                                      roles=PLANNER_UP),
     ("POST", f"{API}/operation/schedule/issue"): Policy(

@@ -1039,6 +1039,20 @@ the same application twice returns the first (an idempotency key). `main.tsx` ch
 before it imports the application, so the page loads neither the map nor the chart library, and
 the application's address handling (`initUrlSync`) never sees `#/apply`.
 
+The portal runs under the DSO's own brand. In Operation's applications section, next to the
+portal's link, the DSO sets its name (at most 80 characters), how households reach its customer
+service (200 characters of plain text), an accent colour and a logo; the portal then shows the
+logo and name in its header, the contact under the form and Kapacitet+ only small in its footer,
+and the printed assessment record is headed the same way. The accent is `#RRGGBB` with a contrast
+of at least 4.5:1 against the portal's white ground and its button text, refused otherwise with
+its own code (`brand_accent_contrast`), and it applies by day only. The logo
+(`PUT /api/v1/settings/brand-logo`, base64) is a PNG of at most 256 kB and 1024 pixels a side,
+checked without an image library (signature, IHDR, every chunk's CRC) and rebuilt from its IHDR,
+PLTE, tRNS, IDAT and IEND chunks, so text, EXIF and every other ancillary chunk are dropped. It is
+kept as `data/requests/brand-logo.png` (or in the `brand_logo` table) and sealed by its digest,
+never its bytes; the texts are sealed with the settings. `GET /api/v1/apply/brand` returns only
+the name, the contact, the accent and the logo's address and digest (`kapacitet/brand.py`).
+
 ## The business case
 
 Two sides, both from published results and sourced prices (`config/assumptions.toml`, shown on

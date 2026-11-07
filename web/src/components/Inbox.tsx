@@ -6,7 +6,8 @@
  * `ApplyBlock` sits under an answer on the request screen and turns it into an application;
  * `InboxSection` is the DSO's view of all of them on the operation screen, with what the inbox has
  * done measured from its own events, and `RuleBlock` says what the rule may decide and lets a person
- * sign it (PUT /settings/rule-signature).
+ * sign it (PUT /settings/rule-signature). Beside the portal's link, `PortalBrand` puts the DSO's own
+ * name, logo, contact and accent on the applicant's portal.
  */
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -14,6 +15,7 @@ import { DataTable, type Col } from "./DataTable";
 import { Dialog } from "./Dialog";
 import { DecisionBlock, type QueueState } from "./Queue";
 import { Icon } from "./Icon";
+import { PortalBrand } from "./PortalBrand";
 import { Bar } from "./Skeleton";
 import { Status, Tile } from "./bits";
 import { toast } from "./Toast";
@@ -230,6 +232,7 @@ export function InboxSection() {
         <DataTable rows={I.items} cols={cols} rowKey={(a) => a.id} caption={t("inbox.table")} searchLabel={t("inbox.search")} className="inbox-dt" />
       )}
       <p className="caption-muted">{t("inbox.note")} <a href="#/apply" target="_blank" rel="noopener">{t("inbox.portal")}</a></p>
+      <PortalBrand />
       <RoleNote action="decide" />
       <Dialog open={open !== null} onClose={() => setOpen(null)} labelledBy="inbox-dialog-title" width={560}>
         {open && queue.data && (

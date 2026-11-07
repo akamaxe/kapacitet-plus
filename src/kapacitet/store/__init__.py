@@ -1,11 +1,12 @@
 """Where the server keeps the state it writes: files under data/requests/, or PostgreSQL.
 
-The server's mutable state is six things, each behind one small interface with two backends:
+The server's mutable state is seven things, each behind one small interface with two backends:
 
     what                          interface (files backend)          PostgreSQL tables
     saved assessments + index     Records (store/files.py)           assessments
     the applications log          EventLog (store/files.py)          applications_log
     the DSO's settings            Document (store/files.py)          dso_settings
+    the DSO's logo                Blob (store/files.py)              brand_logo
     the market alternatives       EventLog (store/files.py)          market_alternatives
     the seal chain                seals.FolderChain                  seal_chain, sealed_copies,
                                                                      seal_fingerprints, store_meta,
@@ -120,3 +121,14 @@ def settings(path: Path):
     from .files import Document
 
     return Document(path)
+
+
+def brand_logo(path: Path):
+    """The DSO's logo on the portal: `path` (brand-logo.png) with files, or the database."""
+    if is_pg():
+        from . import postgres
+
+        return postgres.Blob("brand_logo")
+    from .files import Blob
+
+    return Blob(path)

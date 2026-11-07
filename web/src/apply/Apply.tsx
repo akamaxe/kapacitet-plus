@@ -4,7 +4,8 @@
  *
  * It is its own small page: main.tsx loads it instead of the application, so it carries neither the
  * map nor the chart library, and it keeps its own address (`#/apply?ref=KP-…`) rather than the
- * application's. It asks for no name or contact details. Everything it reads comes from /api/v1/apply.
+ * application's. It asks for no name or contact details. Everything it reads comes from /api/v1/apply,
+ * the DSO's name, logo, contact and accent included (./Brand.tsx).
  */
 import { useEffect, useRef, useState } from "react";
 import { Mark, Status } from "../components/bits";
@@ -19,6 +20,7 @@ import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { describeRequest, fuseText, reasonLine } from "../lib/reasons";
 import { REF, normalizeRef } from "../lib/reference";
 import { useStore } from "../lib/store";
+import { PRODUCT, PortalContact, PortalFooter, PortalHeader, accentProps, useBrand } from "./Brand";
 
 const STAGES = ["static", "envelope", "verify", "risk", "economics"] as const;
 // a status is read again every ten seconds: api/guard.py allows ten lookups a minute per address
@@ -45,6 +47,9 @@ export default function Apply() {
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const setLang = useStore((s) => s.setLang);
+  // undefined while it loads (the bar waits rather than flash the product's name), null if it failed
+  const brandQ = useBrand();
+  const brand = brandQ.data ?? (brandQ.isError ? null : undefined);
   const houses = useApi<{ items: HouseOption[]; form: { pv_min_kwp: number; battery_max_kwh: number; ev_kw: number[] } }>("/apply/houses");
   const [cid, setCid] = useState<number | null>(null);
   const [pv, setPv] = useState(10);
@@ -63,8 +68,8 @@ export default function Apply() {
   const watch = useRef<Following | null>(null);
 
   useEffect(() => {
-    document.title = `${t("apply.title")} · Kapacitet+`;
-  }, [t]);
+    if (brand !== undefined) document.title = `${t("apply.title")} · ${brand?.name ?? PRODUCT}`;
+  }, [t, brand]);
   // a household that leaves the page frees the slot its answer was taking
   useEffect(() => () => watch.current?.cancel(), []);
   // a link with a reference opens on its state
@@ -155,12 +160,8 @@ export default function Apply() {
   }
 
   return (
-    <div className="portal">
-      <header className="portal-bar">
-        <span className="brand">
-          <svg className="roundel" width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="13" /><path d="M13 7v12M7 13h12" /></svg>
-          <span className="brand-name">Kapacitet+</span>
-        </span>
+    <div className="portal" {...accentProps(brand)}>
+      <PortalHeader brand={brand}>
         <div className="top-lang" role="group" aria-label={t("shell.language")}>
           {LANGS.map((l) => (
             <button key={l} className="top-tool" lang={l} aria-pressed={lang === l} title={LANG_NAMES[l]} onClick={() => void setLang(l)}>
@@ -168,7 +169,7 @@ export default function Apply() {
             </button>
           ))}
         </div>
-      </header>
+      </PortalHeader>
       <p className="portal-strip"><Mark kind="real" /> {t("apply.strip.real")} <Mark kind="synthetic" /> {t("apply.strip.synthetic")} {t("apply.strip.private")}</p>
 
       <main className="portal-main" id="main">
@@ -253,7 +254,9 @@ export default function Apply() {
           </form>
         </section>
         {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
+        <PortalContact brand={brand} />
       </main>
+      <PortalFooter brand={brand} />
     </div>
   );
 }

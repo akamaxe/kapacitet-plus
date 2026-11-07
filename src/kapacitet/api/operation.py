@@ -20,7 +20,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import dso, market, seals, telemetry
+from .. import brand, dso, market, seals, telemetry
 from ..config import A
 from ..paths import processed_ro
 from .combos import COMMAND, POLICY_PATTERN, operation_index, resolve
@@ -101,8 +101,41 @@ def get_settings() -> dict:
 def put_settings(change: dso.DsoSettingsChange) -> dict:
     """Change the DSO's settings; every change is sealed with what it replaced. A change of
     `import_window_days` leaves the published import envelopes stale (`import_envelopes.stale`)
-    until `compute --stage extra --only operation` issues them again."""
-    return _settings_reply(dso.update(change))
+    until `compute --stage extra --only operation` issues them again. The brand fields (the
+    applicant's portal) are refused with their own codes (brand.ERRORS)."""
+    try:
+        return _settings_reply(dso.update(change))
+    except brand.BrandError as exc:
+        raise _brand_refusal(exc) from None
+
+
+def _brand_refusal(exc: brand.BrandError) -> HTTPException:
+    status = 413 if exc.code == "logo_too_large" else 422
+    return HTTPException(status, {"code": exc.code, "message": str(exc), "params": exc.params})
+
+
+class BrandLogo(BaseModel):
+    png_base64: str = Field(..., min_length=1, max_length=400_000,
+                            description="the PNG, base64 (a data: URL is accepted); at most 256 kB decoded")
+
+
+@router.put("/settings/brand-logo")
+def put_brand_logo(body: BrandLogo) -> dict:
+    """The DSO's logo on the applicant's portal: a PNG of at most 256 kB and 1024 pixels a side,
+    checked chunk by chunk (signature, IHDR, CRCs) and kept with only its image chunks. Sealed by
+    its digest, never its bytes. Answers what GET /apply/brand does."""
+    try:
+        logo = brand.set_logo(body.png_base64)
+    except brand.BrandError as exc:
+        raise _brand_refusal(exc) from None
+    return brand.public(logo=logo)
+
+
+@router.delete("/settings/brand-logo")
+def delete_brand_logo() -> dict:
+    """Remove the portal's logo; the removal is sealed with the digest it had."""
+    brand.remove_logo()
+    return brand.public(logo=None)
 
 
 @router.put("/settings/rule-signature")

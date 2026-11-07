@@ -31,3 +31,23 @@ test("a write from another site, or not as JSON, is refused before it reaches th
   expect(own.status()).toBe(404);
   expect((await own.json()).detail.code).toBe("unknown_assessment");
 });
+
+// The portal speaks under the DSO's brand (kapacitet/brand.py): a name set in the DSO's settings
+// heads the portal, its contact sits under the form and the product is named only in the footer.
+// The setting is put back afterwards, since the empty data folder outlives the run.
+test("the DSO's name heads the portal once its settings say so", async ({ page, request, baseURL }) => {
+  const headers = { Origin: new URL(baseURL!).origin };
+  const set = await request.put("/api/v1/settings", { data: { brand_name: "Elnät Söder AB", brand_contact: "Kundtjänst 08-123 45 67" }, headers });
+  expect(set.status()).toBe(200);
+  try {
+    await page.goto("/#/apply");
+    const bar = page.locator("header.portal-bar");
+    await expect(bar).toContainText("Elnät Söder AB");
+    await expect(bar).not.toContainText("Kapacitet+");
+    await expect(page.getByText("Kundtjänst 08-123 45 67")).toBeVisible();
+    await expect(page.locator(".portal-foot")).toContainText("Kapacitet+");
+    await expect(page).toHaveTitle(/Elnät Söder AB/);
+  } finally {
+    await request.put("/api/v1/settings", { data: { brand_name: "", brand_contact: "" }, headers });
+  }
+});

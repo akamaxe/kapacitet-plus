@@ -41,6 +41,7 @@ from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
 from . import jobs, records
+from ..brand import ERRORS as BRAND_ERRORS
 from .auth import ERRORS as AUTH_ERRORS
 from .guard import ERRORS as GUARD_ERRORS
 from .guard import Guard
@@ -251,6 +252,7 @@ API_ERRORS = {
     "bad_phases": "a charger is single-phase (1) or three-phase (3)",
     **GUARD_ERRORS,
     **AUTH_ERRORS,
+    **BRAND_ERRORS,
 }
 
 

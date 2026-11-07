@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
 
-from ..atomic import append_line, gzip_json_atomic, write_text_atomic
+from ..atomic import append_line, gzip_json_atomic, write_bytes_atomic, write_text_atomic
 
 _LOCKS: dict[str, threading.RLock] = {}
 _GUARD = threading.Lock()
@@ -159,3 +159,26 @@ class Document:
 
     def put(self, obj: Any) -> None:
         write_text_atomic(self.path, json.dumps(obj, indent=1))
+
+
+class Blob:
+    """One binary file replaced whole or removed (brand-logo.png)."""
+
+    backend = "files"
+
+    def __init__(self, path: Path):
+        self.path = Path(path)
+
+    @contextmanager
+    def locked(self) -> Iterator[None]:
+        with _lock_for(self.path):
+            yield
+
+    def get(self) -> bytes | None:
+        return self.path.read_bytes() if self.path.is_file() else None
+
+    def put(self, data: bytes) -> None:
+        write_bytes_atomic(self.path, data)
+
+    def delete(self) -> None:
+        self.path.unlink(missing_ok=True)

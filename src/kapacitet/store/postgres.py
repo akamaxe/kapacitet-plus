@@ -133,6 +133,35 @@ class Document:
                          " DO UPDATE SET doc = EXCLUDED.doc, updated_at = now()", (scope(), json.dumps(obj, indent=1)))
 
 
+class Blob:
+    """The DSO's logo (brand-logo.png), one row per scope."""
+
+    backend = "postgres"
+
+    def __init__(self, table: str):
+        assert table == "brand_logo"
+        self.table = table
+
+    @contextmanager
+    def locked(self) -> Iterator[None]:
+        with db.locked(self.table):
+            yield
+
+    def get(self) -> bytes | None:
+        with db.held(self.table) as conn:
+            row = conn.execute("SELECT png FROM brand_logo WHERE scope = %s", (scope(),)).fetchone()
+        return bytes(row[0]) if row else None
+
+    def put(self, data: bytes) -> None:
+        with db.held(self.table) as conn:
+            conn.execute("INSERT INTO brand_logo (scope, png) VALUES (%s, %s) ON CONFLICT (scope)"
+                         " DO UPDATE SET png = EXCLUDED.png, updated_at = now()", (scope(), data))
+
+    def delete(self) -> None:
+        with db.held(self.table) as conn:
+            conn.execute("DELETE FROM brand_logo WHERE scope = %s", (scope(),))
+
+
 # ---------------------------------------------------------------- the seal chain
 
 _CHAIN_COLUMNS = ("seq", "at", "kind", "id", "digest", "fingerprint", "prev", "chain", "key_id", "signed_since", "sig")

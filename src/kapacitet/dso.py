@@ -107,6 +107,12 @@ class DsoSettings(BaseModel):
     # envelopes and fewer exceedances; 0 takes the same calendar day only. A change leaves the
     # published import envelopes stale until `compute --stage extra --only operation` issues them again
     import_window_days: int = Field(IMPORT_WINDOW_DEFAULT, ge=0, le=IMPORT_WINDOW_MAX)
+    # the DSO's brand on the applicant's portal (kapacitet/brand.py, which checks a change of them):
+    # its name (empty: the product's), how to reach its customer service, and its accent (empty: the
+    # product's, or #rrggbb legible on the portal). The logo is kept beside the settings (brand.set_logo)
+    brand_name: str = Field("", max_length=80)
+    brand_contact: str = Field("", max_length=200)
+    brand_accent: str = Field("", pattern=r"^(#[0-9a-f]{6})?$")
     # what the rule may decide on its own (`sign_rule`); none: nothing
     rule_signature: RuleSignature | None = None
 
@@ -136,6 +142,10 @@ class DsoSettingsChange(BaseModel):
     market_result_local: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     redispatch_compensation_sek: float | None = Field(None, ge=0, le=1e12)
     import_window_days: int | None = Field(None, ge=0, le=IMPORT_WINDOW_MAX)
+    # checked by brand.check_settings, so each refusal has its own code (brand.ERRORS)
+    brand_name: str | None = Field(None, max_length=4000)
+    brand_contact: str | None = Field(None, max_length=4000)
+    brand_accent: str | None = Field(None, max_length=4000)
 
 
 def path():
@@ -166,10 +176,14 @@ def _write(before: DsoSettings, after: DsoSettings) -> DsoSettings:
 
 
 def update(change: DsoSettingsChange) -> DsoSettings:
-    """Apply a change, write it atomically and seal before and after."""
+    """Apply a change, write it atomically and seal before and after; a brand field that does not
+    pass its check raises brand.BrandError."""
+    from .brand import check_settings
+
+    given = check_settings(change.model_dump(exclude_none=True))
     with _LOCK, _doc().locked():
         before = load()
-        after = DsoSettings.model_validate({**before.model_dump(), **change.model_dump(exclude_none=True)})
+        after = DsoSettings.model_validate({**before.model_dump(), **given})
         if after == before:
             return before
         return _write(before, after)
