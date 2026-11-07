@@ -22,7 +22,8 @@ Then set one of these before `python -m kapacitet serve`:
 
 With neither set, the server behaves exactly as without the extra: no middleware, no exception
 handler, no exporter thread, no global provider. A station build of a study runs in its own process and sends its own
-spans under the same variables.
+spans under the same variables, as a trace of its own: the trace context is not passed to the child
+process, so a build's spans are not linked to the request or command that started it.
 
 ## What is traced
 
