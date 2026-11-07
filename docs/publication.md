@@ -96,7 +96,7 @@ have a signed publication.
 The routes are reads, need no sign-in (the publications are public by design) and count against a
 rate limit of 120 a minute per address. A publication is served only while it is signed: its
 manifest says `signerad`, the sign-off it names is the one in `runs/<run>/signoff.json` and still
-verifies in the study's seal chain, and every file is what the manifest lists. A draft answers 404
+verifies in the study's seal chain, the manifest belongs to that study, and every file is what the manifest lists. The state served is the one the last `study publish` wrote: after recomputing a signed run, publish again. A draft answers 404
 `no_publication`; a file outside the publication (`..`), one the manifest does not list and
 `disclosure_report.csv` answer 404 `publication_file`. With the variable off, every route answers
 404 `publications_off`, which says how to turn it on.

@@ -370,3 +370,113 @@ def test_instance_check_reports_the_publications(monkeypatch, study):
     found = []
     instance._check_publications(found)
     assert found[0].level == "ok" and "1 of 1 studies" in found[0].message
+
+
+# ---------------------------------------------------------------- the API's guard rails
+
+def test_the_publications_are_public_with_sign_in_on_and_limited_to_120_a_minute(api, study):
+    from kapacitet.api import guard
+
+    assert guard.LIMITS["public"] == 120
+    for path in ("/api/v1/publications", "/api/v1/publications/demo/latest/embed/index.html",
+                 f"/api/v1/publications/demo/{Q4}/manifest.json"):
+        assert guard.roles_for("GET", path) == guard.PUBLIC, path
+        assert guard.bucket_for("GET", path) == "public", path
+    assert guard.roles_for("GET", "/api/v1/operation/schedule.xml") == guard.ANY_ROLE
+    for _ in range(120):
+        assert api.get("/api/v1/publications").status_code == 200
+    r = api.get("/api/v1/publications")
+    assert r.status_code == 429 and code(r) == "rate_limited"
+
+
+def test_every_get_under_publications_is_a_public_limited_read():
+    from kapacitet.api import guard
+    from kapacitet.api.main import app
+
+    from test_guard import _routes
+
+    found = [path for path, methods in _routes(app.routes) if path.startswith("/api/v1/publications") and "GET" in methods]
+    assert len(found) == 2
+    for path in found:
+        assert ("GET", path) in guard.LIMITED_READS, path
+        concrete = path.replace("{study}", "a").replace("{run}", "b").replace("{file:path}", "c")
+        assert guard.roles_for("GET", concrete) == guard.PUBLIC
+
+
+def test_cors_follows_the_operators_origins_on_the_publications(monkeypatch, study):
+    import importlib
+
+    from fastapi.testclient import TestClient
+
+    import kapacitet.api.main as main
+
+    monkeypatch.setenv("KAPACITET_CORS_ORIGINS", "https://dso.example")
+    monkeypatch.setenv("KAPACITET_PUBLICATIONS", "1")
+    monkeypatch.setenv("KAPACITET_STUDY_DIR", str(study.root.parent))
+    importlib.reload(main)
+    try:
+        with TestClient(main.app) as c:
+            ok = c.get("/api/v1/publications", headers={"Origin": "https://dso.example"})
+            other = c.get("/api/v1/publications", headers={"Origin": "https://other.example"})
+        assert ok.headers.get("access-control-allow-origin") == "https://dso.example"
+        assert "access-control-allow-origin" not in other.headers
+    finally:
+        monkeypatch.delenv("KAPACITET_CORS_ORIGINS")
+        importlib.reload(main)
+
+
+def test_a_manifest_copied_under_another_study_is_not_served(api, study):
+    signed_publication(study)
+    shutil.copytree(study.root, study.root.parent / "other")
+    assert api.get(f"/api/v1/publications/other/{Q4}/capacity.csv").status_code == 404
+    assert api.get(f"/api/v1/publications/demo/{Q4}/capacity.csv").status_code == 200
+
+
+# ---------------------------------------------------------------- the embed's script, run in jsdom
+
+JSDOM_DIR = Path(__file__).resolve().parents[1] / "web" / "node_modules" / "jsdom"
+NODE = shutil.which("node")
+needs_node = pytest.mark.skipif(not NODE or not JSDOM_DIR.is_dir(), reason="needs node and web/node_modules (npm ci)")
+
+
+def dom(folder: Path, query: str = "") -> dict:
+    import subprocess
+
+    out = subprocess.run([NODE, str(Path(__file__).with_name("embed_dom.mjs")), str(JSDOM_DIR), str(folder), query],
+                         capture_output=True, text=True, timeout=60)
+    assert out.returncode == 0, out.stderr[-600:]
+    return json.loads(out.stdout)
+
+
+@needs_node
+def test_the_script_draws_one_focusable_named_cell_per_placed_feature_and_stays_on_its_origin(study):
+    folder = signed_publication(study)["folder"]
+    gj = json.loads((folder / "capacity.geojson").read_text(encoding="utf-8"))
+    got = dom(folder)
+    assert got["ready"] and got["cells"] > 0
+    assert got["focusable"] == got["named"] == got["cells"]
+    assert got["rows"] == len(gj["features"])
+    assert got["layers"][:2] == ["generation_kw", "consumption_kw"]
+    assert not got["draft"]
+    assert not got["external"] and len(got["requests"]) == 2
+
+
+@needs_node
+def test_the_script_offers_the_three_phase_layers_only_when_the_publication_has_them(study):
+    folder = signed_publication(study)["folder"]
+    data = json.loads((folder / "capacity.geojson").read_text(encoding="utf-8"))
+    has = any(k.startswith("three_phase") for f in data["features"] for k in f["properties"])
+    assert any(x.startswith("three_phase") for x in dom(folder, "?lang=en")["layers"]) == has
+    for f in data["features"]:
+        f["properties"]["three_phase_generation_kw"] = 3.0
+        f["properties"]["three_phase_consumption_kw"] = 2.0
+    (folder / "capacity.geojson").write_text(json.dumps(data), encoding="utf-8")
+    assert "three_phase_generation_kw" in dom(folder)["layers"]
+
+
+@needs_node
+def test_the_script_says_utkast_for_a_draft(study):
+    collect_mod.collect(study, Q4)
+    folder = publish(study, Q4)["folder"]
+    got = dom(folder)
+    assert got["ready"] and got["draft"] and "UTKAST" in got["text"]

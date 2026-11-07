@@ -21,6 +21,11 @@ served. An answer carries the file's sha256 from the manifest as a strong ETag, 
 If-None-Match that names it is answered 304. Off, every route answers 404 with the code
 `publications_off`, which says how to turn them on.
 
+"Signed" is what the last `kapacitet study publish` wrote: the manifest records the signoff's
+validity at that moment. Outputs recomputed after signing are not seen here until `study publish`
+runs again (the study module would call the run a draft at once); the API checks the seal, the
+files and that the manifest belongs to the study folder it is served from.
+
 The routes are reads, so they have no entry in guard.ROUTE_POLICY (which lists the writes): they
 are public reads (guard.PUBLIC_READS) and limited reads (guard.LIMITED_READS, bucket "public"), and
 CORS follows KAPACITET_CORS_ORIGINS like every other route.
@@ -38,6 +43,7 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
 from .. import seals
+from ..cache import on_clear
 from ..study import runs as run_ids
 from ..study import valid_id
 
@@ -83,9 +89,37 @@ def _digest(path: Path) -> str | None:
         return None
 
 
+def _stamp(path: Path) -> tuple[int, int] | None:
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return st.st_mtime_ns, st.st_size
+
+
+_VERIFIED: dict[tuple, dict | None] = {}
+on_clear(_VERIFIED.clear)
+
+
 def signed_manifest(study_root: Path, run: str) -> dict | None:
     """The manifest of runs/<run>/publication when that publication is signed (see the module's
-    docstring), else None."""
+    docstring), else None. The check (seal chain and a sha256 of every file) is remembered while
+    the manifest, the signoff, the seal chain and every listed file keep their mtime and size."""
+    pub = study_root / "runs" / run / "publication"
+    try:
+        listed = sorted(((json.loads((pub / MANIFEST).read_text(encoding="utf-8")).get("files")) or {}))
+    except (OSError, ValueError, AttributeError):
+        return None
+    key = (str(study_root), run, _stamp(pub / MANIFEST), _stamp(study_root / "runs" / run / "signoff.json"),
+           _stamp(study_root / "evidence" / "seals.jsonl"), tuple(_stamp(pub / n) for n in listed))
+    if key not in _VERIFIED:
+        if len(_VERIFIED) > 256:
+            _VERIFIED.clear()
+        _VERIFIED[key] = _check_signed(study_root, run)
+    return _VERIFIED[key]
+
+
+def _check_signed(study_root: Path, run: str) -> dict | None:
     pub = study_root / "runs" / run / "publication"
     try:
         manifest = json.loads((pub / MANIFEST).read_text(encoding="utf-8"))
@@ -95,6 +129,7 @@ def signed_manifest(study_root: Path, run: str) -> dict | None:
     named = manifest.get("signoff") or {}
     seal = signoff.get("seal") or {}
     if (manifest.get("status") != SIGNED or not named.get("valid") or manifest.get("quarter") != run
+            or manifest.get("study") != study_root.name or signoff.get("study") != study_root.name
             or signoff.get("quarter") != run or not seal.get("id") or seal.get("id") != (named.get("seal") or {}).get("id")):
         return None
     with seals.chain_at(study_root / "evidence"):
