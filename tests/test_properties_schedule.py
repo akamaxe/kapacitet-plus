@@ -6,7 +6,8 @@ the envelopes around that day (any value, zero, and values a hair either side of
 boundary) and the export the house would make, hourly, per quarter-hour or none. Every row's limit
 must be at most the envelope of the hour it falls in, compared exactly, with no tolerance: the
 envelope is what the power flow verified, and a limit rounded up past it was never verified. The
-same holds for the watts of the CSIP-AUS XML the inverter would receive.
+same holds for the watts of the CSIP-AUS XML the inverter would receive, and for the OCPP charging
+profile a charger would receive (engine/ocpp.py), built from the same envelopes.
 """
 
 from __future__ import annotations
@@ -78,3 +79,13 @@ def test_no_interval_of_a_schedule_carries_a_limit_above_its_hours_envelope(case
         lim = ev.find(f"{NS}DERControlBase/{CSIP}opModExpLimW")
         watts = int(lim.find(f"{NS}value").text) * 10 ** int(lim.find(f"{NS}multiplier").text)
         assert watts <= 1000.0 * limits[r["hour"]], "the inverter would receive more than the verified envelope"
+
+    from kapacitet.engine.ocpp import charging_profile
+
+    firm = 11.0
+    steps = [{**r, "limit_kw": None if limits[r["hour"]] >= firm else float(limits[r["hour"]])} for r in rows]
+    periods = charging_profile(steps, firm, resolution * 60)["csChargingProfiles"]["chargingSchedule"][
+        "chargingSchedulePeriod"]
+    over = [(r["hour"], p["limit"]) for r, p in zip(rows, periods)
+            if not p["limit"] <= 1000.0 * min(float(limits[r["hour"]]), firm)]
+    assert not over, f"the charger would receive more than the verified envelope: {over[:3]}"

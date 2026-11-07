@@ -333,6 +333,51 @@ class NetModel:
             nonconverged=unsolved(res),
         )
 
+    def side_elements(self, res: PFResult, p_kw: np.ndarray, side: str, tol_v: float = 1e-6,
+                      tol_pct: float = 1e-4) -> dict:
+        """Per element, the limits `side` ("export" or "import") breaks in each hour, and how far.
+
+        Returns {"bus": (B, H) bool, "v": (B, H) pu, "line": (L, H) bool, "loading": (L, H) %,
+        "trafo": (H,) bool, "trafo_loading": (H,) %, "nonconverged": (H,) bool}, with the same
+        tolerances and flow directions as `violations` (the export side: overvoltage and overloads
+        with power towards the substation; the import side: undervoltage and forward overloads)."""
+        vm = np.abs(res.v[self.check_rows])
+        over_line = res.line_loading > self.thermal + tol_pct
+        toward_sub = (self.phi @ np.asarray(p_kw, dtype=float)) > 0
+        trafo_over = res.trafo_loading > self.thermal + tol_pct
+        if side == "export":
+            bus = vm > self.v_max + tol_v
+            line = over_line & toward_sub
+            trafo = trafo_over & (res.trafo_p_mw < 0)
+        else:
+            bus = vm < self.v_min - tol_v
+            line = over_line & ~toward_sub
+            trafo = trafo_over & ~(res.trafo_p_mw < 0)
+        return {"bus": bus, "v": vm, "line": line, "loading": res.line_loading, "trafo": trafo,
+                "trafo_loading": res.trafo_loading, "nonconverged": unsolved(res)}
+
+    def worsened(self, res: PFResult, p_kw: np.ndarray, ref: PFResult, ref_p_kw: np.ndarray, side: str,
+                 tol_v: float = 1e-6, tol_pct: float = 1e-4, deeper_v: float = 1e-7,
+                 deeper_pct: float = 1e-5) -> np.ndarray:
+        """(H,) bool: the hours where the state `res` breaks a limit of `side` that the reference
+        `ref` does not, or breaks one the reference already breaks by more (voltage further out,
+        loading higher), element by element. An hour without an answer is always worse.
+
+        An hour the reference already breaks is not exempt: an applicant who adds a violation at
+        another bus or cable, or deepens the existing one, still fails it. `tol_v`/`tol_pct` are the
+        limits' tolerances as in `violations`; `deeper_v`/`deeper_pct` how much further out counts
+        as deeper, above the solver's own noise between two solves of one hour (`ACCEPT_TOL`)."""
+        a = self.side_elements(res, p_kw, side, tol_v, tol_pct)
+        b = self.side_elements(ref, ref_p_kw, side, tol_v, tol_pct)
+        sign = 1.0 if side == "export" else -1.0         # export: higher voltage is worse
+        dv = sign * (a["v"] - b["v"]) > deeper_v
+        dl = a["loading"] - b["loading"] > deeper_pct
+        dt = a["trafo_loading"] - b["trafo_loading"] > deeper_pct
+        bus = a["bus"] & (~b["bus"] | dv)
+        line = a["line"] & (~b["line"] | dl)
+        trafo = a["trafo"] & (~b["trafo"] | dt)
+        return bus.any(axis=0) | line.any(axis=0) | trafo | a["nonconverged"]
+
 
 @memo(maxsize=4)
 def get_model(vm_slack: float | None = None, tap_pos: int | None = None, trafo_type: str | None = None) -> NetModel:

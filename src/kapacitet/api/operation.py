@@ -282,7 +282,7 @@ def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     firm = float(meta["firm_kw"])
     env = np.asarray(np.load(env_path, mmap_mode="r")[meta["cids"].index(cid)], dtype=float)
     # the envelope as issued, not the schedule's rounded figure, so no step is sent above it
-    steps = [{**r, "limit_kw": None if env[r["hour"]] >= firm - 1e-6 else float(env[r["hour"]])}
+    steps = [{**r, "limit_kw": None if env[r["hour"]] >= firm else float(env[r["hour"]])}
              for r in rows_for(env, None, year, day, _resolution(resolution))]
     step_s = steps[1]["start_epoch"] - steps[0]["start_epoch"] if len(steps) > 1 else 3600
     payload = ocpp.charging_profile(steps, firm, step_s)

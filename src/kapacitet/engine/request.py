@@ -421,44 +421,78 @@ def _reactive(d: dict) -> np.ndarray:
     return -(d["load"] + d["hp_s"] + d["ev_s"]) * np.tan(np.arccos(A("load_power_factor")))
 
 
+# The verifier holds the applicant to the limits themselves, with none of the 1e-6 pu (1e-4 %) slack
+# `violations` allows: a bisection ends within ~1e-7 pu of the limit, and the same state rebuilt
+# from the stored float32 injections, or solved in another batch (the solver stops at 1e-8), must
+# not land past the slack a later check gives it (found by tests/test_properties_queue.py).
+_STRICT = {"tol_v": 0.0, "tol_pct": 0.0}
+
+
+def _columns(res, cols: np.ndarray):
+    """The hours `cols` of a power-flow result, without solving them again."""
+    pick = {k: getattr(res, k)[..., cols] for k in ("v", "i_line_ka", "line_loading", "trafo_loading", "trafo_p_mw")}
+    for k in ("converged", "mismatch"):
+        if getattr(res, k) is not None:
+            pick[k] = getattr(res, k)[cols]
+    return dataclasses.replace(res, **pick)
+
+
+def _worse(model: NetModel, side: str, p: np.ndarray, q: np.ndarray, p0: np.ndarray, q0: np.ndarray,
+           ref=None) -> np.ndarray:
+    """(H,) bool: the hours where the state (p, q) breaks a limit of `side` that the baseline
+    (p0, q0) does not break, or breaks one further out (`NetModel.worsened`). The baseline is
+    solved only in the hours the state breaks something, where the answer depends on it; `ref`,
+    its result for all H hours, spares even that."""
+    res = model.solve(p, q)
+    a = model.side_elements(res, p, side, **_STRICT)
+    idx = np.flatnonzero(a["bus"].any(axis=0) | a["line"].any(axis=0) | a["trafo"] | a["nonconverged"])
+    bad = np.zeros(p.shape[1], dtype=bool)
+    if len(idx):
+        r = _columns(ref, idx) if ref is not None else model.solve(p0[:, idx], q0[:, idx])
+        bad[idx] = model.worsened(_columns(res, idx), p[:, idx], r, p0[:, idx], side, **_STRICT)
+    return bad
+
+
 def _screened_hours(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict, side: str,
                     active: np.ndarray) -> np.ndarray:
     """(H,) bool: the hours where the applicant is `active` that the linear screen of `side` keeps
-    with its injection in the grid, less those the baseline itself already breaks on that side.
+    with its injection in the grid.
 
     The headrooms are linear estimates (`import_headroom` keeps a 2 % margin, `export_headroom`
     none), so an hour where the envelope does not bind can still break a limit: the drop of an
     11 kW charger below its headroom took a customer to 0.907 pu on the tiny grid (found by
     tests/test_properties_queue.py). The screens never skip a violating hour, so every such hour
-    is among these and gets the nonlinear check."""
-    p, q = p0.copy(), q0.copy()
-    p[j], q[j] = _injection(d), _reactive(d)
-    keep = np.zeros(p.shape[1], dtype=bool)
-    keep[getattr(model, f"screen_{side}")(p, q)] = True
-    keep &= active
-    hrs = np.flatnonzero(keep)
-    if len(hrs):
-        base = getattr(model.violations(model.solve(p0[:, hrs], q0[:, hrs]), p0[:, hrs]), f"{side}_side")
-        keep[hrs[base]] = False
+    is among these and gets the nonlinear check. An hour the baseline already breaks stays in:
+    the check compares element by element (`NetModel.worsened`), so the applicant still fails it
+    by adding a violation elsewhere or deepening the existing one."""
+    keep = np.zeros(p0.shape[1], dtype=bool)
+    idx = np.flatnonzero(active)          # the screen judges each hour alone: only these need it
+    if len(idx):
+        p, q = p0[:, idx].copy(), q0[:, idx].copy()
+        p[j], q[j] = _injection(d)[idx], _reactive(d)[idx]
+        keep[idx[getattr(model, f"screen_{side}")(p, q)]] = True
     return keep
 
 
 def _verify_import(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
     """Re-check the hours where the import envelope binds, and every other hour with new import the
-    import screen keeps (`_screened_hours`); scale the served import down where it fails."""
+    import screen keeps (`_screened_hours`); scale the served import down where the house breaks an
+    import limit the baseline does not break, or deepens one it does (`NetModel.worsened`)."""
     demand = d["hp"] + d["ev_want"]
     served = d["hp_s"] + d["ev_s"]
     binding = (demand > 1e-6) & (d["head"] < demand - 1e-6)
     hrs = np.flatnonzero(binding | _screened_hours(model, p0, q0, j, d, "import", served > 1e-6))
     if not len(hrs):
         return {"hours_checked": 0, "hours_tightened": 0, "violations_after": 0}
-    p, q = p0[:, hrs].copy(), q0[:, hrs].copy()
+    p0h, q0h = p0[:, hrs], q0[:, hrs]
+    p, q = p0h.copy(), q0h.copy()
     p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
-    bad = model.violations(model.solve(p, q), p).import_side
+    bad = _worse(model, "import", p, q, p0h, q0h)
     n_tight = int(bad.sum())
     if bad.any():
         cols = np.flatnonzero(bad)
         hb = hrs[cols]
+        ref_c = model.solve(p0h[:, cols], q0h[:, cols])
         base_inj = _injection(d)[hb] + served[hb]          # injection with none of the new import
         lo, hi = np.zeros(len(hb)), np.ones(len(hb))
         for _ in range(16):
@@ -466,19 +500,20 @@ def _verify_import(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: d
             pc, qc = p[:, cols].copy(), q[:, cols].copy()
             pc[j] = base_inj - served[hb] * mid
             qc[j] = -(d["load"][hb] + served[hb] * mid) * np.tan(np.arccos(A("load_power_factor")))
-            okk = ~model.violations(model.solve(pc, qc), pc).import_side
+            okk = ~_worse(model, "import", pc, qc, p0h[:, cols], q0h[:, cols], ref=ref_c)
             lo = np.where(okk, mid, lo)
             hi = np.where(okk, hi, mid)
         d["hp_s"][hb] *= lo
         d["ev_s"][hb] *= lo
         p[j], q[j] = _injection(d)[hrs], _reactive(d)[hrs]
-        bad = model.violations(model.solve(p, q), p).import_side
+        bad = _worse(model, "import", p, q, p0h, q0h)
     return {"hours_checked": int(len(hrs)), "hours_tightened": n_tight, "violations_after": int(bad.sum())}
 
 
 def _verify_export(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: dict) -> dict:
     """Re-check the hours where the export envelope binds, and every other hour of export the export
-    screen keeps (`_screened_hours`); bisect the envelope down where it fails."""
+    screen keeps (`_screened_hours`); bisect the envelope down where the house breaks an export
+    limit the baseline does not break, or deepens one it does (`NetModel.worsened`)."""
     p, q = p0.copy(), q0.copy()
     p[j], q[j] = _injection(d), _reactive(d)
     net_j = _net(d)
@@ -489,9 +524,8 @@ def _verify_export(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: d
                          | _screened_hours(model, p0, q0, j, d, "export", exporting))
     n_bad = n_tightened = n_baseline = 0
     if len(hrs):
-        qh = q[:, hrs]
-        res = model.solve(p[:, hrs], qh)
-        bad = model.violations(res, p[:, hrs]).export_side
+        qh, p0h, q0h = q[:, hrs], p0[:, hrs], q0[:, hrs]
+        bad = _worse(model, "export", p[:, hrs], qh, p0h, q0h)
         if bad.any():
             # bisection on the applicant's envelope in the failing hours (μ ∈ [0, 1])
             hb = hrs[bad]
@@ -499,17 +533,17 @@ def _verify_export(model: NetModel, p0: np.ndarray, q0: np.ndarray, j: int, d: d
             env0 = d["env"][hb].copy()
             lo, hi = np.zeros(len(hb)), np.ones(len(hb))
             cols = np.flatnonzero(bad)
+            ref_c = model.solve(p0h[:, cols], q0h[:, cols])
             for _ in range(16):
                 mid = (lo + hi) / 2
-                pc = p[:, hrs[cols]].copy()
+                pc = p[:, hb].copy()
                 pc[j] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], env0 * mid), net_j[hb])
-                okk = ~model.violations(model.solve(pc, qh[:, cols]), pc).export_side
+                okk = ~_worse(model, "export", pc, qh[:, cols], p0h[:, cols], q0h[:, cols], ref=ref_c)
                 lo = np.where(okk, mid, lo)
                 hi = np.where(okk, hi, mid)
             d["env"][hb] = env0 * lo
             p[j, hb] = np.where(net_j[hb] > 0, np.minimum(net_j[hb], d["env"][hb]), net_j[hb])
-            res = model.solve(p[:, hrs], qh)
-            bad = model.violations(res, p[:, hrs]).export_side
+            bad = _worse(model, "export", p[:, hrs], qh, p0h, q0h)
             # hours that still fail with zero export from the applicant are limits of the
             # baseline itself (existing customers exactly at their own envelopes)
             n_baseline = int(bad.sum())

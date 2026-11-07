@@ -36,8 +36,15 @@ def _utc(epoch: int) -> str:
 
 def _watts(kw: float) -> float:
     """kW to W with at most one decimal (OCPP 1.6: a multiple of 0.1), rounded down so the limit sent
-    is never above the one issued."""
-    return floor(max(0.0, float(kw)) * 10000.0 + 1e-6) / 10.0
+    is never above the one issued: to the nearest 0.1 W where that is not above it (a figure a float
+    error below a step stays on the step), and down otherwise, compared as 1000 * kW."""
+    x = max(0.0, float(kw))
+    w = round(x * 10000.0) / 10.0
+    if w > x * 1000.0:
+        w = floor(x * 10000.0) / 10.0
+        if w > x * 1000.0:
+            w = (floor(x * 10000.0) - 1) / 10.0
+    return w
 
 
 def charging_profile(steps: list[dict], firm_kw: float, step_s: int) -> dict:
