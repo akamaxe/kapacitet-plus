@@ -55,7 +55,7 @@ EXPORT_LIMITS = ("voltage", "cable", "transformer", "nonconverged")
 IMPORT_LIMITS = EXPORT_LIMITS
 
 __all__ = ["METHOD_VERSION", "SCHEMA", "DEVICES", "engine_device", "candidates", "candidate_order",
-           "generation_capacity", "consumption_capacity", "worst_point", "peak_check"]
+           "generation_capacity", "consumption_capacity", "worst_point", "peak_check", "flexibility_need"]
 
 
 def engine_device(name: str) -> str:
@@ -466,6 +466,48 @@ def _bisect(model: NetModel, P0, Q0, rows, owner, n: int, side: str, max_kw: flo
         lo = np.where(bad, lo, mid)
         hi = np.where(bad, mid, hi)
     return lo, hi
+
+
+FLEX_HALVINGS = 12          # the reduction's resolution: 1/4096 of the hour's flexible power
+
+
+def flexibility_need(model: NetModel, p: np.ndarray, q: np.ndarray, flex: np.ndarray, side: str,
+                     halvings: int = FLEX_HALVINGS) -> dict:
+    """What it takes to keep (p, q) inside the limits of `side` by turning down `flex` (C, H), kW
+    >= 0: the PV on the export side, the load that can move (heat pumps, EV charging) on the
+    import side. Every hour is solved with the nonlinear flow; in each violating hour the same
+    share of every customer's `flex` is removed, by halving, until the hour passes, and the
+    energy is the smallest share that passed (kWh, an hour being one hour). An hour that still
+    breaks a limit with all its `flex` removed is `unresolved`: its whole flexible energy is
+    counted and the hour reported, since no flexibility clears it. The binding component is the
+    kind of limit with the most violating hours, classified as limit_of does.
+    {"hours", "energy_kwh", "unresolved_hours", "by_limit", "limit"}."""
+    crit = violating_hours(model, p, q, side)
+    if not len(crit):
+        return {"hours": 0, "energy_kwh": 0.0, "unresolved_hours": 0, "by_limit": {}, "limit": None}
+    P, Q = p[:, crit], q[:, crit]
+    F = np.maximum(np.asarray(flex, dtype=float)[:, crit], 0.0)
+    by = _classify(model.violations(model.solve(P, Q), P), side)
+    tanphi = np.tan(np.arccos(A("load_power_factor")))
+
+    def bad(r: np.ndarray) -> np.ndarray:
+        if side == "export":
+            Pr, Qr = P - r * F, Q
+        else:
+            Pr, Qr = P + r * F, Q + r * F * tanphi
+        v = model.violations(model.solve(Pr, Qr), Pr)
+        return v.export_side if side == "export" else v.import_side
+
+    lo, hi = np.zeros(len(crit)), np.ones(len(crit))
+    unresolved = bad(hi)
+    for _ in range(halvings):
+        mid = (lo + hi) / 2.0
+        b = bad(mid)
+        lo, hi = np.where(b, mid, lo), np.where(b, hi, mid)
+    share = np.where(unresolved, 1.0, hi)
+    limit = max(EXPORT_LIMITS, key=lambda k: (by[k], -EXPORT_LIMITS.index(k)))
+    return {"hours": int(len(crit)), "energy_kwh": float((share * F.sum(axis=0)).sum()),
+            "unresolved_hours": int(unresolved.sum()), "by_limit": by, "limit": limit}
 
 
 def add_constant(p: np.ndarray, q: np.ndarray, j: int, kw: float, side: str) -> tuple[np.ndarray, np.ndarray]:

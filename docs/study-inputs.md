@@ -163,3 +163,29 @@ zero, and `reinforce` when it is not or when there are no verified envelopes; no
 transformer adds no capacity on either side. Each station's computation is kept in
 `stations/<id>/options/<quarter>.json` and reused while the station's build and the method
 approval are the same.
+
+## The development plan's inputs: `runs/<quarter>/devplan/`
+
+`study devplan <dir> --run 2026Q4` writes the inputs the network development plan of EIFS 2026:4
+asks for: hourly profiles, the need for flexibility and investments over ten years. They are inputs
+only: whether they meet the regulation's requirements is for the DSO to check. Like the portfolio,
+the files are internal and list every station. Run `study options` first: the investment list reads
+its `options.machine.csv`.
+
+| file | content |
+| --- | --- |
+| `profiles/<station>.parquet` (+ `.csv`, `.machine.csv`) | the station's hourly load and generation (kW) in the reference year, with today's equipment and nobody added, and each hour's P50 and P90 over the weather years; `time_utc` is the interval start in UTC, `time_local` the same hour in UTC+1. The year's sum is the station's energy |
+| `profiles/study.parquet` (+ `.csv`, `.machine.csv`) | the same for the whole study: the stations' sum in each hour of each weather year, and the percentiles of that sum |
+| `flexibility.csv` (+ `.machine.csv`) | per station, side (`generation`, `consumption`) and state (`today`, `scenario`): the hours a year that break a limit and the energy (kWh a year) that has to be curtailed or moved in them to keep within the limits (mean and max over the weather years, and the reference year), the hours no flexibility clears (`unresolved_hours`), the binding component and the published capacity beside it; rows with `station_id` = `study` sum the energy in each weather year (hours stay per station) |
+| `investments.csv` (+ `.machine.csv`) | per station, from `study options`: the swap to the next standard transformer, the first year in the quarter's year and the nine after it that it is needed and why (`violations_today`, `recommended_now`, `scenario`, `end_of_deferral`, or `not_within_horizon`), and its cost from `[costs]` or `not entered` |
+| `devplan_sv.md` | what each file holds, in Swedish |
+
+The scenario is the DSO's own, in `study.toml [devplan]`: `scenario_year` (2030 by default) and
+the shares of each station's customers with PV, an EV and a heat pump in that year (existing ones
+counted), with their `source`. A share left out keeps today's; with none entered the scenario's
+rows say `not_entered`. Every hour is solved with the nonlinear flow; generation is checked at
+both ends of the MV band and the end that needs more energy is reported, consumption at the low
+end. The flexibility is the same share of every customer's PV (generation) or of its heat pump and
+EV charging (consumption) in that hour. Each station's computation is kept in
+`stations/<id>/devplan/<quarter>.json` and `.npz` and reused while the station's build and the
+scenario are the same.

@@ -94,10 +94,14 @@ def register(sub: argparse._SubParsersAction) -> None:
                        "conditions or wait, priced from study.toml [costs]")
     q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
     q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
+    q = add("devplan", "runs/<quarter>/devplan/: hourly profiles, the flexibility need and a ten-year investment "
+                       "list per station, inputs for the network development plan (run `study options` first)")
+    q.add_argument("--run", "--quarter", dest="quarter", default=None, help="the run's quarter (default: this quarter)")
+    q.add_argument("--jobs", type=int, default=None, help="station processes at a time")
     p.set_defaults(func=cmd_study)
 
     p = sub.add_parser("station", help=argparse.SUPPRESS)
-    p.add_argument("action", choices=["build", "validate", "cases", "sync", "options"])
+    p.add_argument("action", choices=["build", "validate", "cases", "sync", "options", "devplan"])
     p.add_argument("sid")
     p.add_argument("--study", required=True)
     p.add_argument("--batch", default=None)
@@ -119,7 +123,8 @@ def cmd_study(args: argparse.Namespace) -> None:
         {"init": _init, "demo": _demo, "fetch": _fetch, "import": _import, "check": _check, "build": _build,
          "status": _status, "collect": _collect, "validate": _validate, "review": _review, "sign": _sign,
          "publish": _publish, "diff": _diff, "cases": _cases, "sync": _sync,
-         "sign-rule": _sign_rule, "portfolio": _portfolio, "options": _options}[args.study_command](args)
+         "sign-rule": _sign_rule, "portfolio": _portfolio, "options": _options,
+         "devplan": _devplan}[args.study_command](args)
     except StudyError as err:
         _fail(err)
 
@@ -397,6 +402,23 @@ def _options(args) -> None:
         sys.exit(1)
 
 
+def _devplan(args) -> None:
+    from . import open_study
+    from .devplan import devplan
+
+    study = open_study(args.dir, allow_git=args.allow_git)
+    out = devplan(study, _quarter(args.quarter), jobs=args.jobs, allow_git=args.allow_git)
+    folder = study.runs / out["quarter"] / "devplan"
+    print(f"{len(out['investments'])} stations in {folder} ({len(out['computed'])} computed now), reference year "
+          f"{out['reference_year'] or '-'}")
+    if out["options_missing"]:
+        print("  no options for this quarter: run `kapacitet study options` for the investment list")
+    for sid in out["failed"]:
+        print(f"  {sid}: failed (see its build.log)")
+    if out["failed"]:
+        sys.exit(1)
+
+
 def cmd_station(args: argparse.Namespace) -> None:
     """One station's build or validation, in this process (started by `study build|validate`)."""
     import logging
@@ -415,6 +437,13 @@ def cmd_station(args: argparse.Namespace) -> None:
             if not args.batch:
                 raise StudyError("bad_batch", batch="")
             station_options(study, args.sid, args.batch)
+            sys.exit(0)
+        if args.action == "devplan":
+            from .devplan import station_devplan
+
+            if not args.batch:
+                raise StudyError("bad_batch", batch="")
+            station_devplan(study, args.sid, args.batch)
             sys.exit(0)
         if args.action in ("cases", "sync"):
             from .cases import station_cases

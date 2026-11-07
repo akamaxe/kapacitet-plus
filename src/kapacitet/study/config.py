@@ -21,6 +21,9 @@ an unknown section or key is an error rather than a setting silently ignored. Th
                    unit's kVA, curtailment_sek_per_kwh, price_level_year, deferral_years and source.
                    A price left out is "not entered", never guessed (Ei's norm values are shown only
                    as a labelled reference)
+    [devplan]      the scenario `study devplan` checks beside today's grid: scenario_year (2030),
+                   pv_share, ev_share, hp_share of the station's customers in that year (existing
+                   ones counted) and source. Without a share there is no scenario ("not entered")
     [assumptions]  key = {value, unit, source}: an override of config/assumptions.toml. The key must
                    exist there and take effect in a station (NOT_IN_A_STUDY lists those that do
                    not), the unit must be the one it has, and the source must be stated.
@@ -173,6 +176,24 @@ class Costs(_Section):
         return self.transformer_swap_sek.get(str(int(round(float(sn_mva) * 1000))))
 
 
+class Devplan(_Section):
+    scenario_year: int = Field(2030, ge=2000, le=2100)
+    pv_share: float | None = Field(None, ge=0.0, le=1.0)
+    ev_share: float | None = Field(None, ge=0.0, le=1.0)
+    hp_share: float | None = Field(None, ge=0.0, le=1.0)
+    source: str = ""
+
+    @model_validator(mode="after")
+    def _sourced(self):
+        if self.entered() and not self.source.strip():
+            raise ValueError("[devplan] a scenario's shares need their source (the DSO's forecast, its date)")
+        return self
+
+    def entered(self) -> bool:
+        """At least one share is entered: without one there is no scenario, never a guessed one."""
+        return any(x is not None for x in (self.pv_share, self.ev_share, self.hp_share))
+
+
 class Override(_Section):
     value: Any
     unit: str
@@ -196,6 +217,7 @@ class StudyConfig(_Section):
     cases: Cases = Field(default_factory=Cases)
     output: Output = Field(default_factory=Output)
     costs: Costs = Field(default_factory=Costs)
+    devplan: Devplan = Field(default_factory=Devplan)
     assumptions: dict[str, Override] = Field(default_factory=dict)
 
     @model_validator(mode="after")
@@ -364,6 +386,16 @@ def template(name: str = "", site: dict | None = None) -> str:
         "# price_level_year = 2026",
         "# deferral_years = 4             # the horizon of waiting (one regulatory period by default)",
         '# source = "the contract and its date"',
+        "",
+        "[devplan]",
+        "# The DSO's own scenario that `study devplan` checks beside today's grid: the share of each",
+        "# station's customers with each device in scenario_year, existing ones counted. A share left",
+        "# out keeps today's; with none entered there is no scenario (\"not entered\").",
+        "scenario_year = 2030",
+        "# pv_share = 0.0",
+        "# ev_share = 0.0",
+        "# hp_share = 0.0",
+        '# source = "the forecast and its date"',
         "",
         "[assumptions]",
         "# An override of config/assumptions.toml, with the unit it has there and its source:",

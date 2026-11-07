@@ -553,6 +553,7 @@ that holds them, kept outside the code and outside any git work tree (by default
 .venv/Scripts/python -m kapacitet study sign-rule nb-2026 --by "name, role" --kinds pv,ev --max-pv-kwp 10 --valid-until 2027-06-30
 .venv/Scripts/python -m kapacitet study portfolio nb-2026 --run 2026Q4   # runs/<quarter>/portfolio.csv: margins, risk and trend per station
 .venv/Scripts/python -m kapacitet study options nb-2026 --run 2026Q4     # reinforce, connect with conditions or wait, priced from [costs]
+.venv/Scripts/python -m kapacitet study devplan nb-2026 --run 2026Q4     # hourly profiles, flexibility need and ten-year investments (after options)
 ```
 
 Every input file and column, and what each step of a quarter writes, is in
@@ -566,7 +567,9 @@ stations, and `sign-rule` says what the automatic rule may decide in them. `port
 `options` (the start of Module 4) read a collected quarter: per station its margins, risk and
 trend, and the choice to reinforce now, connect with conditions or wait, priced with the DSO's own
 contract prices in `study.toml [costs]` (a price left out is "not entered", and no option is
-recommended without its inputs).
+recommended without its inputs). `devplan` then writes the inputs of the network development plan
+(EIFS 2026:4, cited by name only): hourly profiles with their P50 and P90 over the weather years,
+the flexibility need today and in the DSO's own `[devplan]` scenario, and a ten-year investment list.
 
 `study.toml` says where the weather comes from (lat/lon with the SMHI temperature station there),
 the method's choices (percentile, curtailment basis, the consumption device), the MV band, what may
