@@ -326,6 +326,17 @@ url = "https://arena.gov.au/assets/2024/01/SA-Power-Networks-Flexible-Exports-fo
 note = "The same trial found its limits kept in more than 99.97 % of 5-minute intervals."
 note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
 
+[compliance_tolerance_kw]
+value = 0.25
+unit = "kW"
+tag = "team-assumption"
+label = "In the fleet check, an hour's metered export counts as above its envelope by more than this"
+label_sv = "I flottkontrollen räknas en timmes uppmätta export som över exportgränsen med mer än detta"
+source = "The 250 W breach threshold of SA Power Networks' Flexible Exports trial (final report v1.3, ARENA 2023, 4.3.1), applied by the team to the hour's mean export, the step the envelopes are verified in"
+url = "https://arena.gov.au/assets/2024/01/SA-Power-Networks-Flexible-Exports-for-Solar-PV-Trial-Final-Report.pdf"
+note = "The trial counted 5-minute readings; an hour's mean hides a short excursion that averages out within the hour, which the single-meter check still sees."
+note_sv = "Försöket räknade femminutersvärden; en timmes medelvärde döljer en kort avvikelse som jämnas ut inom timmen, vilket kontrollen av en enskild mätare ändå ser."
+
 [schedule_resolution_min]
 value = 15
 unit = "min"

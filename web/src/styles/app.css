@@ -1629,6 +1629,8 @@ main:focus { outline: none; }
   overflow: auto;
   min-height: 0;
 }
+/* a table of every house scrolls inside about ten rows, its header held at the top */
+.dt.dt-window .dt-scroll { max-height: 440px; }
 
 .dt-scroll table.data th {
   position: sticky;

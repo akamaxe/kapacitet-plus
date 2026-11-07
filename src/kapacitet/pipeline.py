@@ -8,6 +8,7 @@ Commands
   compliance  audit trail and annual filing for a computed year
   forecast  what the published envelopes owe to perfect foresight
   redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
+  meter-compliance  every agreement's metered export against its day-ahead envelopes (--study for a study)
   method-dossier  the method dossier for Ei, in Swedish, every value from the data (--study for a study)
   seals     verify a sealed chain's hashes and signatures, or rotate the signing key
   db        the PostgreSQL store: migrate, status, import-files, export-files
@@ -480,6 +481,51 @@ def cmd_redispatch_report(args: argparse.Namespace) -> None:
     print(f"Written: {processed('results', 'redispatch.json')} and redispatch_sv.txt")
 
 
+def cmd_meter_compliance(args: argparse.Namespace) -> None:
+    """Every agreement's metered export against the day-ahead envelopes it was sent
+    (engine/meter_compliance.py): results/meter_compliance.json and meter_compliance_sv.txt."""
+    from . import paths
+    from .engine import meter_compliance as mc
+
+    if args.study:
+        from .study import StudyError, open_study
+
+        try:
+            study = open_study(args.study, allow_git=True)
+        except StudyError as err:
+            print(f"No fleet check: {err}")
+            sys.exit(1)
+        targets = [(sid, study.station_dir(sid) / "processed") for sid in study.station_ids()]
+        if not targets:
+            print(f"No fleet check: the study {study.root} has no stations")
+            sys.exit(1)
+    else:
+        targets = [(None, paths.PROCESSED)]
+    written = 0
+    for sid, root in targets:
+        where = f"station {sid}: " if sid else ""
+        try:
+            report = mc.build(root, args.policy, args.date_from, args.date_to, synthetic=args.synthetic,
+                              inject=mc.parse_inject(args.inject))
+        except mc.MeterComplianceError as err:
+            print(f"{where}no fleet check: {err}")
+            continue
+        if report is None:
+            print(f"{where}no meter readings with export in {root / 'meters'} (export_15min.parquet or "
+                  "hourly.parquet), so nothing was written. --synthetic checks a labelled synthetic fleet instead.")
+            continue
+        js, txt = mc.write(report, root)
+        written += 1
+        s = report["summary"]
+        label = " (synthetic readings)" if report["readings"] == "synthetic" else ""
+        print(f"{where}{s['agreements']} agreements{label}: {s['compliant']} compliant, {s['non_compliant']} "
+              f"non-compliant, {s['no_readings']} without readings; {s['intervals_above']} of "
+              f"{s['intervals_checked']} hours above the envelope, {s['energy_above_kwh']:.1f} kWh above it")
+        print(f"{where}written: {js} and {txt.name}")
+    if not written:
+        sys.exit(1)
+
+
 def cmd_method_dossier(args: argparse.Namespace) -> None:
     """The method dossier for Ei: method_dossier_sv.md and method_dossier.json (kapacitet/dossier.py)."""
     from . import dossier
@@ -683,6 +729,19 @@ def main(argv: list[str] | None = None) -> None:
                                                  "(EU 2019/943, art. 13.4), on the day-ahead basis")
     p.add_argument("--year", type=int, default=None, help="the report year (default: the operation stage's)")
     p.set_defaults(func=cmd_redispatch_report)
+
+    p = sub.add_parser("meter-compliance", help="every agreement's metered export against its day-ahead envelopes")
+    p.add_argument("--from", dest="date_from", default=None, metavar="DATE",
+                   help="the first date checked, YYYY-MM-DD (default: the study year's first)")
+    p.add_argument("--to", dest="date_to", default=None, metavar="DATE",
+                   help="the last date checked, inclusive (default: the study year's last)")
+    p.add_argument("--policy", default=None, help="the sharing rule (default: the DSO's)")
+    p.add_argument("--study", default=None, help="a study's folder: every station with readings and envelopes")
+    p.add_argument("--synthetic", action="store_true",
+                   help="check a labelled synthetic fleet: the simulated export with the envelope applied")
+    p.add_argument("--inject", action="append", default=None, metavar="CID:SHARE",
+                   help="with --synthetic: house CID exports SHARE of what its envelope held back (repeatable)")
+    p.set_defaults(func=cmd_meter_compliance)
 
     p = sub.add_parser("method-dossier", help="the method dossier for Ei, in Swedish, every value from the data")
     p.add_argument("--study", default=None, help="a study's folder (default: this data folder's demo)")

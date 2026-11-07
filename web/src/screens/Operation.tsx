@@ -15,7 +15,7 @@ import { useCan } from "../lib/auth";
 import { RoleNote } from "../components/RoleNote";
 import { type Tokens } from "../lib/colors";
 import { refusalOf, refusalText } from "../lib/errors";
-import { monthLong, monthNames, studyDate, useFmt } from "../lib/format";
+import { hourLabel, monthLong, monthNames, studyDate, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
@@ -221,6 +221,7 @@ export default function Operation() {
             </div>
           </div>
           <MeterCheck cid={house} date={day} name={name(house)} />
+          <FleetCompliance name={name} onHouse={select} />
         </section>
       </div>
     </div>
@@ -560,5 +561,62 @@ function MeterCheck({ cid, date, name }: { cid: number; date: string; name: stri
         </div>
       )}
     </div>
+  );
+}
+
+/* ==================================================================== the fleet */
+
+const FLEET_STATUS: Record<string, "good" | "warning" | "critical"> = {
+  compliant: "good", no_readings: "warning", non_compliant: "critical",
+};
+
+/**
+ * Every agreement's metered export against the day-ahead envelope of each hour, as
+ * `kapacitet meter-compliance` wrote it. A row opens that house in the single-meter check above.
+ */
+function FleetCompliance({ name, onHouse }: { name: (c: number) => string; onHouse: (c: number) => void }) {
+  const t = useT();
+  const f = useFmt();
+  const lang = useStore((s) => s.lang);
+  const q = useApi<any>("/operation/meter-compliance");
+  if (q.isLoading) return null;
+  const R = q.data?.data;
+  const head = <div className="block-head"><h3>{t("op.fleet")}</h3></div>;
+  if (!R) return <section className="block stack">{head}<SectionMissing title={t("op.fleet")} q={q} /></section>;
+  const S = R.summary;
+  const synthetic = R.readings === "synthetic";
+  const status = (r: any) => t(`op.fleet.status.${r.status}`);
+  const cols: Col<any>[] = [
+    { key: "h", label: t("op.fleet.col.house"), value: (r) => name(r.cid) },
+    { key: "s", label: t("op.fleet.col.status"), value: status,
+      cell: (r) => <Status kind={FLEET_STATUS[r.status] ?? "warning"}>{status(r)}</Status> },
+    { key: "n", label: t("op.fleet.col.checked"), value: (r) => r.intervals_checked, cell: (r) => f(r.intervals_checked), numeric: true, unit: "h" },
+    { key: "a", label: t("op.fleet.col.above"), value: (r) => r.intervals_above, cell: (r) => f(r.intervals_above), numeric: true, unit: "h" },
+    { key: "e", label: t("op.fleet.col.energy"), value: (r) => r.energy_above_kwh, cell: (r) => f(r.energy_above_kwh, 1), numeric: true, unit: "kWh" },
+    { key: "w", label: t("op.fleet.col.worst"), value: (r) => r.worst?.hour ?? null,
+      cell: (r) => (r.worst ? t("op.fleet.worst", { when: hourLabel(lang, R.year, r.worst.hour), kw: f(r.worst.excess_kw, 2) }) : f(null)) },
+  ];
+  return (
+    <section className="block stack">
+      {head}
+      <p className="caption">
+        {t("op.fleet.caption", { from: studyDate(lang, R.period.from), to: studyDate(lang, R.period.to), kw: f(R.tolerance_kw, 2) })}
+        {" · "}<Chip kind={synthetic ? "synthetic" : "real"} />
+      </p>
+      <div className="tiles cols-4">
+        <Tile label={t("op.fleet.nonCompliant")} value={f(S.non_compliant)} tone={S.non_compliant > 0 ? "danger" : undefined}
+          note={t("op.fleet.nonCompliantNote", { n: f(S.agreements), none: f(S.no_readings) })} />
+        <Tile label={t("op.fleet.hoursAbove")} value={f(S.intervals_above)} unit="h"
+          note={t("op.fleet.hoursAboveNote", { n: f(S.intervals_checked) })} />
+        <Tile label={t("op.fleet.energy")} value={f(S.energy_above_kwh, 1)} unit="kWh" />
+        <Tile label={t("op.fleet.within")} value={f(S.intervals_within_pct, 2)} unit="%" />
+      </div>
+      <DataTable rows={R.per_customer} cols={cols} rowKey={(r: any) => r.cid} caption={t("op.fleet.table")}
+        searchLabel={t("op.fleet.search")} onSelect={(r: any) => onHouse(r.cid)} className="dt-window" />
+      <div className="answer-actions">
+        <a className="btn ghost" href={`${API}/operation/meter-compliance_sv.txt`} download><Icon name="download" size={15} />{t("op.fleet.dl")}</a>
+      </div>
+      <p className="caption-muted">{t(synthetic ? "op.fleet.noteSynthetic" : R.reading_resolution_min === 15 ? "op.fleet.note15" : "op.fleet.note60")}</p>
+    </section>
   );
 }

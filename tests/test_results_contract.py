@@ -553,3 +553,22 @@ def test_published_import_envelopes_hold_on_the_real_year():
         pytest.skip("run: python -m kapacitet compute --stage extra --only operation")
     meta = json.loads(path.read_text(encoding="utf-8"))
     assert meta["verified"] and meta["actual_violation_hours"] == 0
+
+
+def test_the_fleet_check_adds_up_and_names_its_readings(results):
+    path = processed("results", "meter_compliance.json")
+    if not path.exists():
+        pytest.skip("meter_compliance.json not written; run: python -m kapacitet meter-compliance (--synthetic on the demo)")
+    r = json.loads(path.read_text(encoding="utf-8"))
+    assert r["basis"] == "dayahead" and r["readings"] in ("metered", "synthetic")
+    per, s = r["per_customer"], r["summary"]
+    assert s["agreements"] == len(per)
+    for status in ("compliant", "non_compliant", "no_readings"):
+        assert s[status] == sum(1 for p in per if p["status"] == status)
+    assert s["intervals_above"] == sum(p["intervals_above"] for p in per)
+    assert abs(s["energy_above_kwh"] - sum(p["energy_above_kwh"] for p in per)) < 0.01
+    for p in per:
+        assert (p["status"] == "non_compliant") == (p["intervals_above"] > 0), p["cid"]
+        assert (p["status"] == "no_readings") == (p["intervals_checked"] == 0), p["cid"]
+        if p["intervals_above"]:
+            assert p["worst"]["excess_kw"] > r["tolerance_kw"] and p["energy_above_kwh"] > 0

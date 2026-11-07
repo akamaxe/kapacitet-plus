@@ -510,3 +510,27 @@ def meter_example(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     body = example(limits, desired, year, day)
     return Response(body, media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-meter-example-{cid}-{date}.csv"'})
+
+
+# ---------------------------------------------------------------- the fleet
+
+@router.get("/operation/meter-compliance")
+def meter_compliance() -> dict:
+    """Every agreement's metered export against the day-ahead envelopes it was sent, as
+    `kapacitet meter-compliance` wrote it (engine/meter_compliance.py). `readings` says whether
+    they were metered or synthetic."""
+    from .main import result, result_path
+
+    return {"data": result("meter_compliance.json"), "provenance": _provenance(result_path("meter_compliance.json"))}
+
+
+@router.get("/operation/meter-compliance_sv.txt")
+def meter_compliance_text() -> Response:
+    """The same check as a page in Swedish."""
+    from .main import not_computed, result_path
+
+    path = result_path("meter_compliance_sv.txt")
+    if not path.exists():
+        raise not_computed("meter_compliance_sv.txt")
+    return Response(path.read_text(encoding="utf-8"), media_type="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="kapacitet-efterlevnad.txt"'})

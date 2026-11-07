@@ -22,7 +22,8 @@ that instant, in a file that changes offset (daylight saving time written wrong)
 and counted. `to_hourly` sums the quarter-hours to hours on timeindex.year_index (the hour's start
 in UTC, for a calendar year in UTC+1): an hour counts only with all four of its quarter-hours,
 so on the days the clocks change every day still has 24 hours. The voltages stay at 15 minutes,
-for identifying each meter's phase later.
+for identifying each meter's phase later, and so does the export, for checking it against the
+envelopes the customer was sent (engine/meter_compliance.py).
 """
 
 from __future__ import annotations
@@ -267,8 +268,9 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
 def to_hourly(rd: Readings, folder: str | Path | None = None) -> pd.DataFrame:
     """The complete hours of every meter: customer_id, start (UTC, the hour's start), year and hour
     (its position on timeindex.year_index), kwh_import and kwh_export (NaN unless all four quarters
-    have one). With `folder`, writes hourly.parquet there, and voltage_15min.parquet with the
-    voltages at 15 minutes when the readings have any."""
+    have one). With `folder`, writes hourly.parquet there, voltage_15min.parquet with the
+    voltages at 15 minutes when the readings have any, and export_15min.parquet with the export at
+    15 minutes when they have it (what engine/meter_compliance.py checks against the envelopes)."""
     from ..timeindex import local_standard, year_index
 
     if not rd.checked:
@@ -298,6 +300,10 @@ def to_hourly(rd: Readings, folder: str | Path | None = None) -> pd.DataFrame:
             target = (folder / "voltage_15min.parquet").as_posix()
             con.execute(f"COPY (SELECT customer_id, t AS start, {cols} FROM quarters ORDER BY customer_id, t) "
                         f"TO {_quote(target)} (FORMAT PARQUET)")
+        if rd.has_export:
+            target = (folder / "export_15min.parquet").as_posix()
+            con.execute("COPY (SELECT customer_id, t AS start, kwh_export FROM quarters WHERE kwh_export IS NOT NULL "
+                        f"ORDER BY customer_id, t) TO {_quote(target)} (FORMAT PARQUET)")
     return df
 
 

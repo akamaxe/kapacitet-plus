@@ -214,6 +214,8 @@ _WRITTEN_BY = {
     "operation/dayahead/import.json": "compute --stage extra --only operation",
     "redispatch.json": "redispatch-report",
     "redispatch_sv.txt": "redispatch-report",
+    "meter_compliance.json": "meter-compliance",
+    "meter_compliance_sv.txt": "meter-compliance",
 }
 
 
