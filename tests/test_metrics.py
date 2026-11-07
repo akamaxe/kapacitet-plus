@@ -102,14 +102,14 @@ def _events():
         return {"app": app, "event": "received", "at": at(day), "cid": 7, "assessment": f"{app:0>12}"}
 
     return [
-        received("a1", 1), {"app": "a1", "event": "review", "at": at(1), "proposal": "firm"},
-        {"app": "a1", "event": "decided", "at": at(3), "outcome": "firm", "by": "dso"},              # agrees, 2 days
-        received("a2", 2), {"app": "a2", "event": "review", "at": at(2), "proposal": "nonfirm"},
-        {"app": "a2", "event": "decided", "at": at(6), "outcome": "firm", "by": "dso"},              # differs, 4 days
-        received("a3", 3), {"app": "a3", "event": "decided", "at": at(3, 11), "outcome": "nonfirm", "by": "rule"},
-        received("a4", 4), {"app": "a4", "event": "review", "at": at(4), "proposal": "review"},
-        {"app": "a4", "event": "decided", "at": at(5), "outcome": "declined", "by": "dso"},          # 1 day
-        received("a5", 5),                                                                        # waiting
+        received("app-1", 1), {"app": "app-1", "event": "review", "at": at(1), "proposal": "firm"},
+        {"app": "app-1", "event": "decided", "at": at(3), "outcome": "firm", "by": "dso"},              # agrees, 2 days
+        received("app-2", 2), {"app": "app-2", "event": "review", "at": at(2), "proposal": "nonfirm"},
+        {"app": "app-2", "event": "decided", "at": at(6), "outcome": "firm", "by": "dso"},              # differs, 4 days
+        received("app-3", 3), {"app": "app-3", "event": "decided", "at": at(3, 11), "outcome": "nonfirm", "by": "rule"},
+        received("app-4", 4), {"app": "app-4", "event": "review", "at": at(4), "proposal": "review"},
+        {"app": "app-4", "event": "decided", "at": at(5), "outcome": "declined", "by": "dso"},          # 1 day
+        received("app-5", 5),                                                                        # waiting
     ]
 
 
