@@ -32,8 +32,11 @@ from __future__ import annotations
 import json
 import math
 import re
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from .dossier import render, sv_number
 
@@ -96,6 +99,9 @@ WORDS = {
     "en": {"metric": "Metric", "value": "Value", "period": "Period", "source": "Source",
            "missing": "not available: run `{command}`",
            "not_in_study": "not part of a study: run `{command}` on the installation",
+           "no_reference": "not available: the reference capacity is zero or missing",
+           "wrong_basis": "not available: the report is not on the day-ahead basis; run `{command}`",
+           "by_rule": "by the rule, not counted",
            "owner": "entered by the owner", "days": "days", "pp": "pp", "hours": "h", "measured_hours": "metered hours",
            "of": "of", "compared": "compared", "review": "proposals for review not compared", "decided": "decided",
            "stations": "stations", "elements": "elements", "audits": "audits", "orders": "orders",
@@ -110,6 +116,9 @@ WORDS = {
     "sv": {"metric": "Nyckeltal", "value": "Värde", "period": "Period", "source": "Källa",
            "missing": "saknas: kör `{command}`",
            "not_in_study": "ingår inte i en studie: kör `{command}` på installationen",
+           "no_reference": "saknas: referenskapaciteten är noll eller saknas",
+           "wrong_basis": "saknas: rapporten gäller inte dagen-före-basen; kör `{command}`",
+           "by_rule": "av regeln, ingår inte",
            "owner": "anges av ägaren", "days": "dagar", "pp": "procentenheter", "hours": "h",
            "measured_hours": "uppmätta timmar",
            "of": "av", "compared": "jämförda", "review": "förslag om prövning jämförs inte", "decided": "beslutade",
@@ -236,12 +245,16 @@ def application_metrics(events: list[dict], source: str) -> list[dict]:
     else:
         out.append(missing("proposal_agreement_pct", source, SERVE, "no_decisions"))
     k = inbox.kpis(apps)
-    decided = [a for a in apps.values() if a["status"] in DECIDED and a.get("decided")]
-    if k["median_s"] is not None and decided:
-        out.append(ok("median_days_to_decision", k["median_s"] / 86400.0, source,
+    # only a decision a person took has a wait worth reporting: the rule decides within seconds
+    decided = [a for a in apps.values() if a["status"] in DECIDED and a.get("decided") and a.get("by") == "dso"]
+    if decided:
+        waits = [(datetime.fromisoformat(a["decided"]) - datetime.fromisoformat(a["received"])).total_seconds()
+                 for a in decided]
+        out.append(ok("median_days_to_decision", _median(waits) / 86400.0, source,
                       _span([a["received"] for a in decided] + [a["decided"] for a in decided]),
-                      decided=k["decided"], decided_by_rule=k["decided_by_rule"],
-                      p90_days=None if k["p90_s"] is None else k["p90_s"] / 86400.0))
+                      decided=len(decided), decided_by_rule=k["decided_by_rule"],
+                      all_decisions_median_days=None if k["median_s"] is None else k["median_s"] / 86400.0,
+                      p90_days=float(np.percentile(waits, 90)) / 86400.0))
     else:
         out.append(missing("median_days_to_decision", source, SERVE, "no_decisions"))
     return out
@@ -348,6 +361,8 @@ def envelope_metrics(res: Path) -> list[dict]:
     r = _read(res / "redispatch.json")
     if r is None or r.get("hours") is None:
         out += [missing("envelope_hours_activated", src, REDISPATCH), missing("envelope_hours_needed", src, REDISPATCH)]
+    elif r.get("basis") != "dayahead":        # the labels say day-ahead: never publish another basis under them
+        out += [missing(m, src, REDISPATCH, "wrong_basis") for m in ("envelope_hours_activated", "envelope_hours_needed")]
     else:
         period = {"year": int(r["year"])} if r.get("year") is not None else None
         out.append(ok("envelope_hours_activated", r["hours"], src, period, basis=r.get("basis"), policy=r.get("policy"),
@@ -385,7 +400,8 @@ def envelope_metrics(res: Path) -> list[dict]:
     for mid, base in (("capacity_over_hourly", "timeseries"), ("capacity_over_fixed_cap", "fixed_cap")):
         doe, ref = kw("doe"), kw(base)
         if doe is None or not ref:
-            out.append(missing(mid, src, COMPUTE))
+            # a zero or absent reference is not something `compute` would fix
+            out.append(missing(mid, src, COMPUTE, "no_reference" if doe is not None else "missing"))
             continue
         out.append(ok(mid, doe / ref, src, _years(h), envelope_kw=doe, reference_kw=ref, reference=base,
                       orders=h.get("n_orders")))
@@ -537,7 +553,10 @@ def _detail(m: dict, lang: str) -> str:
             text += f"; {n(d['review_not_compared'])} {w['review']}"
         return text
     if mid == "median_days_to_decision":
-        return f"{n(d['decided'])} {w['decided']}"
+        text = f"{n(d['decided'])} {w['decided']}"
+        if d.get("decided_by_rule"):
+            text += f"; {n(d['decided_by_rule'])} {w['by_rule']}"
+        return text
     if mid in ("voltage_error_pu", "transformer_error_pp"):
         return f"{n(d['stations'])} {w['stations']}, {w['mv'].get(d['mv'], d['mv'])}"
     if mid == "dppower_matched_pct":
@@ -561,7 +580,8 @@ def value_text(m: dict, lang: str) -> str:
     if m["status"] == "entered_by_owner":
         return w["owner"]
     if m["status"] == "not_available":
-        return w["not_in_study" if m.get("reason") == "not_in_study" else "missing"].format(command=m["command"])
+        key = m.get("reason") if m.get("reason") in ("not_in_study", "no_reference", "wrong_basis") else "missing"
+        return w[key].format(command=m["command"])
     v = number(m["value"], m["decimals"], lang)
     unit = m["unit"]
     text = {"count": v, "pct": f"{v} %", "days": f"{v} {w['days']}", "pu": f"{v} p.u.", "pp": f"{v} {w['pp']}",

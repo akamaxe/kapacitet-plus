@@ -1036,10 +1036,10 @@ def kpis() -> dict:
     command that writes a missing source, and the owner's own metrics listed, never filled in.
     The same document `kapacitet metrics` writes to results/metrics.json. A read: with sign-in
     on, any role."""
-    from .. import metrics
+    from .. import metrics, paths
 
     doc = metrics.build()
-    sources = [processed().parent / m["source"] for m in doc["metrics"]
+    sources = [paths.DATA / m["source"] for m in doc["metrics"]
                if m["status"] == "ok" and "*" not in m["source"]]
     return with_prov(doc, *([] if doc["subject"].get("imported") else ["synthetic_grid"]), files=sources)
 

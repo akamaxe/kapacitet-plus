@@ -149,7 +149,9 @@ def test_the_installation_metrics_come_from_its_files(tmp_path):
     assert m["assessments_prechecked"]["period"] == {"from": "2030-09-03", "to": "2030-09-21"}
     a = m["proposal_agreement_pct"]
     assert a["value"] == pytest.approx(50.0) and a["detail"]["compared"] == 2 and a["detail"]["review_not_compared"] == 1
-    assert m["median_days_to_decision"]["value"] == pytest.approx(1.5)      # 1/24, 1, 2 and 4 days
+    assert m["median_days_to_decision"]["value"] == pytest.approx(2.0)      # a person's 1, 2 and 4 days
+    assert m["median_days_to_decision"]["detail"]["decided_by_rule"] == 1
+    assert m["median_days_to_decision"]["detail"]["all_decisions_median_days"] == pytest.approx(1.5)
     assert m["median_days_to_decision"]["period"] == {"from": "2030-10-01", "to": "2030-10-06"}
     assert m["voltage_error_pu"]["value"] == pytest.approx(0.0042) and m["voltage_error_pu"]["period"] == {"hours": 744}
     assert m["transformer_error_pp"]["value"] == pytest.approx(1.7)
@@ -174,7 +176,7 @@ def test_the_installation_metrics_come_from_its_files(tmp_path):
                   "50 % (1 av 2 jämförda; 1 förslag om prövning jämförs inte)", "0,0042 p.u.", "Provområdet",
                   "2031-01-02 03:04 UTC"):
         assert shown in sv, shown
-    assert "×1.95 (780 kW against 400 kW)" in en and "1.5 days" in en
+    assert "×1.95 (780 kW against 400 kW)" in en and "2 days" in en and "1 by the rule, not counted" in en
     assert_no_typed_figure(doc)
 
 
@@ -313,3 +315,21 @@ def test_on_the_published_results_the_envelope_metrics_are_the_summarys(results)
     assert m["capacity_over_hourly"]["value"] == pytest.approx(med["doe"] / med["timeseries"])
     assert m["capacity_over_fixed_cap"]["value"] == pytest.approx(med["doe"] / med["fixed_cap"])
     assert_no_typed_figure(doc)
+
+
+def test_a_report_on_another_basis_or_without_a_reference_gets_its_own_reason(tmp_path):
+    folder = _installation(tmp_path)
+    res = folder / "processed" / "results"
+    _put(res, "redispatch.json", {"year": 2030, "hours": 5, "hours_needed": 1, "basis": "perfect", "policy": "maxmin"})
+    _put(res, "hosting_summary.json", {
+        "years": [2030], "n_orders": 1, "measures": {"timeseries": {"kw_ac": {"median": 600.0}},
+                                                     "fixed_cap": {"kw_ac": {"median": 0}},
+                                                     "doe": {"kw_ac": {"median": 780.0}}},
+        "per_order": [{"customers_within_pct": 70.0}]})
+    doc = metrics.build(data_dir=folder)
+    m = by_id(doc)
+    for mid in ("envelope_hours_activated", "envelope_hours_needed"):
+        assert m[mid]["status"] == "not_available" and m[mid]["reason"] == "wrong_basis"
+    assert m["capacity_over_fixed_cap"]["reason"] == "no_reference" and m["capacity_over_hourly"]["status"] == "ok"
+    assert "reference capacity is zero" in metrics.text(doc, "en")
+    assert "run `python -m kapacitet compute`" not in metrics.text(doc, "en").split("fixed")[-1][:200]
