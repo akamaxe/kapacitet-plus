@@ -93,3 +93,12 @@ def test_a_null_threshold_follows_the_agreed_level_again_and_other_nulls_change_
     s = client.put("/api/v1/settings", json={"auto_curtailment_mean_pct": None, "deferral_years": None}).json()["settings"]
     assert s["auto_curtailment_mean_pct"] is None and s["deferral_years"] == 5
     assert dso.thresholds().curtailment_mean_pct == s["agreed_level_pct"]
+
+
+def test_putting_the_whole_get_reply_back_changes_nothing(client):
+    client.put("/api/v1/settings", json={"auto_curtailment_mean_pct": 2.5, "deferral_years": 6})
+    before = client.get("/api/v1/settings").json()
+    body = {k: v for k, v in before["settings"].items() if k in dso.DsoSettingsChange.model_fields}
+    r = client.put("/api/v1/settings", json=body)
+    assert r.status_code == 200, r.text
+    assert client.get("/api/v1/settings").json()["changed"] == before["changed"]

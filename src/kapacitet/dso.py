@@ -167,17 +167,34 @@ def schema() -> dict:
     return out
 
 
+_LAST_CHANGE: dict = {}      # chain file -> (stamp, answer): the chain is read only when its file changed
+
+
 def last_change() -> dict | None:
     """When the settings were last changed and under which role (none with sign-in off), from the
-    latest seal of a change; none when they never were or the chain cannot be read."""
+    latest seal of a change; none when they never were or the chain cannot be read. A chain in a
+    folder is read again only when its file changed, as several screens ask for the reply."""
+    key = stamp = None
     try:
+        chain = seals._chain()
+        if chain.backend == "files":
+            key = str(chain.file)
+            st = chain.file.stat() if chain.file.exists() else None
+            stamp = (st.st_mtime_ns, st.st_size) if st else (0, 0)
+            hit = _LAST_CHANGE.get(key)
+            if hit and hit[0] == stamp:
+                return hit[1]
         lines = seals._lines()
     except (OSError, ValueError):
         return None
+    out = None
     for e in reversed(lines):
         if e.get("kind") == "settings":
-            return {"at": e.get("at"), "role": (e.get("actor") or {}).get("role") or None}
-    return None
+            out = {"at": e.get("at"), "role": (e.get("actor") or {}).get("role") or None}
+            break
+    if key is not None:
+        _LAST_CHANGE[key] = (stamp, out)
+    return out
 
 
 # the settings that may be none, and whose none means something (the rule's thresholds: the agreed

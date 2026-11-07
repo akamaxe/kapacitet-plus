@@ -171,6 +171,16 @@ describe("the DSO's settings", () => {
     expect(market.querySelector("[role=alert]")!.textContent).toContain("admin, approver");
   });
 
+  it("shows a validation refusal from the server as its translated text", async () => {
+    const refusal = { detail: { code: "brand_accent_format", message: "bad accent", params: {} } };
+    await render({ write: () => new Response(JSON.stringify(refusal), { status: 422, headers: { "Content-Type": "application/json" } }) });
+    const market = group("market");
+    await act(async () => type(field("market_result_local"), "12:30"));
+    await act(async () => button(market, "Save").click());
+    await settle(() => !!market.querySelector("[role=alert]"));
+    expect(market.querySelector("[role=alert]")!.textContent).toContain("colour #RRGGBB");
+  });
+
   it("disables every control without a role that may change settings", async () => {
     const me = { enabled: true, user: { sub: "s", name: "Ada", roles: ["planner"] }, can: { settings: false }, needs: { settings: ["approver", "admin"] } };
     const el = await render({ me });
