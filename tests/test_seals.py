@@ -41,6 +41,7 @@ def test_a_sealed_record_verifies_and_a_changed_one_does_not():
     assert not bad["ok"] and not bad["record_ok"] and bad["copy_ok"]
 
 
+@pytest.mark.files_only
 def test_the_chain_detects_a_removed_or_reordered_line():
     from kapacitet import seals
 
@@ -57,6 +58,7 @@ def test_the_chain_detects_a_removed_or_reordered_line():
     assert not seals.verify_chain()["ok"]
 
 
+@pytest.mark.files_only
 def test_an_edited_copy_breaks_its_own_seal():
     from kapacitet import seals
 
@@ -93,6 +95,7 @@ def test_fingerprint_changes_when_an_input_file_changes(tmp_path, monkeypatch):
     assert seals.fingerprint()["digest"] != first["digest"]
 
 
+@pytest.mark.files_only
 def test_emptying_the_queue_seals_what_it_held(tmp_path, monkeypatch):
     from kapacitet import seals
     from kapacitet.engine import queue as qu
@@ -107,6 +110,7 @@ def test_emptying_the_queue_seals_what_it_held(tmp_path, monkeypatch):
     assert not (tmp_path / "queue").exists()
 
 
+@pytest.mark.files_only
 def test_a_torn_last_line_is_left_out_reported_and_cut_off_by_the_next_seal():
     from kapacitet import seals
 
@@ -126,6 +130,7 @@ def test_a_torn_last_line_is_left_out_reported_and_cut_off_by_the_next_seal():
     assert path.read_bytes().startswith(whole) and path.read_bytes().count(b"\n") == 3
 
 
+@pytest.mark.files_only
 def test_a_last_line_that_lost_only_its_newline_still_counts():
     from kapacitet import seals
 
@@ -159,6 +164,7 @@ def test_erasing_a_record_removes_its_copy_and_keeps_the_chain_valid():
         seals.erase("erasure", "assessment.f00000000001", "an erasure stays")
 
 
+@pytest.mark.files_only
 def test_a_decision_whose_seal_a_crash_left_owed_is_sealed_at_the_next_start(tmp_path, monkeypatch):
     from kapacitet import seals
     from kapacitet.engine import queue as qu

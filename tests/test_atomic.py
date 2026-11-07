@@ -169,6 +169,7 @@ def test_a_cut_request_cache_is_computed_again_not_an_error(tmp_path):
     assert rq._cached_pq(tmp_path / "none.npz", 7.0, 3) is None
 
 
+@pytest.mark.files_only
 def test_an_index_line_cut_short_is_skipped(tmp_path, monkeypatch):
     from kapacitet.api import records
 

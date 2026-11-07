@@ -55,6 +55,7 @@ def _secret_forms(key: Ed25519PrivateKey) -> list[bytes]:
     return [raw, base64.b64encode(raw), raw.hex().encode(), body[16:48]]
 
 
+@pytest.mark.files_only
 def test_new_lines_are_signed_and_the_public_key_is_published_next_to_the_chain():
     from kapacitet import seals
 
@@ -77,6 +78,7 @@ def test_new_lines_are_signed_and_the_public_key_is_published_next_to_the_chain(
     assert v["ok"] and v["signed"] and v["key_id"] == info["key_id"] and v["chain_reason"] is None
 
 
+@pytest.mark.files_only
 def test_a_changed_line_or_signature_is_detected_even_with_the_hashes_rebuilt():
     from kapacitet import seals
 
@@ -124,6 +126,7 @@ def test_a_changed_line_or_signature_is_detected_even_with_the_hashes_rebuilt():
     assert seals.verify_chain()["ok"]
 
 
+@pytest.mark.files_only
 def test_stripping_every_signature_is_caught_by_the_installation_that_signed():
     from kapacitet import seals
 
@@ -138,6 +141,7 @@ def test_stripping_every_signature_is_caught_by_the_installation_that_signed():
     assert not out["ok"] and out["reason"] == "unsigned"
 
 
+@pytest.mark.files_only
 def test_a_chain_with_legacy_unsigned_lines_verifies_with_a_warning():
     from kapacitet import seals
 
@@ -168,6 +172,7 @@ def test_a_chain_with_legacy_unsigned_lines_verifies_with_a_warning():
     assert not out["ok"] and out["reason"] == "unsigned" and out["broken_at"] == 3
 
 
+@pytest.mark.files_only
 def test_the_command_line_verifies_a_chain_with_the_published_key(tmp_path, capsys):
     from kapacitet import pipeline, seals
 
@@ -200,6 +205,7 @@ def own_key(tmp_path, monkeypatch):
     return folder
 
 
+@pytest.mark.files_only
 def test_a_rotation_is_signed_by_both_keys_and_the_chain_verifies_across_it(own_key, tmp_path):
     from kapacitet import pipeline, seals
 

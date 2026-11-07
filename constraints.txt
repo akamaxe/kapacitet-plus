@@ -46,3 +46,8 @@ pycparser==3.12
 pytest==9.2.0
 # the "forecast" extra (engine/nowcast.py), approved 2026-11-06
 lightgbm==4.7.0
+# the "postgres" extra (kapacitet.store), approved 2026-11-06, with what psycopg needs
+psycopg==3.3.8
+psycopg-binary==3.3.8
+typing_extensions==4.16.0
+tzdata==2026.6

@@ -66,6 +66,72 @@ def _seals_in_a_temporary_folder(tmp_path, monkeypatch):
 _SESSION_KEYS: list = []
 
 
+# ------------------------------------------------------------------ the store's backend
+
+TEST_DATABASE_URL = os.environ.get("KAPACITET_TEST_DATABASE_URL", "").strip() or None
+# KAPACITET_TEST_BACKEND=postgres runs the whole suite with the server's state in the test database
+# (CI's postgres job runs the state tests so); tests marked `files_only` check the files themselves
+ON_POSTGRES = os.environ.get("KAPACITET_TEST_BACKEND", "").strip() == "postgres"
+files_only = pytest.mark.files_only
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "files_only: checks the files backend's own files (skipped on postgres)")
+    if ON_POSTGRES and not TEST_DATABASE_URL:
+        raise pytest.UsageError("KAPACITET_TEST_BACKEND=postgres needs KAPACITET_TEST_DATABASE_URL")
+
+
+_SCHEMA_READY: list = []
+
+
+def fresh_test_schema() -> str:
+    """The test database with an empty schema, migrated once per session; returns its URL. Only the
+    database named by KAPACITET_TEST_DATABASE_URL is ever touched, and only if its name says test."""
+    if not TEST_DATABASE_URL:
+        pytest.skip("KAPACITET_TEST_DATABASE_URL is not set")
+    if not _SCHEMA_READY:
+        import psycopg
+
+        try:
+            conn = psycopg.connect(TEST_DATABASE_URL, autocommit=True, connect_timeout=5)
+        except psycopg.OperationalError as exc:
+            pytest.skip(f"the test database is not reachable: {exc}")
+        with conn:
+            name = conn.execute("SELECT current_database()").fetchone()[0]
+            assert "test" in name, f"refusing to empty {name!r}: the test database's name must say test"
+            conn.execute("DROP SCHEMA public CASCADE")
+            conn.execute("CREATE SCHEMA public")
+        _SCHEMA_READY.append(True)
+        from kapacitet.store import migrate
+
+        migrate.migrate(TEST_DATABASE_URL)
+    return TEST_DATABASE_URL
+
+
+def use_database(monkeypatch, url: str) -> str:
+    """Point the store at the test database, under a scope of this test's own; returns the scope."""
+    import uuid
+
+    scope = f"test:{uuid.uuid4().hex[:12]}"
+    monkeypatch.setenv("KAPACITET_DATABASE_URL", url)
+    monkeypatch.setenv("KAPACITET_STORE_SCOPE", scope)
+    monkeypatch.delenv("KAPACITET_STUDY", raising=False)
+    return scope
+
+
+@pytest.fixture(autouse=True)
+def _store_backend(request, monkeypatch):
+    """Files unless KAPACITET_TEST_BACKEND=postgres; a database set in the environment for the
+    server is never written by a test."""
+    monkeypatch.delenv("KAPACITET_DATABASE_URL", raising=False)
+    monkeypatch.delenv("KAPACITET_STORE_SCOPE", raising=False)
+    if ON_POSTGRES:
+        if request.node.get_closest_marker("files_only"):
+            pytest.skip("checks the files backend's own files")
+        use_database(monkeypatch, fresh_test_schema())
+    yield
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _a_session_seal_key(tmp_path_factory):
     _SESSION_KEYS[:] = [tmp_path_factory.mktemp("seal-keys")]

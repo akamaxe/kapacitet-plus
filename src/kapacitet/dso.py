@@ -1,8 +1,8 @@
 """The DSO's own settings: the choices an operator makes, kept per data folder and sealed on change.
 
-They live in data/requests/settings.json, the one folder the API writes. A change is validated,
-written atomically (a temporary file, then a replace) and sealed with what it was before and
-after, so the evidence trail says which rule was in force when.
+They live in data/requests/settings.json, the one folder the API writes (or in the database, with
+KAPACITET_DATABASE_URL: kapacitet.store). A change is validated, written atomically and sealed
+with what it was before and after, so the evidence trail says which rule was in force when.
 
 Advisor mode is the default: `auto_decisions` is off, and even on, the rule decides only what a
 person at the DSO has signed for (`RuleSignature`: who, in what role, which kinds of request, up to
@@ -12,15 +12,13 @@ when it is set (`sign_rule`), and every automatic decision keeps its digest (eng
 
 from __future__ import annotations
 
-import json
-import os
 import threading
 from datetime import date, datetime, timezone
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from . import seals
+from . import seals, store
 from .paths import DATA
 
 POLICIES = ("maxmin", "prorata", "propfair", "maxtotal")
@@ -130,23 +128,22 @@ def path():
     return DATA / "requests" / "settings.json"
 
 
+def _doc():
+    """settings.json, or its row in the database (kapacitet.store)."""
+    return store.settings(path())
+
+
 def load() -> DsoSettings:
     """The settings in force; the defaults when none were ever saved or the file is unreadable."""
-    p = path()
-    if not p.exists():
-        return DsoSettings()
     try:
-        return DsoSettings.model_validate(json.loads(p.read_text(encoding="utf-8")))
+        got = _doc().get()
+        return DsoSettings() if got is None else DsoSettings.model_validate(got)
     except (ValueError, ValidationError):
         return DsoSettings()
 
 
 def _write(before: DsoSettings, after: DsoSettings) -> DsoSettings:
-    p = path()
-    p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(after.model_dump(mode="json"), indent=1), encoding="utf-8")
-    os.replace(tmp, p)
+    _doc().put(after.model_dump(mode="json"))
     stamp = datetime.now(timezone.utc)
     seals.seal("settings", stamp.strftime("%Y%m%dT%H%M%S%fZ"),
                {"changed_at": stamp.isoformat(), "before": before.model_dump(mode="json"),
@@ -156,7 +153,7 @@ def _write(before: DsoSettings, after: DsoSettings) -> DsoSettings:
 
 def update(change: DsoSettingsChange) -> DsoSettings:
     """Apply a change, write it atomically and seal before and after."""
-    with _LOCK:
+    with _LOCK, _doc().locked():
         before = load()
         after = DsoSettings.model_validate({**before.model_dump(), **change.model_dump(exclude_none=True)})
         if after == before:
@@ -184,7 +181,7 @@ def signature_digest(sig: RuleSignature | dict) -> str:
 
 def sign_rule(body: RuleSignatureIn) -> DsoSettings:
     """Set the rule's signature: sealed as `rule_signature`, and as a change of the settings."""
-    with _LOCK:
+    with _LOCK, _doc().locked():
         before = load()
         sig = signature_of(body, s=before)
         after = DsoSettings.model_validate({**before.model_dump(), "rule_signature": sig.model_dump()})

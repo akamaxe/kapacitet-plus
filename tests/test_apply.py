@@ -64,6 +64,7 @@ def test_the_state_is_read_with_the_code_and_shows_nothing_of_the_dsos_view(clie
         assert c.get(f"/api/v1/apply/status/{bad}").status_code == 404
 
 
+@pytest.mark.files_only
 def test_the_code_is_never_kept_and_the_dsos_view_sees_only_its_hint(client):
     c, records, inbox = client
     records.save({"id": "b0000000000b", "created": "2026-11-02T10:00:00+00:00",

@@ -70,6 +70,7 @@ def test_the_market_time_is_a_dso_setting_with_its_assumption_as_default(tmp_pat
 
 # ---------------------------------------------------------------- the log
 
+@pytest.mark.files_only
 def test_a_record_is_appended_sealed_and_listed_newest_first():
     from fastapi.testclient import TestClient
 
@@ -106,6 +107,7 @@ def test_the_same_idempotency_key_records_once():
     assert a == b and len(market.entries()) == 1 and len(seals.sealed_of_kind("market_alternatives")) == 1
 
 
+@pytest.mark.files_only
 def test_a_torn_tail_is_left_out_and_the_next_record_starts_its_own_line():
     from kapacitet import market
 

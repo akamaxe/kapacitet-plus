@@ -105,6 +105,7 @@ def test_a_refusal_is_recorded_without_touching_the_grid_and_firm_needs_the_stat
     assert qu.load()["items"] == []
 
 
+@pytest.mark.files_only
 @needs_results
 def test_a_crash_while_the_states_are_written_leaves_the_queue_as_it_was(engine, queue_dir, monkeypatch):
     from kapacitet import seals
@@ -191,6 +192,7 @@ def _files(where) -> dict[str, bytes]:
     return {p.name: p.read_bytes() for p in sorted(where.iterdir())}
 
 
+@pytest.mark.files_only
 def test_a_rebuild_is_byte_equal_and_a_removed_case_leaves_the_context(tiny_queue):
     from kapacitet.engine import queue as qu
 
@@ -222,6 +224,7 @@ def test_a_rebuild_is_byte_equal_and_a_removed_case_leaves_the_context(tiny_queu
     assert not np.array_equal(with_a["pt"], ctx.states[y]["pt"])   # the grid no longer holds a's export
 
 
+@pytest.mark.files_only
 def test_recover_finishes_a_swap_a_crash_interrupted(tiny_queue):
     import os
 

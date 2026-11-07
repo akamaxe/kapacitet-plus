@@ -15,6 +15,9 @@ is the record as kept, so the evidence holds no address either. The writes are a
 With KAPACITET_RETENTION_DAYS set, assessments older than that are purged once a day (`purge`,
 also `kapacitet purge --older-than N`), except those a decision or an open application rests on.
 
+With KAPACITET_DATABASE_URL set, the records and their index are rows of the database instead
+(kapacitet.store); everything else here is the same.
+
 One server writes a data folder at a time: it holds `data/requests/server.lock` while it runs (an
 OS lock, procs.hold, so a server that crashed leaves nothing to clean up), and `kapacitet purge`
 takes the same lock.
@@ -22,30 +25,31 @@ takes the same lock.
 
 from __future__ import annotations
 
-import gzip
 import json
 import logging
 import os
 import re
-import threading
 import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
-from .. import procs, seals
-from ..atomic import append_line, gzip_json_atomic, write_text_atomic
+from .. import procs, seals, store
 from ..paths import DATA
 
 log = logging.getLogger("kapacitet.records")
 
 _ID = re.compile(r"[0-9a-f]{12}")
-_LOCK = threading.Lock()
 SERVER_LOCK = "server.lock"
 
 
 def folder() -> Path:
     return DATA / "requests"
+
+
+def _store():
+    """Where the records are kept: this folder, or the database (kapacitet.store)."""
+    return store.records(folder())
 
 
 def valid_id(job_id: str) -> bool:
@@ -119,15 +123,12 @@ def make_record(job_id: str, created: float, request: dict, result: dict, proven
 
 def save(record: dict[str, Any]) -> None:
     """Write one finished assessment (already JSON-safe) without its address, index it and seal it."""
-    root = folder()
     job_id = record["id"]
     kept = redact(record)
-    gzip_json_atomic(root / f"{job_id}.json.gz", kept)
     res = kept["result"]
     line = {"id": job_id, "created": kept["created"], "request": kept["request"], "summary": res.get("summary", {}),
             "seconds": res.get("seconds")}
-    with _LOCK:
-        append_line(root / "index.jsonl", json.dumps(line))
+    _store().put(job_id, kept, line)
     # kept as evidence: its canonical text sealed and chained (seals.py)
     seals.seal("assessment", job_id, kept)
 
@@ -137,36 +138,23 @@ def load(job_id: str, resolve: bool = True) -> dict[str, Any] | None:
     what its seal covers)."""
     if not valid_id(job_id):
         return None
-    path = folder() / f"{job_id}.json.gz"
-    if not path.exists():
+    rec = _store().get(job_id)
+    if rec is None:
         return None
-    with gzip.open(path, "rt", encoding="utf-8") as fh:
-        rec = json.load(fh)
     return _with_address(rec) if resolve else rec
 
 
 def _index_lines() -> list[dict[str, Any]]:
-    index = folder() / "index.jsonl"
-    if not index.exists():
-        return []
-    with _LOCK:
-        lines = index.read_text(encoding="utf-8").splitlines()
-    out = []
-    for raw in lines:
-        try:
-            item = json.loads(raw)
-        except ValueError:      # a line cut short by a crash before the appends were whole
-            continue
-        if isinstance(item, dict) and valid_id(str(item.get("id", ""))):
-            out.append(item)
-    return out
+    """The index, oldest first (a line cut short by a crash before the appends were whole is left out)."""
+    return [item for item in _store().index() if isinstance(item, dict) and valid_id(str(item.get("id", "")))]
 
 
 def listing(limit: int = 50) -> list[dict[str, Any]]:
     """The most recent assessments first, skipping any whose record has been removed."""
     out: list[dict[str, Any]] = []
+    st = _store()
     for item in reversed(_index_lines()):
-        if (folder() / f"{item['id']}.json.gz").exists():
+        if st.exists(item["id"]):
             out.append({**item, "address": item.get("address") or address_of((item.get("request") or {}).get("cid"))})
         if len(out) >= limit:
             break
@@ -208,12 +196,11 @@ def purge(older_than_days: int, now: datetime | None = None, dry_run: bool = Fal
         raise ValueError("older_than_days must not be negative")
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=older_than_days)
-    root = folder()
+    st = _store()
     created = {item["id"]: item.get("created") for item in _index_lines()}
     keep = _kept_for_decisions()
     old: list[str] = []
-    for path in sorted(root.glob("*.json.gz")) if root.exists() else []:
-        job_id = path.name[:-len(".json.gz")]
+    for job_id, written in st.stored().items():
         if not valid_id(job_id) or job_id in keep:
             continue
         try:
@@ -221,7 +208,9 @@ def purge(older_than_days: int, now: datetime | None = None, dry_run: bool = Fal
         except ValueError:
             when = None
         if when is None:
-            when = datetime.fromtimestamp(path.stat().st_mtime, timezone.utc)
+            when = written
+        if when is None:
+            continue
         if when.tzinfo is None:
             when = when.replace(tzinfo=timezone.utc)
         if when < cutoff:
@@ -230,24 +219,10 @@ def purge(older_than_days: int, now: datetime | None = None, dry_run: bool = Fal
            "ids": old, "kept_for_decisions": len(keep), "dry_run": dry_run}
     if dry_run or not old:
         return out
-    gone = set(old)
+    st.delete(set(old))
     for job_id in old:
-        (root / f"{job_id}.json.gz").unlink(missing_ok=True)
         if seals.entry_for("assessment", job_id) is not None and not seals.erased("assessment", job_id):
             seals.erase("assessment", job_id, f"retention: older than {older_than_days} days")
-    with _LOCK:
-        index = root / "index.jsonl"
-        if index.exists():
-            lines = index.read_text(encoding="utf-8").splitlines()
-            left = []
-            for raw in lines:
-                try:
-                    item = json.loads(raw)
-                except ValueError:
-                    continue
-                if isinstance(item, dict) and item.get("id") not in gone:
-                    left.append(raw)
-            write_text_atomic(index, "".join(line + "\n" for line in left))
     return out
 
 

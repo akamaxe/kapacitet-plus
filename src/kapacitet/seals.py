@@ -32,6 +32,13 @@ appends. A record that must not be kept any longer (a retention period, a reques
 erased with `erase`: its copy goes, and an `erasure` record is sealed in its place, so the chain,
 which holds only digests, stays whole and still says that the record existed and when it went.
 
+That is the files backend (`FolderChain`). With KAPACITET_DATABASE_URL set, the server's own chain
+is kept in the database instead (kapacitet.store, store.postgres.Chain): one append-only row per
+line, with its signature in the same row, the canonical copies and fingerprints beside it, and
+each seal one transaction under an advisory lock. A chain opened with `chain_at` (a study's
+evidence folder) is always a folder. `kapacitet db export-files` writes the database's chain back
+as these files, byte for byte, for `kapacitet seals verify`.
+
 The standard library and `cryptography` (for Ed25519) only, so the engine, the API and the tests
 can all use it. The private key never leaves `key_dir()`: no bundle, manifest, log or publication
 holds it, and no message names more of it than its path.
@@ -56,7 +63,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from . import __version__
+from . import __version__, store
 from .atomic import append_line, write_bytes_atomic, write_json_atomic, write_text_atomic
 from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS
 
@@ -111,8 +118,122 @@ def chain_at(path: str | Path):
         _CHAIN_AT.reset(token)
 
 
-def _chain_file() -> Path:
-    return _root() / "seals.jsonl"
+class FolderChain:
+    """The files backend of a chain: seals.jsonl, sealed/<kind>/<id>.json, sealed/fingerprints/
+    and seal_key.pub in the folder `root`. store.postgres.Chain is the same interface on the
+    database, for the server's own chain when KAPACITET_DATABASE_URL is set."""
+
+    backend = "files"
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    @property
+    def file(self) -> Path:
+        return self.root / "seals.jsonl"
+
+    @property
+    def name(self) -> str:
+        """What this installation's signed-line marks are kept under (`_note_signed`)."""
+        return str(self.file)
+
+    def where(self) -> str:
+        return str(self.file)
+
+    def locked(self):
+        return nullcontext()          # one server writes a folder, under _LOCK
+
+    def exists(self) -> bool:
+        return self.file.is_file()
+
+    def read(self) -> tuple[list[dict], int | None, bool]:
+        """The chain's lines; the byte offset where a torn last line starts (None when there is
+        none); and whether the file lacks its final newline after a whole last line.
+
+        A last line without its newline that does not parse is torn: an append cut short. One that
+        parses lost only its newline and counts. A damaged line anywhere else is kept as an empty
+        entry, so the chain breaks there instead of skipping it.
+        """
+        path = self.file
+        if not path.exists():
+            return [], None, False
+        data = path.read_bytes()
+        out: list[dict] = []
+        pos = 0
+        for raw in data.splitlines(keepends=True):
+            start, pos = pos, pos + len(raw)
+            text = raw.decode("utf-8", errors="replace").strip()
+            if not text:
+                continue
+            try:
+                entry = json.loads(text)
+            except ValueError:
+                entry = None
+            last = pos == len(data) and not raw.endswith((b"\n", b"\r"))
+            if isinstance(entry, dict):
+                out.append(entry)
+                if last:
+                    return out, None, True
+            elif last:
+                return out, start, False
+            else:
+                out.append({})
+        return out, None, False
+
+    def mend(self) -> list[dict]:
+        """Cut off a torn last line, or put back a lost final newline, so the next append starts a
+        line of its own; return the chain's lines."""
+        lines, torn, unterminated = self.read()
+        if torn is None and not unterminated:
+            return lines
+        with self.file.open("r+b") as fh:
+            if torn is not None:
+                fh.truncate(torn)
+            else:
+                fh.seek(0, os.SEEK_END)
+                fh.write(b"\n")
+            fh.flush()
+            os.fsync(fh.fileno())
+        return lines
+
+    def append(self, entry: dict) -> None:
+        append_line(self.file, json.dumps(entry, sort_keys=True))
+
+    def _copy(self, kind: str, item_id: str) -> Path:
+        return self.root / "sealed" / kind / f"{item_id}.json"
+
+    def copy_get(self, kind: str, item_id: str) -> bytes | None:
+        path = self._copy(kind, item_id)
+        return path.read_bytes() if path.exists() else None
+
+    def copy_put(self, kind: str, item_id: str, text: bytes) -> None:
+        write_bytes_atomic(self._copy(kind, item_id), text)
+
+    def copy_delete(self, kind: str, item_id: str) -> None:
+        self._copy(kind, item_id).unlink(missing_ok=True)
+
+    def fingerprint_put(self, fp_digest: str, text: str) -> None:
+        path = self.root / "sealed" / "fingerprints" / f"{fp_digest}.json"
+        if not path.exists():
+            write_text_atomic(path, text)
+
+    def published_key(self) -> bytes | None:
+        path = self.root / PUBLISHED
+        return path.read_bytes() if path.is_file() else None
+
+    def publish_key(self, pem: str) -> None:
+        _write_if_changed(self.root / PUBLISHED, pem)
+
+
+def _chain():
+    """The chain in use: the folder of `chain_at`; else the server's own, in data/requests or, with
+    KAPACITET_DATABASE_URL, in the database (kapacitet.store)."""
+    at = _CHAIN_AT.get()
+    if at is None and store.is_pg():
+        from .store import postgres
+
+        return postgres.Chain()
+    return FolderChain(_root())
 
 
 def _clean(value: Any) -> Any:
@@ -174,38 +295,9 @@ def fingerprint() -> dict:
 
 
 def _read_chain() -> tuple[list[dict], int | None, bool]:
-    """The chain's lines; the byte offset where a torn last line starts (None when there is none);
-    and whether the file lacks its final newline after a whole last line.
-
-    A last line without its newline that does not parse is torn: an append cut short. One that
-    parses lost only its newline and counts. A damaged line anywhere else is kept as an empty
-    entry, so the chain breaks there instead of skipping it.
-    """
-    path = _chain_file()
-    if not path.exists():
-        return [], None, False
-    data = path.read_bytes()
-    out: list[dict] = []
-    pos = 0
-    for raw in data.splitlines(keepends=True):
-        start, pos = pos, pos + len(raw)
-        text = raw.decode("utf-8", errors="replace").strip()
-        if not text:
-            continue
-        try:
-            entry = json.loads(text)
-        except ValueError:
-            entry = None
-        last = pos == len(data) and not raw.endswith((b"\n", b"\r"))
-        if isinstance(entry, dict):
-            out.append(entry)
-            if last:
-                return out, None, True
-        elif last:
-            return out, start, False
-        else:
-            out.append({})
-    return out, None, False
+    """The chain's lines, where a torn last line starts and whether the final newline is missing
+    (FolderChain.read; the database's chain has neither)."""
+    return _chain().read()
 
 
 def _lines() -> list[dict]:
@@ -214,20 +306,8 @@ def _lines() -> list[dict]:
 
 
 def _mend_tail() -> list[dict]:
-    """Cut off a torn last line, or put back a lost final newline, so the next append starts a line
-    of its own; return the chain's lines."""
-    lines, torn, unterminated = _read_chain()
-    if torn is None and not unterminated:
-        return lines
-    with _chain_file().open("r+b") as fh:
-        if torn is not None:
-            fh.truncate(torn)
-        else:
-            fh.seek(0, os.SEEK_END)
-            fh.write(b"\n")
-        fh.flush()
-        os.fsync(fh.fileno())
-    return lines
+    """Make sure the next append starts a line of its own; return the chain's lines."""
+    return _chain().mend()
 
 
 def _chain_hash(prev: str, entry: dict) -> str:
@@ -463,11 +543,7 @@ def _local_rotations() -> dict[str, dict]:
 
 def _publish_key(pub: Ed25519PublicKey) -> None:
     """seal_key.pub next to the chain in use: the key of its latest line."""
-    _write_if_changed(_root() / PUBLISHED, public_pem(pub))
-
-
-def _sealed_path(kind: str, item_id: str) -> Path:
-    return _root() / "sealed" / kind / f"{item_id}.json"
+    _chain().publish_key(public_pem(pub))
 
 
 def _safe_id(item_id: str) -> bool:
@@ -485,12 +561,13 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     """Keep a record's canonical text and append its signed line to the chain in use (under _LOCK,
     `lines` being the chain as it stands, which this extends)."""
     dig = hashlib.sha256(text).hexdigest()
-    path = _sealed_path(kind, item_id)
-    if path.exists():
-        if path.read_bytes() != text:
+    ch = _chain()
+    kept = ch.copy_get(kind, item_id)
+    if kept is not None:
+        if kept != text:
             raise ValueError(f"{kind} {item_id} is already sealed with different content")
     else:
-        write_bytes_atomic(path, text)
+        ch.copy_put(kind, item_id, text)
     prev = lines[-1].get("chain", GENESIS) if lines else GENESIS
     seq = len(lines) + 1
     # where signing began in this chain: every line from there on must be signed (verify_chain)
@@ -501,13 +578,11 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     entry["key_id"] = key_id_of(key.public_key())
     entry["signed_since"] = since if isinstance(since, int) and 1 <= since < seq else seq
     entry["sig"] = _b64(key.sign(_line_message(entry)))
-    append_line(_chain_file(), json.dumps(entry, sort_keys=True))
+    ch.append(entry)
     lines.append(entry)
     _note_signed(sum(1 for e in lines if e.get("sig")))
     # the fingerprint's files are kept once per distinct fingerprint, so a verifier can say what changed
-    fp_path = _root() / "sealed" / "fingerprints" / f"{fp['digest']}.json"
-    if not fp_path.exists():
-        write_json_atomic(fp_path, fp, sort_keys=True)
+    ch.fingerprint_put(fp["digest"], json.dumps(fp, indent=1, sort_keys=True))
     _publish_key(key.public_key())
     return entry
 
@@ -528,7 +603,7 @@ def _note_signed(count: int) -> None:
     """Keep, next to the key and outside the data, how many signed lines this chain has had, so a
     rewrite that strips every signature (and rebuilds the hashes) is caught by this installation."""
     marks = _read_marks()
-    name = str(_chain_file())
+    name = _chain().name
     if count > marks.get(name, 0):
         marks[name] = count
         try:
@@ -564,7 +639,7 @@ def seal(kind: str, item_id: str, obj: Any) -> dict:
     _check_id(kind, item_id)
     text = canonical(obj)
     fp = fingerprint()
-    with _LOCK:
+    with _LOCK, _chain().locked():
         key = signing_key()
         lines = _carry_rotations(_mend_tail(), key, fp)
         return _append(kind, item_id, text, fp, lines, key)
@@ -593,7 +668,7 @@ def rotate_key(chain: str | Path | None = None) -> dict:
         _KEYS.pop(str(folder / KEY_FILE), None)
         key = signing_key(create=False)
         assert key is not None and key_id_of(key.public_key()) == statement["new_key_id"]
-        with chain_at(chain) if chain is not None else nullcontext():
+        with chain_at(chain) if chain is not None else nullcontext(), _chain().locked():
             fp = fingerprint()
             lines = _carry_rotations(_mend_tail(), key, fp)
             entry = next((e for e in lines if e.get("kind") == "key_rotation" and e.get("id") == _rotation_id(rec)), None)
@@ -620,8 +695,8 @@ def _trust(trusted: dict[str, Ed25519PublicKey] | None) -> tuple[dict[str, Ed255
     mine = local_keys()
     if mine:
         return mine, "installation"
-    path = _root() / PUBLISHED
-    pub = load_public(path.read_bytes()) if path.is_file() else None
+    text = _chain().published_key()
+    pub = load_public(text) if text is not None else None
     return ({key_id_of(pub): pub} if pub else {}), "folder"
 
 
@@ -687,7 +762,7 @@ def verify_chain(trusted: dict[str, Ed25519PublicKey] | None = None, require_sig
             signed += 1
             keys.add(kid)
         prev = e["chain"]
-    if source == "installation" and signed < _read_marks().get(str(_chain_file()), 0):
+    if source == "installation" and signed < _read_marks().get(_chain().name, 0):
         # this installation signed more lines than the chain holds now: signatures were stripped
         return broken(1, "unsigned", signed, legacy, keys)
     warnings = []
@@ -722,7 +797,7 @@ def erase(kind: str, item_id: str, reason: str) -> dict:
     Erasing an erased record again only makes sure its copy is gone."""
     if kind not in KINDS or kind in ("erasure", "key_rotation"):   # a rotation is what later lines' trust rests on
         raise ValueError(f"cannot erase a seal of kind {kind!r}")
-    with _LOCK:
+    with _LOCK, _chain().locked():
         entry = entry_for(kind, item_id)
         if entry is None:
             raise ValueError(f"{kind} {item_id} has no seal")
@@ -731,7 +806,7 @@ def erase(kind: str, item_id: str, reason: str) -> dict:
             done = seal("erasure", _erasure_id(kind, item_id),
                         {"kind": kind, "id": item_id, "digest": entry["digest"], "seq": entry["seq"],
                          "reason": str(reason)[:200]})
-        _sealed_path(kind, item_id).unlink(missing_ok=True)
+        _chain().copy_delete(kind, item_id)
     return done
 
 
@@ -754,8 +829,8 @@ def verify(kind: str, item_id: str, current: Any = None) -> dict:
         out.update(erased=True, erased_at=gone.get("at"), erasure_seq=gone.get("seq"), reason=why.get("reason"),
                    copy_ok=None, ok=bool(chain["ok"]))
         return out
-    path = _sealed_path(kind, item_id)
-    copy_ok = path.exists() and hashlib.sha256(path.read_bytes()).hexdigest() == entry["digest"]
+    kept = _chain().copy_get(kind, item_id)
+    copy_ok = kept is not None and hashlib.sha256(kept).hexdigest() == entry["digest"]
     out["copy_ok"] = bool(copy_ok)
     if current is not None:
         out["record_ok"] = digest(current) == entry["digest"]
@@ -764,8 +839,8 @@ def verify(kind: str, item_id: str, current: Any = None) -> dict:
 
 
 def sealed_copy(kind: str, item_id: str) -> Any | None:
-    path = _sealed_path(kind, item_id)
-    return json.loads(path.read_text(encoding="utf-8")) if path.exists() else None
+    kept = _chain().copy_get(kind, item_id)
+    return json.loads(kept.decode("utf-8")) if kept is not None else None
 
 
 def sealed_of_kind(kind: str) -> list[dict]:

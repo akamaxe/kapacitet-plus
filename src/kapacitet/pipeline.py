@@ -9,6 +9,7 @@ Commands
   forecast  what the published envelopes owe to perfect foresight
   redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
   seals     verify a sealed chain's hashes and signatures, or rotate the signing key
+  db        the PostgreSQL store: migrate, status, import-files, export-files
   check     data-quality report on an operator's network export
   import    build the engine's tables from such an export
   export-grid  write the built network in that same export contract
@@ -498,12 +499,13 @@ def cmd_export_grid(args: argparse.Namespace) -> None:
         log.info("  %s.csv: %d rows", name, len(df))
 
 
-def _chain_folder(path: str | None) -> Path:
-    """The folder of a chain: the one given (or the folder of a seals.jsonl given), else data/requests."""
-    from . import seals
+def _chain_folder(path: str | None) -> Path | None:
+    """The folder of a chain: the one given (or the folder of a seals.jsonl given), else
+    data/requests; None for the server's chain when it is kept in the database."""
+    from . import seals, store
 
     if not path:
-        return seals.folder()
+        return None if store.is_pg() else seals.folder()
     where = Path(path)
     return where.parent if where.is_file() else where
 
@@ -512,8 +514,10 @@ def cmd_seals_verify(args: argparse.Namespace) -> None:
     """Check a chain's hashes and every signature; exit 1 when it does not hold."""
     from . import seals
 
+    from contextlib import nullcontext
+
     folder = _chain_folder(args.path)
-    if not (folder / "seals.jsonl").is_file():
+    if folder is not None and not (folder / "seals.jsonl").is_file():
         print(f"no chain in {folder} (seals.jsonl is missing)")
         sys.exit(2)
     trusted = None
@@ -525,11 +529,12 @@ def cmd_seals_verify(args: argparse.Namespace) -> None:
                 print(f"{name} is not an Ed25519 public key (PEM)")
                 sys.exit(2)
             trusted[seals.key_id_of(pub)] = pub
-    with seals.chain_at(folder):
+    with seals.chain_at(folder) if folder is not None else nullcontext():
+        where = seals._chain().where()
         out = seals.verify_chain(trusted, require_signed=args.require_signed)
     trust = {"given": "the key given", "installation": "this installation's keys",
              "folder": f"{seals.PUBLISHED} in the chain's own folder"}[out["trust"]]
-    print(f"chain {folder / 'seals.jsonl'}: {out['length']} lines, head {out['head']}")
+    print(f"chain {where}: {out['length']} lines, head {out['head']}")
     print(f"  {out['signed']} signed, checked against {trust}; {out['legacy']} legacy (unsigned, from before signing began)")
     if out["keys"]:
         print("  keys: " + ", ".join(out["keys"]))
@@ -558,6 +563,49 @@ def cmd_seals_rotate(args: argparse.Namespace) -> None:
         sys.exit(2)
     print(f"key {out['old_key_id']} retired; signing now with {out['new_key_id']}")
     print(f"rotation sealed as line {out['entry']['seq']} of the chain; other chains get it on their next seal")
+
+
+def cmd_db(args: argparse.Namespace) -> None:
+    """The PostgreSQL store (kapacitet.store): its schema, and copies to and from data/requests."""
+    from . import store
+
+    if args.url:
+        os.environ[store.ENV_URL] = args.url
+    if args.scope:
+        os.environ[store.ENV_SCOPE] = args.scope
+    if not store.database_url():
+        print("set KAPACITET_DATABASE_URL (or pass --url), e.g. postgresql://kapacitet@127.0.0.1:5433/kapacitet")
+        sys.exit(2)
+    from .store import migrate, transfer
+
+    try:
+        if args.action == "migrate":
+            done = migrate.migrate()
+            print(f"applied {', '.join(f'{v:03d}' for v in done)}" if done else "the schema is up to date")
+        elif args.action == "status":
+            out = migrate.status()
+            for row in out["migrations"]:
+                state = ("CHANGED since applied" if row["changed"] else f"applied {row['applied_at']}")                     if row["applied"] else "pending"
+                print(f"{row['version']:03d}_{row['name']}: {state}")
+            if out["unknown"]:
+                print(f"applied but unknown to this code: {out['unknown']}")
+            print(f"scope of this data folder: {store.scope()}")
+            if out["pending"] or out["changed"]:
+                sys.exit(1)
+        elif args.action == "import-files":
+            from .api import records
+
+            root = Path(args.path) if args.path else records.folder()
+            out = transfer.import_files(root)
+            print(json.dumps(out, indent=1))
+        else:
+            if not args.path:
+                print("export-files needs a folder to write into (empty or new)")
+                sys.exit(2)
+            print(json.dumps(transfer.export_files(Path(args.path)), indent=1))
+    except (migrate.MigrationError, transfer.TransferError) as exc:
+        print(exc)
+        sys.exit(1)
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -618,6 +666,14 @@ def main(argv: list[str] | None = None) -> None:
     q = seals_sub.add_parser("rotate-key", help="replace the signing key, with a record signed by the old and the new")
     q.add_argument("--chain", default=None, help="the chain that records the rotation (default: data/requests)")
     q.set_defaults(func=cmd_seals_rotate)
+
+    p = sub.add_parser("db", help="the PostgreSQL store: schema migrations and copies to and from data/requests")
+    p.add_argument("action", choices=["migrate", "status", "import-files", "export-files"])
+    p.add_argument("path", nargs="?", default=None,
+                   help="import-files: the folder to copy (default: data/requests); export-files: an empty or new folder")
+    p.add_argument("--url", default=None, help="the database (default: KAPACITET_DATABASE_URL)")
+    p.add_argument("--scope", default=None, help="the data folder's key in the database (default: from the data folder)")
+    p.set_defaults(func=cmd_db)
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")

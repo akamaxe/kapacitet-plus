@@ -11,7 +11,8 @@ re-verifies every weather year, under the queue's own write lock, so no manual d
 same time. Anything else waits for a person, who decides it with the queue's usual decision (the
 rule never declines).
 
-Every step is an event in data/requests/applications.jsonl, appended and never rewritten; an
+Every step is an event in data/requests/applications.jsonl (a table of the database with
+KAPACITET_DATABASE_URL, kapacitet.store), appended and never rewritten; an
 application's state is the fold of its events, and the indicators (time to a decision, the share
 the rule decided, kW connected firm and with an envelope) are computed from the same events. Each
 application is sealed when it arrives; each decision is sealed by the queue. The log keeps the
@@ -41,8 +42,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import dso, seals
-from ..atomic import append_line
+from .. import dso, seals, store
 from ..engine import rules
 from ..paths import DATA
 from . import records
@@ -66,7 +66,6 @@ _C = f"[{CROCKFORD}]"
 # 80 bits in four groups (KP-XXXX-XXXX-XXXX-XXXX), and the 32-bit hex codes issued before them
 REFERENCE = re.compile(rf"^KP-{_C}{{4}}-{_C}{{4}}-{_C}{{4}}-{_C}{{4}}$|^KP-[0-9A-F]{{4}}-[0-9A-F]{{4}}$")
 
-_LOG_LOCK = threading.Lock()
 # receiving checks the log and then writes to it: two at once could both pass the checks
 _RECEIVE_LOCK = threading.Lock()
 _WAKE = threading.Event()
@@ -129,6 +128,11 @@ def log_path():
     return DATA / "requests" / "applications.jsonl"
 
 
+def _log():
+    """The log: applications.jsonl, or its table in the database (kapacitet.store)."""
+    return store.applications(log_path())
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -136,25 +140,16 @@ def _now() -> str:
 # ---------------------------------------------------------------- the event log (pure reading)
 
 def events() -> list[dict]:
-    path = log_path()
-    if not path.exists():
-        return []
-    out = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        try:
-            out.append(json.loads(raw))
-        except ValueError:
-            continue
-    return out
+    return _log().entries()
 
 
 def append(event: dict) -> dict:
-    """Add one event; the sequence number and the time are the log's, not the caller's."""
-    with _LOG_LOCK:
-        path = log_path()
-        seq = len(path.read_text(encoding="utf-8").splitlines()) + 1 if path.exists() else 1
-        event = {"seq": seq, "at": _now(), **event}
-        append_line(path, json.dumps(event, sort_keys=True))
+    """Add one event; the sequence number and the time are the log's, not the caller's (numbered
+    under the log's lock: a lock in this process with files, a transaction with the database)."""
+    book = _log()
+    with book.locked():
+        event = {"seq": book.next_seq(), "at": _now(), **event}
+        book.append(event, json.dumps(event, sort_keys=True))
     return event
 
 
@@ -250,7 +245,7 @@ def receive(assessment: str, source: str = "dso", key: str | None = None) -> dic
     rec = records.load(assessment)
     if rec is None:
         raise refusal(404, "unknown_assessment")
-    with _RECEIVE_LOCK:
+    with _RECEIVE_LOCK, _log().locked():
         evs = events()
         apps = fold(evs)
         if key:

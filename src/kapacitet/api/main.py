@@ -76,6 +76,17 @@ CHECK_MAX_BYTES = 5_000_000
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # with a database, its schema must be the one this code writes: `kapacitet db migrate` first
+    from .. import store
+
+    if store.is_pg():
+        from ..store import migrate
+
+        pending = migrate.status()
+        if pending["pending"] or pending["changed"]:
+            raise RuntimeError(f"the database at KAPACITET_DATABASE_URL needs `kapacitet db migrate` "
+                               f"(pending {pending['pending']}, changed {pending['changed']})")
+        log.info("server state kept in PostgreSQL, scope %s", store.scope())
     # one server writes a data folder at a time: a second one on the same folder refuses to start
     lock = records.claim_server_lock()
     # a decision committed just before the server last stopped is sealed now, if it was not yet
@@ -96,6 +107,10 @@ async def lifespan(_app: FastAPI):
         if retention is not None:
             retention.cancel()
         records.release_server_lock(lock)
+        if store.is_pg():
+            from ..store import db
+
+            db.close_all()
 
 
 async def _purge_daily() -> None:

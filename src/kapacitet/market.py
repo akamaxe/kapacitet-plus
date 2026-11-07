@@ -11,7 +11,8 @@ things have to hold before a DSO uses it (Ei2025:01 §2.3; Regulation (EU) 2019/
   activations, the DSO records which alternatives it consulted (a local flexibility market, a
   bilateral flexibility contract, a network tariff, none available, other) and with what outcome.
   Each record is one line of `data/requests/market_alternatives.jsonl` (beside the seal chain,
-  `seals.folder()`), appended with `atomic.append_line` and sealed as `market_alternatives`. A
+  `seals.folder()`; a table of the database with KAPACITET_DATABASE_URL, kapacitet.store),
+  appended with `atomic.append_line` and sealed as `market_alternatives`. A
   line cut short by a crash is a torn tail: the reader leaves it out and the next append starts a
   line of its own. Issuing a schedule for a day no record covers is flagged, never refused.
 
@@ -31,8 +32,7 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from . import seals
-from .atomic import append_line
+from . import seals, store
 
 STOCKHOLM = ZoneInfo("Europe/Stockholm")
 SCOPES = ("agreement", "activation_period", "zone")
@@ -139,20 +139,14 @@ def log_path() -> Path:
     return seals.folder() / "market_alternatives.jsonl"
 
 
+def _log():
+    """market_alternatives.jsonl, or its table in the database (kapacitet.store)."""
+    return store.market(log_path())
+
+
 def entries() -> list[dict]:
     """Every record, oldest first; a line that does not parse (a torn tail) is left out."""
-    path = log_path()
-    if not path.exists():
-        return []
-    out = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        try:
-            e = json.loads(raw)
-        except ValueError:
-            continue
-        if isinstance(e, dict) and e.get("id"):
-            out.append(e)
-    return out
+    return [e for e in _log().entries() if isinstance(e, dict) and e.get("id")]
 
 
 def _entry(body: RecordIn, item_id: str, at: datetime) -> dict:
@@ -169,7 +163,7 @@ def record(body: RecordIn, idempotency_key: str | None = None) -> tuple[dict, di
     under the same Idempotency-Key, it returns the record sealed the first time and adds nothing
     (and mends a log line a crash kept from being written after its seal)."""
     check(body)
-    with _LOCK:
+    with _LOCK, _log().locked():
         item = f"k{idempotency_key}" if idempotency_key else f"ma-{now():%Y%m%dT%H%M%SZ}-{secrets.token_hex(4)}"
         seal = seals.entry_for(SEAL_KIND, item) if idempotency_key else None
         kept = seals.sealed_copy(SEAL_KIND, item) if seal else None
@@ -177,7 +171,7 @@ def record(body: RecordIn, idempotency_key: str | None = None) -> tuple[dict, di
             kept = _entry(body, item, now())
             seal = seals.seal(SEAL_KIND, item, kept)
         if all(e["id"] != item for e in entries()):
-            append_line(log_path(), json.dumps(kept, sort_keys=True, ensure_ascii=False))
+            _log().append(kept, json.dumps(kept, sort_keys=True, ensure_ascii=False))
     return kept, seal
 
 

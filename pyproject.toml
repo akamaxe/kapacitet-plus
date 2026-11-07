@@ -37,6 +37,8 @@ profiles = ["richardsonpy>=0.2.3"]
 dev = ["pytest>=8", "httpx>=0.27"]
 # the forecast variant of the intraday replica (engine/nowcast.py); CI installs it with dev
 forecast = ["lightgbm>=4.7,<5"]
+# the server's state in PostgreSQL instead of data/requests (kapacitet.store, KAPACITET_DATABASE_URL)
+postgres = ["psycopg[binary]>=3.3,<4"]
 
 [project.scripts]
 kapacitet = "kapacitet.pipeline:main"
@@ -46,6 +48,7 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 "kapacitet.study" = ["templates/*.md", "templates/cases_sv/*.md"]
+"kapacitet.store" = ["migrations/*.sql"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

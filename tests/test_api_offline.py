@@ -205,6 +205,7 @@ def _finish(client, job_id):
     raise AssertionError("the stubbed job never finished")
 
 
+@pytest.mark.files_only
 def test_an_assessment_is_saved_and_survives_a_restart(client, stubbed, tmp_path):
     job_id = client.post(f"{API}/requests", json={"cid": 3, "pv_kwp": 6.0}).json()["id"]
     first = _finish(client, job_id)
@@ -263,6 +264,7 @@ def test_a_request_against_an_empty_queue_is_refused(client, monkeypatch, tmp_pa
 
 # ---------------------------------------------------------------- seals (stubbed engine)
 
+@pytest.mark.files_only
 def test_a_saved_assessment_is_sealed_and_verifies(client, stubbed, tmp_path):
     import gzip
     import json as _json
@@ -452,6 +454,7 @@ def test_a_synchronous_answer_leaves_nothing_in_the_pool(client, stubbed):
     assert set(stubbed.POOL.jobs) == before
 
 
+@pytest.mark.files_only
 def test_no_sealed_or_logged_file_holds_an_address(client, stubbed, tmp_path, monkeypatch):
     import gzip
 
@@ -481,6 +484,7 @@ def test_no_sealed_or_logged_file_holds_an_address(client, stubbed, tmp_path, mo
 
 
 
+@pytest.mark.files_only
 def test_an_approval_firm_or_with_an_envelope_writes_no_address(client, stubbed, tmp_path, monkeypatch, caplog):
     """The approve path (POST /queue -> queue.decide -> inbox.link_decision), offline: the engine is a
     stub whose answer carries the address, as the real one does, and nothing it writes may keep it."""
@@ -720,6 +724,7 @@ def test_the_network_is_dated_afresh_though_its_geometry_is_cached(data_folder, 
     assert "grid/lines.parquet" in body["provenance"]["files"]
 
 
+@pytest.mark.files_only
 def test_an_assessment_against_the_queue_is_dated_by_the_queue_as_well(data_folder, monkeypatch):
     from datetime import datetime, timezone
 

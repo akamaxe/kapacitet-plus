@@ -94,6 +94,15 @@ def test_every_action_is_pinned_to_a_commit():
                 f"{path.name}: {line.strip()}"
 
 
+def test_every_service_image_in_ci_is_pinned_by_digest():
+    """CI's service containers (the postgres job's database) are pinned as the base images are."""
+    images = [m.group(1) for path in WORKFLOWS for line in path.read_text(encoding="utf-8").splitlines()
+              if (m := re.match(r"\s*image:\s*(\S+)\s*$", line))]
+    assert images, "the postgres job's service is found"
+    for image in images:
+        assert re.fullmatch(r"[\w.\-/]+:[\w.\-]+@sha256:[0-9a-f]{64}", image), image
+
+
 def test_dependabot_proposes_the_next_version_of_every_pin():
     text = _read(".github/dependabot.yml")
     pairs = set(re.findall(r"package-ecosystem:\s*(\S+)\s*\n\s*directory:\s*(\S+)", text))

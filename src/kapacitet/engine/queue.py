@@ -29,6 +29,12 @@ connections, in order: each is reserved as `decide` would (`_reserve`), but one 
 re-verification on every weather year is kept and flagged, since it is connected whatever the
 check says. The new queue is written in full into `<folder>.next`, byte for byte the same for the
 same list, and swapped in by two renames (recover() finishes a swap a crash interrupted).
+
+That is the files backend (`FolderQueue`). With KAPACITET_DATABASE_URL set, the same queue is a row
+of the database and its arrays rows beside it (kapacitet.store, store.postgres.Queue): the row is
+the commit point instead of queue.json, and a decision runs in one transaction that holds the row
+with SELECT ... FOR UPDATE, so decisions on two servers sharing the database are taken one after
+the other and the second meets the version the first left.
 """
 
 from __future__ import annotations
@@ -39,12 +45,13 @@ import os
 import re
 import shutil
 import threading
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
-from .. import seals
+from .. import seals, store
 from ..atomic import savez_atomic, write_json_atomic
 from ..cache import on_clear
 from ..config import A, settings
@@ -53,6 +60,10 @@ from . import request as rq
 from .scenario import customers
 
 _LOCK = threading.RLock()
+# postgres: what guards the cache of states read from the database. A decision holds the queue's
+# row and reads the context, so the context must never wait for _LOCK, which the inbox's worker
+# holds while it waits for that same row.
+_CACHE_LOCK = threading.RLock()
 DECISIONS = ("firm", "nonfirm", "declined")
 PENDING = "seal_pending.json"
 log = logging.getLogger(__name__)
@@ -97,36 +108,152 @@ def _at(where: Path | None) -> Path:
     return Path(where) if where is not None else folder()
 
 
+class FolderQueue:
+    """The files backend of one queue: the folder `root`, laid out as the module's docstring says.
+    store.postgres.Queue is the same interface on the database."""
+
+    backend = "files"
+
+    def __init__(self, root: Path):
+        self.root = Path(root)
+
+    def where(self) -> str:
+        return str(self.root)
+
+    @contextmanager
+    def transaction(self):
+        """The queue's write lock, within this process (one server writes a data folder)."""
+        with _LOCK:
+            yield self
+
+    def load(self) -> dict:
+        path = self.root / "queue.json"
+        if not path.exists():
+            return {"version": 0, "baseline": None, "items": []}
+        return json.loads(path.read_text(encoding="utf-8"))
+
+    def exists(self) -> bool:
+        return self.root.exists()
+
+    def commit(self, q: dict, marker: dict | None) -> None:
+        """The seal owed first, then queue.json, each atomically: queue.json is the commit point."""
+        if marker is not None:
+            write_json_atomic(self.root / PENDING, marker)
+        write_json_atomic(self.root / "queue.json", q)
+
+    def marker(self):
+        path = self.root / PENDING
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except ValueError:
+            return {}
+
+    def clear_marker(self) -> None:
+        (self.root / PENDING).unlink(missing_ok=True)
+
+    def put_npz(self, file: str, arrays: dict, stable: bool = False) -> None:
+        savez_atomic(self.root / file, stable=stable, **arrays)
+
+    def get_npz(self, file: str) -> dict[str, np.ndarray] | None:
+        path = self.root / file
+        if not path.exists():
+            return None
+        with np.load(path) as d:          # closed at once: Windows will not replace or remove an open file
+            return {k: d[k] for k in d.files}
+
+    def files(self) -> list[str]:
+        return sorted(p.name for p in self.root.iterdir() if p.is_file()) if self.root.exists() else []
+
+    def delete(self, file: str) -> None:
+        try:
+            (self.root / file).unlink()
+        except OSError:                   # gone already, or held open for a moment: the next approval or start
+            pass
+
+    def drop(self) -> None:
+        if self.root.exists():
+            shutil.rmtree(self.root)
+
+    def staging(self) -> "FolderQueue":
+        """An empty queue beside this one, for `rebuild` to write whole before `replace_with`."""
+        nxt = self.root.with_name(self.root.name + ".next")
+        if nxt.exists():
+            shutil.rmtree(nxt)
+        nxt.mkdir(parents=True)
+        return FolderQueue(nxt)
+
+    def replace_with(self, staging: "FolderQueue") -> None:
+        """The swap: the old queue aside, the new one in, the old one removed (`recover_swap`
+        finishes one a crash interrupted)."""
+        old = self.root.with_name(self.root.name + ".old")
+        if old.exists():
+            shutil.rmtree(old)
+        if self.root.exists():
+            os.replace(self.root, old)
+        os.replace(staging.root, self.root)
+        shutil.rmtree(old, ignore_errors=True)
+
+    def recover_swap(self) -> None:
+        old, nxt = self.root.with_name(self.root.name + ".old"), self.root.with_name(self.root.name + ".next")
+        if not self.root.exists() and old.exists():      # stopped between the swap's two renames
+            os.replace(old, self.root)
+        if old.exists() and self.root.exists():
+            shutil.rmtree(old, ignore_errors=True)
+        if nxt.exists():                                 # a rebuild that never swapped
+            shutil.rmtree(nxt, ignore_errors=True)
+
+
+def _store(where: Path | None = None):
+    """The queue in `where` (data/requests/queue by default): that folder with the files backend,
+    the row named after it with postgres (kapacitet.store)."""
+    root = _at(where)
+    if store.is_pg():
+        from ..store import postgres
+
+        return postgres.Queue(root.name)
+    return FolderQueue(root)
+
+
 def load(where: Path | None = None) -> dict:
-    path = _at(where) / "queue.json"
-    if not path.exists():
-        return {"version": 0, "baseline": None, "items": []}
-    return json.loads(path.read_text(encoding="utf-8"))
+    return _store(where).load()
 
 
 def _save(q: dict, where: Path | None = None) -> None:
-    """Write queue.json atomically: the commit point of every decision."""
-    write_json_atomic(_at(where) / "queue.json", q)
+    """Write the queue as it is, with no seal owed (a test's starting point)."""
+    _store(where).commit(q, None)
 
 
 def approved(q: dict) -> list[dict]:
     return [it for it in q["items"] if it["decision"] in ("firm", "nonfirm")]
 
 
-def _state_path(year: int, version: int, where: Path | None = None) -> Path:
-    return _at(where) / f"state_{year}.v{version}.npz"
+def _state_name(year: int, version: int) -> str:
+    return f"state_{year}.v{version}.npz"
 
 
-def _state_file(year: int, version: int, where: Path | None = None) -> Path | None:
-    """The state file of a year as of `version`, or of a queue from before the versions."""
-    for path in (_state_path(year, version, where), _at(where) / f"state_{year}.npz"):
-        if path.exists():
-            return path
+def _state_of(st, year: int, version: int) -> dict[str, np.ndarray] | None:
+    """The state of a year as of `version`, or of a queue from before the versions."""
+    for name in (_state_name(year, version), f"state_{year}.npz"):
+        got = st.get_npz(name)
+        if got is not None:
+            return got
     return None
 
 
+def _need(st, file: str) -> dict[str, np.ndarray]:
+    got = st.get_npz(file)
+    if got is None:
+        raise FileNotFoundError(f"{file} is missing from the queue in {st.where()}")
+    return got
+
+
 def state_files(where: Path | None = None) -> list[Path]:
-    """The grid-state files the queue's current version reads (provenance of an assessment)."""
+    """The grid-state files the queue's current version reads (provenance of an assessment); none
+    when the queue is kept in the database."""
+    if store.is_pg():
+        return []
     root = _at(where)
     if not root.exists():
         return []
@@ -135,18 +262,13 @@ def state_files(where: Path | None = None) -> list[Path]:
     return files or sorted(p for p in root.glob("state_*.npz") if (m := _STATE.match(p.name)) and m[2] is None)
 
 
-def _load_npz(path: Path) -> dict[str, np.ndarray]:
-    with np.load(path) as d:          # closed at once: Windows will not replace or remove an open file
-        return {k: d[k] for k in d.files}
-
-
 # per queue folder: the version its states and injections were read for
 _CACHE: dict[str, dict] = {}
 on_clear(_CACHE.clear)
 
 
 def _forget(where: Path | None = None) -> None:
-    _CACHE.pop(str(_at(where)), None)
+    _CACHE.pop(_store(where).where(), None)
 
 
 def _override(it: dict, d: dict[str, np.ndarray], years) -> dict:
@@ -159,26 +281,26 @@ def _override(it: dict, d: dict[str, np.ndarray], years) -> dict:
 
 def context(where: Path | None = None) -> rq.Context | None:
     """The grid as the queue has left it, or None when nothing has been decided yet."""
-    root = _at(where)
-    with _LOCK:
-        q = load(root)
+    st = _store(where)
+    with _LOCK if st.backend == "files" else _CACHE_LOCK:
+        q = st.load()
         if q["baseline"] is None:
             return None
         items = approved(q)
         label = {"version": q["version"], "approved": len(items), "baseline": q["baseline"]}
         if not items:
             return rq.Context(q["baseline"], label=label)
-        held = _CACHE.get(str(root))
+        held = _CACHE.get(st.where())
         if held is None or held["version"] != q["version"]:
             years = settings().weather_years
             states, overrides = {}, {}
             for y in years:
-                path = _state_file(y, q["version"], root)
-                if path is not None:
-                    states[y] = _load_npz(path)
+                got = _state_of(st, y, q["version"])
+                if got is not None:
+                    states[y] = got
             for it in items:
-                overrides[it["cid"]] = _override(it, _load_npz(root / f"{it['assessment']}.npz"), years)
-            held = _CACHE[str(root)] = {"version": q["version"], "states": states, "overrides": overrides}
+                overrides[it["cid"]] = _override(it, _need(st, f"{it['assessment']}.npz"), years)
+            held = _CACHE[st.where()] = {"version": q["version"], "states": states, "overrides": overrides}
         return rq.Context(q["baseline"], overrides=held["overrides"], states=held["states"], label=label)
 
 
@@ -266,8 +388,11 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
     if by == "rule" and not signature:
         raise ValueError("an automatic decision needs the signed rule it was made under")
     root = _at(where)
-    with _LOCK:
-        q = load(root)
+    st = _store(root)
+    # files: the queue's lock in this process; postgres: one transaction holding the queue's row
+    # (SELECT ... FOR UPDATE), so a decision on another server waits and then meets the new version
+    with st.transaction() as tx:
+        q = tx.load()
         base = _check(q, record, decision)
         req, res = record["request"], record["result"]
         cid = int(req["cid"])
@@ -282,32 +407,36 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
         if decision == "declined":
             q["baseline"] = base
             q["items"].append(item)
-            _commit(q, record["id"], root)
-            return item
+            _commit(q, record["id"], tx)
+        else:
+            static = res.get("static", {})
+            if decision == "firm" and not all(v.get("approved") for v in static.values()):
+                raise QueueError("static_rejects_firm")
+            ctx = context(root) or rq.Context(base)
+            r = engine_request(req, base)
+            got = _reserve(model, hp, ev, ctx, r, decision, emit=emit)
+            if not got["verified"]:
+                raise QueueError("still_violates")
 
-        static = res.get("static", {})
-        if decision == "firm" and not all(v.get("approved") for v in static.values()):
-            raise QueueError("static_rejects_firm")
-        ctx = context(root) or rq.Context(base)
-        r = engine_request(req, base)
-        got = _reserve(model, hp, ev, ctx, r, decision, emit=emit)
-        if not got["verified"]:
-            raise QueueError("still_violates")
-
-        # the next version's files first; none of them is read until queue.json names that version
-        version = q["version"] + 1
-        savez_atomic(root / f"{record['id']}.npz", **_injection_arrays(got["inj"]))
-        for y, st in got["states"].items():
-            savez_atomic(_state_path(y, version, root), **st)
-        item.update(pv_kw=got["pv_kw"], ev_kw=got["ev_kw"], hp=got["hp"], verification=got["out"]["verification"],
-                    summary=got["out"]["summary"])
-        q["items"].append(item)
-        q["baseline"] = base
-        q["version"] = version
-        _commit(q, record["id"], root)
+            # the next version's files first; none of them is read until the queue names that version
+            version = q["version"] + 1
+            tx.put_npz(f"{record['id']}.npz", _injection_arrays(got["inj"]))
+            for y, state in got["states"].items():
+                tx.put_npz(_state_name(y, version), state)
+            item.update(pv_kw=got["pv_kw"], ev_kw=got["ev_kw"], hp=got["hp"],
+                        verification=got["out"]["verification"], summary=got["out"]["summary"])
+            q["items"].append(item)
+            q["baseline"] = base
+            q["version"] = version
+            _commit(q, record["id"], tx)
+    if st.backend != "files":         # the seal is owed once the transaction has committed
+        with _store(root).transaction() as tx:
+            _seal_owed(tx.load(), tx)
+    if decision != "declined":
         _forget(root)
-        _collect(q, root)
-        return item
+        with _store(root).transaction() as tx:     # what the queue reads now, under its lock again
+            _collect(tx.load(), tx)
+    return item
 
 
 def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items: list[dict],
@@ -321,11 +450,9 @@ def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items
     The new queue is written whole into `<where>.next` and swapped in; the same list gives the same
     bytes (queue.json, every injection and every state). Returns the queue as written."""
     root = _at(where)
-    nxt, old = root.with_name(root.name + ".next"), root.with_name(root.name + ".old")
+    st = _store(root)
     with _LOCK:
-        if nxt.exists():
-            shutil.rmtree(nxt)
-        nxt.mkdir(parents=True)
+        nxt = st.staging()
         years = settings().weather_years
         overrides: dict[int, dict] = {}
         states: dict[int, dict] | None = None
@@ -340,7 +467,7 @@ def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items
             static = got["out"].get("static", {})
             if it["decision"] == "firm" and not all(v.get("approved") for v in static.values()):
                 flags.append("static_rejects_firm")
-            savez_atomic(nxt / f"{it['assessment']}.npz", stable=True, **_injection_arrays(got["inj"]))
+            nxt.put_npz(f"{it['assessment']}.npz", _injection_arrays(got["inj"]), stable=True)
             item = {**it, "cid": int(r.cid), "by": it.get("by", "sync"), "pv_kw": got["pv_kw"], "ev_kw": got["ev_kw"],
                     "hp": got["hp"], "verification": got["out"]["verification"], "summary": got["out"]["summary"],
                     "verified": got["verified"], "flags": flags}
@@ -348,17 +475,11 @@ def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items
             overrides[int(r.cid)] = _override(item, _injection_arrays(got["inj"]), years)
             states = got["states"]
         version = len(items)
-        for y, st in (states or {}).items():
-            savez_atomic(_state_path(y, version, nxt), stable=True, **st)
+        for y, state in (states or {}).items():
+            nxt.put_npz(_state_name(y, version), state, stable=True)
         q = {"version": version, "baseline": baseline, "items": items, "pending": list(pending or [])}
-        write_json_atomic(nxt / "queue.json", json.loads(json.dumps(q, default=_plain)))
-        # the swap: the old queue aside, the new one in, the old one removed
-        if old.exists():
-            shutil.rmtree(old)
-        if root.exists():
-            os.replace(root, old)
-        os.replace(nxt, root)
-        shutil.rmtree(old, ignore_errors=True)
+        nxt.commit(json.loads(json.dumps(q, default=_plain)), None)
+        st.replace_with(nxt)
         _forget(root)
         return load(root)
 
@@ -371,25 +492,23 @@ def _plain(o):
     raise TypeError(type(o))
 
 
-def _commit(q: dict, assessment: str, where: Path | None = None) -> None:
-    """Commit a decision: say which seal is owed, write queue.json, seal the decision, clear the marker.
-    A crash at any point leaves either the old queue or the new one with its seal owed (recover())."""
-    _seal_owed(q, where)              # an earlier decision whose seal failed in-process: seal it first, loudly
-    write_json_atomic(_at(where) / PENDING, {"kind": "decision", "id": assessment})
-    _save(q, where)
-    _seal_owed(q, where)
+def _commit(q: dict, assessment: str, tx) -> None:
+    """Commit a decision inside the queue's transaction `tx`: seal an earlier decision still owed,
+    then write the queue with the seal it now owes. A crash at any point leaves either the old queue
+    or the new one with its seal owed (recover()). With files the seal follows at once, under the
+    lock; with postgres, once the transaction has committed (decide)."""
+    _seal_owed(q, tx)                 # an earlier decision whose seal failed in-process: seal it first, loudly
+    tx.commit(q, {"kind": "decision", "id": assessment})
+    if tx.backend == "files":
+        _seal_owed(q, tx)
 
 
-def _seal_owed(q: dict, where: Path | None = None) -> str | None:
-    """Seal the decision the marker names when queue.json holds it (once: a seal already in the chain
-    with the same digest is not repeated), then remove the marker. Returns the id it sealed."""
-    marker = _at(where) / PENDING
-    if not marker.exists():
+def _seal_owed(q: dict, st) -> str | None:
+    """Seal the decision the queue `st` says is owed when `q` holds it (once: a seal already in the
+    chain with the same digest is not repeated), then clear the marker. Returns the id it sealed."""
+    owed = st.marker()
+    if owed is None:
         return None
-    try:
-        owed = json.loads(marker.read_text(encoding="utf-8"))
-    except ValueError:
-        owed = None
     done = None
     item = next((it for it in q.get("items", []) if isinstance(owed, dict) and it.get("assessment") == owed.get("id")),
                 None)
@@ -398,66 +517,57 @@ def _seal_owed(q: dict, where: Path | None = None) -> str | None:
         if entry is None or entry["digest"] != seals.digest(item):
             seals.seal("decision", item["assessment"], item)
         done = item["assessment"]
-    marker.unlink(missing_ok=True)
+    st.clear_marker()
     return done
 
 
-def _collect(q: dict, where: Path | None = None) -> None:
+def _collect(q: dict, st) -> None:
     """Remove what no committed version reads: other versions' states (a crashed approval's among
     them), states from before the versions once the current version has its own, and injections of
     houses the queue does not hold."""
-    root = _at(where)
-    if not root.exists():
+    if not st.exists():
         return
     version = q.get("version", 0)
     held = {f"{it['assessment']}.npz" for it in approved(q)} if q.get("items") else set()
-    for path in root.iterdir():
-        m = _STATE.match(path.name)
+    names = st.files()
+    have = set(names)
+    for name in names:
+        m = _STATE.match(name)
         if m:
             stale = (m[2] is not None and int(m[2]) != version) or (
-                m[2] is None and _state_path(int(m[1]), version, root).exists())
+                m[2] is None and _state_name(int(m[1]), version) in have)
         else:
-            stale = bool(_INJECTION.match(path.name)) and path.name not in held
+            stale = bool(_INJECTION.match(name)) and name not in held
         if stale:
-            try:
-                path.unlink()
-            except OSError:           # held open for a moment: the next approval or start removes it
-                pass
+            st.delete(name)
 
 
 def recover(where: Path | None = None) -> dict:
     """At the server's start: finish a rebuild's swap a crash interrupted, seal the decision a crash
     left unsealed, and remove the files of a version that never committed."""
-    root = _at(where)
+    st = _store(where)
     with _LOCK:
-        old, nxt = root.with_name(root.name + ".old"), root.with_name(root.name + ".next")
-        if not root.exists() and old.exists():      # stopped between the swap's two renames
-            os.replace(old, root)
-        if old.exists() and root.exists():
-            shutil.rmtree(old, ignore_errors=True)
-        if nxt.exists():                            # a rebuild that never swapped
-            shutil.rmtree(nxt, ignore_errors=True)
-        if not root.exists():
+        st.recover_swap()
+        if not st.exists():
             return {"sealed": None}
-        q = load(root)
-        sealed = _seal_owed(q, root)
+        q = st.load()
+        sealed = _seal_owed(q, st)
         if sealed:
             log.info("sealed decision %s, owed since the server last stopped", sealed)
-        _collect(q, root)
+        _collect(q, st)
         return {"sealed": sealed}
 
 
 def reset(where: Path | None = None) -> None:
     """Empty the queue. The assessments themselves stay saved in data/requests/, and what the queue
     held is sealed first, so its decisions do not leave the record with it."""
-    root = _at(where)
-    with _LOCK:
-        q = load(root)
+    st = _store(where)
+    with _LOCK, st.transaction() as tx:
+        q = tx.load()
         if q["items"]:
             stamp = datetime.now(timezone.utc)
             seals.seal("queue_reset", stamp.strftime("%Y%m%dT%H%M%S%fZ"),
                        {"reset_at": stamp.isoformat(), "version": q["version"], "baseline": q["baseline"],
                         "items": q["items"]})
-        if root.exists():
-            shutil.rmtree(root)
-        _forget(root)
+        tx.drop()
+    _forget(where)

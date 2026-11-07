@@ -207,8 +207,18 @@ check off; a codespace's forwarded names are allowed by themselves), `KAPACITET_
 `KAPACITET_MAX_QUEUED` and `KAPACITET_JOB_TIMEOUT_S` (live requests, below),
 `KAPACITET_MAX_BUILDS` and `KAPACITET_BUILD_TIMEOUT_S` (builds of imported networks),
 `KAPACITET_RETENTION_DAYS` (how long saved assessments are kept, [Privacy](#privacy-and-retention)),
-`KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page) and
-`KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release).
+`KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page),
+`KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release) and
+`KAPACITET_DATABASE_URL` (the server's state in PostgreSQL instead of `data/requests/`, below).
+
+The server keeps what it writes (the saved assessments, the queue, the applications log, the DSO's
+settings, the seal chain and the market alternatives) in files under `data/requests/` unless
+`KAPACITET_DATABASE_URL` names a PostgreSQL database. Then the same state is kept in tables, and
+transactions take the place of the file locks: a queue decision holds the queue's row with
+`SELECT ... FOR UPDATE`, so two servers sharing the database never reserve the same headroom twice.
+`kapacitet db migrate` applies the schema, `db status` reports it, and `db import-files` and
+`db export-files` copy a `data/requests/` folder in and back out byte for byte.
+[docs/postgres.md](docs/postgres.md) has the setup and a `pg_dump` backup recipe.
 
 Live evaluations share one pool: `KAPACITET_MAX_JOBS` (4) run at once, `KAPACITET_MAX_QUEUED` (8)
 more wait their turn, and anything beyond is refused at once with 429 `busy`. One that waits is
@@ -238,6 +248,7 @@ stage alone included) and which of its inputs are real and which synthetic.
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet redispatch-report [--year Y]` | The annual report on non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4), on the day-ahead basis that is issued: `results/redispatch.json` and `redispatch_sv.txt` |
+| `kapacitet db migrate\|status\|import-files\|export-files` | The PostgreSQL store: apply the schema, report it, copy `data/requests/` in or back out ([docs/postgres.md](docs/postgres.md)) |
 | `kapacitet purge --older-than N` | Remove the saved assessments older than N days and erase their seals ([Privacy](#privacy-and-retention)) |
 | `kapacitet serve` | FastAPI serving the API and the built interface on one port |
 | `kapacitet study …` | A DSO's study of many secondary substations, each built in its own process (below) |
@@ -438,7 +449,8 @@ The solver, screen and envelope tests run on a tiny synthetic grid committed in
 `tests/fixtures/grid_tiny` (twenty houses, a 0.1 MVA transformer, a feeder long enough for the
 voltage to bind), with synthetic profiles written at test time, so they run on a fresh clone and
 in CI; where the pipeline output exists they run on the reference network as well. The other tests
-that need pipeline output skip themselves on a fresh clone.
+that need pipeline output skip themselves on a fresh clone. With `KAPACITET_TEST_DATABASE_URL` set
+to a test database, the server-state tests run on PostgreSQL as well (docs/postgres.md).
 
 The interface has its own, in `web/`:
 

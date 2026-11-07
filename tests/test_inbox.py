@@ -220,6 +220,7 @@ def test_decisions_share_the_queue_lock(inbox_dirs, monkeypatch):
         inbox._STATE["working"] = None
 
 
+@pytest.mark.files_only
 def test_the_log_keeps_the_house_and_never_its_address(inbox_dirs, monkeypatch, tmp_path):
     from kapacitet import seals
 

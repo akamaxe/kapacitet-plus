@@ -41,8 +41,42 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: python -m pip install -c constraints.txt -e ".[dev,forecast]"
+      - run: python -m pip install -c constraints.txt -e ".[dev,forecast,postgres]"
       - run: python -m pytest
+
+  # the server's state in PostgreSQL (kapacitet.store): the state tests and the suite's tests of the
+  # store on both backends, against a postgres:17 service pinned by digest. The database is the
+  # runner's own and is emptied by the tests (its name must say test).
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17@sha256:ff87138949ad9a46f32ff23bd6852b52ce024a13dffe9b4087be98292cdd3b4f
+        env:
+          POSTGRES_USER: kapacitet
+          POSTGRES_DB: kapacitet_test
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kapacitet -d kapacitet_test"
+          --health-interval 2s --health-timeout 5s --health-retries 30
+    env:
+      KAPACITET_TEST_DATABASE_URL: postgresql://kapacitet@127.0.0.1:5432/kapacitet_test
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -c constraints.txt -e ".[dev,forecast,postgres]"
+      - run: python -m pytest tests/test_store.py
+      - run: >-
+          python -m pytest tests/test_queue.py tests/test_inbox.py tests/test_apply.py tests/test_seals.py
+          tests/test_seal_signatures.py tests/test_market.py tests/test_api_offline.py tests/test_atomic.py
+          tests/test_store.py
+        env:
+          KAPACITET_TEST_BACKEND: postgres
 
   # the interface against the real API on a fresh clone (no data): the setup screen and /health.
   # Playwright drives the runner's preinstalled Chrome, so no browser is downloaded.
