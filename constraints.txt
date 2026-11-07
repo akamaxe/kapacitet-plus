@@ -43,6 +43,9 @@ httpx==0.28.1
 cryptography==50.0.2
 cffi==2.1.1
 pycparser==3.12
+# sign-in with OpenID Connect (auth.py), approved 2026-11-06: authlib for PKCE, joserfc for the ID token
+authlib==1.9.5
+joserfc==1.8.0
 pytest==9.2.0
 # the "forecast" extra (engine/nowcast.py), approved 2026-11-06
 lightgbm==4.7.0

@@ -18,6 +18,8 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | connection request | anslutningsansökan, ansökan | |
 | assessment | bedömning | |
 | approve, decline | godkänna, avslå | |
+| sign in, sign out | logga in, logga ut | sign-in with the DSO's identity provider (docs/sso.md) |
+| planner, approver, admin, auditor | planerare, beslutsfattare, administratör, granskare | the four roles sign-in grants |
 | queue (of approvals) | kö | |
 | neighbourhood | området | |
 | secondary substation | nätstation | |

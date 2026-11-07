@@ -299,7 +299,7 @@ def test_decision_log_lists_sealed_decisions_with_digests(client):
     assert "attachment" in r.headers["content-disposition"]
     rows = r.text.strip().splitlines()
     assert rows[0].startswith("decided,assessment,house,address,decision,note")
-    assert "Testvägen 7" in rows[1] and "nonfirm" in rows[1] and len(rows[1].split(",")[-3]) == 64
+    assert "Testvägen 7" in rows[1] and "nonfirm" in rows[1] and len(rows[1].split(",")[-5]) == 64
 
 
 # ---------------------------------------------------------------- the job pool (stubbed engine)

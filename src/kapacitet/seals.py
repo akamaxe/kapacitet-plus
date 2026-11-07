@@ -39,6 +39,10 @@ each seal one transaction under an advisory lock. A chain opened with `chain_at`
 evidence folder) is always a folder. `kapacitet db export-files` writes the database's chain back
 as these files, byte for byte, for `kapacitet seals verify`.
 
+With sign-in on (kapacitet/auth.py), a line sealed for a signed-in person also carries `actor`:
+their subject identifier at the identity provider, their display name and the role they acted
+under (kapacitet/actor.py). The signature covers it; the chain hash, which predates it, does not.
+
 The standard library and `cryptography` (for Ed25519) only, so the engine, the API and the tests
 can all use it. The private key never leaves `key_dir()`: no bundle, manifest, log or publication
 holds it, and no message names more of it than its path.
@@ -63,7 +67,7 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from . import __version__, store
+from . import __version__, actor, store
 from .atomic import append_line, write_bytes_atomic, write_json_atomic, write_text_atomic
 from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS
 
@@ -575,6 +579,9 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     entry = {"seq": seq, "at": datetime.now(timezone.utc).isoformat(), "kind": kind,
              "id": item_id, "digest": dig, "fingerprint": fp["digest"], "prev": prev}
     entry["chain"] = _chain_hash(prev, entry)
+    who = actor.current()
+    if who:             # with sign-in on: who sealed it, under the line's signature (not the chain hash)
+        entry["actor"] = {k: str(who.get(k, ""))[:200] for k in ("sub", "name", "role")}
     entry["key_id"] = key_id_of(key.public_key())
     entry["signed_since"] = since if isinstance(since, int) and 1 <= since < seq else seq
     entry["sig"] = _b64(key.sign(_line_message(entry)))

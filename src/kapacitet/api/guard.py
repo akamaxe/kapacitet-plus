@@ -15,13 +15,19 @@
    setup page's upload. A form or `text/plain`, the only bodies a cross-site page can send without
    asking first, are refused, so every write from another site needs a preflight that the
    server never grants.
-4. **How often.** A sliding window per client address and bucket: an application's status 10 a
+4. **Who asks.** With sign-in on (`KAPACITET_AUTH=oidc`, kapacitet/auth.py), every API request
+   but the public ones (`PUBLIC`: health, the sign-in routes and the applicant's portal) needs a
+   session: none is `auth_required` (401), a role the route does not take is `role_required` (403,
+   naming the roles it does). A write needs one of its policy's `roles`, a read any role. The person
+   and the role they act under are then the request's actor (kapacitet/actor.py), which the seals
+   and the queue's decisions record. With sign-in off nothing here changes and there is no actor.
+5. **How often.** A sliding window per client address and bucket: an application's status 10 a
    minute, an evaluation 10, any other write 30. The answer to one too many is 429 with
    `Retry-After` and the code `rate_limited`. Uvicorn takes the client from `X-Forwarded-For` only
    when the proxy is on 127.0.0.1 (a codespace's port forwarding).
 
-`ROUTE_POLICY` lists every route that changes something, what it writes and what gates it: the
-inventory of the API's writes in one place. tests/test_guard.py holds it to the app's routes.
+`ROUTE_POLICY` lists every route that changes something, what it writes, what gates it and which
+roles may call it: the inventory of the API's writes in one place. tests/test_guard.py holds it to the app's routes.
 """
 
 from __future__ import annotations
@@ -40,6 +46,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
+from .. import actor, auth
+
 API = "/api/v1"
 UNSAFE = ("POST", "PUT", "DELETE", "PATCH")
 JSON = "application/json"
@@ -52,6 +60,9 @@ ERRORS = {
     "bad_origin": "a write from {origin} is not accepted",
     "bad_content_type": "a write here is sent as {expected}",
     "rate_limited": "too many requests: try again in {seconds} s",
+    "auth_required": "sign in to use this",
+    "role_required": "this needs the role {roles}",
+    "auth_misconfigured": "sign-in is turned on but not configured: {detail}",
 }
 
 # Requests a client may make per minute in each bucket; "upload" (the setup page's chunks) is not
@@ -60,66 +71,85 @@ WINDOW_S = 60.0
 LIMITS = {"status": 10, "compute": 10, "write": 30, "upload": None}
 
 
+# Who may call a route when sign-in is on (kapacitet/auth.py ROLES), in the order a person holding
+# several acts under: the first one they hold is the role their action records.
+PLANNER_UP = ("planner", "approver", "admin")    # evaluating: planners and anyone above them
+APPROVER = ("approver",)                         # deciding
+ADMIN_APPROVER = ("admin", "approver")           # the DSO's settings, its rule and its market statements
+ADMIN = ("admin",)                               # the installation: networks and the data bundle
+ANY_ROLE = ("planner", "approver", "admin", "auditor")   # reading, and exporting evidence
+PUBLIC = ()                                      # no session: the applicant's portal, behind its code
+
+
 @dataclass(frozen=True)
 class Policy:
     bucket: str      # which rate limit it counts against (LIMITS)
     writes: str      # what it changes; "nothing" for a computation answered in memory
     gate: str = ""   # what has to hold before it runs, besides the guard
     body: str = JSON  # the content type it has to be sent with
+    roles: tuple[str, ...] = ADMIN   # who may call it with sign-in on; every entry below names its own
 
 
 # Every POST, PUT and DELETE of the API, by method and route.
 ROUTE_POLICY: dict[tuple[str, str], Policy] = {
-    ("POST", f"{API}/check"): Policy("compute", "nothing: checks the four CSV tables in memory"),
+    ("POST", f"{API}/check"): Policy("compute", "nothing: checks the four CSV tables in memory", roles=PLANNER_UP),
     ("POST", f"{API}/requests"): Policy(
         "compute", "data/requests/<id>.json.gz, its index, the injection cache and a seal",
         "KAPACITET_MAX_JOBS evaluations at once and KAPACITET_MAX_QUEUED waiting, each within "
-        "KAPACITET_JOB_TIMEOUT_S"),
+        "KAPACITET_JOB_TIMEOUT_S", roles=PLANNER_UP),
     ("DELETE", f"{API}/requests/{{job_id}}"): Policy("write", "nothing: a waiting or running evaluation stops",
-                                                     "only one that has not finished"),
+                                                     "only one that has not finished", roles=PLANNER_UP),
     ("POST", f"{API}/evaluate"): Policy("compute", "nothing: the evaluation is answered in the request",
-                                        "the same pool as POST /requests"),
+                                        "the same pool as POST /requests", roles=PLANNER_UP),
     ("POST", f"{API}/queue"): Policy("write", "the queue, its seal and the application it decides",
-                                     "one queue update at a time"),
-    ("DELETE", f"{API}/queue"): Policy("write", "a seal, then the queue is emptied", "one queue update at a time"),
-    ("PUT", f"{API}/settings"): Policy("write", "data/requests/settings.json and a seal"),
+                                     "one queue update at a time", roles=APPROVER),
+    ("DELETE", f"{API}/queue"): Policy("write", "a seal, then the queue is emptied", "one queue update at a time",
+                                       roles=APPROVER),
+    ("PUT", f"{API}/settings"): Policy("write", "data/requests/settings.json and a seal", roles=ADMIN_APPROVER),
     ("PUT", f"{API}/settings/rule-signature"): Policy("write", "data/requests/settings.json and two seals: "
-                                                               "the signature and the change"),
-    ("POST", f"{API}/operation/meter-check"): Policy("write", "nothing: the meter's file is checked in memory"),
+                                                               "the signature and the change", roles=ADMIN_APPROVER),
+    ("POST", f"{API}/operation/meter-check"): Policy("write", "nothing: the meter's file is checked in memory",
+                                                     roles=PLANNER_UP),
     ("POST", f"{API}/operation/schedule/issue"): Policy(
         "write", "a seal of the schedule issued, with its market terms",
         "after the day-ahead market's result for the day (market_result_local on the day before), "
-        "unless an override_reason is given"),
+        "unless an override_reason is given", roles=ADMIN_APPROVER),
     ("POST", f"{API}/operation/market-alternatives"): Policy(
-        "write", "market_alternatives.jsonl and a seal", "an Idempotency-Key sent again records nothing new"),
-    ("POST", f"{API}/eipack/export"): Policy("write", "a seal of the evidence pack exported"),
+        "write", "market_alternatives.jsonl and a seal", "an Idempotency-Key sent again records nothing new",
+        roles=ADMIN_APPROVER),
+    ("POST", f"{API}/eipack/export"): Policy("write", "a seal of the evidence pack exported", roles=ANY_ROLE),
     ("POST", f"{API}/applications"): Policy("write", "applications.jsonl and a seal",
                                             "the rule then decides it when the DSO turned auto_decisions on and "
-                                            "signed the rule for it"),
+                                            "signed the rule for it", roles=PLANNER_UP),
     ("POST", f"{API}/applications/{{app_id}}/requeue"): Policy("write", "applications.jsonl",
-                                                               "only an application in review"),
-    ("POST", f"{API}/apply/evaluate"): Policy("compute", "as POST /requests, against the DSO's grid"),
-    ("DELETE", f"{API}/apply/evaluate/{{job_id}}"): Policy("write", "as DELETE /requests/{id}"),
-    ("POST", f"{API}/apply/submit"): Policy("write", "as POST /applications"),
-    ("POST", f"{API}/datasets"): Policy("write", "data/datasets/<id> and its build process"),
+                                                               "only an application in review", roles=PLANNER_UP),
+    ("POST", f"{API}/apply/evaluate"): Policy("compute", "as POST /requests, against the DSO's grid", roles=PUBLIC),
+    ("DELETE", f"{API}/apply/evaluate/{{job_id}}"): Policy("write", "as DELETE /requests/{id}", roles=PUBLIC),
+    ("POST", f"{API}/apply/submit"): Policy("write", "as POST /applications", roles=PUBLIC),
+    ("POST", f"{API}/datasets"): Policy("write", "data/datasets/<id> and its build process", roles=ADMIN),
     ("POST", f"{API}/datasets/{{ds_id}}/build"): Policy(
         "write", "a build process for data/datasets/<id>",
-        "not the network in use, and at most KAPACITET_MAX_BUILDS builds at once"),
+        "not the network in use, and at most KAPACITET_MAX_BUILDS builds at once", roles=ADMIN),
     ("POST", f"{API}/datasets/{{ds_id}}/cancel"): Policy("write", "stops the build process; its record says so",
-                                                        "only a build that is running"),
+                                                        "only a build that is running", roles=ADMIN),
     ("DELETE", f"{API}/datasets/{{ds_id}}"): Policy("write", "removes data/datasets/<id>",
-                                                    "not the network in use"),
+                                                    "not the network in use", roles=ADMIN),
     ("POST", f"{API}/datasets/{{ds_id}}/activate"): Policy(
         "write", "data/active.json, then the server restarts on that network",
-        "KAPACITET_SUPERVISED=1 (set by `kapacitet serve`) and no job running"),
+        "KAPACITET_SUPERVISED=1 (set by `kapacitet serve`) and no job running", roles=ADMIN),
     ("PUT", f"{API}/setup/upload"): Policy(
         "upload", "data/processed and data/raw, then the server restarts",
-        "KAPACITET_SETUP_UPLOAD=1, the reference network and no results yet", body=OCTET),
+        "KAPACITET_SETUP_UPLOAD=1, the reference network and no results yet", body=OCTET, roles=ADMIN),
+    ("POST", f"{API}/auth/logout"): Policy("write", "nothing: the session cookie is cleared and its id forgotten",
+                                           roles=PUBLIC),
 }
+# Reads anyone may make with sign-in on: the server's health, the sign-in itself and the applicant's
+# portal (its answers are behind the application's code). Every other read needs one of ANY_ROLE.
+PUBLIC_READS = (f"{API}/health", f"{API}/auth/me", f"{API}/auth/login", f"{API}/auth/callback", f"{API}/apply/")
 # Reads that are limited too: guessing an application's code is the one read worth slowing down.
 LIMITED_READS: dict[tuple[str, str], str] = {("GET", f"{API}/apply/status/{{reference}}"): "status"}
 # A write the table does not know (a typo, a method a route does not take) is held to the strictest rules.
-DEFAULT = Policy("write", "unknown route")
+DEFAULT = Policy("write", "unknown route", roles=ADMIN)
 
 
 def _pattern(template: str) -> re.Pattern:
@@ -134,6 +164,18 @@ _READS = [(m, _pattern(t), b) for (m, t), b in LIMITED_READS.items()]
 def policy_for(method: str, path: str) -> Policy | None:
     """The policy of the route a write goes to, or None when no route of the table matches."""
     return next((p for m, rx, p in _ROUTES if m == method and rx.fullmatch(path)), None)
+
+
+def roles_for(method: str, path: str) -> tuple[str, ...]:
+    """The roles a request needs when sign-in is on: PUBLIC (none) for the interface's own files,
+    the public reads and the portal's writes, its policy's roles for a write, any role for a read."""
+    if not path.startswith(API + "/"):
+        return PUBLIC
+    if method in UNSAFE:
+        return (policy_for(method, path) or DEFAULT).roles
+    if any(path == p or (p.endswith("/") and path.startswith(p)) for p in PUBLIC_READS):
+        return PUBLIC
+    return ANY_ROLE
 
 
 def bucket_for(method: str, path: str) -> str | None:
@@ -241,6 +283,32 @@ def refusal(status: int, code: str, headers: dict | None = None, **params) -> JS
                         status_code=status, headers=headers)
 
 
+ACTOR_KEY = "kapacitet.actor"     # where check() leaves the request's actor in its scope
+
+
+def signed_in(scope: Scope, headers: Headers, method: str, path: str) -> JSONResponse | None:
+    """With sign-in on: refuse a request without the session or the role its route needs, and
+    leave the person and the role they act under in the scope (ACTOR_KEY). Off: nothing."""
+    scope.pop(ACTOR_KEY, None)
+    try:
+        cfg = auth.config()
+    except auth.AuthConfigError as exc:      # fail closed: sign-in was asked for
+        return refusal(503, "auth_misconfigured", detail=str(exc))
+    if cfg is None:
+        return None
+    allowed = roles_for(method, path)
+    if not allowed:
+        return None
+    session = auth.session_from_cookie(headers.get("cookie"), cfg)
+    if session is None:
+        return refusal(401, "auth_required")
+    role = auth.acting_role(session["roles"], allowed)
+    if role is None:
+        return refusal(403, "role_required", roles=", ".join(allowed))
+    scope[ACTOR_KEY] = {"sub": session["sub"], "name": session["name"], "role": role}
+    return None
+
+
 class Guard(TrustedHostMiddleware):
     """Starlette's TrustedHostMiddleware, answering in the API's refusal form, with the checks on
     writes and the rate limit behind it. The environment is read once, when the app is built."""
@@ -256,7 +324,8 @@ class Guard(TrustedHostMiddleware):
             return
         response = self.check(scope)
         if response is None:
-            await self.app(scope, receive, send)
+            with actor.acting_as(scope.get(ACTOR_KEY)):
+                await self.app(scope, receive, send)
         else:
             await response(scope, receive, send)
 
@@ -277,6 +346,9 @@ class Guard(TrustedHostMiddleware):
             expected = (policy_for(method, path) or DEFAULT).body
             if headers.get("content-type", "").split(";")[0].strip().lower() != expected:
                 return refusal(415, "bad_content_type", expected=expected)
+        refused = signed_in(scope, headers, method, path)
+        if refused is not None:
+            return refused
         bucket = bucket_for(method, path)
         if bucket is not None:
             client = (scope.get("client") or ("unknown", 0))[0]

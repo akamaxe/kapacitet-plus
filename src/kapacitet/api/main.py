@@ -36,11 +36,12 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import __version__, geo
+from .. import __version__, actor, geo
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
 from . import jobs, records
+from .auth import ERRORS as AUTH_ERRORS
 from .guard import ERRORS as GUARD_ERRORS
 from .guard import Guard
 from .. import seals
@@ -162,6 +163,7 @@ app.add_middleware(Guard)
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
 from .apply import router as apply_router  # noqa: E402
+from .auth import router as auth_router  # noqa: E402
 from .datasets import router as datasets_router  # noqa: E402
 from .evidence import router as evidence_router  # noqa: E402
 from .operation import router as operation_router  # noqa: E402
@@ -174,6 +176,7 @@ app.include_router(inbox.router)
 app.include_router(apply_router)
 app.include_router(datasets_router)
 app.include_router(setup_router)
+app.include_router(auth_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -224,6 +227,7 @@ API_ERRORS = {
     "already_finished": "this evaluation has already finished",
     "bad_phases": "a charger is single-phase (1) or three-phase (3)",
     **GUARD_ERRORS,
+    **AUTH_ERRORS,
 }
 
 
@@ -1158,6 +1162,8 @@ def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
     handed back to the pool, which adds it once the job is marked done, so the browser fetches the
     answer only after it is stored."""
 
+    who = actor.current()       # the person who asked, carried into the job's thread for the seal
+
     def work(job: dict, check) -> list[dict]:
         from ..engine import request as rq
 
@@ -1174,7 +1180,8 @@ def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
         job["result"] = result
         if save:
             try:
-                records.save(_record(job["id"], job, result))
+                with actor.acting_as(who):
+                    records.save(_record(job["id"], job, result))
             except Exception:   # the answer still reaches the screen; only its saved copy is lost
                 log.exception("could not save assessment %s", job["id"])
         return held
@@ -1499,9 +1506,14 @@ def get_queue() -> dict:
     return {**q, "items": items, "approved": len(qu.approved(q)), "updating": _queue_busy()}
 
 
-def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
-    from ..engine import queue as qu
+def _run_decision(job_id: str, body: DecisionIn, rec: dict, who: dict | None = None) -> None:
     job = _QJOBS[job_id]
+    with actor.acting_as(who):
+        _decision(job, body, rec, who)
+
+
+def _decision(job: dict, body: DecisionIn, rec: dict, who: dict | None) -> None:
+    from ..engine import queue as qu
 
     def emit(stage: str, payload: dict) -> None:
         job["events"].append({"stage": stage, "payload": payload, "t": time.time()})
@@ -1509,7 +1521,7 @@ def _run_decision(job_id: str, body: DecisionIn, rec: dict) -> None:
     try:
         eng = _engine()
         item = qu.decide(eng["model"], eng["hp"], eng["ev"], rec, body.decision, body.note, emit=emit,
-                         decided_by=body.decided_by)
+                         decided_by=body.decided_by, actor=who)
         # the application this answers, if any, is decided with it
         inbox.link_decision(rec["id"], body.decision, float(item.get("pv_kw", 0.0) or 0.0), body.application)
         job.update(result=item, status="done", finished=time.time())
@@ -1549,7 +1561,8 @@ def post_decision(body: DecisionIn) -> dict:
         raise queue_refusal(409, exc) from exc
     job_id = uuid.uuid4().hex[:12]
     _QJOBS[job_id] = {"status": "running", "events": [], "result": None, "created": time.time()}
-    threading.Thread(target=_run_decision, args=(job_id, body, rec), daemon=True).start()
+    # the signed-in approver, when sign-in is on: the decision and its seal record them
+    threading.Thread(target=_run_decision, args=(job_id, body, rec, actor.current()), daemon=True).start()
     return {"id": job_id, "events": f"{API}/queue/jobs/{job_id}/events", "result": f"{API}/queue/jobs/{job_id}"}
 
 

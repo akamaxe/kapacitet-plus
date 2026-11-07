@@ -25,6 +25,8 @@ import pytest
 
 # The inbox's worker decides applications in the real queue; tests drive `inbox.process` themselves.
 os.environ["KAPACITET_INBOX_WORKER"] = "0"
+# Sign-in stays off whatever a developer's shell or .env says; tests/test_auth.py turns it on itself.
+os.environ["KAPACITET_AUTH"] = "off"
 # Starlette's TestClient sends `Host: testserver`; the guard reads its hosts when the app is built.
 os.environ.setdefault("KAPACITET_ALLOWED_HOSTS", "testserver")
 

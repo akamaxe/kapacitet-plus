@@ -57,8 +57,10 @@ def verify(kind: str = Query(..., pattern="^(" + "|".join(seals.KINDS) + ")$"),
     return out
 
 
+# decided_by is the free text, or with sign-in on the signed-in person's name; role is the role they
+# decided under (empty when sign-in is off)
 _LOG_COLUMNS = ("decided", "assessment", "house", "address", "decision", "note", "pv_kw", "ev_kw", "heat_pump",
-                "digest", "sealed_at", "seq")
+                "digest", "sealed_at", "seq", "decided_by", "role")
 
 
 @router.get("/queue/log.csv")
@@ -73,6 +75,7 @@ def decision_log() -> Response:
         address = rec.get("address") or records.address_of(rec.get("cid")) or ""
         w.writerow([rec.get("decided", ""), rec.get("assessment", ""), rec.get("cid", ""), address,
                     rec.get("decision", ""), rec.get("note", ""), rec.get("pv_kw", ""), rec.get("ev_kw", ""),
-                    rec.get("hp", ""), entry["digest"], entry["at"], entry["seq"]])
+                    rec.get("hp", ""), entry["digest"], entry["at"], entry["seq"], rec.get("decided_by", ""),
+                    (rec.get("actor") or {}).get("role", "")])
     return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                     headers={"Content-Disposition": 'attachment; filename="kapacitet-decisions.csv"'})

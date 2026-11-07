@@ -378,11 +378,13 @@ def _injection_arrays(inj: dict) -> dict[str, np.ndarray]:
 
 def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, note: str = "",
            emit=None, by: str = "dso", decided_by: str = "", signature: str | None = None,
-           where: Path | None = None) -> dict:
+           where: Path | None = None, actor: dict | None = None) -> dict:
     """Record a decision on a saved assessment; an approval re-verifies it and updates the grid.
     `by` says who decided: the DSO's planner, or its rule (api/inbox.py), which never declines and
     decides only under a signed rule, whose digest (`signature`) the decision keeps. A planner's
-    decision keeps who made it (`decided_by`, free text) when given."""
+    decision keeps who made it (`decided_by`, free text) when given. With sign-in on, `actor` is
+    the signed-in person ({sub, name, role}, kapacitet/actor.py): the decision keeps it, and its
+    name replaces the free text, which a signed-in person cannot set to someone else's."""
     if by == "rule" and decision == "declined":
         raise ValueError("the automatic rule never declines")
     if by == "rule" and not signature:
@@ -400,6 +402,9 @@ def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, n
                 "decision": decision, "by": by, "note": note.strip()[:500],
                 "decided": datetime.now(timezone.utc).isoformat(), "request": req,
                 "summary": res.get("summary", {})}
+        if actor:
+            item["actor"] = {k: str(actor.get(k, ""))[:200] for k in ("sub", "name", "role")}
+            decided_by = item["actor"]["name"]
         if decided_by.strip():
             item["decided_by"] = decided_by.strip()[:120]
         if signature:
