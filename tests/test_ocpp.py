@@ -49,8 +49,11 @@ def api(tmp_path):
         yield c
 
 
-def _get(c, cid=7, day=DAY):
-    return c.get("/api/v1/operation/schedule.ocpp.json", params={"cid": cid, "date": day})
+def _get(c, cid=7, day=DAY, resolution=60):
+    params = {"cid": cid, "date": day}
+    if resolution is not None:
+        params["resolution"] = resolution
+    return c.get("/api/v1/operation/schedule.ocpp.json", params=params)
 
 
 def test_the_periods_are_the_issued_envelope_and_the_default_covers_the_rest(api):
@@ -77,6 +80,24 @@ def test_the_periods_are_the_issued_envelope_and_the_default_covers_the_rest(api
     assert all(w == FIRM * 1000 for h, w in enumerate(limits) if not 17 <= h <= 20)
     other = _get(api, cid=42).json()["csChargingProfiles"]["chargingSchedule"]["chargingSchedulePeriod"]
     assert other[7]["limit"] == 10500.0 and sum(p["limit"] == FIRM * 1000 for p in other) == 23
+
+
+def test_the_default_step_is_the_quarter_hour_from_local_midnight(api):
+    """Without a resolution the profile follows schedule_resolution_min (15 minutes): the Stockholm
+    delivery day, 22:00 UTC the day before in summer, with each quarter carrying its hour's envelope."""
+    from kapacitet.engine import ocpp
+
+    body = _get(api, resolution=None).json()
+    assert ocpp.validate(body) == []
+    sch = body["csChargingProfiles"]["chargingSchedule"]
+    assert sch["startSchedule"] == "2025-06-14T22:00:00Z" and sch["duration"] == 24 * 3600
+    periods = sch["chargingSchedulePeriod"]
+    assert [p["startPeriod"] for p in periods] == [900 * q for q in range(96)]
+    hourly = [p["limit"] for p in _get(api).json()["csChargingProfiles"]["chargingSchedule"]["chargingSchedulePeriod"]]
+    quarters = [p["limit"] for p in periods]
+    # the Stockholm day starts an hour before the UTC+1 study day in summer, so quarter q of the
+    # local day is hour (q // 4) - 1 of the study day; every quarter keeps that hour's limit
+    assert all(quarters[q] == hourly[q // 4 - 1] for q in range(4, 96))
 
 
 def test_the_route_refuses_what_it_cannot_send(api):
