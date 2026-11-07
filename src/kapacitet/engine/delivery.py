@@ -81,6 +81,24 @@ def delivery_window(year: int, day: int) -> tuple[pd.Timestamp, pd.Timestamp]:
     return start.tz_convert("UTC"), end.tz_convert("UTC")
 
 
+def limit_down(kw) -> float:
+    """An envelope as a schedule carries it: to the watt, and never above the verified figure.
+
+    Rounding to the nearest watt can raise it (1.9375 kW is 1.938), half a watt the power flow
+    never verified, and the inverter's XML is built from this figure. So the figure rounds to the
+    nearest watt where that is not above the envelope and down otherwise. A non-finite envelope
+    passes through as it is."""
+    x = float(kw)
+    if not np.isfinite(x):
+        return x
+    v = round(x, 3)
+    if v > x:
+        v = float(np.floor(x * 1000.0)) / 1000.0
+        if v > x:               # x * 1000 rounded up to a whole number in floating point
+            v = (float(np.floor(x * 1000.0)) - 1.0) / 1000.0
+    return v
+
+
 def _per_quarter(series, H: int) -> bool:
     return series is not None and len(series) == 4 * H
 
@@ -113,7 +131,7 @@ def schedule(limits_kw: np.ndarray, desired_kw: np.ndarray | None, year: int, da
                 "duration_s": 3600,
                 "study_clock": study[h].strftime("%Y-%m-%d %H:%M"),
                 "stockholm": local.strftime("%Y-%m-%d %H:%M %Z"),
-                "limit_kw": round(float(limits_kw[h]), 3),
+                "limit_kw": limit_down(limits_kw[h]),
                 "desired_kw": None if desired_kw is None else round(float(desired_kw[h]), 3),
             })
         return rows
@@ -140,7 +158,7 @@ def schedule(limits_kw: np.ndarray, desired_kw: np.ndarray | None, year: int, da
             "duration_s": 900,
             "study_clock": (t.tz_localize(None) + shift).strftime("%Y-%m-%d %H:%M"),
             "stockholm": t.tz_convert(STOCKHOLM).strftime("%Y-%m-%d %H:%M %Z"),
-            "limit_kw": round(float(limits_kw[h]), 3),
+            "limit_kw": limit_down(limits_kw[h]),
             "desired_kw": want,
         })
     return rows
@@ -178,11 +196,13 @@ def span(rows: list[dict], resolution_min: int) -> dict:
 
 def within_envelope(rows: list[dict], limits_kw: np.ndarray) -> dict:
     """A schedule checked hour by hour against the verified envelope: in no hour does any of its
-    intervals carry a limit above the hour's envelope (so the lowest quarter does not either)."""
+    intervals carry a limit above the hour's envelope (so the lowest quarter does not either). The
+    limits are compared with the envelope as verified, not with a rounded figure: a schedule's own
+    rows never round above it (`limit_down`)."""
     hours: dict[int, list[float]] = {}
     for r in rows:
         hours.setdefault(int(r["hour"]), []).append(float(r["limit_kw"]))
-    above = sorted(h for h, v in hours.items() if max(v) > round(float(limits_kw[h]), 3) + 1e-9)
+    above = sorted(h for h, v in hours.items() if max(v) > float(limits_kw[h]))
     return {"hours": len(hours), "intervals": len(rows), "hours_above": len(above), "ok": not above,
             "first_above": above[0] if above else None}
 

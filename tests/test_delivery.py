@@ -35,7 +35,7 @@ def test_schedule_intervals_start_on_the_study_clock():
 
 
 def test_a_quarter_hour_schedule_of_hourly_inputs_is_the_hourly_one_repeated():
-    from kapacitet.engine.delivery import day_of, schedule, terms, within_envelope
+    from kapacitet.engine.delivery import day_of, limit_down, schedule, terms, within_envelope
 
     year = 2025
     rng = np.random.default_rng(3)
@@ -56,7 +56,8 @@ def test_a_quarter_hour_schedule_of_hourly_inputs_is_the_hourly_one_repeated():
     summer = schedule(limits, desired, year, day, 15)
     assert summer[0]["start_utc"] == "2025-06-14T22:00:00+00:00" and summer[0]["study_clock"] == "2025-06-14 23:00"
     assert summer[0]["hour"] == day * 24 - 1
-    assert all(r["limit_kw"] == round(limits[r["hour"]], 3) and r["hour"] == r["quarter"] // 4 for r in summer)
+    assert all(r["limit_kw"] == limit_down(limits[r["hour"]]) <= limits[r["hour"]] and r["hour"] == r["quarter"] // 4
+               for r in summer)
     assert within_envelope(summer, limits) == {"hours": 24, "intervals": 96, "hours_above": 0, "ok": True,
                                                "first_above": None}
     t = terms(15, desired, len(limits))
@@ -72,6 +73,21 @@ def test_a_quarter_above_its_hours_envelope_is_caught():
     rows[13]["limit_kw"] = 3.2                       # one quarter of the fourth hour above its envelope
     out = within_envelope(rows, limits)
     assert not out["ok"] and out["hours_above"] == 1 and out["first_above"] == 40 * 24 + 3
+
+
+def test_a_limit_is_never_rounded_above_the_verified_envelope():
+    """Found by tests/test_properties_schedule.py: 1.9375 kW rounded to the watt is 1.938, half a
+    watt the power flow never verified, and the inverter's XML carried it as 1938 W."""
+    from kapacitet.engine.csipaus import der_control_list
+    from kapacitet.engine.delivery import limit_down, schedule
+
+    limits = np.full(8760, 1.9375)
+    for step in (60, 15):
+        rows = schedule(limits, None, 2025, 40, step)
+        assert {r["limit_kw"] for r in rows} == {1.937}
+        assert b"<value>1937</value>" in der_control_list(1, rows, issued_epoch=0)
+    assert limit_down(2.0014) == 2.001 and limit_down(2.0006) == 2.0 and limit_down(0.0) == 0.0
+    assert np.isnan(limit_down(float("nan")))
 
 
 def test_a_load_side_metered_at_15_minutes_enters_quarter_by_quarter():
