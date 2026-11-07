@@ -37,6 +37,27 @@ def test_settings_are_validated_written_atomically_and_sealed(tmp_path, monkeypa
         dso.DsoSettingsChange.model_validate({"allocation_policy": "maxmin", "smuggled": 1})
 
 
+def test_the_import_window_is_a_setting_and_its_change_is_sealed(tmp_path, monkeypatch):
+    """`import_window_days`: by default the window the import envelopes always had (forecast's), 0
+    allowed, out of range refused, and a change sealed with what it replaced like any other."""
+    from kapacitet import dso, seals
+    from kapacitet.engine import forecast
+
+    monkeypatch.setattr(dso, "path", lambda: tmp_path / "settings.json")
+    assert dso.load().import_window_days == dso.IMPORT_WINDOW_DEFAULT == forecast.WINDOW_DAYS
+    after = dso.update(dso.DsoSettingsChange(import_window_days=0))     # 0 is a change, not "not given"
+    assert after.import_window_days == 0 and dso.load().import_window_days == 0
+    sealed = seals.sealed_of_kind("settings")
+    assert len(sealed) == 1
+    assert sealed[0]["record"]["before"]["import_window_days"] == forecast.WINDOW_DAYS
+    assert sealed[0]["record"]["after"]["import_window_days"] == 0
+    dso.update(dso.DsoSettingsChange(allocation_policy="prorata"))      # another field keeps it
+    assert dso.load().import_window_days == 0
+    for bad in (-1, dso.IMPORT_WINDOW_MAX + 1):
+        with pytest.raises(ValueError):
+            dso.DsoSettingsChange(import_window_days=bad)
+
+
 def test_unknown_or_unverified_combinations_are_refused(tmp_path, monkeypatch):
     from fastapi import HTTPException
 

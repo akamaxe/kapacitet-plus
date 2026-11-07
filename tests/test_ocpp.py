@@ -116,6 +116,34 @@ def test_the_route_refuses_what_it_cannot_send(api):
     assert "--only operation" in r.json()["detail"]["command"]
 
 
+def test_a_changed_window_leaves_the_import_envelopes_stale_until_issued_again(api):
+    """import.json names its window; once the DSO's setting differs, the API says the envelopes are
+    stale, with the command that issues them again, and the OCPP route refuses to send them. An
+    import.json that names no window (written before the setting) counts as the default's."""
+    from kapacitet import dso, seals
+
+    s = api.get("/api/v1/settings").json()
+    assert s["settings"]["import_window_days"] == dso.IMPORT_WINDOW_DEFAULT
+    assert s["import_envelopes"] == {"computed": True, "window_days": dso.IMPORT_WINDOW_DEFAULT,
+                                     "setting_window_days": dso.IMPORT_WINDOW_DEFAULT, "stale": False,
+                                     "command": s["import_envelopes"]["command"]}
+    r = api.put("/api/v1/settings", json={"import_window_days": 0})
+    assert r.status_code == 200 and r.json()["import_envelopes"]["stale"] is True
+    assert "--only operation" in r.json()["import_envelopes"]["command"]
+    assert seals.sealed_of_kind("settings")[-1]["record"]["after"]["import_window_days"] == 0
+    r = _get(api)
+    assert r.status_code == 409 and r.json()["detail"]["code"] == "import_stale"
+    assert r.json()["detail"]["params"]["issued"] == dso.IMPORT_WINDOW_DEFAULT
+    assert r.json()["detail"]["params"]["setting"] == 0
+    # issued again under the setting: current, and sent
+    path = api.folder / "results" / "operation" / "dayahead" / "import.json"
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**meta, "planning_state": {"window_days": 0}}), encoding="utf-8")
+    assert api.get("/api/v1/settings").json()["import_envelopes"]["stale"] is False
+    assert _get(api).status_code == 200
+    assert api.put("/api/v1/settings", json={"import_window_days": -1}).status_code == 422
+
+
 def test_only_planners_and_above_fetch_it_with_sign_in_on():
     from kapacitet.api import auth, guard
 
@@ -206,6 +234,76 @@ def test_issued_import_envelopes_keep_every_limit_with_every_charger_at_its_enve
     clear = np.setdiff1d(np.arange(H), m.import_critical_hours(plan["p_net"] - corner, plan["q"] - corner * tanphi))
     assert np.allclose(r.envelope[:, clear], r.firm_kw)
     assert r.actual_violation_hours == 0
+    # the real year imports less than the plan everywhere, so the audit has nothing to count
+    assert r.exceedance["customer_hours_over"] == r.exceedance["aggregate_hours_over"] == 0
+
+
+def test_the_import_audit_counts_an_injected_exceedance():
+    """One house importing 2 kW more than planned in one hour is one customer-hour, one hour and one
+    hour of the total over the plan; importing less is never counted."""
+    from kapacitet.engine.doe_import import import_exceedance
+
+    rng = np.random.default_rng(5)
+    load = rng.uniform(0.5, 4.0, size=(6, 48))
+    plan = {"p_net": -load, "q": -0.3 * load}
+    assert import_exceedance(plan, plan)["customer_hours_over"] == 0
+    actual = {"p_net": plan["p_net"] + 0.5, "q": plan["q"]}     # every house imports 0.5 kW less...
+    actual["p_net"][2, 30] = plan["p_net"][2, 30] - 2.0          # ...but one, once, 2 kW more
+    flex = np.zeros(6, dtype=bool)
+    flex[2] = True
+    a = import_exceedance(plan, actual, flex)
+    assert a["customer_hours_over"] == a["hours_over"] == 1 and a["flex_customer_hours_over"] == 1
+    assert a["worst_customer_kw"] == pytest.approx(2.0)
+    assert a["aggregate_hours_over"] == 0                       # the other five houses make up for it
+    assert a["first_hours"]["customer"] == [30]
+    actual["p_net"][:, 30] = plan["p_net"][:, 30] - 1.0          # now every house, so the total too
+    a = import_exceedance(plan, actual, ~flex)
+    assert a["customer_hours_over"] == 6 and a["aggregate_hours_over"] == 1 and a["flex_customer_hours_over"] == 5
+    assert a["worst_aggregate_kw"] == pytest.approx(6.0) and a["first_hours"]["aggregate"] == [30]
+
+
+def test_both_import_windows_verify_and_the_audit_explains_any_real_violation(tiny_processed, tmp_path):
+    """The operation stage's import envelopes under the DSO's window, 14 days (the default) and 0
+    (the same calendar day only): both verify against their plan, and import.json names the window
+    and its audit. At 14 days the real year keeps every limit. At 0 days the tiny grid's ceiling is
+    one sample per hour (it has two weather years), the real year beats it in most hours, and the
+    real violations it causes can only fall in hours the audit counts; the OCPP route then sends
+    nothing. The narrower window is a lower ceiling, so its plan is beaten at least as often."""
+    import shutil
+
+    from conftest import synthetic_profiles, tiny_grid
+    from kapacitet import dso
+    from kapacitet.api.operation import _has_charging_profile
+    from kapacitet.engine import operation, run
+    from kapacitet.engine.scenario import Scenario, customers
+
+    folder = tmp_path / "processed"
+    shutil.copytree(tiny_processed, folder)
+    audits = {}
+    with tiny_grid(folder):
+        m = run.model()
+        hp, ev = run.background_masks(m.C)
+        assert ev.any()
+        y = max(synthetic_profiles.YEARS)
+        pv = np.zeros(m.C, dtype=bool)
+        pv[::2] = True
+        arr = Scenario(year=y, pv=pv, hp=hp, ev=ev).arrays()
+        cids = customers()["cid"].to_numpy()
+        for window in (dso.IMPORT_WINDOW_DEFAULT, 0):
+            dso.update(dso.DsoSettingsChange(import_window_days=window))
+            out = operation.write_import(m, y, hp, ev, arr, cids)
+            meta = json.loads((folder / "results" / "operation" / "dayahead" / "import.json").read_text(encoding="utf-8"))
+            assert meta["planning_state"]["window_days"] == out["window_days"] == window
+            assert meta["verified"] and meta["planning_violation_hours"] == 0
+            ex = meta["exceedance"]
+            assert out["exceedance_hours"] == ex["hours_over"]
+            assert meta["actual_violation_hours"] <= ex["hours_over"]       # a dominated hour cannot break
+            if window == dso.IMPORT_WINDOW_DEFAULT:
+                assert meta["actual_violation_hours"] == 0
+            assert _has_charging_profile(meta["cids"][0]) == (meta["actual_violation_hours"] == 0)
+            audits[window] = ex
+    assert audits[0]["customer_hours_over"] >= audits[dso.IMPORT_WINDOW_DEFAULT]["customer_hours_over"]
+    assert audits[0]["aggregate_hours_over"] >= audits[dso.IMPORT_WINDOW_DEFAULT]["aggregate_hours_over"]
 
 
 def _published_import() -> bool:

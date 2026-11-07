@@ -45,6 +45,8 @@ ERRORS = {
     "not_an_agreement": "house {cid} has no conditional agreement, so it receives no schedule",
     "no_charger": "house {cid} has no EV charger under an import envelope, so it receives no charging profile",
     "import_unverified": "the issued import envelopes break a limit in {hours} hours, so they are not sent",
+    "import_stale": "the import envelopes were issued with a {issued}-day window and the settings now hold "
+                    "{setting} days, so they are not sent until `{command}` issues them again",
     "outside_year": "the date is outside the study year {year}",
     "resolution": "a schedule is issued in {allowed} minutes, not {minutes}",
 }

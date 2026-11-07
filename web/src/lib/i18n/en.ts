@@ -1116,6 +1116,7 @@ const en: Dict = {
   "err.meter_outside_year": "No reading falls in the study year {year}.",
   "err.no_charger": "House {cid} has no EV charger with a dynamic import limit, so no charging profile is issued for it.",
   "err.import_unverified": "The issued import limits break a grid limit in {hours} hours, so no charging profile is sent.",
+  "err.import_stale": "The import limits were issued with a {issued}-day window and the settings now hold {setting} days, so no charging profile is sent until {command} issues them again.",
   "err.resolution": "A schedule is issued in {allowed} minutes, not {minutes}.",
   "err.not_an_agreement": "House {cid} has no conditional agreement, so no schedule is issued for it.",
   "err.outside_year": "The date is outside the study year {year}.",

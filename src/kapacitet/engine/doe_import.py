@@ -162,10 +162,47 @@ class IssuedImport:
     planning_violation_hours: int    # hours the envelopes break a limit beyond the firm state: 0 to publish
     actual_violation_hours: int      # the real year with every charger at its envelope, beyond its own firm state
     retreats: int                    # halvings the verification needed
+    exceedance: dict | None = None   # where the real import beat the planning state (import_exceedance)
 
     @property
     def verified(self) -> bool:
         return self.planning_violation_hours == 0
+
+
+def import_exceedance(plan: dict[str, np.ndarray], actual: dict[str, np.ndarray],
+                      flex: np.ndarray | None = None) -> dict:
+    """Where the real import beat the state the import envelopes were planned against: the audit
+    of one issue, the mirror of `forecast.plan_exceedance` for export.
+
+    An import envelope issued the day before is safe because its planning state dominates for
+    import (at least as much demand, net of solar, as the real hour, house by house); for a
+    ceiling taken from the other weather years that is a bet on the record, so every issue counts
+    where it lost. `plan` and `actual` hold `p_net` (C, H) of everything except flexible
+    charging, injection positive, so a house's import is `-p_net`. Counted: customer-hours whose
+    import beat the plan, hours in which some house did, hours the neighbourhood total did (what
+    the transformer sees), the worst kW of each and the first hours (indices into the year,
+    interval start in UTC). With `flex`, the customer-hours of the houses with a flexible charger
+    are also given. A plan equal to what happened counts zero everywhere.
+    """
+    from .forecast import EXCEED_AGG_TOL_KW, EXCEED_TOL_KW, FIRST_HOURS
+
+    over = np.asarray(plan["p_net"], dtype=float) - np.asarray(actual["p_net"], dtype=float)
+    cust = over > EXCEED_TOL_KW
+    agg = over.sum(axis=0)
+    agg_h = agg > EXCEED_AGG_TOL_KW
+    any_h = cust.any(axis=0)
+    out = {
+        "customer_hours_over": int(cust.sum()),
+        "hours_over": int(any_h.sum()),
+        "aggregate_hours_over": int(agg_h.sum()),
+        "worst_customer_kw": round(float(over[cust].max()), 4) if cust.any() else 0.0,
+        "worst_aggregate_kw": round(float(agg[agg_h].max()), 4) if agg_h.any() else 0.0,
+        "first_hours": {"customer": np.flatnonzero(any_h)[:FIRST_HOURS].tolist(),
+                        "aggregate": np.flatnonzero(agg_h)[:FIRST_HOURS].tolist()},
+    }
+    if flex is not None:
+        out["flex_customer_hours_over"] = int(cust[np.asarray(flex, dtype=bool)].sum())
+    return out
 
 
 def _broken(model: NetModel, p_rest: np.ndarray, q_rest: np.ndarray, draw: np.ndarray,
@@ -191,7 +228,9 @@ def issue_day_ahead(model: NetModel, plan: dict[str, np.ndarray], actual: dict[s
     envelope at once is solved against the plan; an hour that still breaks a limit has its
     envelopes halved until it does not, and is set to zero if halving runs out. An hour the
     plan breaks with no flexible charging at all gets zero, since nothing can be added to it.
-    The real year is checked the same way and reported, not repaired (as `plan_exceedance` is).
+    The real year is checked the same way and reported, not repaired (as `plan_exceedance` is),
+    and the issue audits its premise: `exceedance` (`import_exceedance`) counts where the real
+    import beat the plan.
     """
     C, H = plan["p_net"].shape
     charger = float(A("ev_charger_kw"))
@@ -221,4 +260,5 @@ def issue_day_ahead(model: NetModel, plan: dict[str, np.ndarray], actual: dict[s
     return IssuedImport(flex=idx, envelope=e.astype(np.float32), firm_kw=charger, critical_hours=critical,
                         limited_hours=int((e < charger - 1e-6).any(axis=0).sum()) if len(idx) else 0,
                         firm_violation_hours=int(len(firm)), planning_violation_hours=int(len(bad)),
-                        actual_violation_hours=int(len(a_bad)), retreats=n)
+                        actual_violation_hours=int(len(a_bad)), retreats=n,
+                        exceedance=import_exceedance(plan, actual, flex))

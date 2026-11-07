@@ -23,6 +23,11 @@ from .paths import DATA
 
 POLICIES = ("maxmin", "prorata", "propfair", "maxtotal")
 REQUEST_KINDS = ("pv", "ev", "hp", "battery")
+# the calendar half-window, in days, of the demand ceiling the issued import envelopes are planned
+# against (engine/forecast.import_planning_state): the window they had before it became a setting,
+# so an import.json that names none was issued with it
+IMPORT_WINDOW_DEFAULT = 14
+IMPORT_WINDOW_MAX = 91
 _LOCK = threading.Lock()
 
 
@@ -97,6 +102,11 @@ class DsoSettings(BaseModel):
     # what the DSO paid in the report year for the curtailment its conditional agreements imposed,
     # for the redispatch report (engine/redispatch.py); zero unless the DSO enters it
     redispatch_compensation_sek: float = Field(0.0, ge=0, le=1e12)
+    # the half-window, in days either side, of the other weather years' demand ceiling the issued
+    # import envelopes (EV chargers) are planned against: wider is a higher ceiling, so tighter
+    # envelopes and fewer exceedances; 0 takes the same calendar day only. A change leaves the
+    # published import envelopes stale until `compute --stage extra --only operation` issues them again
+    import_window_days: int = Field(IMPORT_WINDOW_DEFAULT, ge=0, le=IMPORT_WINDOW_MAX)
     # what the rule may decide on its own (`sign_rule`); none: nothing
     rule_signature: RuleSignature | None = None
 
@@ -125,6 +135,7 @@ class DsoSettingsChange(BaseModel):
     review_statement: str | None = Field(None, max_length=2000)
     market_result_local: str | None = Field(None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$")
     redispatch_compensation_sek: float | None = Field(None, ge=0, le=1e12)
+    import_window_days: int | None = Field(None, ge=0, le=IMPORT_WINDOW_MAX)
 
 
 def path():

@@ -55,15 +55,45 @@ def _refusal(status: int, code: str, **params) -> HTTPException:
     return HTTPException(status, {"code": code, "message": message, "params": params})
 
 
+def _import_meta() -> dict | None:
+    """results/operation/dayahead/import.json, or None before the operation stage has written it."""
+    path = processed_ro("results", "operation", "dayahead", "import.json")
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def import_status(meta: dict | None = None, settings: dso.DsoSettings | None = None) -> dict:
+    """Whether the published import envelopes were issued under the window the DSO's settings hold
+    now (`import_window_days`). A change of the setting leaves them stale until the operation stage
+    issues them again; until then the OCPP route refuses to send them. An import.json that names no
+    window was issued before it was a setting, with `dso.IMPORT_WINDOW_DEFAULT`."""
+    meta = _import_meta() if meta is None else meta
+    want = int((settings or dso.load()).import_window_days)
+    if meta is None:
+        return {"computed": False, "window_days": None, "setting_window_days": want, "stale": False,
+                "command": COMMAND}
+    got = int((meta.get("planning_state") or {}).get("window_days", dso.IMPORT_WINDOW_DEFAULT))
+    return {"computed": True, "window_days": got, "setting_window_days": want, "stale": got != want,
+            "command": COMMAND}
+
+
+def _settings_reply(s: dso.DsoSettings) -> dict:
+    return {"settings": s.model_dump(), "policies": list(dso.POLICIES), "import_envelopes": import_status(settings=s)}
+
+
 @router.get("/settings")
 def get_settings() -> dict:
-    return {"settings": dso.load().model_dump(), "policies": list(dso.POLICIES)}
+    """The DSO's settings, and whether the published import envelopes still follow them."""
+    return _settings_reply(dso.load())
 
 
 @router.put("/settings")
 def put_settings(change: dso.DsoSettingsChange) -> dict:
-    """Change the DSO's settings; every change is sealed with what it replaced."""
-    return {"settings": dso.update(change).model_dump(), "policies": list(dso.POLICIES)}
+    """Change the DSO's settings; every change is sealed with what it replaced. A change of
+    `import_window_days` leaves the published import envelopes stale (`import_envelopes.stale`)
+    until `compute --stage extra --only operation` issues them again."""
+    return _settings_reply(dso.update(change))
 
 
 @router.put("/settings/rule-signature")
@@ -71,7 +101,7 @@ def put_rule_signature(body: dso.RuleSignatureIn) -> dict:
     """Sign the automatic rule: who signs, in what role, for which kinds of request, up to what PV
     size and until when, with the thresholds in force unless given. Sealed as `rule_signature`;
     without it, or outside it, an application waits for a person."""
-    return {"settings": dso.sign_rule(body).model_dump(), "policies": list(dso.POLICIES)}
+    return _settings_reply(dso.sign_rule(body))
 
 
 @router.get("/operation/index")
@@ -241,12 +271,12 @@ def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DAT
 
 
 def _has_charging_profile(cid: int) -> bool:
-    """Whether GET /operation/schedule.ocpp.json has a verified import envelope to send for the house."""
-    path = processed_ro("results", "operation", "dayahead", "import.json")
-    if not path.exists():
+    """Whether GET /operation/schedule.ocpp.json has a verified, current import envelope to send for the house."""
+    meta = _import_meta()
+    if meta is None:
         return False
-    meta = json.loads(path.read_text(encoding="utf-8"))
-    return bool(meta.get("verified")) and not meta.get("actual_violation_hours") and cid in meta.get("cids", [])
+    return (bool(meta.get("verified")) and not meta.get("actual_violation_hours") and cid in meta.get("cids", [])
+            and not import_status(meta)["stale"])
 
 
 @router.get("/operation/schedule.ocpp.json")
@@ -257,8 +287,9 @@ def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     (modelled on OCPP 1.6J, not certified; no charge point is connected): a ChargePointMaxProfile
     on connector 0, in watts from local midnight, one period per schedule step. The limits are the
     import envelopes issued the day before; a step without one keeps the firm import limit (the
-    charger's rating). Only the day-ahead basis is ever sent, and the payload is checked against
-    OCPP 1.6J's field rules before it leaves."""
+    charger's rating). Only the day-ahead basis is ever sent, only while the envelopes follow the
+    DSO's `import_window_days` (`import_status`), and the payload is checked against OCPP 1.6J's
+    field rules before it leaves."""
     from ..engine import ocpp
     from ..engine.delivery import day_of
     from ..engine.delivery import schedule as rows_for
@@ -272,6 +303,10 @@ def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     if not meta.get("verified") or meta.get("actual_violation_hours"):
         raise _refusal(409, "import_unverified", hours=int(meta.get("planning_violation_hours", 0)
                                                            or meta.get("actual_violation_hours", 0)))
+    status = import_status(meta)
+    if status["stale"]:
+        raise _refusal(409, "import_stale", issued=status["window_days"], setting=status["setting_window_days"],
+                       command=COMMAND)
     if cid not in meta["cids"]:
         raise _refusal(404, "no_charger", cid=cid)
     year = int(meta["year"])

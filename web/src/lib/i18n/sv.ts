@@ -1117,6 +1117,7 @@ const sv: Dict = {
   "err.meter_outside_year": "Inget mätvärde ligger inom studieåret {year}.",
   "err.no_charger": "Hus {cid} har ingen elbilsladdare med dynamisk importgräns, så ingen laddprofil utfärdas för det.",
   "err.import_unverified": "De utfärdade dynamiska importgränserna bryter en nätgräns under {hours} timmar, så ingen laddprofil skickas.",
+  "err.import_stale": "De dynamiska importgränserna utfärdades med ett fönster på {issued} dagar och inställningarna anger nu {setting} dagar, så ingen laddprofil skickas förrän {command} utfärdar dem på nytt.",
   "err.resolution": "Ett schema utfärdas i intervall om {allowed} minuter, inte {minutes}.",
   "err.not_an_agreement": "Hus {cid} har inget villkorat avtal, så inget schema utfärdas för det.",
   "err.outside_year": "Datumet ligger utanför studieåret {year}.",

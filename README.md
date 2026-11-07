@@ -884,7 +884,14 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
   taken as plugged in every hour, since a plan made the day before cannot know when a car arrives.
   Every charger at its envelope at once is then solved hour by hour; an hour that still breaks a
   limit is halved until it does not. The real year is checked the same way and reported
-  (`actual_violation_hours`). Summing each house's own record makes this ceiling cautious: the
+  (`actual_violation_hours`), and the issue audits its premise: `exceedance` counts the
+  customer-hours, hours and neighbourhood-total hours in which the real import beat the plan, with
+  the worst kW and the first hours. The calendar window is the DSO's setting `import_window_days`
+  (`PUT /api/v1/settings`; 14 days either side by default, 0 for the same calendar day only,
+  sealed when changed). A narrower window is a lower ceiling, so looser envelopes that the real
+  year beats more often. After a change, `GET /api/v1/settings` reports the published envelopes as
+  stale (`import_envelopes.stale`) and this route refuses them (`import_stale`) until
+  `compute --stage extra --only operation` issues them again. Summing each house's own record makes this ceiling cautious: the
   envelopes hold chargers well below their rating in most hours.
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
   judged by two tests: no hour above a grid limit, and every agreement within the level it was

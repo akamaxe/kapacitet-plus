@@ -227,19 +227,26 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
     return index
 
 
-def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.ndarray], cids: np.ndarray) -> dict:
+def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.ndarray], cids: np.ndarray,
+                 window_days: int | None = None) -> dict:
     """The import envelopes issued the day before to every EV charger (doe_import.issue_day_ahead),
     on the import planning state (forecast.import_planning_state). They do not depend on the rule
     of the export envelopes, so they are written once, next to the day-ahead combinations:
     results/operation/dayahead/import.json and ui/operation/dayahead/import_envelopes.npy.
-    Returns the summary the index keeps."""
+
+    The planning state's calendar window is the DSO's setting (`dso.DsoSettings.import_window_days`)
+    unless given, and import.json names it, so the API can tell when the setting has changed since
+    (api/operation.import_status). The issue's audit of where the real import beat the plan
+    (doe_import.import_exceedance) goes in as `exceedance`. Returns the summary the index keeps."""
+    from .. import dso
     from . import doe_import
     from .run import save_npy
     from .scenario import year_profiles
 
     t0 = time.perf_counter()
     tanphi = np.tan(np.arccos(A("load_power_factor")))
-    plan = forecast.import_planning_state(y, hp, np.zeros_like(ev))
+    window = int(dso.load().import_window_days if window_days is None else window_days)
+    plan = forecast.import_planning_state(y, hp, np.zeros_like(ev), window)
     ev_load = np.where(ev[:, None], year_profiles(y)["ev"], 0.0)
     actual = {"p_net": arr["p_net"].astype(float) + ev_load, "q": arr["q"].astype(float) + ev_load * tanphi}
     r = doe_import.issue_day_ahead(m, plan, actual, ev)
@@ -250,12 +257,15 @@ def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.nd
         "firm_violation_hours": r.firm_violation_hours, "planning_violation_hours": r.planning_violation_hours,
         "actual_violation_hours": r.actual_violation_hours, "retreats": r.retreats, "verified": r.verified,
         "planning_state": {"scheme": "climatological ceiling", "pv": "none", "plugged": "every hour",
-                           "window_days": forecast.WINDOW_DAYS, "load_margin_pct": round(lm * 100.0, 6)},
+                           "window_days": window, "load_margin_pct": round(lm * 100.0, 6)},
+        "exceedance": r.exceedance,
         "seconds": round(time.perf_counter() - t0, 1),
     }
     folder = processed("results", "operation", "dayahead", "import.json").parent
     save_npy(processed("ui", "operation", "dayahead", "import_envelopes.npy"), (np.floor(r.envelope.astype(float) * 1000.0 + 1e-9) / 1000.0).astype(np.float32))
     _write_json(folder / "import.json", summary)
-    log.info("operation import: %d chargers, %d h limited, %d planning / %d real violation h (%.1f s)",
-             len(r.flex), r.limited_hours, r.planning_violation_hours, r.actual_violation_hours, summary["seconds"])
-    return {k: summary[k] for k in ("verified", "limited_hours", "planning_violation_hours", "actual_violation_hours")}
+    log.info("operation import (%d-day window): %d chargers, %d h limited, %d planning / %d real violation h, "
+             "%d h the real import beat the plan (%.1f s)", window, len(r.flex), r.limited_hours,
+             r.planning_violation_hours, r.actual_violation_hours, r.exceedance["hours_over"], summary["seconds"])
+    return {**{k: summary[k] for k in ("verified", "limited_hours", "planning_violation_hours", "actual_violation_hours")},
+            "window_days": window, "exceedance_hours": r.exceedance["hours_over"]}
