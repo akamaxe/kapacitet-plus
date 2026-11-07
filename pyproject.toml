@@ -36,7 +36,8 @@ dependencies = [
 [project.optional-dependencies]
 # richardsonpy is GPL-3.0; it is only used by the offline household-profile generator.
 profiles = ["richardsonpy>=0.2.3"]
-dev = ["pytest>=8", "httpx>=0.27"]
+# hypothesis: the property tests (tests/test_properties_*.py)
+dev = ["pytest>=8", "httpx>=0.27", "hypothesis>=6.170,<7"]
 # the forecast variant of the intraday replica (engine/nowcast.py); CI installs it with dev
 forecast = ["lightgbm>=4.7,<5"]
 # the server's state in PostgreSQL instead of data/requests (kapacitet.store, KAPACITET_DATABASE_URL)

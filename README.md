@@ -465,6 +465,21 @@ in CI; where the pipeline output exists they run on the reference network as wel
 that need pipeline output skip themselves on a fresh clone. With `KAPACITET_TEST_DATABASE_URL` set
 to a test database, the server-state tests run on PostgreSQL as well (docs/postgres.md).
 
+The property tests (`tests/test_properties_*.py`, with Hypothesis) draw the cases nobody chose:
+random radial grids written in the import contract and built by the importer, with load and
+generation at the edge of a limit across the MV band 0.98-1.06 pu (the screens never skip an hour
+the nonlinear check flags); allocation problems (no rule gives a customer more than its cap or a
+limit more than its verified capacity, and more capacity never makes a rule's own aim worse);
+writes cut at any point (no reader sees a partial file); the envelopes of any day, the days the
+clocks change included (no interval of a schedule, nor the inverter's XML, carries a limit above
+its hour's verified envelope); and sequences of decisions in the queue (the grid with every
+approved house breaks no limit the baseline was within). By default they are derandomized and
+bounded, so CI tries the same examples on every push; for a longer hunt on your own machine:
+
+```bash
+python -m pytest tests/test_properties_*.py --hypothesis-profile=deep   # random, twenty times the examples
+```
+
 The interface has its own, in `web/`:
 
 ```bash

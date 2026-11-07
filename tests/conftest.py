@@ -32,6 +32,35 @@ os.environ.setdefault("KAPACITET_ALLOWED_HOSTS", "testserver")
 
 from kapacitet.paths import processed
 
+# ------------------------------------------------------------------ Hypothesis (the property tests)
+# "ci", the default, is derandomized and bounded: every run tries the same examples, so a push is
+# green or red for the code alone, and no example database is written. "deep" is for local runs
+# (`pytest --hypothesis-profile=deep`): random, twenty times the examples, with the database kept so
+# a failure found once is tried first next time. Hypothesis's own plugin loads the profile the
+# option names after this file is imported, so the option overrides the default set here. A test
+# asks for its share of the examples with `examples(n)` (tests/test_properties_*.py).
+try:
+    from hypothesis import HealthCheck
+    from hypothesis import settings as _hypothesis_settings
+except ImportError:          # the dev extra brings it; without it the property tests are skipped
+    pass
+else:
+    _slow = [HealthCheck.too_slow, HealthCheck.data_too_large, HealthCheck.filter_too_much]
+    _hypothesis_settings.register_profile("ci", derandomize=True, database=None, max_examples=10,
+                                          deadline=None, print_blob=True, suppress_health_check=_slow)
+    _hypothesis_settings.register_profile("deep", max_examples=200, deadline=None, print_blob=True,
+                                          suppress_health_check=_slow)
+    _hypothesis_settings.load_profile("ci")
+
+
+def examples(n: int) -> int:
+    """The examples a property test runs: `n` in the "ci" profile, scaled with the profile loaded
+    (twenty times as many in "deep"). Read when the test module is collected, after the plugin
+    has loaded the profile the command line names."""
+    from hypothesis import settings as current
+
+    return max(1, round(n * current().max_examples / 10))
+
 HAS_GRID = processed("grid", "net.json").exists()
 HAS_RESULTS = processed("results", "showcase.json").exists()
 

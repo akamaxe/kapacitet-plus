@@ -2,6 +2,8 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 .pytest_cache/
+# Hypothesis's example database (the "deep" profile keeps one; tests/conftest.py)
+.hypothesis/
 .env
 .venv*/
 # All of data/, whatever lands in it: downloads and results (reproducible with `python -m kapacitet

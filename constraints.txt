@@ -47,6 +47,9 @@ pycparser==3.12
 authlib==1.9.5
 joserfc==1.8.0
 pytest==9.2.0
+# the property tests (dev extra, tests/test_properties_*.py), approved 2026-11-07, with its one dependency
+hypothesis==6.170.15
+sortedcontainers==2.4.0
 # the "forecast" extra (engine/nowcast.py), approved 2026-11-06
 lightgbm==4.7.0
 # the "postgres" extra (kapacitet.store), approved 2026-11-06, with what psycopg needs
