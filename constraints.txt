@@ -42,7 +42,7 @@ httpx==0.28.1
 # the seals' Ed25519 signatures (seals.py), with what cryptography needs on CPython
 cryptography==50.0.2
 cffi==2.1.1
-pycparser==3.11
+pycparser==3.12
 pytest==9.2.0
 # the "forecast" extra (engine/nowcast.py), approved 2026-11-06
 lightgbm==4.7.0
