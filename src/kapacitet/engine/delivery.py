@@ -162,6 +162,20 @@ def terms(resolution_min: int, desired_kw: np.ndarray | None = None, H: int | No
     }
 
 
+def span(rows: list[dict], resolution_min: int) -> dict:
+    """The span a schedule's rows actually cover, as an issue seals it: first start and end in
+    UTC, step and number of intervals, and which day that is (the study day at 60 minutes, the
+    market's delivery day at 15)."""
+    from datetime import datetime, timezone
+
+    start = int(rows[0]["start_epoch"])
+    end = int(rows[-1]["start_epoch"]) + int(rows[-1]["duration_s"])
+    return {"start_utc": datetime.fromtimestamp(start, timezone.utc).isoformat(),
+            "end_utc": datetime.fromtimestamp(end, timezone.utc).isoformat(),
+            "resolution_min": int(resolution_min), "intervals": len(rows),
+            "day": terms(resolution_min)["day"]}
+
+
 def within_envelope(rows: list[dict], limits_kw: np.ndarray) -> dict:
     """A schedule checked hour by hour against the verified envelope: in no hour does any of its
     intervals carry a limit above the hour's envelope (so the lowest quarter does not either)."""

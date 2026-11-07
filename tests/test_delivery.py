@@ -5,7 +5,7 @@ run anywhere; the last tests read the operation stage's output."""
 from __future__ import annotations
 
 import json
-from datetime import date
+from datetime import date, datetime, timezone
 from xml.etree import ElementTree as ET
 
 import numpy as np
@@ -286,6 +286,20 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         again = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day}, headers=key)
         assert first.headers["x-seal-seq"] == again.headers["x-seal-seq"] and first.content == again.content
         assert len(seals.sealed_of_kind("schedule")) == 2
+        # the key names the issue whatever step it is sent again with: the first one comes back
+        other = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day, "resolution": 60},
+                       headers=key)
+        assert other.headers["x-seal-seq"] == first.headers["x-seal-seq"] and other.content == first.content
+        assert len(seals.sealed_of_kind("schedule")) == 2 and "-15min" in other.headers["content-disposition"]
+        # an hourly issue seals the span its limits cover (the study day), even when the clocks change
+        hourly = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": f"{year}-03-30",
+                                                                  "resolution": 60})
+        assert hourly.status_code == 200 and "-15min" not in hourly.headers["content-disposition"]
+        rec = seals.sealed_of_kind("schedule")[-1]["record"]
+        span = rec["market"]["delivery"]
+        assert span["intervals"] == len(rec["limits"]) == 24 and span["day"] == "study"
+        assert span["start_utc"] == datetime.fromtimestamp(rec["limits"][0]["start_epoch"], timezone.utc).isoformat()
+        assert kept[0]["record"]["market"]["delivery"]["intervals"] == 96
         assert c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day},
                       headers={"Idempotency-Key": "../x"}).status_code == 422
 

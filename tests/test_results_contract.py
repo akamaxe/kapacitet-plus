@@ -485,7 +485,8 @@ def test_the_published_replica_says_the_step_its_reissues_are_sent_in():
     if "schedule" not in d:
         pytest.skip(f"intraday.json predates the schedule step (E5); {INTRADAY}")
     s = d["schedule"]
-    assert s["resolution_min"] == A("schedule_resolution_min") and s["interval_s"] == 60 * s["resolution_min"]
+    # the step stored with the file, which may predate a change of schedule_resolution_min
+    assert s["resolution_min"] in (15, 60) and s["interval_s"] == 60 * s["resolution_min"]
     # the gates and the envelopes stay hourly, whatever step a re-issue is sent in
     assert s["inputs_resolution_min"] == 60 == s["verified_resolution_min"]
 

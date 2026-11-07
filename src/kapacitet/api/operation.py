@@ -8,6 +8,7 @@ from __future__ import annotations
 import csv
 import io
 import json
+import re
 import threading
 import time
 from datetime import date as Date
@@ -216,7 +217,7 @@ def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PA
             w.writerow([r["start_utc"], r["duration_s"], r["study_clock"], r["stockholm"], r["limit_kw"],
                         r["desired_kw"]])
         return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
-                        headers={"Content-Disposition": f'attachment; filename="kapacitet-schedule-{cid}-{date}.csv"'})
+                        headers={"Content-Disposition": f'attachment; filename="kapacitet-schedule-{cid}-{date}{_suffix(step)}.csv"'})
     return {"cid": cid, "date": date, "year": year, "basis": "dayahead", "policy": combo.policy, "rows": rows,
             **terms(step, desired, len(limits)), "within_envelope": within_envelope(rows, limits),
             "default_kw": default_kw, "kappa": kappa, "ocpp": _has_charging_profile(cid),
@@ -300,13 +301,20 @@ class Issue(BaseModel):
     resolution: Literal[15, 60] | None = Field(None, description=RESOLUTION_DOC)
 
 
-def _market_terms(body: Issue, step: int) -> dict:
+def _suffix(step: int) -> str:
+    """A downloaded file's step, in its name when it is not hourly, so the two steps never share one."""
+    return "" if step == 60 else f"-{step}min"
+
+
+def _market_terms(body: Issue, step: int, rows: list[dict]) -> dict:
     """What the issue owes to the market: when its result was known, whether the issue waited for
     it (or why not), and which records of market alternatives cover the day. Refuses an issue
     before the result unless it gives a reason; a day no record covers is flagged, never refused."""
+    from ..engine.delivery import span
+
     day = Date.fromisoformat(body.date)
     local = dso.load().market_result_local
-    g = market.gate(day, local, resolution_min=step)
+    g = market.gate(day, local)
     reason = (body.override_reason or "").strip()
     if not g["open"] and not reason:
         raise _refusal(409, "before_market", date=body.date, day_before=g["day_before"], local=local,
@@ -315,7 +323,9 @@ def _market_terms(body: Issue, step: int) -> dict:
     flags = ([] if g["open"] else ["before_market_override"]) + ([] if covered else ["no_market_alternatives"])
     return {"market_result_at": g["result_at"], "market_result_local": local,
             "before_market_result": not g["open"], "override_reason": reason if not g["open"] else None,
-            "market_alternatives": covered, "flags": flags, "delivery": g["delivery"]}
+            "market_alternatives": covered, "flags": flags,
+            # the span the issued limits cover: the study day at 60 minutes, the delivery day at 15
+            "delivery": span(rows, step)}
 
 
 @router.post("/operation/schedule/issue")
@@ -332,23 +342,26 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
     # an hourly issue keeps the id it always had; a quarter-hour one names its step before the
     # fingerprint, so neither id is a prefix of the other
     stepped = "" if step == 60 else f"{step}min-"
-    item = f"{body.cid}-{body.date}-{combo.policy}-{stepped}{seals.fingerprint()['digest'][:8]}"
-    name = f"kapacitet-dercontrols-{body.cid}-{body.date}.xml"
+    base, fp = f"{body.cid}-{body.date}-{combo.policy}-", seals.fingerprint()["digest"][:8]
+    item = f"{base}{stepped}{fp}"
     with _SEAL_LOCK:
         kept = None
         if idempotency_key:
             # the key alone names the issue, whatever its market terms were
+            # and its step: the same key sent again with another resolution gets the first issue
             keyed = [e for e in seals.sealed_of_kind("schedule")
-                     if e["entry"]["id"].startswith(item) and e["entry"]["id"].endswith(f"-k{idempotency_key}")]
+                     if e["entry"]["id"].startswith(base) and e["entry"]["id"].endswith(f"-k{idempotency_key}")
+                     and re.match(rf"(\d+min-)?{fp}", e["entry"]["id"].removeprefix(base))]
             if keyed:
                 entry, kept = keyed[-1]["entry"], keyed[-1]["record"]
         if kept is not None:
             # the limits sent the first time, issued when they were sealed, in the step they had
-            duration = 60 * int(kept.get("resolution_min", 60))
+            step = int(kept.get("resolution_min", 60))
+            duration = 60 * step
             rows = [{"duration_s": duration, **r} for r in kept["limits"]]
             terms = kept.get("market") or {}
         else:
-            terms = _market_terms(body, step)
+            terms = _market_terms(body, step, rows)
             # the same day issued under other market terms (a reason, a record added since) is
             # another record, so it never collides with the first one's seal
             if terms["flags"] or terms["market_alternatives"]:
@@ -361,7 +374,7 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
                 "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows],
                 "market": terms})
     issued = int(datetime.fromisoformat(entry["at"]).timestamp())
-    headers = _sealed_headers(entry, name)
+    headers = _sealed_headers(entry, f"kapacitet-dercontrols-{body.cid}-{body.date}{_suffix(step)}.xml")
     headers["X-Issue-Flags"] = ",".join(terms.get("flags", []))
     return Response(der_control_list(body.cid, rows, issued), media_type="application/sep+xml", headers=headers)
 

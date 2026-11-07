@@ -607,6 +607,8 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
         "variants": variants,
         # the step a re-issue is sent in (delivery.terms): its gates and its envelopes stay hourly,
         # so a quarter-hour re-issue carries each hour's verified envelope in its four quarters
+        # (metadata only: the replica simulates re-issues hour by hour and serves none; one that is
+        # served is built with delivery.schedule(..., resolution_min) like the day-ahead one)
         "schedule": delivery_terms(delivery_resolution()),
     }
     for v in variants.values():
