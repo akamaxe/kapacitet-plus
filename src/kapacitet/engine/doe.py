@@ -154,12 +154,27 @@ def _cvx_batch(A: np.ndarray, b: np.ndarray, ub: np.ndarray, objective: str, bat
         except Exception:  # pragma: no cover - fall back to SCS
             prob.solve(solver=cp.SCS, eps=1e-6)
         val = np.clip(np.nan_to_num(E.value), 0.0, uu)
-        # remove solver tolerance overshoot so the linear constraints hold exactly
-        use = A @ val
-        with np.errstate(divide="ignore", invalid="ignore"):
-            scale = np.where(use > bb + 1e-9, bb / use, 1.0).min(axis=0)
-        E_out[:, sl] = val * np.clip(scale, 0.0, 1.0)[None, :]
+        E_out[:, sl] = _within_rows(A, bb, val)
     return E_out
+
+
+def _within_rows(A: np.ndarray, b: np.ndarray, E: np.ndarray, tol: float = 1e-9) -> np.ndarray:
+    """E (N, H) with the solver's tolerance overshoot removed, so A E <= b holds exactly.
+
+    Each customer on a row the solution overshoots is scaled by that row's factor b/(A E) (the
+    smallest over its rows), and no other customer is touched. Scaling the whole hour by the worst
+    row, as before, let a nanowatt over a row with no capacity left (b = 0) zero every customer of
+    the hour, the ones on no binding limit included: more capacity elsewhere could then give a
+    smaller total (found by tests/test_properties_allocation.py).
+    """
+    use = A @ E
+    with np.errstate(divide="ignore", invalid="ignore"):
+        row = np.clip(np.where(use > b + tol, b / use, 1.0), 0.0, 1.0)      # (K, H)
+    factor = np.ones_like(E)
+    on = A > 0
+    for k in np.flatnonzero((row < 1.0).any(axis=1)):
+        factor = np.where(on[k][:, None], np.minimum(factor, row[k][None, :]), factor)
+    return E * factor
 
 
 def allocate(policy: str, A: np.ndarray, b: np.ndarray, ub: np.ndarray,

@@ -125,3 +125,19 @@ def test_zero_headroom_gives_zero():
     A = np.ones((1, 3))
     E = waterfill(A, np.zeros((1, 1)), np.full((3, 1), 5.0))
     assert np.abs(E).max() < 1e-12
+
+
+@pytest.mark.parametrize("policy", ["maxtotal", "propfair"])
+def test_a_solver_overshoot_on_a_full_limit_touches_only_its_own_customers(policy):
+    """Found by tests/test_properties_allocation.py: the solver left a nanowatt on a row with no
+    capacity (b = 0), and the clean-up scaled the whole hour by that row's factor, zeroing the
+    customer that sits on no binding limit. Only the full row's customer may lose anything."""
+    from kapacitet.engine.doe import _within_rows
+
+    A = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]])
+    ub = np.array([[4.0], [0.0], [2.0], [0.0]])
+    for room in (47.0, 49.0):
+        E = allocate(policy, A, np.array([[0.0], [room]]), ub, np.ones(4))
+        assert E[2, 0] == pytest.approx(2.0, abs=1e-6) and E[0, 0] <= 1e-9
+    E = _within_rows(A, np.array([[0.0], [49.0]]), np.array([[2e-9], [0.0], [2.0], [0.0]]))
+    assert E[:, 0].tolist() == [0.0, 0.0, 2.0, 0.0]
