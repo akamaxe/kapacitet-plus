@@ -38,7 +38,7 @@ export function ImportEnvelopes() {
 
 /**
  * The EV chargers' import envelopes: the window they were issued with and the one the DSO's settings
- * hold now, the issue's audit of the hours the real import went past the planning floor, and the
+ * hold now, the issue's audit of the hours the real import went past the planning ceiling, and the
  * hours above a grid limit. When the two windows differ the envelopes are stale, and the charging
  * profile is refused until the operation stage issues them again. The window is a DSO setting.
  */
@@ -90,7 +90,7 @@ export function ImportBlock({ status: S }: { status: ImportStatus }) {
         <Tile label={t("op.imp.setting")} value={days(S.setting_window_days)} unit={t("op.imp.days")} />
         {S.computed && (
           <Tile
-            label={<Term id="planningFloor">{t("op.imp.over")}</Term>}
+            label={<Term id="planningCeiling">{t("op.imp.over")}</Term>}
             value={ex ? f(ex.hours_over) : "–"}
             unit="h"
             note={ex ? t("op.imp.overNote", { houseHours: f(ex.customer_hours_over), kw: f(ex.worst_customer_kw, 2), agg: f(ex.aggregate_hours_over) }) : undefined}

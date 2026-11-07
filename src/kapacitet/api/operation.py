@@ -71,7 +71,7 @@ def import_status(meta: dict | None = None, settings: dso.DsoSettings | None = N
 
     It also carries what Operation shows next to the charging profile: the largest window the
     setting takes (`max_window_days`) and the issue's audit of where the real import beat the
-    planning floor (`exceedance`: hours, house-hours, the worst kW and the aggregate's hours)."""
+    planning ceiling (`exceedance`: hours, house-hours, the worst kW and the aggregate's hours)."""
     meta = _import_meta() if meta is None else meta
     want = int((settings or dso.load()).import_window_days)
     base = {"setting_window_days": want, "max_window_days": dso.IMPORT_WINDOW_MAX, "command": COMMAND}

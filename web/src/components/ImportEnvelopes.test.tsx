@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ImportBlock, type ImportStatus } from "./ImportEnvelopes";
 
 // The EV chargers' import envelopes in Operation: the window they were issued with against the one
-// the DSO's settings hold, the audit of the hours over the planning floor, and the setting itself,
+// the DSO's settings hold, the audit of the hours over the planning ceiling, and the setting itself,
 // changed through PUT /settings. Every figure comes from the status block; none is typed here.
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -54,7 +54,7 @@ describe("the import envelopes' window", () => {
     const el = await render(fresh);
     expect(text(el)).toContain("Current");
     expect(el.querySelector(".stale-note")).toBeNull();
-    expect(text(el)).toContain("Hours over the planning floor");
+    expect(text(el)).toContain("Hours over the planning ceiling");
     expect(text(el)).toContain("89");
     expect(text(el)).toContain("135 house-hours");
     expect(text(el)).toContain("0.67 kW");
@@ -81,7 +81,7 @@ describe("the import envelopes' window", () => {
     expect(text(el)).toContain("No import limits have been issued yet");
     expect(el.querySelector("code")!.textContent).toBe(COMMAND);
     expect(el.querySelector(".stale-note")).toBeNull();
-    expect(text(el)).not.toContain("Hours over the planning floor");
+    expect(text(el)).not.toContain("Hours over the planning ceiling");
   });
 
   it("sends the new window to PUT /settings, and refuses one past the maximum", async () => {
