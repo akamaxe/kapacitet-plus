@@ -126,6 +126,8 @@ def test_a_changed_window_leaves_the_import_envelopes_stale_until_issued_again(a
     assert s["settings"]["import_window_days"] == dso.IMPORT_WINDOW_DEFAULT
     assert s["import_envelopes"] == {"computed": True, "window_days": dso.IMPORT_WINDOW_DEFAULT,
                                      "setting_window_days": dso.IMPORT_WINDOW_DEFAULT, "stale": False,
+                                     "actual_violation_hours": s["import_envelopes"]["actual_violation_hours"],
+                                     "exceedance_hours": s["import_envelopes"]["exceedance_hours"],
                                      "command": s["import_envelopes"]["command"]}
     r = api.put("/api/v1/settings", json={"import_window_days": 0})
     assert r.status_code == 200 and r.json()["import_envelopes"]["stale"] is True

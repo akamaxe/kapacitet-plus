@@ -241,13 +241,16 @@ def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.nd
     from .. import dso
     from . import doe_import
     from .run import save_npy
-    from .scenario import year_profiles
+    from .scenario import existing, in_meter, year_profiles
 
     t0 = time.perf_counter()
     tanphi = np.tan(np.arccos(A("load_power_factor")))
     window = int(dso.load().import_window_days if window_days is None else window_days)
     plan = forecast.import_planning_state(y, hp, np.zeros_like(ev), window)
-    ev_load = np.where(ev[:, None], year_profiles(y)["ev"], 0.0)
+    # the chargers the scenario put in (not a metered house's own: its meter already holds it) are
+    # added back, so `actual` is everything except flexible charging, as the audit's contract says
+    ev_in = np.asarray(ev, dtype=bool) & ~(in_meter(y) & existing()["ev"])
+    ev_load = np.where(ev_in[:, None], year_profiles(y)["ev"], 0.0)
     actual = {"p_net": arr["p_net"].astype(float) + ev_load, "q": arr["q"].astype(float) + ev_load * tanphi}
     r = doe_import.issue_day_ahead(m, plan, actual, ev)
     _, lm = forecast.day_ahead_margins()

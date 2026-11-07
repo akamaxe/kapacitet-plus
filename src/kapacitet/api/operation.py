@@ -75,7 +75,8 @@ def import_status(meta: dict | None = None, settings: dso.DsoSettings | None = N
                 "command": COMMAND}
     got = int((meta.get("planning_state") or {}).get("window_days", dso.IMPORT_WINDOW_DEFAULT))
     return {"computed": True, "window_days": got, "setting_window_days": want, "stale": got != want,
-            "command": COMMAND}
+            "actual_violation_hours": meta.get("actual_violation_hours"),
+            "exceedance_hours": (meta.get("exceedance") or {}).get("hours_over"), "command": COMMAND}
 
 
 def _settings_reply(s: dso.DsoSettings) -> dict:
