@@ -250,7 +250,8 @@ def _has_charging_profile(cid: int) -> bool:
 
 
 @router.get("/operation/schedule.ocpp.json")
-def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN)) -> Response:
+def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
+                  resolution: int | None = Query(None, description=RESOLUTION_DOC)) -> Response:
     """A preview, like the XML route's GET: never sealed and never sent anywhere. A house's EV charger
     limits for one date as an OCPP 1.6J `SetChargingProfile` request payload
     (modelled on OCPP 1.6J, not certified; no charge point is connected): a ChargePointMaxProfile
@@ -282,7 +283,7 @@ def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
     env = np.asarray(np.load(env_path, mmap_mode="r")[meta["cids"].index(cid)], dtype=float)
     # the envelope as issued, not the schedule's rounded figure, so no step is sent above it
     steps = [{**r, "limit_kw": None if env[r["hour"]] >= firm - 1e-6 else float(env[r["hour"]])}
-             for r in rows_for(env, None, year, day)]
+             for r in rows_for(env, None, year, day, _resolution(resolution))]
     step_s = steps[1]["start_epoch"] - steps[0]["start_epoch"] if len(steps) > 1 else 3600
     payload = ocpp.charging_profile(steps, firm, step_s)
     problems = ocpp.validate(payload)
