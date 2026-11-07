@@ -264,6 +264,19 @@ def grid_model(request):
         yield get_model()
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _caches_per_module():
+    """Every test module starts and ends with the engine's caches empty. A module that ran part of
+    its work on the tiny grid can leave its model or a table cached under the real paths (seen
+    when test_phase_id ran before test_protection and test_queue in a full run with data), and the
+    next module would then mix the two networks: the real model against the tiny customers."""
+    from kapacitet import cache
+
+    cache.clear_all()
+    yield
+    cache.clear_all()
+
+
 def on_tiny(request) -> bool:
     """Whether a test parametrized by `grid_model` is running on the tiny grid."""
     return request.node.callspec.params.get("grid_model") == "tiny"

@@ -27,9 +27,11 @@ from pathlib import Path
 from typing import IO, Any
 
 # Windows refuses to replace a file another process holds open for a moment (a reader, an
-# antivirus scan); a short, bounded retry rides that out instead of failing the write.
-_REPLACE_TRIES = 10
-_REPLACE_WAIT_S = 0.05
+# antivirus scan of the new temporary file); a bounded retry with a growing wait rides that out
+# instead of failing the write: 10 ms doubling to 200 ms, about 3 s in all on a busy machine.
+_REPLACE_TRIES = 20
+_REPLACE_WAIT_S = 0.01
+_REPLACE_WAIT_MAX_S = 0.2
 
 
 def _replace(tmp: Path, path: Path) -> None:
@@ -40,7 +42,7 @@ def _replace(tmp: Path, path: Path) -> None:
         except PermissionError:
             if os.name != "nt" or attempt == _REPLACE_TRIES - 1:
                 raise
-            time.sleep(_REPLACE_WAIT_S)
+            time.sleep(min(_REPLACE_WAIT_MAX_S, _REPLACE_WAIT_S * 2 ** attempt))
 
 
 def _sync_dir(folder: Path) -> None:
