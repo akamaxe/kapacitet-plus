@@ -3,7 +3,7 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 .env
-.venv/
+.venv*/
 # All of data/, whatever lands in it: downloads and results (reproducible with `python -m kapacitet
 # all`, and derived from OpenStreetMap, so ODbL and published apart), assessments, the queue,
 # applications and seals (data/requests/), imported networks and which one is in use (an operator's
