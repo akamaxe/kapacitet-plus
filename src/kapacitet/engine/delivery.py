@@ -31,6 +31,8 @@ ERRORS = {
     "meter_naive_time": "every timestamp needs its UTC offset, such as +01:00 or Z",
     "meter_outside_year": "no reading falls in the study year {year}",
     "not_an_agreement": "house {cid} has no conditional agreement, so it receives no schedule",
+    "no_charger": "house {cid} has no EV charger under an import envelope, so it receives no charging profile",
+    "import_unverified": "the issued import envelopes break a limit in {hours} hours, so they are not sent",
     "outside_year": "the date is outside the study year {year}",
 }
 

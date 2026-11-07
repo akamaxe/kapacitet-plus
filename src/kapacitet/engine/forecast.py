@@ -167,6 +167,18 @@ def load_lower_bound(year: int, hp: np.ndarray, ev: np.ndarray,
     return _LOAD_BOUND[key]
 
 
+
+def load_upper_bound(year: int, hp: np.ndarray, ev: np.ndarray,
+                     window_days: int = WINDOW_DAYS) -> np.ndarray:
+    """Demand (C, H) no higher than the same fortnight of any other year reached: the ceiling an
+    import envelope is planned against, as the floor is for export. Cached like the floor."""
+    key = ("max", year, window_days, hp.tobytes(), ev.tobytes())
+    if key not in _LOAD_BOUND:
+        if len(_LOAD_BOUND) > 24:
+            _LOAD_BOUND.clear()
+        _LOAD_BOUND[key] = _window_extreme(year, lambda y: _total_load(y, hp, ev), "max", window_days)
+    return _LOAD_BOUND[key]
+
 def _total_load(year: int, hp: np.ndarray, ev: np.ndarray) -> np.ndarray:
     prof = year_profiles(year)
     return (prof["base"] * A("household_load_factor")
@@ -274,6 +286,20 @@ def climatological(year: int, pv_mask: np.ndarray, hp: np.ndarray, ev: np.ndarra
     load = load_lower_bound(year, hp, ev, window_days) * (1.0 - lm)
     return _arrays(pv, load)
 
+
+
+def import_planning_state(year: int, hp: np.ndarray, ev: np.ndarray,
+                          window_days: int = WINDOW_DAYS, *, load_margin: float | None = None) -> dict:
+    """The state an import envelope issued the day before is allocated against: the mirror of
+    `climatological`. No generation at all, which no real hour can undercut, and demand at the
+    ceiling the same fortnight of the other years reached, widened by the day-ahead load margin
+    (`dayahead_load_margin_pct`, applied above the record here as it is below it there).
+
+    `ev` names the chargers counted in the demand: the flexible ones are left out, since their
+    draw is what the envelope sets."""
+    _, lm = day_ahead_margins(load_margin=load_margin)
+    load = load_upper_bound(year, hp, ev, window_days) * (1.0 + lm)
+    return _arrays(np.zeros_like(load), load)
 
 def persistence(year: int, pv_mask: np.ndarray, hp: np.ndarray, ev: np.ndarray,
                 lag_hours: int = 24) -> dict:

@@ -37,7 +37,7 @@ import numpy as np
 import pandas as pd
 
 from ..atomic import savez_atomic, write_json_atomic, write_text_atomic
-from ..config import settings
+from ..config import A, settings
 from ..paths import processed
 from . import compliance, doe, forecast, hosting
 from .doe import DoeResult
@@ -217,8 +217,59 @@ def build(only_policies: tuple[str, ...] = POLICIES, only_bases: tuple[str, ...]
                      basis, pol, issued["curtailed_share_of_export_pct"], issued["hours_limited"],
                      issued["activations_unnecessary_hours"], violations, issued["seconds"])
 
+    if "dayahead" in only_bases:
+        index["import"] = write_import(m, y, hp, ev, arr, cids)
+
     index["computed_at"] = pd.Timestamp.now(tz="UTC").isoformat()
     index["seconds"] = round(time.perf_counter() - t_all, 1)
     index["versions"] = _versions()
     _write_json(root / "index.json", index)
     return index
+
+
+def write_import(m, y: int, hp: np.ndarray, ev: np.ndarray, arr: dict[str, np.ndarray], cids: np.ndarray) -> dict:
+    """The import envelopes issued the day before to every EV charger (doe_import.issue_day_ahead),
+    on the import planning state (forecast.import_planning_state). They do not depend on the rule
+    of the export envelopes, so they are written once, next to the day-ahead combinations:
+    results/operation/dayahead/import.json and ui/operation/dayahead/import_envelopes.npy.
+    Returns the summary the index keeps."""
+    from . import doe_import
+    from .run import save_npy
+    from .scenario import year_profiles
+
+    t0 = time.perf_counter()
+    tanphi = np.tan(np.arccos(A("load_power_factor")))
+    plan = forecast.import_planning_state(y, hp, np.zeros_like(ev))
+    ev_load = np.where(ev[:, None], year_profiles(y)["ev"], 0.0)
+    actual = {"p_net": arr["p_net"].astype(float) + ev_load, "q": arr["q"].astype(float) + ev_load * tanphi}
+    r = doe_import.issue_day_ahead(m, plan, actual, ev)
+    _, lm = forecast.day_ahead_margins()
+    summary = {
+        "basis": "dayahead", "year": y, "rule": "maxmin", "cids": cids[r.flex].tolist(),
+        "firm_kw": r.firm_kw, "critical_hours": r.critical_hours, "limited_hours": r.limited_hours,
+        "firm_violation_hours": r.firm_violation_hours, "planning_violation_hours": r.planning_violation_hours,
+        "actual_violation_hours": r.actual_violation_hours, "retreats": r.retreats, "verified": r.verified,
+        "planning_state": {"scheme": "climatological ceiling", "pv": "none", "plugged": "every hour",
+                           "window_days": forecast.WINDOW_DAYS, "load_margin_pct": round(lm * 100.0, 6)},
+        "seconds": round(time.perf_counter() - t0, 1),
+    }
+    folder = processed("results", "operation", "dayahead", "import.json").parent
+    save_npy(processed("ui", "operation", "dayahead", "import_envelopes.npy"), (np.floor(r.envelope.astype(float) * 1000.0 + 1e-9) / 1000.0).astype(np.float32))
+    _write_json(folder / "import.json", summary)
+    log.info("operation import: %d chargers, %d h limited, %d planning / %d real violation h (%.1f s)",
+             len(r.flex), r.limited_hours, r.planning_violation_hours, r.actual_violation_hours, summary["seconds"])
+    return {k: summary[k] for k in ("verified", "limited_hours", "planning_violation_hours", "actual_violation_hours")}
+
+
+def build_import() -> dict:
+    """Only the issued import envelopes, on the year the operation stage already computed."""
+    from .run import background_masks, model
+
+    show = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
+    m = model()
+    y = int(show["year"])
+    pv = np.zeros(m.C, dtype=bool)
+    pv[show["pv_cids"]] = True
+    hp, ev = background_masks(m.C)
+    arr = Scenario(year=y, pv=pv, hp=hp, ev=ev).arrays()
+    return write_import(m, y, hp, ev, arr, customers()["cid"].to_numpy())

@@ -148,6 +148,10 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
 PUBLIC_READS = (f"{API}/health", f"{API}/auth/me", f"{API}/auth/login", f"{API}/auth/callback", f"{API}/apply/")
 # Reads that are limited too: guessing an application's code is the one read worth slowing down.
 LIMITED_READS: dict[tuple[str, str], str] = {("GET", f"{API}/apply/status/{{reference}}"): "status"}
+# Reads held to fewer roles than ANY_ROLE: what a DSO hands on to devices is a planner's to fetch.
+ROLE_READS: dict[tuple[str, str], tuple[str, ...]] = {
+    ("GET", f"{API}/operation/schedule.ocpp.json"): PLANNER_UP,
+}
 # A write the table does not know (a typo, a method a route does not take) is held to the strictest rules.
 DEFAULT = Policy("write", "unknown route", roles=ADMIN)
 
@@ -175,7 +179,7 @@ def roles_for(method: str, path: str) -> tuple[str, ...]:
         return (policy_for(method, path) or DEFAULT).roles
     if any(path == p or (p.endswith("/") and path.startswith(p)) for p in PUBLIC_READS):
         return PUBLIC
-    return ANY_ROLE
+    return ROLE_READS.get(("GET" if method == "HEAD" else method, path), ANY_ROLE)
 
 
 def bucket_for(method: str, path: str) -> str | None:

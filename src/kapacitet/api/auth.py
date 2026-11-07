@@ -53,6 +53,7 @@ ACTIONS = {
     "export": ("POST", f"{API}/eipack/export"),
     "applications": ("POST", f"{API}/applications"),
     "datasets": ("POST", f"{API}/datasets"),
+    "ocpp": ("GET", f"{API}/operation/schedule.ocpp.json"),
 }
 
 # The refusals of these routes, in the API's form (api/main.API_ERRORS takes them in).
@@ -68,7 +69,7 @@ def _refusal(status: int, code: str, **params) -> HTTPException:
 
 
 def _needs() -> dict[str, list[str]]:
-    return {a: list(guard.ROUTE_POLICY[k].roles) for a, k in ACTIONS.items()}
+    return {a: list(guard.roles_for(*k)) for a, k in ACTIONS.items()}
 
 
 def _secure(request: Request) -> bool:

@@ -239,6 +239,8 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   const sealed = useSealedDownload();
   // with sign-in on, issuing to an inverter takes an approver or an admin
   const canIssue = useCan("issue");
+  // the charging profile is handed on to chargers: a planner's or above
+  const canOcpp = useCan("ocpp");
   const [reason, setReason] = useState("");
   if (sch.isLoading) return <ChartSkeleton height={240} />;
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
@@ -284,6 +286,23 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
           </div>
           <RoleNote action="issue" />
+          {sch.data.ocpp ? (
+            <>
+              <div className="answer-actions">
+                {canOcpp.ok ? (
+                  <a className="btn ghost small" href={`${API}/operation/schedule.ocpp.json?${q}`} download={`kapacitet-ocpp-${cid}-${date}.json`}>
+                    <Icon name="download" size={15} />{t("op.dl.ocpp")}
+                  </a>
+                ) : (
+                  <button className="btn ghost small" disabled title={canOcpp.reason}><Icon name="download" size={15} />{t("op.dl.ocpp")}</button>
+                )}
+              </div>
+              <RoleNote action="ocpp" />
+              <p className="caption-muted">{t("op.ocpp.notice")}</p>
+            </>
+          ) : (
+            <p className="caption-muted">{t("op.ocpp.none")}</p>
+          )}
           {sealed.refusalCode === "before_market" ? (
             <div className="answer-actions">
               <label className="caption-muted" htmlFor="op-override">{t("op.override.label")}</label>

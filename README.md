@@ -809,6 +809,25 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
   second. `GET /api/v1/operation/default.xml` is the `DefaultDERControl` an inverter
   keeps when no schedule reaches it: never above the lowest limit issued that year, so close to zero
   here. The format is modelled on the profile, not certified, and no device is connected.
+- `GET /api/v1/operation/schedule.ocpp.json?cid=&date=`: a house's EV charger limits for the date
+  as the payload of an OCPP 1.6J `SetChargingProfile` request, for a DSO or a partner to send
+  through its own central system (Kapacitet+ runs none): `connectorId` 0, a
+  `ChargePointMaxProfile` that is `Absolute` from midnight on the study's clock, in watts, with one
+  `chargingSchedulePeriod` per schedule step. Each step carries the import envelope issued the day
+  before, rounded down to a tenth of a watt, and a step without one keeps the firm import limit,
+  the charger's rating (`ev_charger_kw`). Before it leaves, the payload is checked against the
+  OCPP 1.6J JSON field rules it uses (types, required fields, enumerations, the rate unit, periods
+  starting at 0 and ascending; `engine/ocpp.py`). With sign-in on it takes a planner or above. The
+  format is modelled on OCPP 1.6J, not certified, and no charge point is connected.
+  The import envelopes are written by the operation stage (`results/operation/dayahead/import.json`
+  and `ui/operation/dayahead/import_envelopes.npy`) on a planning state that dominates for import,
+  the mirror of the export one: no generation, every house's demand at the highest the same
+  fortnight of the other weather years reached plus the day-ahead load margin, and every charger
+  taken as plugged in every hour, since a plan made the day before cannot know when a car arrives.
+  Every charger at its envelope at once is then solved hour by hour; an hour that still breaks a
+  limit is halved until it does not. The real year is checked the same way and reported
+  (`actual_violation_hours`). Summing each house's own record makes this ceiling cautious: the
+  envelopes hold chargers well below their rating in most hours.
 - `GET /api/v1/operation/shadow`: May to August replayed day by day (`shadow_season_months`) and
   judged by two tests: no hour above a grid limit, and every agreement within the level it was
   promised (the DSO's `agreed_level_pct`, by default the capacity search's own 3 % of each house's

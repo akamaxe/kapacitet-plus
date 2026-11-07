@@ -110,7 +110,8 @@ non-firm offer.
 - Real sources: OpenStreetMap, SMHI STRÅNG and metobs, elprisetjustnu.se (ENTSO-E when a token exists), eSett,
   SCB.
 - There are no customers, users, testimonials, pilots or press. None may be shown or implied. The inverter's
-  file is modelled on CSIP-AUS v1.2 and is not certified; no device is connected.
+  file is modelled on CSIP-AUS v1.2 and the EV charger's profile on OCPP 1.6J; neither is certified, and no
+  device is connected.
 - Public figures the business case uses, each with its source in `config/assumptions.toml`: Ei's real
   rate for 2024–2027 and its norm values, the energy tax from 2026, Ellevio's grid fee and compensation for
   exported solar, and the end of the tax reduction for exported solar (Skatteverket).

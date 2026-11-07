@@ -211,6 +211,7 @@ _WRITTEN_BY = {
     "grid/customers.parquet": "build",
     "protection.json": "compute --stage extra --only protection",
     "operation/index.json": "compute --stage extra --only operation",
+    "operation/dayahead/import.json": "compute --stage extra --only operation",
     "redispatch.json": "redispatch-report",
     "redispatch_sv.txt": "redispatch-report",
 }

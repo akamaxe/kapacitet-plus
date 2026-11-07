@@ -198,7 +198,7 @@ def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PA
         return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="kapacitet-schedule-{cid}-{date}.csv"'})
     return {"cid": cid, "date": date, "year": year, "basis": "dayahead", "policy": combo.policy, "rows": rows,
-            "default_kw": default_kw, "kappa": kappa,
+            "default_kw": default_kw, "kappa": kappa, "ocpp": _has_charging_profile(cid),
             "provenance": _provenance(combo.envelopes, combo.result("issued.json"))}
 
 
@@ -215,6 +215,57 @@ def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DAT
     return Response(der_control_list(cid, rows_for(limits, desired, year, day), int(time.time())),
                     media_type="application/sep+xml")
 
+
+
+def _has_charging_profile(cid: int) -> bool:
+    """Whether GET /operation/schedule.ocpp.json has a verified import envelope to send for the house."""
+    path = processed_ro("results", "operation", "dayahead", "import.json")
+    if not path.exists():
+        return False
+    meta = json.loads(path.read_text(encoding="utf-8"))
+    return bool(meta.get("verified")) and cid in meta.get("cids", [])
+
+
+@router.get("/operation/schedule.ocpp.json")
+def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN)) -> Response:
+    """A house's EV charger limits for one date as an OCPP 1.6J `SetChargingProfile` request payload
+    (modelled on OCPP 1.6J, not certified; no charge point is connected): a ChargePointMaxProfile
+    on connector 0, in watts from local midnight, one period per schedule step. The limits are the
+    import envelopes issued the day before; a step without one keeps the firm import limit (the
+    charger's rating). Only the day-ahead basis is ever sent, and the payload is checked against
+    OCPP 1.6J's field rules before it leaves."""
+    from ..engine import ocpp
+    from ..engine.delivery import day_of
+    from ..engine.delivery import schedule as rows_for
+    from .main import not_computed
+
+    meta_path = processed_ro("results", "operation", "dayahead", "import.json")
+    env_path = processed_ro("ui", "operation", "dayahead", "import_envelopes.npy")
+    if not meta_path.exists() or not env_path.exists():
+        raise not_computed("operation/dayahead/import.json")
+    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    if not meta.get("verified"):
+        raise _refusal(409, "import_unverified", hours=int(meta.get("planning_violation_hours", 0)))
+    if cid not in meta["cids"]:
+        raise _refusal(404, "no_charger", cid=cid)
+    year = int(meta["year"])
+    try:
+        day = day_of(year, Date.fromisoformat(date))
+    except ValueError:
+        raise _refusal(422, "outside_year", year=year) from None
+    firm = float(meta["firm_kw"])
+    env = np.asarray(np.load(env_path, mmap_mode="r")[meta["cids"].index(cid)], dtype=float)
+    # the envelope as issued, not the schedule's rounded figure, so no step is sent above it
+    steps = [{**r, "limit_kw": None if env[r["hour"]] >= firm - 1e-6 else float(env[r["hour"]])}
+             for r in rows_for(env, None, year, day)]
+    step_s = steps[1]["start_epoch"] - steps[0]["start_epoch"] if len(steps) > 1 else 3600
+    payload = ocpp.charging_profile(steps, firm, step_s)
+    problems = ocpp.validate(payload)
+    if problems:                       # a bug here, never the caller's: refuse rather than send it
+        raise RuntimeError(f"the OCPP payload failed its own check: {problems}")
+    return Response(json.dumps(payload, indent=1), media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-ocpp-{cid}-{date}.json"',
+                             "X-OCPP-Action": ocpp.ACTION, "X-Format-Notice": ocpp.NOTICE})
 
 class Issue(BaseModel):
     cid: int = Field(..., ge=0)
