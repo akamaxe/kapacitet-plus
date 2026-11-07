@@ -81,7 +81,7 @@ def network_data(m) -> dict:
                        "shift_degree", "tap_side", "tap_neutral", "tap_min", "tap_max", "tap_step_percent",
                        "tap_pos", "vector_group", "std_type")}
     trafo.update(hv_bus=int(tr["hv_bus"]), lv_bus=int(tr["lv_bus"]))
-    return {"buses": buses, "lines": lines, "trafo": trafo,
+    return {"buses": buses, "lines": lines, "trafo": trafo, "f_hz": float(net.f_hz),
             "ext_grid": {"bus": int(eg["bus"]), "vm_pu": float(m.vm_slack)},
             "customers": [{"i": i, "bus": int(b)} for i, b in enumerate(m.cust["bus"].to_numpy())]}
 
@@ -322,9 +322,10 @@ def _e(x) -> str:
     return "n/a" if x is None else f"{x:.2e}"
 
 
-def markdown(cmp: dict) -> str:
+def markdown(cmp: dict, solver: str = "PowerFactory") -> str:
+    """The tables docs/validation-*.md quote; `solver` names the tool compared with Kapacitet+."""
     lines = ["| Hour (UTC, interval start) | Why | Net export (kW) | V min / max, Kapacitet+ (pu) | "
-             "V min / max, PowerFactory (pu) | max abs dV (pu) | Trafo loading, Kapacitet+ / PowerFactory (%) |",
+             f"V min / max, {solver} (pu) | max abs dV (pu) | Trafo loading, Kapacitet+ / {solver} (%) |",
              "|---|---|---:|---|---|---:|---|"]
     for r in cmp["per_hour"]:
         lines.append(f"| {r['timestamp_utc'][:16]} | {r['why']} | {r['sum_p_kw']:.1f} | "
@@ -332,7 +333,7 @@ def markdown(cmp: dict) -> str:
                      f"{r['max_dv']:.2e} | {r['trafo_k']:.2f} / {r['trafo_pf']:.2f} |")
     dp = [f"{r['dp_trafo_kw']:+.2e}" for r in cmp["per_hour"] if r.get("dp_trafo_kw") is not None]
     if dp:
-        lines += ["", "Transformer inflow, PowerFactory minus Kapacitet+ (kW), per hour: " + ", ".join(dp)]
+        lines += ["", f"Transformer inflow, {solver} minus Kapacitet+ (kW), per hour: " + ", ".join(dp)]
     lines += ["", "| Quantity | Against | max abs diff | mean abs diff | Target |", "|---|---|---:|---:|---:|"]
     for name, label in (("kapacitet", "Kapacitet+ (Z-bus)"), ("pandapower_nr", "pandapower NR")):
         s = cmp[name]
@@ -343,7 +344,7 @@ def markdown(cmp: dict) -> str:
             if key in s:
                 lines.append(f"| {qty} | {label} | {_e(s[key]['max'])} | {_e(s[key]['mean'])} | {target} |")
     if not cmp["all_hours_solved"]:
-        lines += ["", f"PowerFactory solved {cmp['hours_solved']} of {cmp['hours']} hours: targets not met."]
+        lines += ["", f"{solver} solved {cmp['hours_solved']} of {cmp['hours']} hours: targets not met."]
     return "\n".join(lines)
 
 

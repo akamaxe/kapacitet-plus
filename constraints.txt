@@ -54,3 +54,8 @@ psycopg==3.3.8
 psycopg-binary==3.3.8
 typing_extensions==4.16.0
 tzdata==2026.6
+# the "validation" extra (tools/dss_crossval.py), approved 2026-11-07: OpenDSS through opendssdirect.py,
+# all BSD-licensed (it also needs cffi, numpy and typing_extensions, pinned above)
+opendssdirect.py==0.9.4
+dss-python==0.15.7
+dss-python-backend==0.14.5

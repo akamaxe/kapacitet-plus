@@ -41,6 +41,8 @@ dev = ["pytest>=8", "httpx>=0.27"]
 forecast = ["lightgbm>=4.7,<5"]
 # the server's state in PostgreSQL instead of data/requests (kapacitet.store, KAPACITET_DATABASE_URL)
 postgres = ["psycopg[binary]>=3.3,<4"]
+# OpenDSS for the power-flow cross-check (tools/dss_crossval.py, docs/validation-opendss.md); CI installs it
+validation = ["opendssdirect.py>=0.9.4,<0.10"]
 
 [project.scripts]
 kapacitet = "kapacitet.pipeline:main"

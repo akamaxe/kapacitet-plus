@@ -37,6 +37,9 @@ HAS_RESULTS = processed("results", "showcase.json").exists()
 
 needs_grid = pytest.mark.skipif(not HAS_GRID, reason="no built network (run: python -m kapacitet build)")
 needs_results = pytest.mark.skipif(not HAS_RESULTS, reason="no results (run: python -m kapacitet all)")
+# OpenDSS, for the power-flow cross-check (tools/dss_crossval.py); CI installs the extra
+HAS_OPENDSS = importlib.util.find_spec("opendssdirect") is not None
+needs_opendss = pytest.mark.skipif(not HAS_OPENDSS, reason='no OpenDSS (pip install -e ".[validation]")')
 
 
 @pytest.fixture(scope="session")

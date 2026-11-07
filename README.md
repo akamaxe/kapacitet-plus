@@ -397,6 +397,10 @@ of `pp.runpp` over the validation stage's 12 hours (`max_abs_dv_pu`), and the te
 network data alone, the reference network agrees to within 2e-7 pu in bus voltage and 5e-4
 percentage points in transformer loading over the year's peak export and import hours and eight more
 ([docs/validation-powerfactory.md](docs/validation-powerfactory.md), `tools/pf_crossval.py`).
+OpenDSS, on the same hours, agrees to within 2.2e-5 pu and 2e-3 percentage points; that residual is
+the transformer's no-load branch, which the two tools place differently, and without it the
+agreement is 3.2e-8 pu ([docs/validation-opendss.md](docs/validation-opendss.md),
+`tools/dss_crossval.py`, the `validation` extra; CI runs it on the tiny grid).
 
 **Hosting capacity.** Static, for solar: the worst-case summer snapshot (PV at
 `static_pv_factor` × its rating, the household load `static_load_rule` picks: the minimum daytime
