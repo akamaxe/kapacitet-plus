@@ -495,6 +495,8 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
 
     from . import forecast, nowcast
     from . import intraday as intra
+    from .delivery import resolution as delivery_resolution
+    from .delivery import terms as delivery_terms
     from .run import _init_worker, background_masks, spread
     from .run import model as get_model
     window = forecast.WINDOW_DAYS if window_days is None else window_days
@@ -603,6 +605,9 @@ def intraday(years, z_star: float, window_days: int | None = None, workers: int 
         **top,
         "median_kw_reference": {**published, "dayahead": dayahead},
         "variants": variants,
+        # the step a re-issue is sent in (delivery.terms): its gates and its envelopes stay hourly,
+        # so a quarter-hour re-issue carries each hour's verified envelope in its four quarters
+        "schedule": delivery_terms(delivery_resolution()),
     }
     for v in variants.values():
         for b in (v, v["installation"]):

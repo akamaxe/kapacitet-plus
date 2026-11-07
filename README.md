@@ -355,7 +355,7 @@ to navigate screens without affecting form fields.
    again. Every answer can be printed as a record or downloaded hour by hour.
 5. **Operation** — the applications, each with the DSO's rule's proposal (a person decides
    unless the rule is switched on and signed: *Sign the rule…*), and what the DSO would issue:
-   one house's 24 limits for a day, issued the day before, beside the export it would make
+   one house's limits for a day, in the day-ahead market's quarter-hours, issued the day before, beside the export it would make
    without them, and the file issued for its inverter. Below, the summer replayed in the shadow
    against a pilot's two tests, and a meter checked against the limits issued for it (try the
    synthetic day).
@@ -798,12 +798,22 @@ for that rule).
 Only the day-ahead basis is ever issued; a schedule with perfect foresight would be hindsight. The
 **Operation** screen and these endpoints read what the operation stage wrote:
 
-- `GET /api/v1/operation/schedule?cid=&date=` (`&format=csv`): a house's 24 limits for a date,
-  each with its interval start in UTC, on the study's clock (UTC+1 all year) and in Stockholm time,
-  beside the export it would make without them.
+- `GET /api/v1/operation/schedule?cid=&date=` (`&format=csv`, `&resolution=15|60`): a house's
+  limits for a date, each with its interval start in UTC, on the study's clock (UTC+1 all year) and
+  in Stockholm time, beside the export it would make without them. Schedules are issued in the
+  step of `schedule_resolution_min`, by default 15 minutes, the day-ahead market's (SDAC) time
+  unit since 1 October 2025: a 15-minute schedule covers the market's delivery day, midnight to
+  midnight in Stockholm (96 quarter-hours, 92 when the clocks go forward and 100 when they go
+  back); a 60-minute one, the study day's 24 hours. The capacity and the envelopes stay verified
+  hour by hour, and this demo's inputs are hourly, so each quarter carries its hour's verified
+  envelope and the answer says so (`resolution_min`, `inputs_resolution_min: 60`), with
+  `within_envelope`, the check that no interval of any hour is above that hour's envelope. A load
+  side metered at 15 minutes enters quarter by quarter (`delivery.schedule`); the studies do not
+  issue schedules yet.
 - `GET /api/v1/operation/schedule.xml`: the same day as an IEEE 2030.5 `DERControlList` in the
-  CSIP-AUS v1.2 profile, one `DERControl` per hour with `csipaus:opModExpLimW`, as a preview that
-  leaves no record. `POST /api/v1/operation/schedule/issue` with `{cid, date}` issues it: the issue
+  CSIP-AUS v1.2 profile, one `DERControl` per interval (900 s each at 15 minutes) with
+  `csipaus:opModExpLimW`, as a preview that leaves no record. `POST
+  /api/v1/operation/schedule/issue` with `{cid, date}` (and `resolution`) issues it: the issue
   is sealed with the limits it issued, the seal comes back in `X-Seal-Digest`, `X-Seal-Seq` and
   `X-Seal-At`, and the screen keeps it as a receipt under the button. Asked again with the same
   `Idempotency-Key` header, an issue returns the first document and its seal instead of sealing a
@@ -838,8 +848,10 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
   the screen says so; the remedy, re-issuing during the day with measurements, is outside this
   prototype.
 - `POST /api/v1/operation/meter-check` with `{cid, csv}`: measured export (a `timestamp` with its
-  UTC offset and `export_kw` or `export_w`) against the limits issued for the house. A breach is a
-  reading more than 250 W above its hour's limit, the measure SA Power Networks used in its
+  UTC offset and `export_kw` or `export_w` at any step, or `export_kwh`, the energy of the
+  quarter-hour the timestamp starts, as a meter reports it) against the limits issued for the
+  house, interval by interval of the schedule. A breach is a reading more than 250 W above its
+  interval's limit, the measure SA Power Networks used in its
   Flexible Exports trial (`meter_breach_tolerance_w`). `GET /api/v1/operation/meter-example`
   writes a synthetic day to try it on, with one deliberate ten-minute breach.
 

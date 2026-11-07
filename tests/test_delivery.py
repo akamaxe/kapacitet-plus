@@ -34,6 +34,88 @@ def test_schedule_intervals_start_on_the_study_clock():
         day_of(year, date(2026, 1, 1))
 
 
+def test_a_quarter_hour_schedule_of_hourly_inputs_is_the_hourly_one_repeated():
+    from kapacitet.engine.delivery import day_of, schedule, terms, within_envelope
+
+    year = 2025
+    rng = np.random.default_rng(3)
+    limits = rng.uniform(0.0, 10.0, 8760)
+    desired = rng.uniform(0.0, 12.0, 8760)
+    # a winter day: Stockholm's clock is the study's, so the delivery day is the study day
+    day = day_of(year, date(2025, 2, 10))
+    hourly = schedule(limits, desired, year, day, 60)
+    quarter = schedule(limits, desired, year, day, 15)
+    assert len(quarter) == 96 and {r["duration_s"] for r in quarter} == {900}
+    for key in ("limit_kw", "desired_kw", "hour"):
+        assert [r[key] for r in quarter] == [r[key] for r in hourly for _ in range(4)]
+    assert [r["start_epoch"] for r in quarter] == [r["start_epoch"] + 900 * k for r in hourly for k in range(4)]
+    assert quarter[1]["study_clock"] == "2025-02-10 00:15" and quarter[1]["stockholm"].startswith("2025-02-10 00:15")
+    # a summer day starts at midnight in Stockholm, 23:00 the day before on the study's clock, and
+    # every quarter still carries the envelope of the hour it falls in
+    day = day_of(year, date(2025, 6, 15))
+    summer = schedule(limits, desired, year, day, 15)
+    assert summer[0]["start_utc"] == "2025-06-14T22:00:00+00:00" and summer[0]["study_clock"] == "2025-06-14 23:00"
+    assert summer[0]["hour"] == day * 24 - 1
+    assert all(r["limit_kw"] == round(limits[r["hour"]], 3) and r["hour"] == r["quarter"] // 4 for r in summer)
+    assert within_envelope(summer, limits) == {"hours": 24, "intervals": 96, "hours_above": 0, "ok": True,
+                                               "first_above": None}
+    t = terms(15, desired, len(limits))
+    assert t["resolution_min"] == 15 and t["interval_s"] == 900 and t["inputs_resolution_min"] == 60
+    assert t["verified_resolution_min"] == 60 and t["inputs"]["desired_kw"] == 60
+
+
+def test_a_quarter_above_its_hours_envelope_is_caught():
+    from kapacitet.engine.delivery import schedule, within_envelope
+
+    limits = np.full(8760, 3.0)
+    rows = schedule(limits, None, 2025, 40, 15)
+    rows[13]["limit_kw"] = 3.2                       # one quarter of the fourth hour above its envelope
+    out = within_envelope(rows, limits)
+    assert not out["ok"] and out["hours_above"] == 1 and out["first_above"] == 40 * 24 + 3
+
+
+def test_a_load_side_metered_at_15_minutes_enters_quarter_by_quarter():
+    from kapacitet.engine.delivery import schedule, terms
+
+    limits = np.full(8760, 4.0)
+    desired = np.tile([1.0, 2.0, 3.0, 6.0], 8760)    # one value per quarter-hour of the year
+    rows = schedule(limits, desired, 2025, 40, 15)
+    assert [r["desired_kw"] for r in rows[:4]] == [1.0, 2.0, 3.0, 6.0]
+    assert all(r["limit_kw"] == 4.0 for r in rows)
+    assert schedule(limits, desired, 2025, 40, 60)[0]["desired_kw"] == 3.0     # the hour is the mean
+    assert terms(15, desired, 8760)["inputs"]["desired_kw"] == 15
+
+
+@pytest.mark.parametrize(("day", "n"), [(date(2025, 3, 30), 92), (date(2025, 10, 26), 100), (date(2025, 7, 1), 96)])
+def test_the_inverter_xml_has_a_control_per_quarter_hour_of_the_delivery_day(day, n):
+    from kapacitet import market
+    from kapacitet.engine.csipaus import der_control_list
+    from kapacitet.engine.delivery import day_of, schedule
+
+    rows = schedule(np.arange(8760, dtype=float) / 100.0, None, 2025, day_of(2025, day), 15)
+    root = ET.fromstring(der_control_list(79, rows, 1749900000))
+    controls = root.findall("s:DERControl", NS)
+    assert len(controls) == n and root.get("all") == str(n)
+    assert {c.find("s:interval/s:duration", NS).text for c in controls} == {"900"}
+    starts = [int(c.find("s:interval/s:start", NS).text) for c in controls]
+    assert all(b - a == 900 for a, b in zip(starts, starts[1:]))
+    assert len({c.find("s:mRID", NS).text for c in controls}) == n
+    # the market gate's day is the same span
+    span = market.delivery_day(day, 15)
+    assert span["intervals"] == n and span["start_utc"] == rows[0]["start_utc"]
+    assert market.delivery_day(day, 60)["intervals"] == n // 4
+
+
+def test_the_resolution_comes_from_the_assumption_unless_asked():
+    from kapacitet.engine.delivery import resolution, schedule
+
+    assert resolution() == 15 and resolution(60) == 60
+    with pytest.raises(ValueError):
+        resolution(30)
+    with pytest.raises(ValueError):
+        schedule(np.ones(8760), None, 2025, 10, 30)
+
+
 def test_der_control_list_is_well_formed_and_namespaced():
     from kapacitet.engine.csipaus import der_control_list
 
@@ -80,6 +162,32 @@ def test_meter_check_flags_only_readings_above_the_tolerance():
     assert out["readings"] == 3 and out["breaches"] == 1
     assert out["breach_rows"][0]["excess_w"] == pytest.approx(300.0)
     assert out["compliance_pct"] == pytest.approx(100 * 2 / 3, abs=1e-3)
+
+
+def test_meter_check_reads_quarter_hour_readings_against_each_quarter():
+    from kapacitet.engine.delivery import MeterError, meter_check
+
+    limits = np.full(8760, 2.0)
+    limits[24 * 165 + 12] = 1.0                       # 2025-06-15 12:00-13:00 UTC+1 held to 1 kW
+    # quarter-hour energy, as a meter reports it: 0.30 kWh in 15 minutes is 1.2 kW on average
+    csv = "timestamp,export_kwh\n" + "\n".join([
+        "2025-06-15T12:45:00+01:00,0.30",     # 1.2 kW against 1 kW: within the tolerance
+        "2025-06-15T13:00:00+01:00,0.40",     # 1.6 kW against 2 kW: fine
+        "2025-06-15T12:30:00+01:00,0.35",     # 1.4 kW against 1 kW: a breach
+        "2025-06-15T11:15:00Z,0.35",          # 12:15 UTC+1: the same held hour, a breach
+    ]) + "\n"
+    out = meter_check(csv, limits, 2025, 250.0, 15)
+    assert out["reading"] == "energy_15min" and out["resolution_min"] == 15
+    assert out["readings"] == 4 and out["breaches"] == 2 and out["intervals"] == 4 and out["breached_intervals"] == 2
+    assert [r["excess_w"] for r in out["breach_rows"]] == [pytest.approx(400.0), pytest.approx(400.0)]
+    assert out["breach_rows"][0]["interval_start"] == "2025-06-15T11:30:00+00:00"
+    with pytest.raises(MeterError) as e:
+        meter_check("timestamp,export_kwh\n2025-06-15T12:05:00+01:00,0.1\n", limits, 2025, 250.0, 15)
+    assert e.value.code == "meter_kwh_grid"
+    # power readings at five minutes fall into their quarter the same way
+    csv = "timestamp,export_kw\n2025-06-15T12:50:00+01:00,1.30\n2025-06-15T13:05:00+01:00,2.10\n"
+    out = meter_check(csv, limits, 2025, 250.0, 15)
+    assert out["breaches"] == 1 and out["breach_rows"][0]["interval_start"] == "2025-06-15T11:45:00+00:00"
 
 
 def test_meter_check_refuses_readings_without_an_offset():
@@ -144,9 +252,17 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         idx = c.get("/api/v1/operation/index").json()
         cid, firm, year = idx["nonfirm_cids"][0], idx["firm_cids"][0], idx["year"]
         day = f"{year}-06-15"
-        sch = c.get("/api/v1/operation/schedule", params={"cid": cid, "date": day}).json()
-        assert len(sch["rows"]) == 24 and sch["basis"] == "dayahead"
+        sch = c.get("/api/v1/operation/schedule", params={"cid": cid, "date": day, "resolution": 60}).json()
+        assert len(sch["rows"]) == 24 and sch["basis"] == "dayahead" and sch["resolution_min"] == 60
         assert sch["default_kw"] <= min(r["limit_kw"] for r in sch["rows"]) + 1e-6
+        # by default the market's quarter-hours: the delivery day on Stockholm's clock, each quarter
+        # with its hour's verified envelope, checked hour by hour against it
+        q = c.get("/api/v1/operation/schedule", params={"cid": cid, "date": day}).json()
+        assert q["resolution_min"] == 15 and q["inputs_resolution_min"] == 60 and len(q["rows"]) == 96
+        assert q["within_envelope"]["ok"] and q["within_envelope"]["hours"] == 24
+        assert {r["start_epoch"] for r in sch["rows"][:23]} <= {r["start_epoch"] for r in q["rows"]}
+        odd = c.get("/api/v1/operation/schedule", params={"cid": cid, "date": day, "resolution": 30})
+        assert odd.status_code == 422 and odd.json()["detail"]["code"] == "resolution"
 
         # a preview leaves no record, whatever it is asked (a GET never seals); an issue is a POST,
         # sealed with the limits it sent
@@ -157,11 +273,13 @@ def test_the_api_issues_a_schedule_seals_it_and_checks_a_meter():
         issued = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day})
         assert issued.status_code == 200 and "attachment" in issued.headers["content-disposition"]
         kept = seals.sealed_of_kind("schedule")
-        assert len(kept) == 1 and kept[0]["record"]["cid"] == cid and len(kept[0]["record"]["limits"]) == 24
+        assert len(kept) == 1 and kept[0]["record"]["cid"] == cid and len(kept[0]["record"]["limits"]) == 96
+        assert kept[0]["record"]["resolution_min"] == 15
         # the seal travels with the file, so the page can keep a receipt of what it issued
         assert issued.headers["x-seal-digest"] == kept[0]["entry"]["digest"] and issued.headers["x-seal-seq"].isdigit()
         assert "x-seal-digest" not in preview.headers
-        assert ET.fromstring(issued.content).get("all") == "24"
+        assert ET.fromstring(issued.content).get("all") == "96"
+        assert {d.text for d in ET.fromstring(issued.content).iterfind("s:DERControl/s:interval/s:duration", NS)} == {"900"}
         # an issue sent again under the same Idempotency-Key is the first one, document and seal
         key = {"Idempotency-Key": "inverter-retry-0001"}
         first = c.post("/api/v1/operation/schedule/issue", json={"cid": cid, "date": day}, headers=key)

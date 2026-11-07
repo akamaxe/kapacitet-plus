@@ -52,8 +52,9 @@ def mrid(*parts: object) -> str:
 
 
 def der_control_list(cid: int, rows: list[dict], issued_epoch: int, house_label: str = "") -> bytes:
-    """One DERControl per hour of the day: start (epoch seconds, UTC), one hour long, the export
-    limit in watts. `rows` hold `start_epoch` and `limit_kw`."""
+    """One DERControl per interval of the day: start (epoch seconds, UTC), length and the export
+    limit in watts. `rows` hold `start_epoch`, `limit_kw` and `duration_s` (900 for a quarter-hour
+    schedule, the SDAC's MTU; 3600, the default, for an hourly one)."""
     root = ET.Element(_q("DERControlList"), {"all": str(len(rows)), "results": str(len(rows))})
     root.append(ET.Comment(f" {NOTICE} "))
     for r in rows:
@@ -66,7 +67,7 @@ def der_control_list(cid: int, rows: list[dict], issued_epoch: int, house_label:
         ET.SubElement(status, _q("dateTime")).text = str(int(issued_epoch))
         ET.SubElement(status, _q("potentiallySuperseded")).text = "false"
         interval = ET.SubElement(ev, _q("interval"))
-        ET.SubElement(interval, _q("duration")).text = "3600"
+        ET.SubElement(interval, _q("duration")).text = str(int(r.get("duration_s", 3600)))
         ET.SubElement(interval, _q("start")).text = str(int(r["start_epoch"]))
         _limit(ev, 1000.0 * float(r["limit_kw"]))
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)

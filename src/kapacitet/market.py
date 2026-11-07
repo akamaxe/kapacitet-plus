@@ -6,7 +6,10 @@ things have to hold before a DSO uses it (Ei2025:01 §2.3; Regulation (EU) 2019/
 - **the day-ahead market has cleared.** A schedule for day D is issued only after the market's
   result for D is known, at `market_result_local` (Europe/Stockholm wall clock, a DSO setting) on
   D − 1. `gate` says when that is in UTC, on any day, the two DST change days included; issuing
-  earlier needs a reason, which is sealed with the issue (api/operation.issue_schedule);
+  earlier needs a reason, which is sealed with the issue (api/operation.issue_schedule). The
+  day the market delivers is midnight to midnight on Stockholm's clock, in market time units of
+  15 minutes since 1 October 2025: `delivery_day` gives its span and how many intervals of a
+  schedule's step it holds (92, 96 or 100 quarter-hours; 23, 24 or 25 hours);
 - **the market alternatives were studied.** Before an agreement is signed and before a period of
   activations, the DSO records which alternatives it consulted (a local flexibility market, a
   bilateral flexibility contract, a network tariff, none available, other) and with what outcome.
@@ -75,13 +78,25 @@ def result_at(day: date, local: str) -> datetime:
     return wall.astimezone(timezone.utc)
 
 
-def gate(day: date, local: str, at: datetime | None = None) -> dict:
+def delivery_day(day: date, resolution_min: int = 15) -> dict:
+    """The market's delivery day `day`: its start and end in UTC, midnight to midnight on
+    Stockholm's clock, and how many intervals of `resolution_min` minutes it holds."""
+    start = datetime.combine(day, time(0), tzinfo=STOCKHOLM).astimezone(timezone.utc)
+    end = datetime.combine(day + timedelta(days=1), time(0), tzinfo=STOCKHOLM).astimezone(timezone.utc)
+    return {"start_utc": start.isoformat(), "end_utc": end.isoformat(), "resolution_min": int(resolution_min),
+            "intervals": int((end - start).total_seconds() // (60 * int(resolution_min)))}
+
+
+def gate(day: date, local: str, at: datetime | None = None, resolution_min: int | None = None) -> dict:
     """Whether a schedule for `day` may be issued at `at` (now by default): open from the market's
-    result on the day before."""
+    result on the day before. With `resolution_min`, also the delivery day it is issued for."""
     opens = result_at(day, local)
     at = at or now()
-    return {"open": at >= opens, "result_at": opens.isoformat(), "local": local,
-            "day_before": (day - timedelta(days=1)).isoformat()}
+    out = {"open": at >= opens, "result_at": opens.isoformat(), "local": local,
+           "day_before": (day - timedelta(days=1)).isoformat()}
+    if resolution_min is not None:
+        out["delivery"] = delivery_day(day, resolution_min)
+    return out
 
 
 # ---------------------------------------------------------------- the log

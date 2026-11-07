@@ -326,6 +326,17 @@ url = "https://arena.gov.au/assets/2024/01/SA-Power-Networks-Flexible-Exports-fo
 note = "The same trial found its limits kept in more than 99.97 % of 5-minute intervals."
 note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
 
+[schedule_resolution_min]
+value = 15
+unit = "min"
+tag = "regulation"
+label = "Time step of the issued schedules (the inverter's XML, the meter check), aligned with the day-ahead market"
+label_sv = "Tidssteg för de utfärdade scheman (växelriktarens XML, mätarkontrollen), i linje med dagen före-marknaden"
+source = "Single Day-Ahead Coupling (SDAC): the 15-minute market time unit went live for delivery from 1 October 2025, as Regulation (EU) 2017/2195 art. 53 requires a 15-minute imbalance settlement period"
+url = "https://www.entsoe.eu/network_codes/cacm/implementation/sdac/"
+note = "15 or 60. A quarter-hour schedule covers the delivery day on Stockholm's clock (92 quarter-hours when the clocks go forward, 100 when they go back) and carries each hour's verified envelope in its four quarters; the capacity and the envelopes stay verified hour by hour."
+note_sv = "15 eller 60. Ett kvartsschema täcker leveransdygnet enligt svensk tid (92 kvartar när klockan ställs fram, 100 när den ställs tillbaka) och för varje timmes verifierade gräns i dess fyra kvartar; kapaciteten och gränserna verifieras fortfarande timme för timme."
+
 [ev_unserved_limit_pct]
 value = 1.0
 unit = "% of requested charging energy"

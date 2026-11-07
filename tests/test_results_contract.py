@@ -480,6 +480,16 @@ def test_the_published_replica_backs_its_scorecard():
         assert r["installation"]["z_customer_max_pct"] <= d["z_star_pct"] + 1e-9
 
 
+def test_the_published_replica_says_the_step_its_reissues_are_sent_in():
+    d = _intraday()
+    if "schedule" not in d:
+        pytest.skip(f"intraday.json predates the schedule step (E5); {INTRADAY}")
+    s = d["schedule"]
+    assert s["resolution_min"] == A("schedule_resolution_min") and s["interval_s"] == 60 * s["resolution_min"]
+    # the gates and the envelopes stay hourly, whatever step a re-issue is sent in
+    assert s["inputs_resolution_min"] == 60 == s["verified_resolution_min"]
+
+
 def test_the_published_replica_holds_both_variants_and_headlines_a_verified_one():
     from kapacitet.engine import nowcast
 

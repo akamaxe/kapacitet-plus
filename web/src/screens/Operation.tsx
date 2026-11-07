@@ -246,7 +246,10 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
   const rows: any[] = sch.data.rows;
   const hasDesired = rows.some((r) => r.desired_kw !== null);
-  const cut = rows.reduce((s, r) => s + Math.max(0, (r.desired_kw ?? 0) - r.limit_kw), 0);
+  // kW over each interval's length (an hour, or a quarter of one) is the energy it loses
+  const step: number = sch.data.resolution_min ?? 60;
+  const inputs: number = sch.data.inputs_resolution_min ?? step;
+  const cut = rows.reduce((s, r) => s + Math.max(0, (r.desired_kw ?? 0) - r.limit_kw) * (r.duration_s ?? 3600) / 3600, 0);
   const limited = rows.filter((r) => r.desired_kw !== null && r.desired_kw > r.limit_kw + 1e-6).length;
   const cols: Col<any>[] = [
     { key: "study", label: t("op.col.study"), value: (r) => r.study_clock, cell: (r) => r.study_clock.slice(11) },
@@ -257,7 +260,7 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   return (
     <div className="stack">
       <div className="tiles cols-3">
-        <Tile label={t("op.tile.cut")} value={f(cut, 1)} unit="kWh" note={t("op.tile.cutNote", { n: f(limited) })} />
+        <Tile label={t("op.tile.cut")} value={f(cut, 1)} unit="kWh" note={t("op.tile.cutNote", { n: f(limited), total: f(rows.length) })} />
         <Tile label={t("op.tile.lowest")} value={f(Math.min(...rows.map((r) => r.limit_kw)), 2)} unit="kW" />
         <Tile label={<Term id="fallback">{t("op.tile.fallback")}</Term>} value={f(sch.data.default_kw, 2)} unit="kW" note={t("op.tile.fallbackNote")} />
       </div>
@@ -268,9 +271,10 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
       ]} />
       <ChartOrTable
         chart={<Chart ariaLabel={t("op.chart.day", { date: studyDate(lang, date) })} height={240} deps={[sch.data, lang]} build={(tk, _w, fm) => dayOption(tk, rows, hasDesired, t, fm)} />}
-        table={<DataTable rows={rows} cols={cols} rowKey={(r) => r.hour} caption={t("op.table.caption", { date: studyDate(lang, date) })} searchLabel={t("op.table.search")} />}
+        table={<DataTable rows={rows} cols={cols} rowKey={(r) => r.start_epoch} caption={t("op.table.caption", { date: studyDate(lang, date) })} searchLabel={t("op.table.search")} />}
       />
-      <p className="caption-muted">{t("op.clockNote")}</p>
+      <p className="caption-muted">{t(sch.data.day === "delivery" ? "op.clockNoteQuarter" : "op.clockNote")}</p>
+      {inputs > step ? <p className="caption-muted">{t("op.resolutionNote", { min: f(step), inputs: f(inputs) })}</p> : null}
       <section className="block stack" aria-labelledby="op-payload">
         <div className="block-head">
           <h3 id="op-payload">{t("op.payload")}</h3>
@@ -338,7 +342,9 @@ function readable(raw: string): string {
 }
 
 function dayOption(tk: Tokens, rows: any[], hasDesired: boolean, t: TFn, f: F) {
-  const hours = rows.map((r) => r.study_clock.slice(11, 13));
+  // a label every three hours, whatever the step
+  const hours = rows.map((r) => r.study_clock.slice(11, 16));
+  const every = Math.max(0, Math.round((rows.length / 24) * 3) - 1);
   const step = "middle" as const;
   const series: any[] = [];
   if (hasDesired) {
@@ -357,7 +363,7 @@ function dayOption(tk: Tokens, rows: any[], hasDesired: boolean, t: TFn, f: F) {
     lineStyle: { color: tk.dynamic, width: 2 }, itemStyle: { color: tk.dynamic } });
   return {
     grid: { left: 48, right: 12, top: 16, bottom: 28 },
-    xAxis: { type: "category", data: hours, ...axisStyle(tk), axisLabel: { ...axisStyle(tk).axisLabel, interval: 2 } },
+    xAxis: { type: "category", data: hours, ...axisStyle(tk), axisLabel: { ...axisStyle(tk).axisLabel, interval: every } },
     yAxis: { type: "value", name: "kW", ...axisStyle(tk), splitLine: { show: true, lineStyle: { color: tk.border } } },
     tooltip: {
       trigger: "axis",

@@ -12,6 +12,7 @@ import threading
 import time
 from datetime import date as Date
 from datetime import datetime
+from typing import Literal
 
 import numpy as np
 from fastapi import APIRouter, Header, HTTPException, Query
@@ -29,6 +30,8 @@ DATE_PATTERN = r"^\d{4}-\d{2}-\d{2}$"
 # An Idempotency-Key names one issue or export: sent again, it returns the seal it already has
 # (seals.entry_for) instead of chaining a second line. It becomes part of a seal's id, hence the alphabet.
 IDEMPOTENCY_KEY = "^[A-Za-z0-9_-]{8,64}$"
+RESOLUTION_DOC = ("minutes per interval: 15 (the day-ahead market's MTU, over the delivery day on Stockholm's "
+                  "clock) or 60 (the study day); by default the assumption schedule_resolution_min")
 # looking up a key's seal and sealing it are one step, so two retries at once cannot both seal
 _SEAL_LOCK = threading.Lock()
 
@@ -157,6 +160,16 @@ def eipack_export(body: PackOut, idempotency_key: str | None = Header(None, patt
 
 # ---------------------------------------------------------------- a day's schedule
 
+def _resolution(value: int | None) -> int:
+    """The step a schedule is issued in: the request's, else the assumption schedule_resolution_min."""
+    from ..engine.delivery import RESOLUTIONS, resolution
+
+    try:
+        return resolution(value)
+    except ValueError:
+        raise _refusal(422, "resolution", minutes=value, allowed=" or ".join(map(str, RESOLUTIONS))) from None
+
+
 def _day_ahead(cid: int, date: str, policy: str | None):
     """The house's day-ahead limits and desired export for the year, and the study day of `date`."""
     from ..engine.delivery import day_of
@@ -183,37 +196,46 @@ def _day_ahead(cid: int, date: str, policy: str | None):
 @router.get("/operation/schedule")
 def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
              policy: str | None = Query(None, pattern=POLICY_PATTERN),
-             format: str = Query("json", pattern="^(json|csv)$")):  # noqa: A002 - the API's own word
-    """A house's 24 limits for one date, issued the day before, with each hour's interval start."""
+             format: str = Query("json", pattern="^(json|csv)$"),  # noqa: A002 - the API's own word
+             resolution: int | None = Query(None, description=RESOLUTION_DOC)):
+    """A house's limits for one date, issued the day before, one per interval of the schedule's
+    step, with each interval's start. A quarter-hour schedule carries each hour's verified
+    envelope in its four quarters and says so (`inputs_resolution_min`); `within_envelope` is its
+    check, hour by hour, against that envelope."""
     from ..engine.delivery import schedule as rows_for
+    from ..engine.delivery import terms, within_envelope
 
     combo, year, day, limits, desired, default_kw, kappa = _day_ahead(cid, date, policy)
-    rows = rows_for(limits, desired, year, day)
+    step = _resolution(resolution)
+    rows = rows_for(limits, desired, year, day, step)
     if format == "csv":
         buf = io.StringIO()
         w = csv.writer(buf, lineterminator="\n")
-        w.writerow(["start_utc", "study_clock_utc+1", "stockholm", "limit_kw", "desired_export_kw"])
+        w.writerow(["start_utc", "duration_s", "study_clock_utc+1", "stockholm", "limit_kw", "desired_export_kw"])
         for r in rows:
-            w.writerow([r["start_utc"], r["study_clock"], r["stockholm"], r["limit_kw"], r["desired_kw"]])
+            w.writerow([r["start_utc"], r["duration_s"], r["study_clock"], r["stockholm"], r["limit_kw"],
+                        r["desired_kw"]])
         return Response(buf.getvalue(), media_type="text/csv; charset=utf-8",
                         headers={"Content-Disposition": f'attachment; filename="kapacitet-schedule-{cid}-{date}.csv"'})
     return {"cid": cid, "date": date, "year": year, "basis": "dayahead", "policy": combo.policy, "rows": rows,
+            **terms(step, desired, len(limits)), "within_envelope": within_envelope(rows, limits),
             "default_kw": default_kw, "kappa": kappa, "ocpp": _has_charging_profile(cid),
             "provenance": _provenance(combo.envelopes, combo.result("issued.json"))}
 
 
 @router.get("/operation/schedule.xml")
 def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
-                 policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
+                 policy: str | None = Query(None, pattern=POLICY_PATTERN),
+                 resolution: int | None = Query(None, description=RESOLUTION_DOC)) -> Response:
     """The day as an IEEE 2030.5 DERControlList in the CSIP-AUS profile (modelled, not certified),
-    to read on screen. A preview is never sealed: `POST /operation/schedule/issue` is the same
-    document, issued."""
+    one DERControl per interval (900 s for a quarter-hour schedule), to read on screen. A preview
+    is never sealed: `POST /operation/schedule/issue` is the same document, issued."""
     from ..engine.csipaus import der_control_list
     from ..engine.delivery import schedule as rows_for
 
     _, year, day, limits, desired, _, _ = _day_ahead(cid, date, policy)
-    return Response(der_control_list(cid, rows_for(limits, desired, year, day), int(time.time())),
-                    media_type="application/sep+xml")
+    rows = rows_for(limits, desired, year, day, _resolution(resolution))
+    return Response(der_control_list(cid, rows, int(time.time())), media_type="application/sep+xml")
 
 
 
@@ -275,15 +297,16 @@ class Issue(BaseModel):
     policy: str | None = Field(None, pattern=POLICY_PATTERN)
     override_reason: str | None = Field(None, max_length=500, description="why the day is issued before the "
                                         "day-ahead market's result is known; sealed with the issue")
+    resolution: Literal[15, 60] | None = Field(None, description=RESOLUTION_DOC)
 
 
-def _market_terms(body: Issue) -> dict:
+def _market_terms(body: Issue, step: int) -> dict:
     """What the issue owes to the market: when its result was known, whether the issue waited for
     it (or why not), and which records of market alternatives cover the day. Refuses an issue
     before the result unless it gives a reason; a day no record covers is flagged, never refused."""
     day = Date.fromisoformat(body.date)
     local = dso.load().market_result_local
-    g = market.gate(day, local)
+    g = market.gate(day, local, resolution_min=step)
     reason = (body.override_reason or "").strip()
     if not g["open"] and not reason:
         raise _refusal(409, "before_market", date=body.date, day_before=g["day_before"], local=local,
@@ -292,7 +315,7 @@ def _market_terms(body: Issue) -> dict:
     flags = ([] if g["open"] else ["before_market_override"]) + ([] if covered else ["no_market_alternatives"])
     return {"market_result_at": g["result_at"], "market_result_local": local,
             "before_market_result": not g["open"], "override_reason": reason if not g["open"] else None,
-            "market_alternatives": covered, "flags": flags}
+            "market_alternatives": covered, "flags": flags, "delivery": g["delivery"]}
 
 
 @router.post("/operation/schedule/issue")
@@ -304,8 +327,12 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
     from ..engine.delivery import schedule as rows_for
 
     combo, year, day, limits, desired, _, _ = _day_ahead(body.cid, body.date, body.policy)
-    rows = rows_for(limits, desired, year, day)
-    item = f"{body.cid}-{body.date}-{combo.policy}-{seals.fingerprint()['digest'][:8]}"
+    step = _resolution(body.resolution)
+    rows = rows_for(limits, desired, year, day, step)
+    # an hourly issue keeps the id it always had; a quarter-hour one names its step before the
+    # fingerprint, so neither id is a prefix of the other
+    stepped = "" if step == 60 else f"{step}min-"
+    item = f"{body.cid}-{body.date}-{combo.policy}-{stepped}{seals.fingerprint()['digest'][:8]}"
     name = f"kapacitet-dercontrols-{body.cid}-{body.date}.xml"
     with _SEAL_LOCK:
         kept = None
@@ -316,10 +343,12 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
             if keyed:
                 entry, kept = keyed[-1]["entry"], keyed[-1]["record"]
         if kept is not None:
-            rows = kept["limits"]              # the limits sent the first time, issued when they were sealed
+            # the limits sent the first time, issued when they were sealed, in the step they had
+            duration = 60 * int(kept.get("resolution_min", 60))
+            rows = [{"duration_s": duration, **r} for r in kept["limits"]]
             terms = kept.get("market") or {}
         else:
-            terms = _market_terms(body)
+            terms = _market_terms(body, step)
             # the same day issued under other market terms (a reason, a record added since) is
             # another record, so it never collides with the first one's seal
             if terms["flags"] or terms["market_alternatives"]:
@@ -328,6 +357,7 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
                 item += f"-k{idempotency_key}"
             entry = seals.seal("schedule", item, {
                 "cid": body.cid, "date": body.date, "policy": combo.policy, "basis": "dayahead",
+                "resolution_min": step, "inputs_resolution_min": 60,
                 "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows],
                 "market": terms})
     issued = int(datetime.fromisoformat(entry["at"]).timestamp())
@@ -426,8 +456,10 @@ def shadow(policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
 
 class MeterIn(BaseModel):
     cid: int = Field(..., ge=0)
-    csv: str = Field(..., description="timestamp (ISO 8601 with offset), export_kw or export_w")
+    csv: str = Field(..., description="timestamp (ISO 8601 with offset), export_kw or export_w, or export_kwh "
+                                      "(the energy of the quarter-hour the timestamp starts)")
     policy: str | None = Field(None, pattern=POLICY_PATTERN)
+    resolution: Literal[15, 60] | None = Field(None, description=RESOLUTION_DOC)
 
 
 @router.post("/operation/meter-check")
@@ -445,7 +477,8 @@ def meter_check(body: MeterIn) -> dict:
         raise _refusal(404, "not_an_agreement", cid=body.cid)
     limits = np.asarray(np.load(combo.envelopes, mmap_mode="r")[cids.index(body.cid)], dtype=float)
     try:
-        out = check(body.csv, limits, int(operation_index()["year"]), float(A("meter_breach_tolerance_w")))
+        out = check(body.csv, limits, int(operation_index()["year"]), float(A("meter_breach_tolerance_w")),
+                    _resolution(body.resolution))
     except MeterError as err:
         raise HTTPException(422, {"code": err.code, "message": str(err), "params": err.params}) from err
     return {"cid": body.cid, "policy": combo.policy, **out}

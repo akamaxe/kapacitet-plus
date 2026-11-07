@@ -52,7 +52,7 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | reference code | referenskod | how a household follows its application, without a name or contact details |
 | decided by the rule | beslutad av regeln | the DSO's automatic rule, which never declines |
 | shadow operation | skuggdrift | limits issued every day as if in force, judged without delivering them |
-| schedule (of limits) | schema | a house's 24 limits for one day |
+| schedule (of limits) | schema | a house's limits for one day, one per interval (a quarter-hour by default) |
 | issued the day before | utfärdad dagen före | the basis an operator can issue |
 | default control (no schedule) | gräns utan schema | DefaultDERControl in IEEE 2030.5 |
 | meter check | mätarkontroll | |
