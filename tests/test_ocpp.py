@@ -232,8 +232,15 @@ def test_published_import_envelopes_are_verified_and_sent_as_issued():
     h0 = day_of(meta["year"], date.fromisoformat(day)) * 24
     with TestClient(app) as c:
         for i, cid in enumerate(meta["cids"][:3]):
-            body = c.get("/api/v1/operation/schedule.ocpp.json", params={"cid": cid, "date": day}).json()
+            # the hourly step, so each period is one issued hour of the study day
+            body = c.get("/api/v1/operation/schedule.ocpp.json",
+                         params={"cid": cid, "date": day, "resolution": 60}).json()
             assert ocpp.validate(body) == []
             sent = [p["limit"] for p in body["csChargingProfiles"]["chargingSchedule"]["chargingSchedulePeriod"]]
             issued = env[i, h0:h0 + 24].astype(float) * 1000.0
+            assert len(sent) == 24
             assert all(s <= w + 1e-6 and w - s < 0.1 + 1e-6 for s, w in zip(sent, issued))
+            # the default quarter-hour step never sends more than the hour it falls in
+            quarters = c.get("/api/v1/operation/schedule.ocpp.json", params={"cid": cid, "date": day}).json()
+            assert ocpp.validate(quarters) == []
+            assert max(p["limit"] for p in quarters["csChargingProfiles"]["chargingSchedule"]["chargingSchedulePeriod"])                 <= max(issued) + 1e-6

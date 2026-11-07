@@ -18,7 +18,7 @@ test("operation shows a day's limits, the summer in shadow and a meter check", a
   // issuing it is a write (a POST), sealed, and the page keeps the seal's receipt under the button
   const saved = page.waitForEvent("download");
   await main.getByRole("button", { name: "Issue the file (XML)" }).click();
-  expect((await saved).suggestedFilename()).toMatch(/^kapacitet-dercontrols-\d+-\d{4}-\d{2}-\d{2}\.xml$/);
+  expect((await saved).suggestedFilename()).toMatch(/^kapacitet-dercontrols-\d+-\d{4}-\d{2}-\d{2}(-15min)?\.xml$/);
   await expect(main.locator(".seal-receipt").first()).toContainText(/Sealed in the evidence chain/);
 
   // a day chosen is a day in the link
