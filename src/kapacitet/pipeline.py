@@ -10,7 +10,7 @@ Commands
   redispatch-report  the annual report on non-market-based redispatch (EU 2019/943, art. 13.4)
   meter-compliance  every agreement's metered export against its day-ahead envelopes (--study for a study)
   method-dossier  the method dossier for Ei, in Swedish, every value from the data (--study for a study)
-  seals     verify a sealed chain's hashes and signatures, or rotate the signing key
+  seals     verify a sealed chain's hashes, signatures and timestamps; fetch timestamps; rotate the key
   db        the PostgreSQL store: migrate, status, import-files, export-files
   instance  one installation per DSO: check it, back it up, restore it into an empty one
   check     data-quality report on an operator's network export
@@ -627,12 +627,85 @@ def cmd_seals_verify(args: argparse.Namespace) -> None:
         print("  warning: the legacy lines are held by the hash chain only")
     if "key_from_folder" in out["warnings"]:
         print(f"  warning: the key came from the chain's own folder; pass --key with the published {seals.PUBLISHED}")
+    with seals.chain_at(folder) if folder is not None else nullcontext():
+        stamps_ok = _report_timestamps(seals, args)
     if not out["ok"]:
         why = {"chain": "the hash chain is broken", "signature": "a signature does not hold",
                "unknown_key": "signed by a key that is not trusted", "unsigned": "a line has lost its signature"}
         print(f"NOT VALID at line {out['broken_at']}: {why[out['reason']]}")
         sys.exit(1)
+    if not stamps_ok:
+        print("NOT VALID: a timestamp does not hold")
+        sys.exit(1)
     print("valid (key unchecked: pass --key)" if out["trust"] == "folder" and out["signed"] else "valid")
+
+
+def _report_timestamps(seals, args: argparse.Namespace) -> bool:
+    """Print what the chain's RFC 3161 timestamps attest; False when one does not hold."""
+    from . import tsa
+
+    cert_file = args.tsa_cert or tsa.cert_path()
+    cert = None
+    if cert_file:
+        if not Path(cert_file).is_file():
+            print(f"{cert_file} (the TSA certificate) does not exist")
+            sys.exit(2)
+        cert = Path(cert_file).read_bytes()
+    try:
+        out = seals.verify_timestamps(cert)
+    except tsa.TimestampError as exc:
+        print(f"{cert_file}: {exc}")
+        sys.exit(2)
+    if not out["tokens"] and not out["pending"]:
+        if tsa.url():
+            print("  timestamps: none yet")
+        return True
+    if any(f["reason"] == "missing" for f in out["failed"]):
+        print("  timestamps: rfc3161ng is not installed, so they cannot be read (pip install -e \".[timestamp]\")")
+        sys.exit(2)
+    by = f"attested by {out['tsa']}" if out["checked"] else "digests checked, signatures unchecked"
+    print(f"  timestamps: {len(out['attested'])} of {out['tokens']} tokens hold ({by}); "
+          f"{len(out['pending'])} owed, {out['unstamped']} lines without")
+    if out["attested"]:
+        last = out["attested"][-1]
+        print(f"  line {last['seq']} (the latest stamped) existed by {last['time']}")
+    if args.times:
+        for a in out["attested"]:
+            print(f"    line {a['seq']}: attested {a['time']} (sealed at {a['at']})")
+    if out["pending"]:
+        print("  the owed tokens are fetched by `kapacitet seals timestamp`")
+    if not out["checked"] and out["tokens"]:
+        print(f"  warning: the TSA's signatures are unchecked; set {tsa.ENV_CERT} (or --tsa-cert) to its certificate (PEM)")
+    for f in out["failed"]:
+        print(f"  line {f['seq']}: the timestamp does not hold ({f['reason']}): {f['message']}")
+    return out["ok"]
+
+
+def cmd_seals_timestamp(args: argparse.Namespace) -> None:
+    """Fetch the RFC 3161 tokens a chain is owed; exit 1 while some are still owed."""
+    from contextlib import nullcontext
+
+    from . import seals
+
+    folder = _chain_folder(args.path)
+    if folder is not None and not (folder / "seals.jsonl").is_file():
+        print(f"no chain in {folder} (seals.jsonl is missing)")
+        sys.exit(2)
+    with seals.chain_at(folder) if folder is not None else nullcontext():
+        where = seals._chain().where()
+        try:
+            out = seals.timestamp_pending(missing=args.missing)
+        except ValueError as exc:
+            print(exc)
+            sys.exit(2)
+    print(f"chain {where}: {len(out['stamped'])} lines timestamped, {len(out['pending'])} still owed")
+    if out["changed"]:
+        print("  not asked for, because they no longer hash to what they were owed a token for: lines "
+              + ", ".join(str(s) for s in out["changed"]))
+    if out["unknown"]:
+        print("  owed tokens for lines the chain does not have: " + ", ".join(str(s) for s in out["unknown"]))
+    if out["pending"] or out["changed"]:
+        sys.exit(1)
 
 
 def cmd_seals_rotate(args: argparse.Namespace) -> None:
@@ -795,7 +868,7 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--dry-run", action="store_true", help="say what would go, and remove nothing")
     p.set_defaults(func=cmd_purge)
 
-    p = sub.add_parser("seals", help="check the sealed chain's hashes and signatures, or rotate the signing key")
+    p = sub.add_parser("seals", help="check the chain's hashes, signatures and timestamps, fetch timestamps, or rotate the key")
     seals_sub = p.add_subparsers(dest="seals_command", required=True)
     q = seals_sub.add_parser("verify", help="check the hash chain and every signature")
     q.add_argument("path", nargs="?", default=None,
@@ -803,7 +876,16 @@ def main(argv: list[str] | None = None) -> None:
     q.add_argument("--key", action="append", default=None, metavar="PUB",
                    help="a published public key (seal_key.pub) to trust instead of this installation's; repeatable")
     q.add_argument("--require-signed", action="store_true", help="fail on legacy unsigned lines too")
+    q.add_argument("--tsa-cert", default=None, metavar="PEM",
+                   help="the TSA's certificate to check the RFC 3161 timestamps with (default: KAPACITET_TSA_CERT)")
+    q.add_argument("--times", action="store_true", help="list the time each timestamped line is attested at")
     q.set_defaults(func=cmd_seals_verify)
+    q = seals_sub.add_parser("timestamp", help="fetch the RFC 3161 timestamps the chain is owed (KAPACITET_TSA_URL)")
+    q.add_argument("path", nargs="?", default=None,
+                   help="a chain's folder or its seals.jsonl (default: data/requests)")
+    q.add_argument("--missing", action="store_true",
+                   help="also timestamp lines that have none, such as those sealed before a TSA was set")
+    q.set_defaults(func=cmd_seals_timestamp)
     q = seals_sub.add_parser("rotate-key", help="replace the signing key, with a record signed by the old and the new")
     q.add_argument("--chain", default=None, help="the chain that records the rotation (default: data/requests)")
     q.set_defaults(func=cmd_seals_rotate)

@@ -166,6 +166,18 @@ def _store_backend(request, monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def _no_timestamp_authority(monkeypatch):
+    """No test reaches a real TSA: a TSA set for the server (in the environment or .env) is off
+    here, as an empty value, which .env cannot fill back in. The TSA tests give their own fake one."""
+    from kapacitet import seals, tsa
+
+    monkeypatch.setenv(tsa.ENV_URL, "")
+    monkeypatch.setenv(tsa.ENV_CERT, "")
+    monkeypatch.setattr(tsa, "TRANSPORT", None)
+    monkeypatch.setattr(seals, "_TSA_DOWN_UNTIL", [0.0])
+
+
 @pytest.fixture(scope="session", autouse=True)
 def _a_session_seal_key(tmp_path_factory):
     _SESSION_KEYS[:] = [tmp_path_factory.mktemp("seal-keys")]

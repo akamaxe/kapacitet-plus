@@ -25,6 +25,16 @@ lines off the end of the chain leaves the rest valid, so writing the chain head 
 printed record, an e-mail to the regulator) is still what anchors it. The canonical form is this
 module's, not RFC 8785.
 
+With KAPACITET_TSA_URL set, an RFC 3161 time-stamping authority anchors each line as well
+(kapacitet/tsa.py): once a seal's lines are there for good, the SHA-256 of each line's canonical
+JSON, its signature included (`line_digest`), is sent to the TSA and the token it signs is kept
+next to the chain as `sealed/<seq>.tsr` (in the database, a row of seal_timestamps). Only that hash
+leaves the machine. A TSA that cannot be reached never holds a seal back: the line is written
+first, and the token it is owed is recorded as `sealed/<seq>.tsa_pending` for `kapacitet seals
+timestamp` to fetch later (`timestamp_pending`). `verify_timestamps` checks each kept token against
+the line it names and, given the TSA's certificate, the TSA's signature, and reports the attested
+times; a token for a line the chain no longer has shows that lines were cut off its end.
+
 A crash never leaves half a record: the copy is written atomically, and each chain line is one
 fsynced append (kapacitet.atomic). A line cut short by a crash during its append is a torn tail:
 the reader leaves it out, `verify_chain` reports it, and the next `seal` cuts it off before it
@@ -54,6 +64,7 @@ import base64
 import contextvars
 import hashlib
 import json
+import logging
 import math
 import os
 import subprocess
@@ -67,10 +78,11 @@ from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey, Ed25519PublicKey
 
-from . import __version__, actor, store
+from . import __version__, actor, store, tsa
 from .atomic import append_line, write_bytes_atomic, write_json_atomic, write_text_atomic
 from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS
 
+log = logging.getLogger(__name__)
 _LOCK = threading.RLock()
 GENESIS = "0" * 64
 KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "schedule", "eipack", "erasure",
@@ -79,6 +91,10 @@ KINDS = ("assessment", "decision", "queue_reset", "settings", "application", "sc
 _CHAIN_AT: contextvars.ContextVar[Path | None] = contextvars.ContextVar("kapacitet_seal_chain", default=None)
 # inside _chain_locked: the signed-line counts to note once the chain's lines are there for good
 _UNNOTED: contextvars.ContextVar[dict[str, int] | None] = contextvars.ContextVar("kapacitet_seal_unnoted", default=None)
+# inside _chain_locked: the lines appended, with their chain, to timestamp once they are there for good
+_UNSTAMPED: contextvars.ContextVar[list | None] = contextvars.ContextVar("kapacitet_seal_unstamped", default=None)
+TOKEN_SUFFIX = ".tsr"             # sealed/<seq>.tsr: a line's RFC 3161 token (DER)
+PENDING_SUFFIX = ".tsa_pending"   # sealed/<seq>.tsa_pending: the token a line is still owed, and why
 
 # What an answer depends on, besides the engine's code: the network, the profiles behind it, the
 # published results and the inputs. A change to any of these changes the fingerprint. The "study"
@@ -229,6 +245,33 @@ class FolderChain:
 
     def publish_key(self, pem: str) -> None:
         _write_if_changed(self.root / PUBLISHED, pem)
+
+    def _numbered(self, suffix: str) -> dict[int, Path]:
+        folder = self.root / "sealed"
+        if not folder.is_dir():
+            return {}
+        return {int(p.name[:-len(suffix)]): p for p in folder.glob(f"*{suffix}")
+                if p.name[:-len(suffix)].isdigit() and p.is_file()}
+
+    def stamps(self) -> dict[int, bytes]:
+        """The RFC 3161 tokens kept, by line number."""
+        return {seq: p.read_bytes() for seq, p in self._numbered(TOKEN_SUFFIX).items()}
+
+    def stamps_pending(self) -> dict[int, str]:
+        """The tokens still owed, by line number: the text of each marker."""
+        return {seq: p.read_text(encoding="utf-8") for seq, p in self._numbered(PENDING_SUFFIX).items()}
+
+    def stamp_put(self, seq: int, token: bytes) -> None:
+        """Keep a line's token, never over one already kept (the first attests the earliest time),
+        and clear what it was owed."""
+        path = self.root / "sealed" / f"{seq}{TOKEN_SUFFIX}"
+        if not path.exists():
+            write_bytes_atomic(path, token)
+        (self.root / "sealed" / f"{seq}{PENDING_SUFFIX}").unlink(missing_ok=True)
+
+    def stamp_pending(self, seq: int, text: str) -> None:
+        if not (self.root / "sealed" / f"{seq}{TOKEN_SUFFIX}").exists():
+            write_text_atomic(self.root / "sealed" / f"{seq}{PENDING_SUFFIX}", text)
 
 
 def _chain():
@@ -589,6 +632,9 @@ def _append(kind: str, item_id: str, text: bytes, fp: dict, lines: list[dict], k
     entry["sig"] = _b64(key.sign(_line_message(entry)))
     ch.append(entry)
     lines.append(entry)
+    pending = _UNSTAMPED.get()
+    if pending is not None:     # timestamped when _chain_locked ends, once the line is there for good
+        pending.append((ch, entry))
     signed, counts = sum(1 for e in lines if e.get("sig")), _UNNOTED.get()
     if counts is None:
         _note_signed(signed)
@@ -617,20 +663,26 @@ def _chain_locked():
     """The chain's lock. The signed lines appended under it raise this installation's count
     (`_note_signed`) only once they are there for good: with postgres, after the transaction has
     committed, so a line that rolls back (a failed commit, a raise after the append) never leaves a
-    count the chain does not reach, which verify_chain would report as stripped signatures."""
+    count the chain does not reach, which verify_chain would report as stripped signatures.
+    The same holds for the lines' RFC 3161 timestamps (`_stamp`): asked for only once the outermost
+    lock has been let go of normally, so no token is ever had for a line that rolled back."""
     if _UNNOTED.get() is not None:
         with _chain().locked():
             yield
         return
     counts: dict[str, int] = {}
+    appended: list = []
     token = _UNNOTED.set(counts)
+    token_stamps = _UNSTAMPED.set(appended)
     try:
         with _chain().locked():
             yield
     finally:
         _UNNOTED.reset(token)
+        _UNSTAMPED.reset(token_stamps)
     for name, count in counts.items():
         _note_signed(count, name)
+    _stamp(appended)
 
 
 def _note_signed(count: int, name: str | None = None) -> None:
@@ -887,3 +939,127 @@ def sealed_of_kind(kind: str) -> list[dict]:
         if rec is not None:
             out.append({"entry": e, "record": rec})
     return out
+
+
+# ---------------------------------------------------------------- RFC 3161 timestamps (kapacitet/tsa.py)
+
+TSA_BACKOFF_S = 60.0                 # after a failed request while sealing, the next seals do not wait on the TSA
+_TSA_DOWN_UNTIL = [0.0]
+
+
+def line_digest(entry: dict) -> bytes:
+    """What a line's timestamp is over: the SHA-256 of its canonical JSON, signature included."""
+    return hashlib.sha256(canonical(entry)).digest()
+
+
+def _marker(text: str | None) -> dict:
+    try:
+        got = json.loads(text) if text else {}
+    except ValueError:
+        got = {}
+    return got if isinstance(got, dict) else {}
+
+
+def _stamp_line(ch, entry: dict, owed: dict | None = None, backoff: bool = True) -> bool:
+    """Ask the TSA for a line's token and keep it; on any failure, record it as still owed. Never
+    raises: a seal is never held back by its timestamp. Returns whether the token is kept."""
+    import time
+
+    seq, dig = entry.get("seq"), line_digest(entry)
+    now = datetime.now(timezone.utc).isoformat()
+    try:
+        if backoff and time.monotonic() < _TSA_DOWN_UNTIL[0]:
+            raise tsa.TimestampError("backoff", "the TSA failed a moment ago; this line waits for `kapacitet seals timestamp`")
+        token = tsa.request(dig)
+        ch.stamp_put(seq, token)
+        return True
+    except Exception as exc:          # whatever went wrong, the line stands and its token is owed
+        reason = exc.reason if isinstance(exc, tsa.TimestampError) else "error"
+        if backoff and reason != "backoff":
+            _TSA_DOWN_UNTIL[0] = time.monotonic() + TSA_BACKOFF_S
+        before = owed or {}
+        marker = {"seq": seq, "line_digest": dig.hex(), "since": before.get("since", now), "last_try": now,
+                  "tries": int(before.get("tries", 0) or 0) + 1, "reason": reason, "error": str(exc)[:300]}
+        try:
+            ch.stamp_pending(seq, json.dumps(marker, indent=1, sort_keys=True) + "\n")
+        except Exception:               # noqa: BLE001 - not even the marker: `seals timestamp --missing` finds it
+            log.warning("seal line %s: could not record the timestamp it is owed", seq, exc_info=True)
+        log.warning("seal line %s has no timestamp yet (%s): `kapacitet seals timestamp` retries it", seq, reason)
+        return False
+
+
+def _stamp(appended: list) -> None:
+    """Timestamp the lines a seal has just appended, when a TSA is set (KAPACITET_TSA_URL)."""
+    if not appended or not tsa.url():
+        return
+    for ch, entry in appended:
+        _stamp_line(ch, entry)
+
+
+def timestamp_pending(missing: bool = False) -> dict:
+    """Ask the TSA again for every token the chain in use is owed (and, with `missing`, for every
+    line that has neither a token nor a marker, such as the lines sealed before a TSA was set).
+    A chain that fails verification gets none: a token would attest whatever it now holds.
+    Returns {stamped, pending, changed, unknown}, lists of line numbers: `changed` are lines that
+    no longer hash to what they were owed a token for, `unknown` markers without a line."""
+    if not tsa.url():
+        raise ValueError(f"{tsa.ENV_URL} is not set: no TSA to ask (for instance {tsa.EXAMPLE_URL})")
+    chain = verify_chain()
+    if not chain["ok"]:
+        raise ValueError(f"the chain fails verification at line {chain['broken_at']} ({chain['reason']}): "
+                         "no timestamp is asked for it")
+    ch = _chain()
+    by_seq = {e.get("seq"): e for e in _lines()}
+    have, owed = ch.stamps(), ch.stamps_pending()
+    targets = {s for s in owed if s not in have}
+    if missing:
+        targets |= {s for s in by_seq if isinstance(s, int) and s not in have}
+    out: dict[str, list[int]] = {"stamped": [], "pending": [], "changed": [], "unknown": []}
+    for seq in sorted(targets):
+        entry = by_seq.get(seq)
+        if entry is None:
+            out["unknown"].append(seq)
+            continue
+        marker = _marker(owed.get(seq))
+        if marker.get("line_digest") not in (None, line_digest(entry).hex()):
+            out["changed"].append(seq)
+            continue
+        out["stamped" if _stamp_line(ch, entry, marker, backoff=False) else "pending"].append(seq)
+    return out
+
+
+def verify_timestamps(cert_pem: bytes | None = None) -> dict:
+    """Check every kept token of the chain in use against the line it names: over that line's
+    digest and, given the TSA's certificate (`cert_pem`), signed by it. Returns {ok, tokens,
+    checked, tsa, attested: [{seq, time, at}], failed: [{seq, reason, message}], pending,
+    unstamped}. A token for a line the chain does not have fails as `missing_line`: lines were cut
+    off the chain's end. Without a certificate, only the digests are checked."""
+    ch = _chain()
+    lines = _lines()
+    by_seq = {e.get("seq"): e for e in lines}
+    tokens, owed = ch.stamps(), ch.stamps_pending()
+    name = tsa.describe_cert(tsa.load_cert(cert_pem)) if cert_pem else None
+    attested, failed = [], []
+    for seq, token in sorted(tokens.items()):
+        entry = by_seq.get(seq)
+        if entry is None:
+            failed.append({"seq": seq, "reason": "missing_line",
+                           "message": f"a token is kept for line {seq}, which the chain no longer has"})
+            continue
+        dig = line_digest(entry)
+        try:
+            if cert_pem:
+                when = tsa.verify(token, dig, cert_pem)
+            else:
+                got = tsa.parse(token)
+                if got["hash"] != tsa.HASH or got["imprint"] != dig:
+                    raise tsa.TimestampError("digest", "the token is over another hash than the line's")
+                when = got["time"]
+        except tsa.TimestampError as exc:
+            failed.append({"seq": seq, "reason": exc.reason, "message": str(exc)})
+            continue
+        attested.append({"seq": seq, "time": when.isoformat(), "at": entry.get("at")})
+    pending = sorted(s for s in owed if s not in tokens)
+    unstamped = sum(1 for s in by_seq if s not in tokens and s not in owed)
+    return {"ok": not failed, "tokens": len(tokens), "checked": cert_pem is not None, "tsa": name,
+            "attested": attested, "failed": failed, "pending": pending, "unstamped": unstamped}

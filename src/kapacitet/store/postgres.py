@@ -215,6 +215,32 @@ class Chain:
                          " ON CONFLICT (scope, key) DO UPDATE SET value = EXCLUDED.value"
                          " WHERE store_meta.value <> EXCLUDED.value", (scope(), pem))
 
+    # the RFC 3161 tokens (seals.FolderChain: sealed/<seq>.tsr and sealed/<seq>.tsa_pending)
+    def stamps(self) -> dict[int, bytes]:
+        with db.held("seals") as conn:
+            rows = conn.execute("SELECT seq, token FROM seal_timestamps WHERE scope = %s AND token IS NOT NULL",
+                                (scope(),)).fetchall()
+        return {int(seq): bytes(token) for seq, token in rows}
+
+    def stamps_pending(self) -> dict[int, str]:
+        with db.held("seals") as conn:
+            rows = conn.execute("SELECT seq, pending FROM seal_timestamps WHERE scope = %s AND token IS NULL",
+                                (scope(),)).fetchall()
+        return {int(seq): text for seq, text in rows}
+
+    def stamp_put(self, seq: int, token: bytes) -> None:
+        """Keep a line's token, never over one already kept, and clear what it was owed."""
+        with db.held("seals") as conn:
+            conn.execute("INSERT INTO seal_timestamps (scope, seq, token, pending) VALUES (%s, %s, %s, NULL)"
+                         " ON CONFLICT (scope, seq) DO UPDATE SET token = EXCLUDED.token, pending = NULL"
+                         " WHERE seal_timestamps.token IS NULL", (scope(), seq, token))
+
+    def stamp_pending(self, seq: int, text: str) -> None:
+        with db.held("seals") as conn:
+            conn.execute("INSERT INTO seal_timestamps (scope, seq, token, pending) VALUES (%s, %s, NULL, %s)"
+                         " ON CONFLICT (scope, seq) DO UPDATE SET pending = EXCLUDED.pending"
+                         " WHERE seal_timestamps.token IS NULL", (scope(), seq, text))
+
 
 # ---------------------------------------------------------------- the queue
 

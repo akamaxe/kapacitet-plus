@@ -8,7 +8,8 @@ The server's mutable state is six things, each behind one small interface with t
     the DSO's settings            Document (store/files.py)          dso_settings
     the market alternatives       EventLog (store/files.py)          market_alternatives
     the seal chain                seals.FolderChain                  seal_chain, sealed_copies,
-                                                                     seal_fingerprints, store_meta
+                                                                     seal_fingerprints, store_meta,
+                                                                     seal_timestamps
     the queue                     engine/queue.FolderQueue           queues, queue_files
 
 `files` is the default and is today's behaviour, byte for byte. `postgres` is chosen by setting

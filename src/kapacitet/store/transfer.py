@@ -73,7 +73,7 @@ def import_files(root: Path) -> dict:
     root = Path(root)
     sc = scope()
     out = {"scope": sc, "records": 0, "index_without_record": 0, "applications": 0, "market_alternatives": 0,
-           "settings": "absent", "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "queues": {},
+           "settings": "absent", "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": {},
            "conflicts": []}
     with db.connection() as conn, conn.transaction():
         conn.execute("SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))", (f"{sc}:import",))
@@ -168,6 +168,18 @@ def _import_chain(conn, root: Path, sc: str, out: dict) -> None:
                     cur = conn.execute("INSERT INTO sealed_copies (scope, kind, id, body) VALUES (%s, %s, %s, %s)"
                                        " ON CONFLICT DO NOTHING", (sc, kind_dir.name, path.stem, path.read_bytes()))
                     out["sealed_copies"] += cur.rowcount
+        # the RFC 3161 tokens and the markers of those still owed (seals.FolderChain)
+        from ..seals import PENDING_SUFFIX, TOKEN_SUFFIX
+
+        for suffix, column in ((TOKEN_SUFFIX, "token"), (PENDING_SUFFIX, "pending")):
+            for path in sorted(sealed.glob(f"*{suffix}")):
+                seq = path.name[:-len(suffix)]
+                if not seq.isdigit() or not path.is_file():
+                    continue
+                body = path.read_bytes() if column == "token" else path.read_bytes().decode("utf-8")
+                cur = conn.execute(f"INSERT INTO seal_timestamps (scope, seq, {column}) VALUES (%s, %s, %s)"
+                                   " ON CONFLICT DO NOTHING", (sc, int(seq), body))
+                out["timestamps"] += cur.rowcount
     pub = root / "seal_key.pub"
     if pub.is_file():
         conn.execute("INSERT INTO store_meta (scope, key, value) VALUES (%s, 'seal_key.pub', %s) ON CONFLICT DO NOTHING",
@@ -224,7 +236,7 @@ def export_files(dest: Path) -> dict:
     dest.mkdir(parents=True, exist_ok=True)
     sc = scope()
     out = {"scope": sc, "records": 0, "applications": 0, "market_alternatives": 0, "settings": False,
-           "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "queues": []}
+           "seal_lines": 0, "sealed_copies": 0, "fingerprints": 0, "timestamps": 0, "queues": []}
     with db.connection() as conn, conn.transaction():
         conn.execute("SET TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
         index = []
@@ -256,6 +268,15 @@ def export_files(dest: Path) -> dict:
         for digest, body in conn.execute("SELECT digest, body FROM seal_fingerprints WHERE scope = %s", (sc,)):
             write_text_atomic(dest / "sealed" / "fingerprints" / f"{digest}.json", body)
             out["fingerprints"] += 1
+        from ..seals import PENDING_SUFFIX, TOKEN_SUFFIX
+
+        for seq, token, pending in conn.execute("SELECT seq, token, pending FROM seal_timestamps WHERE scope = %s",
+                                                (sc,)):
+            if token is not None:
+                write_bytes_atomic(dest / "sealed" / f"{seq}{TOKEN_SUFFIX}", bytes(token))
+            else:
+                write_text_atomic(dest / "sealed" / f"{seq}{PENDING_SUFFIX}", pending)
+            out["timestamps"] += 1
         got = conn.execute("SELECT value FROM store_meta WHERE scope = %s AND key = 'seal_key.pub'", (sc,)).fetchone()
         if got:
             write_text_atomic(dest / "seal_key.pub", got[0], encoding="ascii")

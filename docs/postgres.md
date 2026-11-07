@@ -14,7 +14,7 @@ wants a transactional database it can migrate and back up, and that is what
 | Applications log | `applications.jsonl` | `applications_log` |
 | DSO settings | `settings.json` | `dso_settings` |
 | Market alternatives | `market_alternatives.jsonl` | `market_alternatives` |
-| Seal chain | `seals.jsonl`, `sealed/`, `seal_key.pub` | `seal_chain` (append-only, signature in the same row), `sealed_copies`, `seal_fingerprints`, `store_meta` |
+| Seal chain | `seals.jsonl`, `sealed/`, `seal_key.pub` | `seal_chain` (append-only, signature in the same row), `sealed_copies`, `seal_fingerprints`, `store_meta`, `seal_timestamps` (the RFC 3161 tokens, `sealed/<seq>.tsr`, and those still owed) |
 | Queue | `queue/queue.json`, `seal_pending.json`, `*.npz` | `queues` (version, baseline, the queue, the seal owed), `queue_files` (the arrays) |
 
 These stay in files on either backend: the request's injection cache (`data/requests/cache/`,

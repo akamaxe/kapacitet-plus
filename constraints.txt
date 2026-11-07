@@ -74,6 +74,11 @@ wrapt==2.5.2
 asgiref==3.13.0
 packaging==26.3
 typing_extensions==4.16.0
+# the "timestamp" extra (tsa.py), approved 2026-11-07, with python-dateutil, which rfc3161ng needs (requests is above)
+rfc3161ng==2.1.3
+pyasn1==0.6.5
+pyasn1-modules==0.4.2
+python-dateutil==4.0.0
 tzdata==2026.6
 # the "validation" extra (tools/dss_crossval.py), approved 2026-11-07: OpenDSS through opendssdirect.py,
 # all BSD-licensed (it also needs cffi, numpy and typing_extensions, pinned above)

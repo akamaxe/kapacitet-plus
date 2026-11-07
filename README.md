@@ -209,6 +209,8 @@ check off; a codespace's forwarded names are allowed by themselves), `KAPACITET_
 `KAPACITET_RETENTION_DAYS` (how long saved assessments are kept, [Privacy](#privacy-and-retention)),
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page),
 `KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release),
+`KAPACITET_TSA_URL`, `KAPACITET_TSA_CERT` and `KAPACITET_TSA_TIMEOUT_S` (RFC 3161 timestamps on the
+seals, [below](#the-paperwork-the-agreement-leaves-behind)),
 `KAPACITET_DATABASE_URL` (the server's state in PostgreSQL instead of `data/requests/`, below) and
 `OTEL_EXPORTER_OTLP_ENDPOINT` or `KAPACITET_TELEMETRY=console` (traces and metrics with
 OpenTelemetry, from the `telemetry` extra; off by default, with no address, reference code or
@@ -787,9 +789,28 @@ python -m kapacitet seals rotate-key                              # a new key; t
 Lines sealed before signing began are reported as *legacy* (held by the hash chain alone), not as
 failures; an unsigned line after the first signed one fails. A rotation record names both public
 keys and is signed by both, so whoever trusts either trusts the other; other chains receive it on
-their next seal. A signature is not a trusted timestamp (there is no RFC 3161 authority behind the
-time in a line), and cutting lines off the end leaves the rest valid, so the chain's head is still
-worth writing down somewhere else, as the printed record does.
+their next seal. A signature is not a trusted timestamp (the time in a line is the server's own),
+and cutting lines off the end leaves the rest valid, so the chain's head is still worth writing
+down somewhere else, as the printed record does.
+
+**RFC 3161 timestamps** anchor the lines in time from outside (`src/kapacitet/tsa.py`, the
+`timestamp` extra: `pip install -c constraints.txt -e ".[timestamp]"`). With `KAPACITET_TSA_URL` set
+to a time-stamping authority (FreeTSA's `https://freetsa.org/tsr` is one, free and without an
+account; nothing is contacted while it is unset), every new line is sent to it as the SHA-256 of
+its canonical JSON, signature included: only that hash leaves the machine. The token the TSA signs
+is kept next to the chain as `sealed/<seq>.tsr` (with PostgreSQL, in `seal_timestamps`). A TSA that
+cannot be reached never holds a seal back: the line is written, the token it is owed is recorded
+as `sealed/<seq>.tsa_pending`, and for a minute the next seals do not wait on the TSA either.
+`seals verify` checks each token against its line and, with the TSA's certificate, its signature,
+and says when the latest stamped line provably existed; a token for a line the chain no longer has
+shows that lines were cut off its end. The certificate is never fetched: download it from the TSA
+once and name it in `KAPACITET_TSA_CERT` (or `--tsa-cert`).
+
+```bash
+python -m kapacitet seals timestamp              # fetch the tokens still owed (exit 1 while some are)
+python -m kapacitet seals timestamp --missing    # also the lines sealed before a TSA was set
+python -m kapacitet seals verify --times         # with KAPACITET_TSA_CERT: every attested time
+```
 
 Every one of these files is written atomically (`src/kapacitet/atomic.py`): a crash leaves the old
 file or the new one, never half of either. A chain line cut short by a crash is a *torn tail*:

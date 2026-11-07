@@ -50,6 +50,8 @@ telemetry = [
   "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
   "opentelemetry-instrumentation-fastapi>=0.66b2",
 ]
+# RFC 3161 timestamps on the seals from a TSA (kapacitet/tsa.py, KAPACITET_TSA_URL)
+timestamp = ["rfc3161ng>=2.1.3,<3", "pyasn1>=0.6.5,<0.7", "pyasn1-modules>=0.4.2,<0.5"]
 
 [project.scripts]
 kapacitet = "kapacitet.pipeline:main"

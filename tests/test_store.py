@@ -179,6 +179,37 @@ def test_a_seal_that_fails_after_its_line_never_raises_the_signed_count(backend,
     assert out["length"] == (1 if backend == "postgres" else 2)
 
 
+def test_timestamps_owed_then_kept_and_none_for_a_line_that_rolled_back(backend, monkeypatch):
+    """The RFC 3161 tokens on both backends: owed while the TSA is down, kept once it answers, and
+    never asked for a line that did not stay (with postgres, one that rolled back)."""
+    pytest.importorskip("rfc3161ng")
+    from test_seal_timestamps import TSA_URL, FakeTSA
+
+    from kapacitet import seals, tsa
+
+    fake = FakeTSA(down=True)
+    monkeypatch.setenv(tsa.ENV_URL, TSA_URL)
+    monkeypatch.setattr(tsa, "TRANSPORT", fake.transport())
+    seals.seal("decision", "d00000000001", {"decision": "firm"})
+    assert list(seals._chain().stamps_pending()) == [1]
+    chain_cls = type(seals._chain())
+
+    def fail(self, *a, **k):
+        raise RuntimeError("the fingerprint could not be kept")
+
+    with monkeypatch.context() as mp, pytest.raises(RuntimeError):
+        mp.setattr(chain_cls, "fingerprint_put", fail)
+        seals.seal("decision", "d00000000002", {"decision": "nonfirm"})
+    assert len(fake.requests) == 1 and list(seals._chain().stamps_pending()) == [1]
+
+    fake.down = False
+    assert seals.timestamp_pending()["stamped"] == [1]
+    assert seals._chain().stamps_pending() == {} and list(seals._chain().stamps()) == [1]
+    out = seals.verify_timestamps(fake.cert_pem)
+    assert out["ok"] and [a["seq"] for a in out["attested"]] == [1]
+    assert out["unstamped"] == (0 if backend == "postgres" else 1)
+
+
 # ---------------------------------------------------------------- the market alternatives
 
 def _market_body():
@@ -580,6 +611,9 @@ def _fill_files(tmp_path, monkeypatch) -> Path:
     savez_atomic(folder / "state_2025.v1.npz", stable=True, pt=np.ones(3, dtype=np.uint8))
     write_json_atomic(folder / "queue.json", q)
     write_json_atomic(folder / qu.PENDING, {"kind": "decision", "id": "c00000000002"})
+    # an RFC 3161 token kept and one still owed (seals.FolderChain); their bytes only travel
+    (requests / "sealed" / f"1{seals.TOKEN_SUFFIX}").write_bytes(bytes([0x30, 0x03, 0x02, 0x01, 0x01]))
+    (requests / "sealed" / f"2{seals.PENDING_SUFFIX}").write_bytes(b'{"reason": "unreachable", "seq": 2}' + bytes([10]))
     return requests
 
 
@@ -599,9 +633,10 @@ def test_import_then_export_round_trips_byte_for_byte_and_import_is_idempotent(t
     first = transfer.import_files(requests)
     assert first["records"] == 2 and first["applications"] == 1 and first["settings"] == "imported"
     assert first["seal_lines"] == len((requests / "seals.jsonl").read_text(encoding="utf-8").splitlines())
-    assert first["queues"] == {"queue": "imported"} and not first["conflicts"]
+    assert first["queues"] == {"queue": "imported"} and not first["conflicts"] and first["timestamps"] == 2
     again = transfer.import_files(requests)
     assert again["records"] == again["applications"] == again["seal_lines"] == again["sealed_copies"] == 0
+    assert again["timestamps"] == 0
     assert again["settings"] == "same" and again["queues"] == {"queue": "same"}
 
     # the database now serves what the files held
