@@ -32,9 +32,7 @@ def available() -> list[tuple[int, str, str, str]]:
         if not m:
             raise MigrationError(f"{path.name} is not named NNN_<name>.sql")
         # line endings as in the repository, so a checkout that turns them into CRLF hashes the same
-        sql = path.read_text(encoding="utf-8").replace("
-", "
-")
+        sql = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         out.append((int(m[1]), m[2], hashlib.sha256(sql.encode("utf-8")).hexdigest(), sql))
     versions = [v for v, *_ in out]
     if len(set(versions)) != len(versions):
