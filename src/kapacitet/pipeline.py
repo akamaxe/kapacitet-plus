@@ -627,8 +627,13 @@ def cmd_seals_verify(args: argparse.Namespace) -> None:
         print("  warning: the legacy lines are held by the hash chain only")
     if "key_from_folder" in out["warnings"]:
         print(f"  warning: the key came from the chain's own folder; pass --key with the published {seals.PUBLISHED}")
-    with seals.chain_at(folder) if folder is not None else nullcontext():
-        stamps_ok = _report_timestamps(seals, args)
+    try:
+        with seals.chain_at(folder) if folder is not None else nullcontext():
+            stamps_ok = _report_timestamps(seals, args)
+    except SystemExit:
+        if out["ok"]:
+            raise
+        stamps_ok = False       # the broken chain is the verdict, not why the timestamps could not be read
     if not out["ok"]:
         why = {"chain": "the hash chain is broken", "signature": "a signature does not hold",
                "unknown_key": "signed by a key that is not trusted", "unsigned": "a line has lost its signature"}

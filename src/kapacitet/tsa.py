@@ -142,15 +142,27 @@ def request(digest: bytes, tsa_url: str | None = None) -> bytes:
 
 
 def load_cert(pem: bytes):
-    """The first certificate of a PEM (or DER) file."""
+    """The TSA certificate of a PEM (or DER) file: of a PEM chain, the first meant for time-stamping
+    (a chain may list its CA first), else the first."""
     from cryptography import x509
 
     try:
         if b"-----BEGIN CERTIFICATE-----" in pem:
-            return x509.load_pem_x509_certificates(pem)[0]
+            certs = x509.load_pem_x509_certificates(pem)
+            return next((c for c in certs if _for_timestamping(c)), certs[0])
         return x509.load_der_x509_certificate(pem)
     except ValueError as exc:
         raise TimestampError("certificate", "not an X.509 certificate (PEM or DER)") from exc
+
+
+def _for_timestamping(cert) -> bool:
+    from cryptography import x509
+
+    try:
+        eku = cert.extensions.get_extension_for_class(x509.ExtendedKeyUsage).value
+    except x509.ExtensionNotFound:
+        return False
+    return any(oid.dotted_string == ID_KP_TIME_STAMPING for oid in eku)
 
 
 def describe_cert(cert) -> str:

@@ -176,6 +176,7 @@ def _no_timestamp_authority(monkeypatch):
     monkeypatch.setenv(tsa.ENV_CERT, "")
     monkeypatch.setattr(tsa, "TRANSPORT", None)
     monkeypatch.setattr(seals, "_TSA_DOWN_UNTIL", [0.0])
+    monkeypatch.setattr(seals, "STAMP_IN_BACKGROUND", False)
 
 
 @pytest.fixture(scope="session", autouse=True)

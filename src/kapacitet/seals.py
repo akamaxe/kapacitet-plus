@@ -29,9 +29,11 @@ With KAPACITET_TSA_URL set, an RFC 3161 time-stamping authority anchors each lin
 (kapacitet/tsa.py): once a seal's lines are there for good, the SHA-256 of each line's canonical
 JSON, its signature included (`line_digest`), is sent to the TSA and the token it signs is kept
 next to the chain as `sealed/<seq>.tsr` (in the database, a row of seal_timestamps). Only that hash
-leaves the machine. A TSA that cannot be reached never holds a seal back: the line is written
-first, and the token it is owed is recorded as `sealed/<seq>.tsa_pending` for `kapacitet seals
-timestamp` to fetch later (`timestamp_pending`). `verify_timestamps` checks each kept token against
+leaves the machine. A TSA that cannot be reached, or answers slowly, never holds a seal back: the
+line is written first, the token it is owed is recorded as `sealed/<seq>.tsa_pending`, and the
+request runs on a thread of its own (`_stamp`), so the locks the sealer holds (the queue's, the
+inbox worker's) never wait on the TSA. What it could not fetch stays owed for `kapacitet seals
+timestamp` (`timestamp_pending`). `verify_timestamps` checks each kept token against
 the line it names and, given the TSA's certificate, the TSA's signature, and reports the attested
 times; a token for a line the chain no longer has shows that lines were cut off its end.
 
@@ -60,6 +62,7 @@ holds it, and no message names more of it than its path.
 
 from __future__ import annotations
 
+import atexit
 import base64
 import contextvars
 import hashlib
@@ -677,6 +680,14 @@ def _chain_locked():
     try:
         with _chain().locked():
             yield
+    except BaseException:
+        # a folder chain keeps a line appended before the raise (postgres rolls it back): it is
+        # owed its token like any other, so `seals timestamp` retries it without `--missing`
+        if appended and tsa.url():
+            for ch, entry in appended:
+                if isinstance(ch, FolderChain):
+                    _owe(ch, entry, "interrupted")
+        raise
     finally:
         _UNNOTED.reset(token)
         _UNSTAMPED.reset(token_stamps)
@@ -945,6 +956,9 @@ def sealed_of_kind(kind: str) -> list[dict]:
 
 TSA_BACKOFF_S = 60.0                 # after a failed request while sealing, the next seals do not wait on the TSA
 _TSA_DOWN_UNTIL = [0.0]
+STAMP_IN_BACKGROUND = True           # off in the tests, which want the token (or its marker) at once
+_STAMPERS: list[threading.Thread] = []
+_STAMPERS_GUARD = threading.Lock()
 
 
 def line_digest(entry: dict) -> bytes:
@@ -988,12 +1002,56 @@ def _stamp_line(ch, entry: dict, owed: dict | None = None, backoff: bool = True)
         return False
 
 
+def _owe(ch, entry: dict, reason: str) -> dict:
+    """Record that a line is owed its token, before anyone has asked the TSA for it. Never raises."""
+    now = datetime.now(timezone.utc).isoformat()
+    marker = {"seq": entry.get("seq"), "line_digest": line_digest(entry).hex(), "since": now, "last_try": None,
+              "tries": 0, "reason": reason, "error": ""}
+    try:
+        ch.stamp_pending(entry.get("seq"), json.dumps(marker, indent=1, sort_keys=True) + "\n")
+    except Exception:                   # noqa: BLE001 - `seals timestamp --missing` still finds it
+        log.warning("seal line %s: could not record the timestamp it is owed", entry.get("seq"), exc_info=True)
+    return marker
+
+
+def _stamp_all(work: list) -> None:
+    for ch, entry, owed in work:
+        _stamp_line(ch, entry, owed)
+
+
 def _stamp(appended: list) -> None:
-    """Timestamp the lines a seal has just appended, when a TSA is set (KAPACITET_TSA_URL)."""
+    """Timestamp the lines a seal has just appended, when a TSA is set (KAPACITET_TSA_URL). Each
+    line is first recorded as owed, then the requests run on a daemon thread: the sealer may hold
+    other locks (the queue's in queue.decide, the inbox worker's), and a TSA that answers slowly
+    but answers would otherwise hold them up to KAPACITET_TSA_TIMEOUT_S per line. A process that
+    ends before the thread has finished leaves the markers for `kapacitet seals timestamp`."""
     if not appended or not tsa.url():
         return
-    for ch, entry in appended:
-        _stamp_line(ch, entry)
+    if not STAMP_IN_BACKGROUND:
+        _stamp_all([(ch, entry, None) for ch, entry in appended])
+        return
+    work = [(ch, entry, _owe(ch, entry, "queued")) for ch, entry in appended]
+    t = threading.Thread(target=_stamp_all, args=(work,), name="kapacitet-tsa", daemon=True)
+    with _STAMPERS_GUARD:
+        _STAMPERS[:] = [x for x in _STAMPERS if x.is_alive()] + [t]
+    t.start()
+
+
+def wait_stamps(timeout: float | None = None) -> None:
+    """Wait, at most `timeout` seconds in all, for the timestamp requests running in the background
+    (a command about to exit, the tests)."""
+    import time
+
+    with _STAMPERS_GUARD:
+        running = list(_STAMPERS)
+    end = None if timeout is None else time.monotonic() + timeout
+    for t in running:
+        t.join(None if end is None else max(0.0, end - time.monotonic()))
+
+
+# a command that seals and exits at once still gets its tokens, unless the TSA is slow: then the
+# markers stay for `kapacitet seals timestamp`
+atexit.register(wait_stamps, 10.0)
 
 
 def timestamp_pending(missing: bool = False) -> dict:

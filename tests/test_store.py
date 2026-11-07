@@ -200,14 +200,16 @@ def test_timestamps_owed_then_kept_and_none_for_a_line_that_rolled_back(backend,
     with monkeypatch.context() as mp, pytest.raises(RuntimeError):
         mp.setattr(chain_cls, "fingerprint_put", fail)
         seals.seal("decision", "d00000000002", {"decision": "nonfirm"})
-    assert len(fake.requests) == 1 and list(seals._chain().stamps_pending()) == [1]
+    # a folder keeps the line it appended before the raise, and owes it its token; postgres rolled it back
+    kept = [1] if backend == "postgres" else [1, 2]
+    assert len(fake.requests) == 1 and list(seals._chain().stamps_pending()) == kept
 
     fake.down = False
-    assert seals.timestamp_pending()["stamped"] == [1]
-    assert seals._chain().stamps_pending() == {} and list(seals._chain().stamps()) == [1]
+    assert seals.timestamp_pending()["stamped"] == kept
+    assert seals._chain().stamps_pending() == {} and list(seals._chain().stamps()) == kept
     out = seals.verify_timestamps(fake.cert_pem)
-    assert out["ok"] and [a["seq"] for a in out["attested"]] == [1]
-    assert out["unstamped"] == (0 if backend == "postgres" else 1)
+    assert out["ok"] and [a["seq"] for a in out["attested"]] == kept
+    assert out["unstamped"] == 0
 
 
 # ---------------------------------------------------------------- the market alternatives
@@ -583,7 +585,7 @@ def test_the_database_chain_refuses_an_update_and_a_changed_copy_shows(database,
     assert not (tmp_path / "nowhere").exists()                    # nothing went to files
 
 
-def _fill_files(tmp_path, monkeypatch) -> Path:
+def _fill_files(tmp_path, monkeypatch, fake_token: bool = True) -> Path:
     """A data/requests folder written by the files backend: every kind of state there is."""
     import numpy as np
 
@@ -611,8 +613,10 @@ def _fill_files(tmp_path, monkeypatch) -> Path:
     savez_atomic(folder / "state_2025.v1.npz", stable=True, pt=np.ones(3, dtype=np.uint8))
     write_json_atomic(folder / "queue.json", q)
     write_json_atomic(folder / qu.PENDING, {"kind": "decision", "id": "c00000000002"})
-    # an RFC 3161 token kept and one still owed (seals.FolderChain); their bytes only travel
-    (requests / "sealed" / f"1{seals.TOKEN_SUFFIX}").write_bytes(bytes([0x30, 0x03, 0x02, 0x01, 0x01]))
+    # an RFC 3161 token kept and one still owed (seals.FolderChain); their bytes only travel. The
+    # token is not a real one, so a test that verifies the chain's timestamps leaves it out
+    if fake_token:
+        (requests / "sealed" / f"1{seals.TOKEN_SUFFIX}").write_bytes(bytes([0x30, 0x03, 0x02, 0x01, 0x01]))
     (requests / "sealed" / f"2{seals.PENDING_SUFFIX}").write_bytes(b'{"reason": "unreachable", "seq": 2}' + bytes([10]))
     return requests
 
@@ -665,7 +669,7 @@ def test_import_refuses_a_chain_that_differs_from_the_database(tmp_path, monkeyp
 def test_the_command_line_migrates_imports_and_exports(tmp_path, monkeypatch, capsys):
     from kapacitet import pipeline
 
-    requests = _fill_files(tmp_path, monkeypatch)
+    requests = _fill_files(tmp_path, monkeypatch, fake_token=False)    # `seals verify` checks the tokens
     url = fresh_test_schema()
     scope = use_database(monkeypatch, url)            # restored after the test, though `--url` sets it again
     pipeline.main(["db", "migrate", "--url", url])

@@ -177,6 +177,34 @@ def test_a_token_verifies_and_only_the_hash_leaves(fake_tsa):
     assert out["pending"] == [] and out["unstamped"] == 0
     assert seals.verify_chain()["ok"]
 
+    # a chain file that lists its CA first still yields the TSA's certificate
+    _, ca = _cert("Some CA", stamping=False)
+    bundle = ca.public_bytes(serialization.Encoding.PEM) + fake_tsa.cert_pem
+    assert tsa.describe_cert(tsa.load_cert(bundle)) == "Fake TSA"
+    assert tsa.verify(token, seals.line_digest(entry), bundle) == GEN_TIME
+
+
+def test_the_seal_does_not_wait_on_the_tsa(fake_tsa, monkeypatch):
+    """The request runs on a thread of its own: the line is owed its token until the token is kept."""
+    import threading
+
+    from kapacitet import seals, tsa
+
+    monkeypatch.setattr(seals, "STAMP_IN_BACKGROUND", True)
+    gate, real = threading.Event(), fake_tsa.handle
+
+    def slow(request):
+        assert gate.wait(10)
+        return real(request)
+
+    monkeypatch.setattr(tsa, "TRANSPORT", httpx.MockTransport(slow))
+    seals.seal("decision", "d1", {"decision": "firm"})       # returns while the TSA has not answered
+    assert json.loads(seals._chain().stamps_pending()[1])["reason"] == "queued"
+    gate.set()
+    seals.wait_stamps(10)
+    assert list(seals._chain().stamps()) == [1] and seals._chain().stamps_pending() == {}
+    assert seals.verify_timestamps(fake_tsa.cert_pem)["ok"]
+
 
 @files_only
 def test_a_changed_digest_another_key_or_a_cut_chain_fails(fake_tsa):
@@ -259,14 +287,24 @@ def test_a_token_that_does_not_answer_the_request_is_refused(fake_tsa, monkeypat
 
     real = fake_tsa.handle
 
-    def wrong_nonce(request):
-        resp = real(request)
-        got, _ = decoder.decode(resp.content, asn1Spec=rfc3161.TimeStampResp())
-        token = make_token(fake_tsa.key, fake_tsa.cert, bytes(32), 7)       # over another hash
-        got["timeStampToken"], _ = decoder.decode(token, asn1Spec=rfc3161.TimeStampToken())
-        return httpx.Response(200, content=encoder.encode(got))
+    def answer(token_for):
+        def handle(request):
+            resp = real(request)
+            req, _ = decoder.decode(request.content, asn1Spec=rfc3161.TimeStampReq())
+            got, _ = decoder.decode(resp.content, asn1Spec=rfc3161.TimeStampResp())
+            token = token_for(bytes(req["messageImprint"]["hashedMessage"]), int(req["nonce"]))
+            got["timeStampToken"], _ = decoder.decode(token, asn1Spec=rfc3161.TimeStampToken())
+            return httpx.Response(200, content=encoder.encode(got))
+        return httpx.MockTransport(handle)
 
-    monkeypatch.setattr(tsa, "TRANSPORT", httpx.MockTransport(wrong_nonce))
+    # the right hash with another nonce: what a replayed answer looks like
+    monkeypatch.setattr(tsa, "TRANSPORT", answer(lambda imprint, nonce: make_token(fake_tsa.key, fake_tsa.cert, imprint, nonce + 1)))
+    with pytest.raises(tsa.TimestampError) as exc:
+        tsa.request(hashlib.sha256(b"x").digest())
+    assert exc.value.reason == "nonce"
+
+    # the right nonce over another hash
+    monkeypatch.setattr(tsa, "TRANSPORT", answer(lambda imprint, nonce: make_token(fake_tsa.key, fake_tsa.cert, bytes(32), nonce)))
     with pytest.raises(tsa.TimestampError) as exc:
         tsa.request(hashlib.sha256(b"x").digest())
     assert exc.value.reason == "digest"
