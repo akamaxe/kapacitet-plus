@@ -153,7 +153,14 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 async def etag(request, call_next):
     """A weak ETag on the API's JSON, from its bytes: a browser that already holds an answer gets a
     304 for it. Streams (events), binaries and writes pass untouched."""
-    response = await call_next(request)
+    try:
+        response = await call_next(request)
+    except RuntimeError as exc:
+        # the client went away before the answer started (Starlette then says "No response
+        # returned."): there is no one to answer, and nothing for the log to call a server error
+        if str(exc) == "No response returned." and await request.is_disconnected():
+            return Response(status_code=204)
+        raise
     if (request.method != "GET" or not request.url.path.startswith("/api/v1/") or response.status_code != 200
             or not response.headers.get("content-type", "").startswith("application/json")):
         return response
