@@ -393,7 +393,10 @@ web/        React + MapLibre + ECharts: 8 screens in English and Swedish (docs/g
 full year takes under two seconds on a laptop: the validation stage records each run's own time in
 `validation.json` (`zbus_seconds_per_year`), which the Method screen shows. It stays within 1e-12 pu
 of `pp.runpp` over the validation stage's 12 hours (`max_abs_dv_pu`), and the tests hold it to
-1e-8 pu on a synthetic feeder and on the real network.
+1e-8 pu on a synthetic feeder and on the real network. Rebuilt in DIgSILENT PowerFactory from the
+network data alone, the reference network agrees to within 2e-7 pu in bus voltage and 5e-4
+percentage points in transformer loading over the year's peak export and import hours and eight more
+([docs/validation-powerfactory.md](docs/validation-powerfactory.md), `tools/pf_crossval.py`).
 
 **Hosting capacity.** Static, for solar: the worst-case summer snapshot (PV at
 `static_pv_factor` × its rating, the household load `static_load_rule` picks: the minimum daytime
