@@ -11,6 +11,8 @@ import { CoverNote, MarketAlternatives } from "../components/MarketAlternatives"
 import { SealReceipt, useSealedDownload } from "../components/SealedDownload";
 import { Term } from "../components/Term";
 import { API, ApiError, apiWrite, getJSON, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "../components/RoleNote";
 import { type Tokens } from "../lib/colors";
 import { refusalOf, refusalText } from "../lib/errors";
 import { monthLong, monthNames, studyDate, useFmt } from "../lib/format";
@@ -235,6 +237,8 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
   const sch = useKept<any>(`/operation/schedule?${q}`);
   const xml = useText(`/operation/schedule.xml?${q}`);
   const sealed = useSealedDownload();
+  // with sign-in on, issuing to an inverter takes an approver or an admin
+  const canIssue = useCan("issue");
   const [reason, setReason] = useState("");
   if (sch.isLoading) return <ChartSkeleton height={240} />;
   if (!sch.data) return <SectionMissing title={t("op.schedule")} q={sch} />;
@@ -272,18 +276,19 @@ function DaySchedule({ cid, date }: { cid: number; date: string }) {
         <p className="caption">{t("op.payload.caption")}</p>
         <div>
           <div className="answer-actions">
-            <button className="btn small" disabled={sealed.busy} onClick={() => sealed.download("/operation/schedule/issue", { cid, date }, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
+            <button className="btn small" disabled={sealed.busy || !canIssue.ok} title={canIssue.reason} onClick={() => sealed.download("/operation/schedule/issue", { cid, date }, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
               <Icon name="download" size={15} />{t("op.dl.xml")}
             </button>
             <a className="btn ghost small" href={`${API}/operation/default.xml?cid=${cid}`} download><Icon name="download" size={15} />{t("op.dl.default")}</a>
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}&format=csv`} download><Icon name="download" size={15} />CSV</a>
             <a className="btn ghost small" href={`${API}/operation/schedule?${q}`} download={`kapacitet-schedule-${cid}-${date}.json`}><Icon name="download" size={15} />JSON</a>
           </div>
+          <RoleNote action="issue" />
           {sealed.refusalCode === "before_market" ? (
             <div className="answer-actions">
               <label className="caption-muted" htmlFor="op-override">{t("op.override.label")}</label>
               <input id="op-override" className="input" type="text" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
-              <button className="btn small" disabled={sealed.busy || !reason.trim()}
+              <button className="btn small" disabled={sealed.busy || !reason.trim() || !canIssue.ok} title={canIssue.reason}
                 onClick={() => sealed.download("/operation/schedule/issue", { cid, date, override_reason: reason.trim() }, `kapacitet-dercontrols-${cid}-${date}.xml`)}>
                 {t("op.override.issue")}
               </button>

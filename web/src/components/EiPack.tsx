@@ -12,6 +12,8 @@ import { Roundel } from "./Shell";
 import { Status } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, listJoin, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
@@ -67,6 +69,8 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
   const [review, setReview] = useState("");
   const [saving, setSaving] = useState(false);
   const sealed = useSealedDownload();
+  const canSet = useCan("settings");
+  const canExport = useCan("export");
   useEffect(() => {
     if (!S) return;
     setMarket(S.market_alternative_statement ?? "");
@@ -129,12 +133,13 @@ export function EiSection({ basis, policy }: { basis: string; policy: string }) 
           <textarea id="ei-review" rows={2} maxLength={2000} value={review} onChange={(e) => setReview(e.target.value)} />
         </div>
         <div className="answer-actions">
-          <button className="btn ghost small" disabled={!changed || saving} onClick={save}>{t("ei.save")}</button>
+          <button className="btn ghost small" disabled={!changed || saving || !canSet.ok} title={canSet.reason} onClick={save}>{t("ei.save")}</button>
         </div>
+        <RoleNote action="settings" />
       </section>
       <div>
         <div className="answer-actions">
-          <button className="btn" disabled={sealed.busy} onClick={() => sealed.download("/eipack/export", { basis, policy }, `kapacitet-ei-evidence-${basis}.json`)}>
+          <button className="btn" disabled={sealed.busy || !canExport.ok} title={canExport.reason} onClick={() => sealed.download("/eipack/export", { basis, policy }, `kapacitet-ei-evidence-${basis}.json`)}>
             <Icon name="download" size={15} />{t("ei.export")}
           </button>
           <button className="btn ghost" onClick={printMethod}>{t("ei.print")}</button>

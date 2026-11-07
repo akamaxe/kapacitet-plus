@@ -12,6 +12,7 @@ import { ReportRecord } from "../components/ReportRecord";
 import { toast } from "../components/Toast";
 import { Term } from "../components/Term";
 import { API, apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
 import { type Tokens } from "../lib/colors";
 import { hourLabel, hoursInYear, monthNames, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -48,6 +49,7 @@ export default function Report() {
   const setPolicy = useStore((s) => s.setPolicy);
   const client = useQueryClient();
   const [saving, setSaving] = useState(false);
+  const canSet = useCan("settings");
   // the rule in force is the DSO's setting; a link or the selector may read the filing under another
   const settings = useApi<any>("/settings");
   const active: string | undefined = settings.data?.settings?.allocation_policy;
@@ -134,7 +136,7 @@ export default function Report() {
                       {POLICIES.map((p) => <option key={p} value={p}>{t(`pol.${p}`)}{p === active ? ` · ${t("rep.ruleActive")}` : ""}</option>)}
                     </select>
                   </label>
-                  {policy !== active && <button className="btn ghost small" disabled={saving} onClick={makeRule}>{t("rep.makeRule")}</button>}
+                  {policy !== active && <button className="btn ghost small" disabled={saving || !canSet.ok} title={canSet.reason} onClick={makeRule}>{t("rep.makeRule")}</button>}
                 </div>
               )}
               <p className="caption-muted">{t(basis === "dayahead" ? "rep.basis.dayaheadNote" : "rep.basis.foresightNote")}</p>

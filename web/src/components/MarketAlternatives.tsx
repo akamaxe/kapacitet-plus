@@ -11,6 +11,8 @@ import { Icon } from "./Icon";
 import { SectionMissing } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, studyDate, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
@@ -60,6 +62,7 @@ export function MarketAlternatives({ agreements, name, year, day }: {
   const [alts, setAlts] = useState<Alt[]>([blank(day)]);
   const [by, setBy] = useState("");
   const [busy, setBusy] = useState(false);
+  const role = useCan("market");
   const [error, setError] = useState<string | null>(null);
 
   const ready = alts.every((a) => !!a.consulted_at) && (scope === "agreement" || (!!start && !!end && start <= end));
@@ -181,8 +184,9 @@ export function MarketAlternatives({ agreements, name, year, day }: {
         </div>
         {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
         <div className="decision-actions">
-          <button type="submit" className="btn" disabled={!ready || busy}>{busy ? t("req.decide.working") : t("op.market.go")}</button>
+          <button type="submit" className="btn" disabled={!ready || busy || !role.ok} title={role.reason}>{busy ? t("req.decide.working") : t("op.market.go")}</button>
         </div>
+        <RoleNote action="market" />
       </form>
       {list.isError ? (
         <SectionMissing title={t("op.market")} q={list} />

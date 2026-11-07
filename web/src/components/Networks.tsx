@@ -10,6 +10,8 @@ import { Icon } from "./Icon";
 import { Status } from "./bits";
 import { toast } from "./Toast";
 import { API, apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -42,6 +44,7 @@ export function CreateNetwork({ files }: { files: Record<string, string> }) {
   const [name, setName] = useState("");
   const [quick, setQuick] = useState(true);
   const [busy, setBusy] = useState(false);
+  const role = useCan("datasets");
   const [error, setError] = useState<string | null>(null);
   const create = async () => {
     setBusy(true);
@@ -66,8 +69,9 @@ export function CreateNetwork({ files }: { files: Record<string, string> }) {
           <input type="checkbox" checked={quick} onChange={(e) => setQuick(e.target.checked)} />
           <span>{t("nets.create.quick")}</span>
         </label>
-        <button className="btn small" disabled={busy} onClick={create}>{t("nets.create.go")}</button>
+        <button className="btn small" disabled={busy || !role.ok} title={role.reason} onClick={create}>{t("nets.create.go")}</button>
       </div>
+      <RoleNote action="datasets" />
       <p className="caption-muted">{t(quick ? "nets.create.quickNote" : "nets.create.fullNote")}</p>
       {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
     </div>
@@ -85,6 +89,7 @@ export function NetworksPanel() {
   const list = useApi<Listing>("/datasets", { refetchMs: anyBuilding ? 3000 : undefined });
   const [target, setTarget] = useState<{ id: string; name: string } | null>(null);
   const [switching, setSwitching] = useState(false);
+  const role = useCan("datasets");
   const [error, setError] = useState<string | null>(null);
 
   // the server comes back on the other network: the page reloads once /health says so
@@ -153,13 +158,13 @@ export function NetworksPanel() {
               </div>
               <div className="nets-actions">
                 {!current && n.status === "ready" && L.supervised && (
-                  <button className="btn small" disabled={switching} onClick={() => setTarget({ id: n.id, name: n.name })}>{t("nets.use")}</button>
+                  <button className="btn small" disabled={switching || !role.ok} title={role.reason} onClick={() => setTarget({ id: n.id, name: n.name })}>{t("nets.use")}</button>
                 )}
                 {!n.reference && n.status === "failed" && (
-                  <button className="btn ghost small" disabled={switching} onClick={() => void rebuild(n)}>{t("nets.rebuild")}</button>
+                  <button className="btn ghost small" disabled={switching || !role.ok} title={role.reason} onClick={() => void rebuild(n)}>{t("nets.rebuild")}</button>
                 )}
                 {!n.reference && !current && n.status !== "building" && (
-                  <button className="btn ghost small" disabled={switching} onClick={() => void remove(n)}>{t("nets.delete")}</button>
+                  <button className="btn ghost small" disabled={switching || !role.ok} title={role.reason} onClick={() => void remove(n)}>{t("nets.delete")}</button>
                 )}
               </div>
             </li>

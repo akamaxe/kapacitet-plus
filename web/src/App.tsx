@@ -8,6 +8,8 @@ import { Palette } from "./components/Palette";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts, toast } from "./components/Toast";
 import { Setup } from "./components/Setup";
+import { SignIn } from "./components/SignIn";
+import { useMe } from "./lib/auth";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { useApi } from "./lib/api";
 import { SCREENS, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
@@ -35,7 +37,19 @@ function ScreenSkeleton({ screen }: { screen: Screen }) {
   return <PageSkeleton blocks={1} />;
 }
 
+/**
+ * With sign-in on (KAPACITET_AUTH=oidc), nothing but the sign-in page shows until someone with a
+ * Kapacitet+ role is signed in; the screens' own requests would only be refused. With it off, or
+ * on a server too old to say, the application opens as it always has.
+ */
 export default function App() {
+  const me = useMe();
+  if (me.isPending) return null;
+  const gate = me.data?.enabled && !(me.data.user && me.data.user.roles.length > 0);
+  return gate ? <SignIn me={me.data!} /> : <Main />;
+}
+
+function Main() {
   const t = useT();
   const screen = useStore((s) => s.screen);
   // a fresh clone has no results: say how to make them instead of showing empty screens

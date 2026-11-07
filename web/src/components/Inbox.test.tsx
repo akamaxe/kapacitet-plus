@@ -72,8 +72,9 @@ describe("the DSO's rule", () => {
 
   it("signs the rule with the signer, role, scope and expiry", async () => {
     const calls: [string, RequestInit][] = [];
-    vi.stubGlobal("fetch", vi.fn(async (url: string, init: RequestInit) => {
-      calls.push([url, init]);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      // the writes only: the buttons also ask who is signed in (GET /auth/me)
+      if (init?.method) calls.push([url, init]);
       return new Response(JSON.stringify({ settings: {} }), { status: 200, headers: { "Content-Type": "application/json" } });
     }));
     await render(base);

@@ -16,6 +16,8 @@ import { HouseSearch } from "../components/HouseSearch";
 import { copyText } from "../lib/clipboard";
 import { describeRequest, faultText, fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { API, apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "../components/RoleNote";
 import { follow, type Following } from "../lib/evaluate";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
@@ -77,6 +79,8 @@ export default function Request() {
   const [bat, setBat] = useState(0);
   const batMax = A.get("battery_max_kwh") ?? 0;
   const [job, setJob] = useState<Job | null>(null);
+  // with sign-in on, an evaluation takes a planner (or an approver, or an admin); an auditor reads
+  const role = useCan("evaluate");
   const jobRef = useRef<Job | null>(null);
   jobRef.current = job;
   const mapRef = useRef<MLMap | null>(null);
@@ -460,12 +464,14 @@ export default function Request() {
             {/* the screen's one action: kept at the foot of the panel so a short screen never hides it */}
             <div className="action-bar">
               <div className="action-row">
-                <button className="btn" disabled={running || nothing || liveOff} onClick={evaluate} aria-describedby={nothing || liveOff ? "why-disabled" : undefined}>
+                <button className="btn" disabled={running || nothing || liveOff || !role.ok} onClick={evaluate}
+                  aria-describedby={nothing || liveOff ? "why-disabled" : !role.ok ? "role-why" : undefined}>
                   {running ? t("req.running") : t("req.evaluate")}
                 </button>
                 {/* a running evaluation holds a slot on the server: it can be stopped, which frees it */}
                 {running && <button className="btn ghost" onClick={() => { stopRunning(); setJob(null); }}>{t("req.stop")}</button>}
               </div>
+              <RoleNote action="evaluate" id="role-why" />
               {nothing && !liveOff && <p className="caption-muted" id="why-disabled">{t("req.needSize")}</p>}
               {liveOff && (
                 <div id="why-disabled" className="stack">

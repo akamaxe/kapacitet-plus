@@ -18,6 +18,8 @@ import { Bar } from "./Skeleton";
 import { Status, Tile } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, duration, listJoin, studyDate, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -96,6 +98,7 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
   const t = useT();
   const client = useQueryClient();
   const inbox = useInbox();
+  const role = useCan("applications");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // the code the server gave when this page applied: it is never sent again, so it is kept for the visit
@@ -138,8 +141,9 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
         <>
           <p className="caption-muted">{t("inbox.apply.lead")}</p>
           <div className="decision-actions">
-            <button className="btn" disabled={busy} onClick={apply}>{busy ? t("req.decide.working") : t("inbox.apply.go")}</button>
+            <button className="btn" disabled={busy || !role.ok} title={role.reason} onClick={apply}>{busy ? t("req.decide.working") : t("inbox.apply.go")}</button>
           </div>
+          <RoleNote action="applications" />
         </>
       )}
       {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
@@ -154,6 +158,8 @@ export function InboxSection() {
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
   const inbox = useInbox();
+  const canDecide = useCan("decide");
+  const canRequeue = useCan("applications");
   const kpi = useApi<any>("/inbox/kpis", { refetchMs: inbox.data?.items.some((a) => a.status === "pending") ? 1500 : undefined });
   const queue = useApi<QueueState>("/queue");
   const [open, setOpen] = useState<Application | null>(null);
@@ -197,8 +203,8 @@ export function InboxSection() {
       cell: (a) => a.status === "review" ? (
         <span className="inbox-actions">
           {/* row actions stay secondary: the primary belongs to the decision dialog they open */}
-          <button className="btn ghost small" onClick={() => setOpen(a)}>{t("inbox.decide")}</button>
-          <button className="btn ghost small" onClick={() => void requeue(a)}>{t("inbox.again")}</button>
+          <button className="btn ghost small" disabled={!canDecide.ok} title={canDecide.reason} onClick={() => setOpen(a)}>{t("inbox.decide")}</button>
+          <button className="btn ghost small" disabled={!canRequeue.ok} title={canRequeue.reason} onClick={() => void requeue(a)}>{t("inbox.again")}</button>
         </span>
       ) : null },
   ];
@@ -222,6 +228,7 @@ export function InboxSection() {
         <DataTable rows={I.items} cols={cols} rowKey={(a) => a.id} caption={t("inbox.table")} searchLabel={t("inbox.search")} className="inbox-dt" />
       )}
       <p className="caption-muted">{t("inbox.note")} <a href="#/apply" target="_blank" rel="noopener">{t("inbox.portal")}</a></p>
+      <RoleNote action="decide" />
       <Dialog open={open !== null} onClose={() => setOpen(null)} labelledBy="inbox-dialog-title" width={560}>
         {open && queue.data && (
           <div className="sheet">
@@ -264,6 +271,8 @@ export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
   const client = useQueryClient();
   const [saving, setSaving] = useState(false);
   const [signing, setSigning] = useState(false);
+  const canSet = useCan("settings");
+  const canSign = useCan("sign_rule");
   const sig = I.rule_signature ?? null;
   const advisor = !I.auto_decisions || I.signature_state !== "in_force";
   const th = I.thresholds;
@@ -298,11 +307,12 @@ export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
       <p className="caption-muted">{t("inbox.auto.rule", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
       <div className="report-controls">
         <div className="seg" role="group" aria-label={t("inbox.auto.label")}>
-          <button aria-pressed={!I.auto_decisions} disabled={saving} onClick={() => I.auto_decisions && void setAuto(false)}>{t("inbox.auto.off")}</button>
-          <button aria-pressed={I.auto_decisions} disabled={saving} onClick={() => !I.auto_decisions && void setAuto(true)}>{t("inbox.auto.on")}</button>
+          <button aria-pressed={!I.auto_decisions} disabled={saving || !canSet.ok} title={canSet.reason} onClick={() => I.auto_decisions && void setAuto(false)}>{t("inbox.auto.off")}</button>
+          <button aria-pressed={I.auto_decisions} disabled={saving || !canSet.ok} title={canSet.reason} onClick={() => !I.auto_decisions && void setAuto(true)}>{t("inbox.auto.on")}</button>
         </div>
-        <button className="btn ghost small" onClick={() => setSigning(true)}>{t(sig ? "inbox.sign.again" : "inbox.sign.open")}</button>
+        <button className="btn ghost small" disabled={!canSign.ok} title={canSign.reason} onClick={() => setSigning(true)}>{t(sig ? "inbox.sign.again" : "inbox.sign.open")}</button>
       </div>
+      <RoleNote action="settings" />
       <Dialog open={signing} onClose={() => setSigning(false)} labelledBy="inbox-sign-title" width={520}>
         {signing && <SignRule thresholds={th} last={sig} onDone={() => setSigning(false)} />}
       </Dialog>

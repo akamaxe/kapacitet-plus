@@ -3,6 +3,8 @@ import { Icon } from "./Icon";
 import { Status } from "./bits";
 import { CreateNetwork } from "./Networks";
 import { API, apiWrite, useApi } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { refusalOf, refusalText } from "../lib/errors";
@@ -20,6 +22,7 @@ export function NetworkCheck() {
   const contract = useApi<any>("/contract");
   const [report, setReport] = useState<any | null>(null);
   const [busy, setBusy] = useState(false);
+  const role = useCan("check");
   const [error, setError] = useState<string | null>(null);
   const [ignored, setIgnored] = useState<string[]>([]);
   // the files behind the report on screen, so a usable export can become a network
@@ -109,12 +112,13 @@ export function NetworkCheck() {
         <div className="block-head"><h3>{t("met.imp.check")}</h3></div>
         <p className="caption">{t("met.imp.checkLead")}</p>
         <div className="answer-actions">
-          <label className="btn">
-            <input ref={input} type="file" accept=".csv,text/csv" multiple className="sr-only" onChange={(e) => void fromDisk(e.target.files)} />
+          <label className="btn" aria-disabled={!role.ok || undefined} title={role.reason}>
+            <input ref={input} type="file" accept=".csv,text/csv" multiple className="sr-only" disabled={!role.ok} onChange={(e) => void fromDisk(e.target.files)} />
             {t("met.imp.choose")}
           </label>
-          <button className="btn ghost" disabled={busy} onClick={reference}>{t("met.imp.reference")}</button>
+          <button className="btn ghost" disabled={busy || !role.ok} title={role.reason} onClick={reference}>{t("met.imp.reference")}</button>
         </div>
+        <RoleNote action="check" />
         {busy && <p className="caption-muted" role="status">{t("met.imp.checking")}</p>}
         {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
         {ignored.length > 0 && <p className="caption-muted">{t("met.imp.ignored", { files: ignored.join(", ") })}</p>}

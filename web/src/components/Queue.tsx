@@ -4,6 +4,8 @@ import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { toast } from "./Toast";
 import { API, apiWrite } from "../lib/api";
+import { useCan } from "../lib/auth";
+import { RoleNote } from "./RoleNote";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { responseRefusal } from "../lib/errors";
@@ -44,6 +46,8 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
   const esRef = useRef<EventSource | null>(null);
+  // with sign-in on, deciding takes the approver role: anyone else sees the buttons, disabled, and why
+  const role = useCan("decide");
 
   const decided = queue.items.find((it) => it.assessment === res.id);
   if (decided) {
@@ -52,6 +56,9 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
       <section className="decision" aria-labelledby="decision-title">
         <h3 id="decision-title">{t("req.decide.title")}</h3>
         <p className="decision-done"><Icon name="check" size={16} />{t(`queue.item.${decided.decision}`)} · {when}</p>
+        {decided.actor && (
+          <p className="caption-muted">{t("req.decide.byActor", { name: decided.actor.name, role: t(`auth.role.${decided.actor.role}`) })}</p>
+        )}
         {decided.note && <p className="caption-muted">{decided.note}</p>}
         {decided.decision !== "declined" && <p className="caption-muted">{t("req.decide.next")}</p>}
       </section>
@@ -63,6 +70,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   // the fuse cannot carry the request, neither connection is offered and declining comes first
   const fuseShort = res.fuse?.ok === false;
   const running = busy !== null;
+  const locked = running || !role.ok;
 
   const decide = async (decision: Decision) => {
     setError(null);
@@ -118,30 +126,31 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
           <p className="caption-muted">{t("req.decide.lead")}</p>
           <div className="field decision-note">
             <label htmlFor="decision-note">{t("req.decide.note")}</label>
-            <textarea id="decision-note" rows={2} maxLength={500} value={note} disabled={running}
+            <textarea id="decision-note" rows={2} maxLength={500} value={note} disabled={locked}
               aria-describedby="decision-note-hint" onChange={(e) => setNote(e.target.value)} />
             <p id="decision-note-hint" className="caption-muted">{t("req.decide.noteHint")}</p>
           </div>
           <div className="decision-actions">
             {fuseShort && (
-              <button className="btn" disabled={running} onClick={() => decide("declined")}>
+              <button className="btn" disabled={locked} title={role.reason} onClick={() => decide("declined")}>
                 {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
               </button>
             )}
-            <button className={fuseShort ? "btn ghost" : "btn"} disabled={running || fuseShort}
+            <button className={fuseShort ? "btn ghost" : "btn"} disabled={locked || fuseShort} title={role.reason}
               aria-describedby={fuseShort ? "fuse-why" : undefined} onClick={() => decide("nonfirm")}>
               {busy === "nonfirm" ? t("req.decide.working") : t("req.decide.nonfirm")}
             </button>
-            <button className="btn ghost" disabled={running || !firmOk || fuseShort}
+            <button className="btn ghost" disabled={locked || !firmOk || fuseShort} title={role.reason}
               aria-describedby={fuseShort ? "fuse-why" : firmOk ? undefined : "firm-why"} onClick={() => decide("firm")}>
               {busy === "firm" ? t("req.decide.working") : t("req.decide.firm")}
             </button>
             {!fuseShort && (
-              <button className="btn ghost" disabled={running} onClick={() => decide("declined")}>
+              <button className="btn ghost" disabled={locked} title={role.reason} onClick={() => decide("declined")}>
                 {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
               </button>
             )}
           </div>
+          <RoleNote action="decide" />
           {fuseShort && <p className="caption-muted" id="fuse-why">{fuseText(t, f, res.fuse)} {t("req.decide.fuseNo")}</p>}
           {!firmOk && !fuseShort && <p className="caption-muted" id="firm-why">{t("req.decide.firmNo")}</p>}
           {progress && <p className="caption-muted" role="status">{progress}</p>}
@@ -159,6 +168,7 @@ export function QueueList({ queue }: { queue: QueueState }) {
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
   const [confirm, setConfirm] = useState(false);
+  const role = useCan("reset_queue");
   if (!queue.items.length) return null;
   const declined = queue.items.length - queue.approved;
   const empty = async () => {
@@ -194,8 +204,9 @@ export function QueueList({ queue }: { queue: QueueState }) {
         <a className="btn ghost small" href={`${API}/queue/log.csv`} download>
           <Icon name="download" size={15} />{t("queue.log")}
         </a>
-        <button className="btn ghost small" disabled={queue.updating} onClick={() => setConfirm(true)}>{t("queue.empty")}</button>
+        <button className="btn ghost small" disabled={queue.updating || !role.ok} title={role.reason} onClick={() => setConfirm(true)}>{t("queue.empty")}</button>
       </div>
+      <RoleNote action="reset_queue" />
       <Dialog open={confirm} onClose={() => setConfirm(false)} labelledBy="queue-confirm-title" width={440}>
         <div className="sheet">
           <h2 id="queue-confirm-title">{t("queue.confirm.title")}</h2>

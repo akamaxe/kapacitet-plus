@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApi } from "../lib/api";
+import { useMe, useSignOut } from "../lib/auth";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { SCREENS, useStore, type Theme } from "../lib/store";
 import { Mark } from "./bits";
@@ -14,6 +15,27 @@ export function Roundel() {
       <circle cx="13" cy="13" r="13" />
       <path d="M13 7v12M7 13h12" />
     </svg>
+  );
+}
+
+/**
+ * Who is signed in and the roles they act under, with sign-in on; nothing with it off. The name
+ * gives way first when the bar is narrow, the roles stay.
+ */
+function UserChip({ inSheet = false }: { inSheet?: boolean }) {
+  const t = useT();
+  const me = useMe().data;
+  const signOut = useSignOut();
+  if (!me?.enabled || !me.user) return null;
+  const roles = me.user.roles.map((r) => t(`auth.role.${r}`)).join(", ");
+  return (
+    <div className={inSheet ? "menu-user" : "top-user"} role="group" aria-label={t("auth.signedIn")}>
+      <span className="top-user-who" title={`${me.user.name} · ${roles}`}>
+        <span className="top-user-name">{me.user.name}</span>
+        <span className="top-user-role">{roles}</span>
+      </span>
+      <button className={inSheet ? "btn ghost small" : "top-tool"} onClick={() => void signOut()}>{t("auth.signOut")}</button>
+    </div>
   );
 }
 
@@ -117,6 +139,7 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
         <button className="top-tool fullscreen-btn" title={`${t("shell.fullscreen")} (F)`} aria-label={t("shell.fullscreen")} onClick={toggleFullscreen}>
           <Icon name="expand" size={18} />
         </button>
+        <UserChip />
       </div>
     </header>
   );
@@ -151,6 +174,7 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
             <button key={v} aria-pressed={theme === v} onClick={() => setTheme(v)}>{t(`shell.theme.${v}`)}</button>
           ))}
         </div>
+        <UserChip inSheet />
       </div>
     </Dialog>
   );
