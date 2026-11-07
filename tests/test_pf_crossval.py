@@ -57,6 +57,44 @@ def test_compare_reports_max_and_mean_and_skips_unsolved_hours():
     assert abs(k["v_pu"]["max"] - 0.001) < 1e-12 and k["v_pu"]["n"] == 4
     assert abs(k["v_pu"]["mean"] - 0.00025) < 1e-12
     assert k["trafo_loading_pct"]["max"] == 0.5 and k["line_loading_pct"]["max"] == 0.25
-    assert out["meets_targets"] == {"v_pu": True, "trafo_loading_pct": True}
+    # an unsolved hour (here the last; often a peak) means the targets are not met
+    assert out["all_hours_solved"] is False
+    assert out["meets_targets"] == {"v_pu": False, "trafo_loading_pct": False}
     assert len(out["per_hour"]) == 2
     assert "| Bus voltage (pu) |" in m.markdown(out)
+
+    pf["ierr"][2], pf["vm_pu"][2], pf["trafo_loading_pct"][2], pf["line_loading_pct"][2] = 0, [1.0, 0.97], 30.0, [7.0]
+    out = m.compare(case, pf)
+    assert out["all_hours_solved"] and out["meets_targets"] == {"v_pu": True, "trafo_loading_pct": True}
+
+
+def test_compare_with_no_hour_solved_reports_instead_of_crashing():
+    m = _load()
+    hours = [{"hour": h, "timestamp_utc": "2025-01-01 00:00:00+00:00", "why": "x", "sum_p_kw": 0.0}
+             for h in range(2)]
+    ref = {"vm_pu": [[1.0], [1.0]], "trafo_loading_pct": [1.0, 2.0], "line_loading_pct": [[1.0], [2.0]],
+           "trafo_p_mw": [0.1, 0.2]}
+    pf = {"ierr": [1, 2], "vm_pu": [None, None], "trafo_loading_pct": [None, None],
+          "line_loading_pct": [None, None], "trafo_p_mw": [None, None]}
+    out = m.compare({"hours": hours, "kapacitet": ref, "pandapower_nr": ref}, pf)
+    assert out["hours_solved"] == 0 and out["per_hour"] == []
+    assert out["kapacitet"]["v_pu"] == {"max": None, "mean": None, "n": 0}
+    assert out["meets_targets"] == {"v_pu": False, "trafo_loading_pct": False}
+    md = m.markdown(out)
+    assert "n/a" in md and "solved 0 of 2 hours" in md
+
+
+def test_compare_reports_the_transformer_inflow_offset():
+    m = _load()
+    hours = [{"hour": h, "timestamp_utc": "2025-01-01 00:00:00+00:00", "why": "x", "sum_p_kw": 0.0}
+             for h in range(2)]
+    ref = {"vm_pu": [[1.0], [1.0]], "trafo_loading_pct": [1.0, 2.0], "line_loading_pct": [[1.0], [2.0]],
+           "trafo_p_mw": [-0.6, 0.7]}
+    nr = {k: v for k, v in ref.items() if k != "trafo_p_mw"}
+    pf = {"ierr": [0, 0], "vm_pu": [[1.0], [1.0]], "trafo_loading_pct": [1.0, 2.0],
+          "line_loading_pct": [[1.0], [2.0]], "trafo_p_mw": [-0.6 + 1.8e-6, 0.7 + 1.8e-6]}
+    out = m.compare({"hours": hours, "kapacitet": ref, "pandapower_nr": nr}, pf)
+    assert abs(out["kapacitet"]["trafo_p_kw"]["max"] - 1.8e-3) < 1e-9
+    assert "trafo_p_kw" not in out["pandapower_nr"]
+    assert all(abs(r["dp_trafo_kw"] - 1.8e-3) < 1e-9 for r in out["per_hour"])
+    assert "| Transformer inflow (kW) | Kapacitet+ (Z-bus) |" in m.markdown(out)

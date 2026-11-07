@@ -178,6 +178,8 @@ def build_network(app, net: dict):
          usetp=net["ext_grid"]["vm_pu"], phiini=0.0)
 
     tr = net["trafo"]
+    if not str(tr["vector_group"]).upper().startswith("DYN"):   # the windings below are fixed to D/YN
+        raise ValueError(f"only Dyn transformers are supported, not {tr['vector_group']!r}")
     ttyp = equip.CreateObject("TypTr2", "Trafo " + tr["std_type"].replace("/", "-"))
     # pcutr: copper losses (kW) = vkr % of rated power; curmg/pfe: no-load current and iron losses
     _set(ttyp, strn=tr["sn_mva"], utrn_h=tr["vn_hv_kv"], utrn_l=tr["vn_lv_kv"], uktr=tr["vk_percent"],
@@ -195,7 +197,7 @@ def build_network(app, net: dict):
         key = (ln["std_type"], ln["r_ohm_per_km"], ln["x_ohm_per_km"], ln["c_nf_per_km"], ln["max_i_ka"])
         if key not in ltypes:
             lt = equip.CreateObject("TypLne", f"{ln['std_type']} #{len(ltypes)}")
-            _set(lt, uline=0.4, sline=ln["max_i_ka"], rline=ln["r_ohm_per_km"], xline=ln["x_ohm_per_km"],
+            _set(lt, uline=terms[ln["from_bus"]].GetAttribute("uknom"), sline=ln["max_i_ka"], rline=ln["r_ohm_per_km"], xline=ln["x_ohm_per_km"],
                  cline=ln["c_nf_per_km"] / 1000.0, gline=ln["g_us_per_km"], nlnph=3, nneutral=0, systp=0)
             ltypes[key] = lt
         e = grid.CreateObject("ElmLne", f"L{ln['idx']}")
@@ -275,6 +277,8 @@ def run_in_powerfactory(app, case_path: str, out_path: str, tol_kva: float | Non
 
 def _stats(pairs) -> dict:
     d = [abs(a - b) for a, b in pairs]
+    if not d:                                    # no hour solved: nothing to compare, and no crash
+        return {"max": None, "mean": None, "n": 0}
     return {"max": max(d), "mean": sum(d) / len(d), "n": len(d)}
 
 
@@ -284,6 +288,7 @@ def compare(case: dict, pf: dict) -> dict:
     refs = {"kapacitet": case["kapacitet"], "pandapower_nr": case["pandapower_nr"]}
     ok = [i for i, e in enumerate(pf["ierr"]) if e == 0]
     out: dict = {"hours_solved": len(ok), "hours": len(case["hours"]),
+                 "all_hours_solved": len(ok) == len(case["hours"]),
                  "targets": {"v_pu": TARGET_V_PU, "trafo_loading_pct": TARGET_LOADING_PCT}}
     for name, ref in refs.items():
         v = [(pf["vm_pu"][i][b], ref["vm_pu"][i][b]) for i in ok for b in range(len(ref["vm_pu"][i]))]
@@ -291,9 +296,13 @@ def compare(case: dict, pf: dict) -> dict:
         ln = [(pf["line_loading_pct"][i][k], ref["line_loading_pct"][i][k])
               for i in ok for k in range(len(ref["line_loading_pct"][i]))]
         out[name] = {"v_pu": _stats(v), "trafo_loading_pct": _stats(t), "line_loading_pct": _stats(ln)}
+        if "trafo_p_mw" in ref and "trafo_p_mw" in pf:   # HV-side inflow; the NR reference does not store it
+            out[name]["trafo_p_kw"] = _stats([(pf["trafo_p_mw"][i] * 1000, ref["trafo_p_mw"][i] * 1000)
+                                              for i in ok])
     k = out["kapacitet"]
-    out["meets_targets"] = {"v_pu": k["v_pu"]["max"] <= TARGET_V_PU,
-                            "trafo_loading_pct": k["trafo_loading_pct"]["max"] <= TARGET_LOADING_PCT}
+    # an hour PowerFactory did not solve (often a peak) is never a met target
+    out["meets_targets"] = {q: out["all_hours_solved"] and k[q]["max"] <= lim
+                            for q, lim in (("v_pu", TARGET_V_PU), ("trafo_loading_pct", TARGET_LOADING_PCT))}
     rows = []
     for i in ok:
         h = case["hours"][i]
@@ -302,9 +311,15 @@ def compare(case: dict, pf: dict) -> dict:
                      "sum_p_kw": h["sum_p_kw"],
                      "v_min_k": min(kv), "v_max_k": max(kv), "v_min_pf": min(pv_), "v_max_pf": max(pv_),
                      "max_dv": max(abs(a - b) for a, b in zip(kv, pv_)),
-                     "trafo_k": case["kapacitet"]["trafo_loading_pct"][i], "trafo_pf": pf["trafo_loading_pct"][i]})
+                     "trafo_k": case["kapacitet"]["trafo_loading_pct"][i], "trafo_pf": pf["trafo_loading_pct"][i],
+                     "dp_trafo_kw": (pf["trafo_p_mw"][i] - case["kapacitet"]["trafo_p_mw"][i]) * 1000
+                     if "trafo_p_mw" in pf and "trafo_p_mw" in case["kapacitet"] else None})
     out["per_hour"] = rows
     return out
+
+
+def _e(x) -> str:
+    return "n/a" if x is None else f"{x:.2e}"
 
 
 def markdown(cmp: dict) -> str:
@@ -315,15 +330,20 @@ def markdown(cmp: dict) -> str:
         lines.append(f"| {r['timestamp_utc'][:16]} | {r['why']} | {r['sum_p_kw']:.1f} | "
                      f"{r['v_min_k']:.4f} / {r['v_max_k']:.4f} | {r['v_min_pf']:.4f} / {r['v_max_pf']:.4f} | "
                      f"{r['max_dv']:.2e} | {r['trafo_k']:.2f} / {r['trafo_pf']:.2f} |")
+    dp = [f"{r['dp_trafo_kw']:+.2e}" for r in cmp["per_hour"] if r.get("dp_trafo_kw") is not None]
+    if dp:
+        lines += ["", "Transformer inflow, PowerFactory minus Kapacitet+ (kW), per hour: " + ", ".join(dp)]
     lines += ["", "| Quantity | Against | max abs diff | mean abs diff | Target |", "|---|---|---:|---:|---:|"]
     for name, label in (("kapacitet", "Kapacitet+ (Z-bus)"), ("pandapower_nr", "pandapower NR")):
         s = cmp[name]
-        lines.append(f"| Bus voltage (pu) | {label} | {s['v_pu']['max']:.2e} | {s['v_pu']['mean']:.2e} | "
-                     f"{TARGET_V_PU} |")
-        lines.append(f"| Transformer loading (%) | {label} | {s['trafo_loading_pct']['max']:.2e} | "
-                     f"{s['trafo_loading_pct']['mean']:.2e} | {TARGET_LOADING_PCT} |")
-        lines.append(f"| Line loading (%) | {label} | {s['line_loading_pct']['max']:.2e} | "
-                     f"{s['line_loading_pct']['mean']:.2e} | |")
+        for key, qty, target in (("v_pu", "Bus voltage (pu)", TARGET_V_PU),
+                                 ("trafo_loading_pct", "Transformer loading (%)", TARGET_LOADING_PCT),
+                                 ("line_loading_pct", "Line loading (%)", ""),
+                                 ("trafo_p_kw", "Transformer inflow (kW)", "")):
+            if key in s:
+                lines.append(f"| {qty} | {label} | {_e(s[key]['max'])} | {_e(s[key]['mean'])} | {target} |")
+    if not cmp["all_hours_solved"]:
+        lines += ["", f"PowerFactory solved {cmp['hours_solved']} of {cmp['hours']} hours: targets not met."]
     return "\n".join(lines)
 
 
