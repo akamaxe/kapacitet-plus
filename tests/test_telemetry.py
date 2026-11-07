@@ -296,3 +296,67 @@ def test_a_station_build_traces_each_step(otel, monkeypatch, tmp_path):
     assert [s.attributes["kapacitet.step"] for s in sorted(steps_traced, key=lambda s: s.start_time)] \
         == list(station.STEPS)
     assert all(s.parent.span_id == build[0].context.span_id for s in steps_traced)
+
+
+def test_a_schedule_issue_is_traced_and_a_replay_says_so(otel, monkeypatch):
+    """The issue span carries the policy, the step and whether the key replayed a first issue, and
+    nothing else but the house's customer id and the date."""
+    import numpy as np
+    from types import SimpleNamespace
+
+    from kapacitet.api import main, operation
+    from kapacitet.engine import delivery
+
+    exporter, _ = otel
+    year = 2025
+    limits = np.full(len(delivery.year_index(year)), 2.0)
+    combo = SimpleNamespace(policy="maxmin")
+    day = delivery.day_of(year, __import__("datetime").date(2025, 6, 2))
+    monkeypatch.setattr(operation, "_day_ahead", lambda cid, date, policy: (combo, year, day, limits, None, 1.0, 1.0))
+    monkeypatch.setattr(operation, "_market_terms", lambda body, step, rows: {"flags": [], "market_alternatives": []})
+    fake = {"entry": {"id": "x", "digest": "d" * 64, "seq": 1, "at": "2026-01-01T00:00:00+00:00"},
+            "record": {}}
+    sealed: list[dict] = []
+
+    def seal(kind, item, obj):
+        sealed.append({"entry": {**fake["entry"], "id": item}, "record": obj})
+        return sealed[-1]["entry"]
+
+    monkeypatch.setattr(operation.seals, "fingerprint", lambda: {"digest": "abcdef0123456789"})
+    monkeypatch.setattr(operation.seals, "seal", seal)
+    monkeypatch.setattr(operation.seals, "sealed_of_kind", lambda kind: list(sealed))
+    key = {"Idempotency-Key": "inverter-retry-0001"}
+    payload = {"cid": 5, "date": "2025-06-02", "resolution": 60}
+
+    with TestClient(main.app) as client:
+        assert client.post(f"{API}/operation/schedule/issue", json=payload, headers=key).status_code == 200
+        assert client.post(f"{API}/operation/schedule/issue", json=payload, headers=key).status_code == 200
+
+    spans = [s for s in exporter.get_finished_spans() if s.name == "kapacitet.schedule.issue"]
+    assert [dict(s.attributes) for s in spans] == [
+        {"kapacitet.cid": 5, "kapacitet.date": "2025-06-02", "kapacitet.policy": "maxmin",
+         "kapacitet.resolution_min": 60, "kapacitet.replayed": replayed} for replayed in (False, True)]
+
+
+def test_a_rule_evaluation_is_traced_with_its_stages(otel, monkeypatch):
+    from kapacitet.api import main
+    from kapacitet.engine import request as rq
+
+    exporter, _ = otel
+
+    def evaluate(model, req, hp, ev, emit=None, ctx=None):
+        for stage in ("static", "envelope"):
+            emit(stage, {"ms": 1.0})
+        emit("done", {})
+        return {"ok": True}
+
+    monkeypatch.setattr(main, "_engine", lambda: {"model": None, "hp": None, "ev": None})
+    monkeypatch.setattr(rq, "evaluate", evaluate)
+    assert main.evaluate_record({"cid": 3, "pv_kwp": 6.0}) == {"ok": True}
+
+    spans = exporter.get_finished_spans()
+    top = [s for s in spans if s.name == "kapacitet.evaluation"]
+    assert len(top) == 1 and top[0].attributes["kapacitet.source"] == "rule"
+    assert top[0].attributes["kapacitet.outcome"] == "done"
+    kids = [s.name for s in spans if s.parent is not None and s.parent.span_id == top[0].context.span_id]
+    assert sorted(kids) == ["kapacitet.evaluation.envelope", "kapacitet.evaluation.static"]

@@ -42,7 +42,7 @@ KEYS = frozenset({
     "kapacitet.baseline",        # the grid an evaluation met: today, the envelope scenario, the queue
     "kapacitet.source",          # who started an evaluation: dso, portal or the inbox's rule
     "kapacitet.stage",           # an evaluation's stage: static, envelope, verify, risk, economics
-    "kapacitet.outcome",         # done, cancelled, refused, failed; a station build: ready or failed
+    "kapacitet.outcome",         # an evaluation: done, cancelled, failed; a decision: done, refused, failed; a station build: ready or failed
     "kapacitet.decision",        # firm, nonfirm, declined
     "kapacitet.by",              # who decided: dso or rule (never the person's name)
     "kapacitet.code",            # a refusal's code (err.<code>)
