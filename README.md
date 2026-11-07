@@ -232,6 +232,13 @@ instance check` validates an installation and exits 1 on an error. `kapacitet in
 takes a consistent backup, with the seal key apart and labelled secret, and `kapacitet instance
 restore` puts it into an empty installation.
 
+The DSO's planners and case handlers have a short manual in Swedish,
+[docs/manual_sv.md](docs/manual_sv.md) ("Kort handbok för planerare och handläggare"): what each
+screen and the portal are for, the daily round of an application, the quarterly or monthly
+publication, Operation, the annual report and the evidence for Ei, the settings, sign-in and roles,
+the evidence chain and backups. No native speaker has reviewed it yet, and every command it names
+is checked against the CLI's help (`tests/test_manual_sv.py`).
+
 Live evaluations share one pool: `KAPACITET_MAX_JOBS` (4) run at once, `KAPACITET_MAX_QUEUED` (8)
 more wait their turn, and anything beyond is refused at once with 429 `busy`. One that waits is
 told its place in line (a `queued` event on its stream, shown on screen). Each stops after
