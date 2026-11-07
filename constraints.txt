@@ -52,6 +52,24 @@ lightgbm==4.7.0
 # the "postgres" extra (kapacitet.store), approved 2026-11-06, with what psycopg needs
 psycopg==3.3.8
 psycopg-binary==3.3.8
+# the "telemetry" extra (kapacitet/telemetry.py), approved 2026-11-07, with what it needs
+opentelemetry-api==1.45.2
+opentelemetry-sdk==1.45.2
+opentelemetry-semantic-conventions==0.66b2
+opentelemetry-exporter-otlp-proto-http==1.45.2
+opentelemetry-exporter-otlp-proto-common==1.45.2
+opentelemetry-exporter-otlp-common==0.66b2
+opentelemetry-exporter-http-transport==0.66b2
+opentelemetry-proto==1.45.2
+opentelemetry-instrumentation==0.66b2
+opentelemetry-instrumentation-asgi==0.66b2
+opentelemetry-instrumentation-fastapi==0.66b2
+opentelemetry-util-http==0.66b2
+googleapis-common-protos==1.76.0
+protobuf==7.36.2
+wrapt==2.5.2
+asgiref==3.13.0
+packaging==26.3
 typing_extensions==4.16.0
 tzdata==2026.6
 # the "validation" extra (tools/dss_crossval.py), approved 2026-11-07: OpenDSS through opendssdirect.py,

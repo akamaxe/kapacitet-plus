@@ -45,7 +45,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 COPY pyproject.toml constraints.txt README.md LICENSE ./
 COPY src/ src/
 # editable, so the package finds config/, web/dist and data/ beside it (paths.py)
-RUN pip install --no-cache-dir -c constraints.txt -e ".[forecast,postgres]"
+RUN pip install --no-cache-dir -c constraints.txt -e ".[forecast,postgres,telemetry]"
 COPY config/ config/
 COPY --from=web /web/dist web/dist
 # The code, the configuration and the interface stay root's, read-only to the server. Its user owns

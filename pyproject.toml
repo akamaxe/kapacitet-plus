@@ -43,6 +43,12 @@ forecast = ["lightgbm>=4.7,<5"]
 postgres = ["psycopg[binary]>=3.3,<4"]
 # OpenDSS for the power-flow cross-check (tools/dss_crossval.py, docs/validation-opendss.md); CI installs it
 validation = ["opendssdirect.py>=0.9.4,<0.10"]
+# traces and metrics over OTLP (kapacitet/telemetry.py, docs/observability.md); off unless configured
+telemetry = [
+  "opentelemetry-sdk>=1.45,<2",
+  "opentelemetry-exporter-otlp-proto-http>=1.45,<2",
+  "opentelemetry-instrumentation-fastapi>=0.66b2",
+]
 
 [project.scripts]
 kapacitet = "kapacitet.pipeline:main"

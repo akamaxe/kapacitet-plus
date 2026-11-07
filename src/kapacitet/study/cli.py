@@ -482,6 +482,9 @@ def cmd_station(args: argparse.Namespace) -> None:
                 raise StudyError("bad_batch", batch="")
             (station_cases if args.action == "cases" else station_sync)(study, args.sid, args.batch)
             sys.exit(0)
+        from .. import telemetry
+
+        telemetry.setup()       # this process is the build: its spans go out when telemetry is on
         rec = build(study, args.sid, quick=args.quick, prefer_identified=args.prefer_identified)
     except StudyError as err:
         _fail(err)

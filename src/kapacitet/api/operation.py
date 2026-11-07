@@ -20,7 +20,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import dso, market, seals
+from .. import dso, market, seals, telemetry
 from ..config import A
 from ..paths import processed_ro
 from .combos import COMMAND, POLICY_PATTERN, operation_index, resolve
@@ -334,6 +334,11 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
     """Issue the day to the house's inverter: the DERControlList, sealed with what was sent, to
     whom and for which day. An issue that repeats an Idempotency-Key gets the document of the
     first one back, with its seal, and nothing new is sealed."""
+    with telemetry.span("kapacitet.schedule.issue", cid=body.cid, date=body.date) as sp:
+        return _issue(body, idempotency_key, sp)
+
+
+def _issue(body: Issue, idempotency_key: str | None, sp) -> Response:
     from ..engine.csipaus import der_control_list
     from ..engine.delivery import schedule as rows_for
 
@@ -374,6 +379,7 @@ def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, patte
                 "resolution_min": step, "inputs_resolution_min": 60,
                 "limits": [{"start_epoch": r["start_epoch"], "limit_kw": r["limit_kw"]} for r in rows],
                 "market": terms})
+    sp.set(policy=combo.policy, resolution_min=step, replayed=kept is not None)
     issued = int(datetime.fromisoformat(entry["at"]).timestamp())
     headers = _sealed_headers(entry, f"kapacitet-dercontrols-{body.cid}-{body.date}{_suffix(step)}.xml")
     headers["X-Issue-Flags"] = ",".join(terms.get("flags", []))

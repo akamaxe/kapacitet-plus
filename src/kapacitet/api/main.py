@@ -22,7 +22,7 @@ import time
 import uuid
 import warnings
 from collections.abc import Iterable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -36,7 +36,7 @@ from fastapi.responses import FileResponse, JSONResponse, Response, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import __version__, actor, geo
+from .. import __version__, actor, geo, telemetry
 from ..cache import memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
@@ -141,6 +141,10 @@ app = FastAPI(
     description="Digital twin of a Swedish LV neighbourhood: static hosting capacity vs Dynamic Operating "
                 "Envelopes. Every result is a simulation; the provenance block of each response says "
                 "which of its inputs are real and which synthetic.",
+    # FastAPI's own OpenTelemetry bridge stays off: it would export paths, queries and client
+    # addresses unfiltered as soon as anything configured a global provider or set
+    # FASTAPI_OTEL_AUTO_CONFIGURE. Traces and metrics go through kapacitet/telemetry.py only.
+    telemetry={"tracing": False, "metrics": False, "logs": False, "auto_configure": False},
 )
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 
@@ -165,6 +169,9 @@ async def etag(request, call_next):
 # Host, origin, content type and rate limit, in front of everything above (api/guard.py); added
 # last, so it runs first, and inside CORSMiddleware, so a refusal still carries its CORS headers.
 app.add_middleware(Guard)
+# Traces and metrics, only with OTEL_EXPORTER_OTLP_ENDPOINT or KAPACITET_TELEMETRY=console set
+# (kapacitet/telemetry.py, docs/observability.md); otherwise no SDK is imported and nothing is added.
+telemetry.setup(app)
 
 from .combos import BASIS_PATTERN, POLICY_PATTERN, resolve  # noqa: E402 - the routers come after the app
 from . import inbox  # noqa: E402
@@ -1180,27 +1187,49 @@ def _warm() -> None:
         log.warning("warm-up failed: %s", exc)
 
 
-def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
+@contextmanager
+def _observed(body: RequestIn, source: str, parent=None):
+    """An evaluation's span and metrics (kapacitet/telemetry.py; nothing when telemetry is off):
+    the house by its customer id only, the outcome done, cancelled or failed."""
+    t0, outcome = time.perf_counter(), "failed"
+    with telemetry.span("kapacitet.evaluation", parent=parent, cid=body.cid, baseline=body.baseline,
+                        source=source) as sp:
+        try:
+            yield sp
+            outcome = "done"
+        except jobs.JobCancelled:
+            outcome = "cancelled"
+            raise
+        finally:
+            sp.set(outcome=outcome)
+            telemetry.evaluated(outcome, time.perf_counter() - t0, baseline=body.baseline, source=source)
+
+
+def _evaluation(body: RequestIn, ctx=None, save: bool = True, source: str = "dso") -> jobs.Work:
     """An evaluation as the pool runs it: the engine with the job's check in its context, then the
     answer stored in the job and, for /requests, saved as an assessment. The `done` event is
     handed back to the pool, which adds it once the job is marked done, so the browser fetches the
     answer only after it is stored."""
 
     who = actor.current()       # the person who asked, carried into the job's thread for the seal
+    parent = telemetry.context()  # the request's trace, carried into the job's thread
 
     def work(job: dict, check) -> list[dict]:
         from ..engine import request as rq
 
         held: list[dict] = []
 
-        def emit(stage: str, payload: dict) -> None:
-            ev = {"stage": stage, "payload": payload, "t": time.time()}
-            (held if stage == "done" else job["events"]).append(ev)
+        with _observed(body, source, parent) as sp:
+            def emit(stage: str, payload: dict) -> None:
+                ev = {"stage": stage, "payload": payload, "t": time.time()}
+                (held if stage == "done" else job["events"]).append(ev)
+                if stage != "done":
+                    sp.stage(stage, payload.get("ms"))
 
-        eng = _engine()
-        here = rq.Context(body.baseline, check=check) if ctx is None else dataclasses.replace(ctx, check=check)
-        result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit, ctx=here)
-        check()       # stopped while the last stage ran: the late answer is dropped, nothing is saved
+            eng = _engine()
+            here = rq.Context(body.baseline, check=check) if ctx is None else dataclasses.replace(ctx, check=check)
+            result = rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], emit=emit, ctx=here)
+            check()       # stopped while the last stage ran: the late answer is dropped, nothing is saved
         job["result"] = result
         if save:
             try:
@@ -1216,7 +1245,7 @@ def _evaluation(body: RequestIn, ctx=None, save: bool = True) -> jobs.Work:
 def _submit(body: RequestIn, ctx=None, save: bool = True, source: str = "dso") -> dict:
     """Admit an evaluation to the pool, or refuse it with 429 `busy` when every slot and the line are full."""
     try:
-        return POOL.submit(uuid.uuid4().hex[:12], _evaluation(body, ctx, save), request=body.model_dump(),
+        return POOL.submit(uuid.uuid4().hex[:12], _evaluation(body, ctx, save, source), request=body.model_dump(),
                            source=source)
     except jobs.Busy as exc:
         raise HTTPException(429, {"code": "busy", "message": API_ERRORS["busy"].format(n=exc.waiting),
@@ -1303,7 +1332,12 @@ def evaluate_record(request: dict) -> dict:
     body = RequestIn(**request)
     ctx = qu.context() if body.baseline == "queue" else None
     eng = _engine()
-    return rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx)
+    with _observed(body, "rule") as sp:
+        def emit(stage: str, payload: dict) -> None:
+            if stage != "done":
+                sp.stage(stage, payload.get("ms"))
+
+        return rq.evaluate(eng["model"], body.engine_request(), eng["hp"], eng["ev"], ctx=ctx, emit=emit)
 
 
 def _job_id(job_id: str) -> str:

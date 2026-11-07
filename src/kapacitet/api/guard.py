@@ -46,7 +46,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Receive, Scope, Send
 
-from .. import actor, auth
+from .. import actor, auth, telemetry
 
 API = "/api/v1"
 UNSAFE = ("POST", "PUT", "DELETE", "PATCH")
@@ -283,6 +283,7 @@ LIMITER = Limiter()
 
 def refusal(status: int, code: str, headers: dict | None = None, **params) -> JSONResponse:
     """The same body an HTTPException from api_error has, so the interface reads it the same way."""
+    telemetry.refused(code, status)       # counted when telemetry is on, by code only
     return JSONResponse({"detail": {"code": code, "message": ERRORS[code].format(**params), "params": params}},
                         status_code=status, headers=headers)
 

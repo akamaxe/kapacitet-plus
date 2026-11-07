@@ -208,8 +208,11 @@ check off; a codespace's forwarded names are allowed by themselves), `KAPACITET_
 `KAPACITET_MAX_BUILDS` and `KAPACITET_BUILD_TIMEOUT_S` (builds of imported networks),
 `KAPACITET_RETENTION_DAYS` (how long saved assessments are kept, [Privacy](#privacy-and-retention)),
 `KAPACITET_SETUP_UPLOAD=1` (an empty copy takes its data bundle from the setup page),
-`KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release) and
-`KAPACITET_DATABASE_URL` (the server's state in PostgreSQL instead of `data/requests/`, below).
+`KAPACITET_SETUP_ANY_BUNDLE=1` (it takes any well-formed bundle, not only the pinned release),
+`KAPACITET_DATABASE_URL` (the server's state in PostgreSQL instead of `data/requests/`, below) and
+`OTEL_EXPORTER_OTLP_ENDPOINT` or `KAPACITET_TELEMETRY=console` (traces and metrics with
+OpenTelemetry, from the `telemetry` extra; off by default, with no address, reference code or
+token in any of them: [docs/observability.md](docs/observability.md)).
 
 The server keeps what it writes (the saved assessments, the queue, the applications log, the DSO's
 settings, the seal chain and the market alternatives) in files under `data/requests/` unless

@@ -42,7 +42,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       # validation: OpenDSS, so tests/test_dss_crossval.py checks the power flow on the tiny grid
-      - run: python -m pip install -c constraints.txt -e ".[dev,forecast,postgres,validation]"
+      - run: python -m pip install -c constraints.txt -e ".[dev,forecast,postgres,validation,telemetry]"
       - run: python -m pytest
 
   # the server's state in PostgreSQL (kapacitet.store): the state tests and the suite's tests of the

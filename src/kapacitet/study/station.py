@@ -47,7 +47,7 @@ import warnings
 from pathlib import Path
 from typing import Callable
 
-from .. import paths, procs
+from .. import paths, procs, telemetry
 from . import PROVENANCE, SCHEMA, Study, StudyError, code_version, value_digest
 from .config import METHOD_VERSION
 
@@ -85,11 +85,23 @@ def build(study: Study, sid: str, quick: bool = False,
                pid=os.getpid(), error=None,
                provenance={k: [] for k in PROVENANCE}, summary=rec.get("summary") or {})
     steps = steps or _real_steps(study, sid, rec, quick)
-    out = procs.run_steps(rec, STEPS, steps, study.save, procs.lock_path(study.station_dir(sid)),
-                          logger="kapacitet.study", what="station build")
+    # traced when telemetry is on (kapacitet/telemetry.py): the build, each step a child span
+    with telemetry.span("kapacitet.station.build", station=sid, quick=bool(quick)) as sp:
+        out = procs.run_steps(rec, STEPS, {name: _traced(name, fn) for name, fn in steps.items()}, study.save,
+                              procs.lock_path(study.station_dir(sid)), logger="kapacitet.study",
+                              what="station build")
+        sp.set(outcome=out.get("status"))
     out["pid"] = None
     study.save(out)
     return out
+
+
+def _traced(name: str, fn: Callable[[], dict | None]) -> Callable[[], dict | None]:
+    """A build step inside its own span (a stand-in that does nothing when telemetry is off)."""
+    def step() -> dict | None:
+        with telemetry.span("kapacitet.station.build.step", step=name):
+            return fn()
+    return step
 
 
 # ---------------------------------------------------------------- where the profiles come from

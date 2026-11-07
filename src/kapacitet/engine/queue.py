@@ -45,13 +45,14 @@ import os
 import re
 import shutil
 import threading
+import time
 from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
 
-from .. import seals, store
+from .. import seals, store, telemetry
 from ..atomic import savez_atomic, write_json_atomic
 from ..cache import on_clear
 from ..config import A, settings
@@ -409,6 +410,36 @@ def _injection_arrays(inj: dict) -> dict[str, np.ndarray]:
 def decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, note: str = "",
            emit=None, by: str = "dso", decided_by: str = "", signature: str | None = None,
            where: Path | None = None, actor: dict | None = None) -> dict:
+    """`_decide` inside a span, counted by decision and outcome (kapacitet/telemetry.py; nothing
+    when telemetry is off). The span names the house by its customer id and who decided by role
+    (dso or rule), never by name; a refusal adds its code."""
+    t0, outcome, code = time.perf_counter(), "failed", None
+    try:
+        cid = int(record["request"]["cid"])
+    except (KeyError, TypeError, ValueError):
+        cid = None
+    with telemetry.span("kapacitet.queue.decide", cid=cid, decision=decision, by=by) as sp:
+        def stage(name: str, payload: dict) -> None:
+            sp.stage(name, payload.get("ms"))
+            if emit is not None:
+                emit(name, payload)
+
+        try:
+            item = _decide(model, hp, ev, record, decision, note, emit=stage, by=by, decided_by=decided_by,
+                           signature=signature, where=where, actor=actor)
+            outcome = "done"
+            return item
+        except QueueError as exc:
+            outcome, code = "refused", exc.code
+            raise
+        finally:
+            sp.set(outcome=outcome, code=code)
+            telemetry.decided(decision, outcome, time.perf_counter() - t0, by=by, code=code)
+
+
+def _decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, note: str = "",
+            emit=None, by: str = "dso", decided_by: str = "", signature: str | None = None,
+            where: Path | None = None, actor: dict | None = None) -> dict:
     """Record a decision on a saved assessment; an approval re-verifies it and updates the grid.
     `by` says who decided: the DSO's planner, or its rule (api/inbox.py), which never declines and
     decides only under a signed rule, whose digest (`signature`) the decision keeps. A planner's
