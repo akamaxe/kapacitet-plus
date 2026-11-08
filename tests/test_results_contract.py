@@ -161,11 +161,17 @@ def test_the_audit_trail_adds_up_to_the_filing(results):
 
 
 def test_the_overinstallation_summary_matches_an_independent_sum(results):
-    """An independent recomputation of overinstallation_summary's sums from overinstallation.json."""
+    """An independent recomputation of overinstallation_summary's sums from overinstallation.json.
+
+    The central figures are the mean over the central price years ([prices] in site.toml) that have
+    prices, or over every priced year when none has; the range covers every priced year. With
+    ENTSO-E prices the two differ (2023-2025 against 2015-2025), so the check must not mix them."""
+    from kapacitet.config import settings
     from kapacitet.engine.summaries import overinstallation_summary
 
     d = results("overinstallation")
-    pts, priced = d["points"], set(d["price_years"])
+    every = set(d["price_years"])
+    pts, priced = d["points"], (every & set(settings().price_years)) or every
 
     def mean(p, key, value=None):
         rows = [r for r in p["per_year"] if r["year"] in priced]
@@ -181,6 +187,10 @@ def test_the_overinstallation_summary_matches_an_independent_sum(results):
     dpot = mean(b, "potential_kwh") - mean(a, "potential_kwh")
     assert abs(s["full_marginal"]["energy_share_pct"] - 100 * dcut / dpot) < 1e-9
     assert s["static"]["kw_ac_nonfirm"] == 0
+    assert s["price_years"] == sorted(priced) and s["prices"]["years_range"] == sorted(every)
+    spread = s["budget_spread"]["curtailed_sek"]
+    assert spread["years_central"] == sorted(priced) and spread["years_range"] == sorted(every)
+    assert spread["range"]["min"] <= spread["central"] <= spread["range"]["max"]
 
 
 def test_persistence_is_the_one_unsafe_forecast_scheme(results):
