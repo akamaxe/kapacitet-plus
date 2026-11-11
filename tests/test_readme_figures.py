@@ -148,6 +148,39 @@ def test_the_day_ahead_capacity_search(results):
     assert fs["margins"] == {"pv_pct": 3.0, "load_pct": 3.0}
 
 
+def test_the_intraday_replica_and_its_scorecard(results):
+    """The README says the replica does not pass, with the scorecard's own lines."""
+    d = results("intraday")
+    assert d["headline_variant"] == "forecast" and d["scorecard"]["result"] == "fail"
+    fc, wc = d["variants"]["forecast"], d["variants"]["worst_change"]
+    hourly = d["median_kw_reference"]["timeseries"]
+    sc = fc["scorecard"]
+    kw, ref, gain, asked = find(r"it carries (\d+) kW against the hourly\s+study's (\d+) kW \(−(\d\.\d) %, where the "
+                                r"scorecard asks for \+(\d+) %\)")
+    assert (int(kw), int(ref)) == (rounded(fc["median_kw"]), rounded(hourly))
+    assert num(gain) == rounded(-sc["gain_over_hourly_pct"]["value"], 1)
+    assert int(asked) == sc["gain_over_hourly_pct"]["threshold"] and sc["gain_over_hourly_pct"]["result"] == "fail"
+    assert fc["violation_hours"] == 0 == fc["installation"]["violation_hours"]      # "no hour goes above a limit"
+    worst, z = find(r"only (\d+) % of the agreements stay within (\d) % per installation")
+    assert int(worst) == rounded(sc["agreements_within_pct"]["value"]) and int(z) == d["z_star_pct"]
+    assert sc["agreements_within_pct"]["result"] == "fail"
+    inst = fc["installation"]
+    kw_i, gain_i = find(r"Held to 3 % per installation it\s+carries (\d+) kW \(−(\d\.\d) %\)")
+    assert int(kw_i) == rounded(inst["median_kw"])
+    assert num(gain_i) == rounded(-inst["scorecard"]["gain_over_hourly_pct"]["value"], 1)
+    kw_w, gain_w = find(r"largest-past-change variant carries (\d+) kW \(−(\d\.\d) %\)")
+    assert int(kw_w) == rounded(wc["median_kw"])
+    assert num(gain_w) == rounded(-wc["scorecard"]["gain_over_hourly_pct"]["value"], 1)
+    limited, orders, years, needed = find(r"Of the\s+(\d+ \d{3}) hours the forecast variant limits over the (\d+) orders "
+                                          r"and (\d+) years, (\d+) kept the grid inside")
+    assert num(limited) == fc["hours_limited"] and int(needed) == fc["hours_limited"] - fc["unnecessary_hours"]
+    assert (int(orders), int(years)) == (d["n_orders"], len(d["years"]))
+    pv = fc["calibration"]["pv"]
+    real, nominal = find(r"beaten in (\d\.\d+) % of the forecast customer-hours, twice the\s+nominal (\d\.\d+) %")
+    assert num(real) == rounded(pv["realised_exceedance"] * 100, 2)
+    assert num(nominal) == rounded(pv["nominal_exceedance"] * 100, 2) and pv["within_tolerance"] is False
+
+
 def test_the_shadow_season(client):
     d = client.get(f"{API}/operation/shadow").json()["bases"]
     day, fore = d["dayahead"], d["foresight"]

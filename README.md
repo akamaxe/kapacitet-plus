@@ -957,8 +957,8 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
   solar energy over the year). On the reference year the day-ahead envelope passes the first and
   fails the second: 0 hours above a limit, but only 1 of 43 agreements within 3 % (median 12.0 %,
   worst 27.0 %). With perfect foresight 35 of 43 would be, worst 4.3 %. Not ready to go live, and
-  the screen says so; the remedy, re-issuing during the day with measurements, is outside this
-  prototype.
+  the screen says so. The remedy, re-issuing during the day with measurements, is measured as an
+  after-the-fact replica (*What the forecast is worth*), and it does not reach that level either.
 - `POST /api/v1/operation/meter-check` with `{cid, csv}`: measured export (a `timestamp` with its
   UTC offset and `export_kw` or `export_w` at any step, or `export_kwh`, the energy of the
   quarter-hour the timestamp starts, as a meter reports it) against the limits issued for the
@@ -1060,9 +1060,10 @@ person is decided there with the queue's usual decision, or sent back to be eval
 what you want to connect (solar, a charger, a heat pump, a battery), read the answer in plain
 words, with what connecting now is worth against waiting, and apply. The application gets a
 reference code such as `KP-7K3M-Q9TD-X2HB-5RWN`, which is all the status form needs (codes of the
-older `KP-1A2B-3C4D` form still work). The portal asks for no name, e-mail or personal number,
-but an application is stored with the house's address and what it asks for, in `data/requests/`,
-in the queue and in the sealed evidence chain, and an address is personal data under the GDPR
+older `KP-1A2B-3C4D` form still work). The portal asks for no name, e-mail or personal number.
+An application is stored with the house's number in the network and what it asks for, never with
+its address, in `data/requests/`, in the queue and in the sealed evidence chain; the number still
+leads to the house through the network, so it is personal data under the GDPR
 (see *Privacy and retention*). One
 address may look up ten codes a minute. Its API, `/api/v1/apply/*`, serves only the addresses, the answer for
 one house and the state behind one code. The grid the answer is computed against is decided on the
@@ -1214,6 +1215,18 @@ worst-change one (`headline_variant`); the worst-change replay still has to hold
 anything to be written. The trained models are kept in `data/processed/nowcast/`, named by a
 digest of their inputs.
 
+On the published data **the replica does not pass its scorecard**. With the quantile forecast,
+the headline variant, no hour goes above a limit, but it carries 608 kW against the hourly
+study's 609 kW (−0.2 %, where the scorecard asks for +15 %), and in the worst adoption order
+only 67 % of the agreements stay within 3 % per installation. Held to 3 % per installation it
+carries 569 kW (−6.6 %). The largest-past-change variant carries 590 kW (−3.1 %). Of the
+80 888 hours the forecast variant limits over the 20 orders and 11 years, 6 kept the grid inside
+a limit. Its solar forecast is beaten in 1.01 % of the forecast customer-hours, twice the
+nominal 0.50 %. Re-issuing during the day brings the day-ahead figure back up to the hourly
+study and no further: on this network, what can be issued connects no more solar than an hourly
+study without any control. [docs/envelopes-by-network.md](docs/envelopes-by-network.md) asks the
+same question of three other networks.
+
 ## Limitations
 
 Stated openly on the Method screen and repeated here: the published envelopes use perfect
@@ -1224,8 +1237,10 @@ number comes from the balanced three-phase model**, so single-phase unbalance is
 phase, at the static study's worst hour, and a study's station figures get a three-phase check
 beside them when enough phases are known); the LV topology is synthetic;
 household demand comes from a UK behaviour model scaled to Swedish consumption; the MV supply is
-held at 1.00 pu (`mv_band.json` repeats the showcase order across its planning band); economics
-use the SE3 spot price only.
+held at 1.00 pu (`mv_band.json` repeats the showcase order across its planning band); curtailed
+energy is valued at the SE3 day-ahead spot price alone (no grid fee, tax or compensation), and only
+the household's own case (*The business case*) adds today's energy tax, transfer fee, VAT and the
+DSO's compensation.
 
 Protection is checked by `compute --stage extra --only protection` (`engine/protection.py`, under a
 second): a single-phase fault at the weakest point of each feeder and at each house, at the minimum
@@ -1259,9 +1274,12 @@ envelope would curtail and gives it back to the house, its efficiencies come fro
 (2023), standby consumption is not modelled, and its energy is valued at the spot price, so the
 figure is what it recovers from curtailment, not a payback. A held-back **heat pump** could shift
 some heating with the house's thermal mass, which is not modelled, and its import limit ignores
-the house's own solar. The **queue** is one per server, first come first served; it is a tool for
-one planner on a trusted machine, and the API has no accounts or authentication, so it must not
-be exposed to the internet as it is. The **reinforcement** comparison uses Ei's norm values,
+the house's own solar. The **queue** is one per server, first come first served. **Sign-in** is
+optional and off by default (`KAPACITET_AUTH=oidc`: OpenID Connect with four roles,
+[docs/sso.md](docs/sso.md)). Without it whoever reaches the port can use all of the API,
+approvals included, so the server must not be reachable from another machine as it is. With it
+every write asks for a role, but it has only been tried against an in-process provider, never
+a real one. The **reinforcement** comparison uses Ei's norm values,
 standard costs at 2022 prices rather than quotes, undiscounted, with the bigger unit's capacity
 taken from one adoption order of the sensitivity run.
 

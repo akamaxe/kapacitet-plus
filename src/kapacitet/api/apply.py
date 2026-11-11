@@ -2,7 +2,9 @@
 state of one's own application. Nothing else of the DSO's view is served here.
 
 No name or contact details are asked for: a household picks its address, asks, and applies; the
-application is stored with its address and request, and is then known by its reference code, which is all the status page needs. The code is
+application is stored with the house's number in the network and its request (never the address,
+which is read from the network when the application is read), and is then known by its reference
+code, which is all the status page needs. The code is
 80 bits and the server keeps only its hash (api/inbox.py); api/guard.py allows ten lookups a
 minute from one address, so it cannot be guessed. The grid the
 answer is computed against is the DSO's choice, decided here (the queue once it holds approvals,
