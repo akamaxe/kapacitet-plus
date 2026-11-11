@@ -971,13 +971,16 @@ Only the day-ahead basis is ever issued; a schedule with perfect foresight would
 
 Ei's position paper on conditional agreements (Ei2025:01, version 1.1, June 2026) sets the
 conditions a DSO must meet; `config/ei_conditions.toml` lists them with their sections (and the
-paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in English and Swedish.
+paragraphs of ellagen and Regulation (EU) 2019/943 they rest on), in English and Swedish. Ellagen
+(1997:857) is repealed on 1 January 2027, when elmarknadslagen (2026:1281) enters into force, so
+each of those paragraphs is cited with the one that carries the same rule in the new law (read in
+both texts on 12 November 2026); Ei's paper itself still cites the old one.
 `GET /api/v1/eipack?basis=&policy=` sets each one beside what this prototype can show for it:
 **shown by the model** (with its figures), **stated by the DSO** (three statements only the DSO
 can make, kept in its settings and sealed on change), **awaiting the DSO** (one of those statements
 not yet made: never met, but not shown as a failure of the model), **not met here**, or **does not
 apply**. On the day-ahead basis the model shows the capacity shortage, the terms and
-the annual report, and says plainly that limiting 1 146 hours where 148 needed it does not meet
+the annual report, and says plainly that limiting 1 240 hours where 148 needed it does not meet
 "only when the grid would otherwise be overloaded", nor "only once the market result shows an
 overload". `POST /api/v1/eipack/export` with `{basis, policy}` downloads the pack sealed with what
 it showed, with the same seal headers, receipt and `Idempotency-Key` as an issued schedule; reading

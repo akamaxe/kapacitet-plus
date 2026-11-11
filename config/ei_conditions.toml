@@ -7,17 +7,37 @@
 #
 # Evidence, never a legal conclusion: whether a condition is met in law is Ei's and a court's to say.
 # Every condition has its label in English and Swedish and its source; tests/test_eipack.py holds them.
+#
+# The paper cites ellagen (1997:857), the law in force when it was written. That law is repealed on
+# 1 January 2027 ([law] below), so a source that names one of its paragraphs also names the
+# paragraph of elmarknadslagen (2026:1281) that carries the same rule from that day. Each pair was
+# read in both texts at data.riksdagen.se on 12 November 2026:
+#   4 kap. 1 §  (skyldighet att ansluta)            -> 6 kap. 1 §
+#   4 kap. 2 §  (avsteg, bl.a. vid kapacitetsbrist) -> 6 kap. 3 §
+#   4 kap. 46 § (förhandsprövning av villkor)       -> 6 kap. 19 och 20 §§, for connection agreements
+# (ellagen's 46 § also covers transfer agreements, which the new law treats in its chapter 7; that
+# part is not cited here). The paper itself has not been reissued for the new law.
 
 [source]
 title = "Energimarknadsinspektionen, Ställningstagande Villkorade avtal Ei2025:01, version 1.1 (26 June 2026)"
 url = "https://ei.se/om-oss/publikationer/publikationer/stallningstagande/stallningstagande-villkorade-avtal-ei202501"
+
+[law]
+repealed = "ellagen (1997:857)"
+repealed_on = "2027-01-01"
+repealed_by = "lag (2026:1282) om införande av elmarknadslagen (2026:1281)"
+replaced_by = "elmarknadslagen (2026:1281)"
+checked = "2026-11-12"
+urls = ["https://data.riksdagen.se/dokument/sfs-1997-857.text",
+        "https://data.riksdagen.se/dokument/sfs-2026-1281.text",
+        "https://data.riksdagen.se/dokument/sfs-2026-1282.text"]
 
 [[condition]]
 key = "capacity_shortage"
 evidence = "model"
 label = "Signed only where the grid has little or no capacity left"
 label_sv = "Tecknas endast där nätet har begränsad eller ingen kvarvarande kapacitet"
-source = "Ei2025:01 §2.4; ellagen 4 kap. 1 och 2 §§"
+source = "Ei2025:01 §2.4; ellagen 4 kap. 1 och 2 §§ (från 2027-01-01: elmarknadslagen 6 kap. 1 och 3 §§)"
 
 [[condition]]
 key = "market_first"
@@ -31,7 +51,7 @@ key = "method_approved"
 evidence = "declaration"
 label = "The method for the agreements' terms approved by Ei before any agreement"
 label_sv = "Metoden för avtalsvillkoren godkänd av Ei innan något avtal tecknas"
-source = "Ei2025:01 §2.2; ellagen 4 kap. 46 §"
+source = "Ei2025:01 §2.2; ellagen 4 kap. 46 § (från 2027-01-01: elmarknadslagen 6 kap. 19 och 20 §§)"
 
 [[condition]]
 key = "terms_how_when"

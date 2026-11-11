@@ -91,4 +91,6 @@ def assess(basis: str, policy: str, settings, index: dict, agreements: list[dict
                      "label": c["label"], "label_sv": c["label_sv"]})
     counts = {s: sum(1 for r in rows if r["state"] == s) for s in STATES}
     return {"basis": basis, "policy": policy, "year": index.get("year"), "source": cfg["source"],
+            # the law the paper cites and the one that replaces it (config/ei_conditions.toml, [law])
+            "law": cfg.get("law"),
             "conditions": rows, "counts": counts, "market_alternatives": market_records}

@@ -181,6 +181,13 @@ def test_the_intraday_replica_and_its_scorecard(results):
     assert num(nominal) == rounded(pv["nominal_exceedance"] * 100, 2) and pv["within_tolerance"] is False
 
 
+def test_the_evidence_for_ei_names_the_hours_limited_and_needed():
+    index = json.loads(processed("results", "operation", "index.json").read_text("utf-8"))
+    limited, needed = find(r"says plainly that limiting (\d \d{3}) hours where (\d+) needed it does not meet")
+    assert num(limited) == index["combos"]["dayahead"]["maxmin"]["hours_limited"]
+    assert int(needed) == index["necessary_hours"]
+
+
 def test_the_shadow_season(client):
     d = client.get(f"{API}/operation/shadow").json()["bases"]
     day, fore = d["dayahead"], d["foresight"]

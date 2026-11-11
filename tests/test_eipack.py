@@ -38,6 +38,26 @@ def test_every_condition_has_its_source_in_both_languages():
         assert not [f for f in c if f.endswith("_es")], f"{c['key']}: the interface has no Spanish"
 
 
+def test_a_source_that_cites_the_repealed_law_also_cites_the_one_that_replaces_it():
+    """Ellagen is repealed on 1 January 2027: its paragraphs are cited with the new law's, and the
+    pack carries which law replaced which and when the pairs were read."""
+    from kapacitet.engine.eipack import conditions
+
+    cfg = conditions()
+    law = cfg["law"]
+    assert law["repealed"] == "ellagen (1997:857)" and law["repealed_on"] == "2027-01-01"
+    assert law["replaced_by"] == "elmarknadslagen (2026:1281)" and "2026:1282" in law["repealed_by"]
+    assert law["checked"] and all(u.startswith("https://data.riksdagen.se/") for u in law["urls"])
+    by_key = {c["key"]: c["source"] for c in cfg["condition"]}
+    cited = [k for k, src in by_key.items() if "ellagen" in src]
+    assert cited == ["capacity_shortage", "method_approved"]
+    for k in cited:
+        assert f"från {law['repealed_on']}: elmarknadslagen" in by_key[k], k
+    assert "ellagen 4 kap. 1 och 2 §§" in by_key["capacity_shortage"] and "6 kap. 1 och 3 §§" in by_key["capacity_shortage"]
+    assert "ellagen 4 kap. 46 §" in by_key["method_approved"] and "6 kap. 19 och 20 §§" in by_key["method_approved"]
+    assert _pack()["law"] == law
+
+
 def test_an_empty_statement_is_never_met_and_waits_for_the_dso_instead_of_failing():
     blank = _pack(market_alternative_statement="   ", method_approval_reference="", review_statement="")
     for key in ("market_first", "method_approved", "review_when_changed"):
