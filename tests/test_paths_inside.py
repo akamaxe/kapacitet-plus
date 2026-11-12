@@ -76,3 +76,18 @@ def test_a_network_is_kept_only_under_the_contracts_own_table_names(tmp_path, mo
         datasets.create("Trial", files)
     assert refused.value.code == "not_in_contract" and "../../outside" in str(refused.value)
     assert not (tmp_path / "datasets").exists() and not list(tmp_path.rglob("outside*"))
+
+
+def test_what_a_chain_owes_or_keeps_comes_in_line_order(tmp_path):
+    """The markers of the tokens still owed were listed in the folder's own order, which on Linux
+    changed with the names of the temporary files written beside them: line 2 before line 1."""
+    from kapacitet.seals import PENDING_SUFFIX, TOKEN_SUFFIX, FolderChain
+
+    chain = FolderChain(tmp_path / "evidence")
+    for seq in (10, 2, 1, 33):
+        chain.stamp_pending(seq, f"owed {seq}")
+    assert list(chain.stamps_pending()) == [1, 2, 10, 33]
+    for seq in (33, 2):
+        chain.stamp_put(seq, b"token")
+    assert list(chain.stamps()) == [2, 33] and list(chain.stamps_pending()) == [1, 10]
+    assert PENDING_SUFFIX != TOKEN_SUFFIX

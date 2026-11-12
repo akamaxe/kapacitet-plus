@@ -247,14 +247,14 @@ class Chain:
     # the RFC 3161 tokens (seals.FolderChain: sealed/<seq>.tsr and sealed/<seq>.tsa_pending)
     def stamps(self) -> dict[int, bytes]:
         with db.held("seals") as conn:
-            rows = conn.execute("SELECT seq, token FROM seal_timestamps WHERE scope = %s AND token IS NOT NULL",
-                                (scope(),)).fetchall()
+            rows = conn.execute("SELECT seq, token FROM seal_timestamps WHERE scope = %s AND token IS NOT NULL"
+                                " ORDER BY seq", (scope(),)).fetchall()
         return {int(seq): bytes(token) for seq, token in rows}
 
     def stamps_pending(self) -> dict[int, str]:
         with db.held("seals") as conn:
-            rows = conn.execute("SELECT seq, pending FROM seal_timestamps WHERE scope = %s AND token IS NULL",
-                                (scope(),)).fetchall()
+            rows = conn.execute("SELECT seq, pending FROM seal_timestamps WHERE scope = %s AND token IS NULL"
+                                " ORDER BY seq", (scope(),)).fetchall()
         return {int(seq): text for seq, text in rows}
 
     def stamp_put(self, seq: int, token: bytes) -> None:

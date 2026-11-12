@@ -260,8 +260,11 @@ class FolderChain:
         folder = self.root / "sealed"
         if not folder.is_dir():
             return {}
-        return {int(p.name[:-len(suffix)]): p for p in folder.glob(f"*{suffix}")
-                if p.name[:-len(suffix)].isdigit() and p.is_file()}
+        # in line order, whatever order the folder lists its files in: what is owed is asked for
+        # oldest first
+        found = {int(p.name[:-len(suffix)]): p for p in folder.glob(f"*{suffix}")
+                 if p.name[:-len(suffix)].isdigit() and p.is_file()}
+        return dict(sorted(found.items()))
 
     def stamps(self) -> dict[int, bytes]:
         """The RFC 3161 tokens kept, by line number."""
