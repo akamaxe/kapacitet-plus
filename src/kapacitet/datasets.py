@@ -76,6 +76,7 @@ ERRORS = {
     "jobs_running": "an evaluation or a decision is running; switch when it has finished",
     "too_many_builds": "{n} network builds are already running; start this one when one has finished",
     "not_building": "network {id} is not being built",
+    "wrong_folder": "the build of network {id} would write into {data}, which is not its own folder",
 }
 
 
@@ -450,9 +451,22 @@ def build(ds_id: str, workers: int = 2, quick: bool = True, steps: dict | None =
     return procs.run_steps(rec, STEPS, steps, _save, _lock(ds_id), logger="kapacitet.datasets")
 
 
+def own_folder(ds_id: str) -> bool:
+    """Whether this process's data folder is the network's own. Every step of a build writes into
+    the data folder of the process it runs in, so a build anywhere else writes over another
+    network: the reference network's, when the command is typed without its environment."""
+    from .paths import DATA
+
+    return Path(DATA).resolve() == folder(ds_id).resolve()
+
+
 def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
-    """The build as the CLI runs it, in a process whose KAPACITET_DATA_DIR is the network's folder."""
-    from .paths import PROCESSED
+    """The build as the CLI runs it, in a process whose KAPACITET_DATA_DIR is the network's folder
+    (and in no other: `own_folder`)."""
+    from .paths import DATA, PROCESSED
+
+    if not own_folder(ds_id):
+        raise DatasetError("wrong_folder", id=ds_id, data=str(DATA))
 
     def do_import():
         from .importer.build import import_directory

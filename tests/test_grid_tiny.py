@@ -100,6 +100,31 @@ def test_at_the_top_of_the_mv_band_the_long_feeder_binds_the_voltage(tiny):
     assert (r.binding == CODE["voltage"]).all()
 
 
+def test_a_network_no_limit_is_reached_on_still_has_its_record(tiny):
+    """With one small system on a network, no hour is critical and the envelopes never act. The
+    result then had no record of what bound each hour at all, which the audit trail reads as a
+    result from before that record existed: the build of such a network (a strong example
+    network of a few houses) stopped there. The record is empty, and so is the trail."""
+    from kapacitet.engine import compliance, doe, run
+    from kapacitet.engine.scenario import Scenario
+
+    model = run.model()
+    hp, ev = run.background_masks(model.C)
+    pv = np.zeros(model.C, dtype=bool)
+    pv[0] = True
+    arrays = Scenario(year=2025, pv=pv, hp=hp, ev=ev).arrays()
+    one = np.array([0])
+    r = doe.compute(model, arrays, one)
+    assert len(r.hours) == 0 and r.info["critical_hours"] == 0 and r.verified_violations == 0
+    assert r.binding is not None and r.binding.shape == (0,) and r.binding_line.shape == (0,)
+    trail = compliance.audit_trail(model, r, arrays, 2025)
+    assert len(trail.events) == 0 and trail.hours_with_curtailment == 0 and trail.energy_kwh == 0.0
+    # nobody to limit at all
+    none = doe.compute(model, arrays, np.array([], dtype=int))
+    assert none.binding is not None and len(none.binding) == 0
+    assert len(compliance.audit_trail(model, none, arrays, 2025).events) == 0
+
+
 @pytest.mark.parametrize("max_iter", [4, 1])
 def test_envelopes_verify_when_the_linear_model_is_optimistic(tiny, max_iter):
     """What makes envelopes safe when the linear model is wrong: margin tightening and back-off.
@@ -201,3 +226,38 @@ def test_every_cache_in_the_package_is_in_the_registry():
     found = sorted(path.relative_to(root).as_posix() for path in root.rglob("*.py")
                    if pattern.search(path.read_text(encoding="utf-8")))
     assert [f for f in found if f not in allowed] == [], "use kapacitet.cache.memo, so clear_all() empties it"
+
+
+def test_the_transformer_cases_are_the_networks_own_neighbours(tiny):
+    """The sensitivity varied the transformer between 0.25 and 0.63 MVA at 10 kV, the units next to
+    the reference network's. On a network at 20 kV that swap is another network, whose power flow
+    has no solution, and the build stopped. The cases are the standard units next to the network's
+    own, for the same voltages."""
+    import pandapower as pp
+
+    from kapacitet.engine import run, run_extra
+    from kapacitet.engine.netmodel import standard_neighbours
+    from kapacitet.study.cases import next_transformer
+
+    net = run.model().net                                  # the tiny grid: 0.1 MVA at 10 kV
+    near = standard_neighbours(net)
+    assert near["smaller"] is None and near["larger"] == {"std_type": "0.25 MVA 10/0.4 kV", "sn_mva": 0.25}
+    assert next_transformer(net) == near["larger"]
+    assert [c[:4] for c in run_extra.trafo_cases(net)] == [
+        ("trafo", "Transformer rating", "0.25 MVA", {"trafo_type": "0.25 MVA 10/0.4 kV"})]
+
+    def cases_for(sn_mva: float, vn_hv_kv: float) -> list[tuple]:
+        other = pp.create_empty_network()
+        hv, lv = pp.create_bus(other, vn_hv_kv), pp.create_bus(other, 0.4)
+        pp.create_transformer_from_parameters(other, hv, lv, sn_mva=sn_mva, vn_hv_kv=vn_hv_kv, vn_lv_kv=0.4,
+                                              vk_percent=4.0, vkr_percent=1.0, pfe_kw=0.0, i0_percent=0.0)
+        return [(c[2], c[3]["trafo_type"]) for c in run_extra.trafo_cases(other)]
+
+    # the reference network's unit keeps the two cases its published sensitivity has
+    assert cases_for(0.4, 10.0) == [("0.25 MVA", "0.25 MVA 10/0.4 kV"), ("0.63 MVA", "0.63 MVA 10/0.4 kV")]
+    assert cases_for(0.4, 20.0) == [("0.25 MVA", "0.25 MVA 20/0.4 kV"), ("0.63 MVA", "0.63 MVA 20/0.4 kV")]
+    assert cases_for(0.63, 10.0) == [("0.4 MVA", "0.4 MVA 10/0.4 kV")]            # nothing larger
+    assert cases_for(0.4, 11.0) == []                                              # no standard unit at 11 kV
+    labels = [c[0] for c in run_extra.tornado_cases(net)]
+    assert labels[:4] == ["mv_voltage", "mv_voltage", "v_margin", "v_margin"] and labels[4] == "trafo"
+    assert labels[5:] == ["dcac", "dcac", "minload", "minload", "static_pv", "static_pv", "household", "household"]

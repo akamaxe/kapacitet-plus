@@ -401,6 +401,29 @@ class NetModel:
         return bus.any(axis=0) | line.any(axis=0) | trafo | a["nonconverged"]
 
 
+def standard_neighbours(net) -> dict[str, dict | None]:
+    """pandapower's standard transformers just below and just above the network's own, for the same
+    voltages: {"smaller": {"std_type", "sn_mva"} | None, "larger": ... | None}. Swapping in a unit
+    of other voltages is not a rating change but another network, and its power flow has no
+    solution."""
+    import pandapower as pp
+
+    t = net.trafo.iloc[0]
+    try:
+        types = pp.available_std_types(net, element="trafo")
+    except Exception:  # noqa: BLE001 - a network without the standard library: nothing to compare with
+        return {"smaller": None, "larger": None}
+    same = types[(abs(types["vn_hv_kv"] - float(t["vn_hv_kv"])) < 1e-6)
+                 & (abs(types["vn_lv_kv"] - float(t["vn_lv_kv"])) < 1e-6)].sort_values("sn_mva")
+    own = float(t["sn_mva"])
+
+    def unit(rows) -> dict | None:
+        return None if rows.empty else {"std_type": str(rows.index[0]), "sn_mva": float(rows.iloc[0]["sn_mva"])}
+
+    return {"smaller": unit(same[same["sn_mva"] < own - 1e-9].iloc[::-1]),
+            "larger": unit(same[same["sn_mva"] > own + 1e-9])}
+
+
 @memo(maxsize=4)
 def get_model(vm_slack: float | None = None, tap_pos: int | None = None, trafo_type: str | None = None) -> NetModel:
     return NetModel(vm_slack=vm_slack, tap_pos=tap_pos, trafo_type=trafo_type)

@@ -61,12 +61,13 @@ def _mv_case(vm_pu: float) -> tuple:
 
 
 # The inputs varied one at a time besides the MV voltage, whose two levels are the ends of its
-# planning band (tornado_cases).
-TORNADO_CASES = [
+# planning band, and the transformer, whose two levels are the standard units next to the
+# network's own (tornado_cases).
+_CASES_BEFORE_TRAFO = [
     ("v_margin", "Voltage planning margin", "0 %", {}, {"v_margin_pu": 0.0}),
     ("v_margin", "Voltage planning margin", "2 %", {}, {"v_margin_pu": 0.02}),
-    ("trafo", "Transformer rating", "0.25 MVA", {"trafo_type": "0.25 MVA 10/0.4 kV"}, {}),
-    ("trafo", "Transformer rating", "0.63 MVA", {"trafo_type": "0.63 MVA 10/0.4 kV"}, {}),
+]
+_CASES_AFTER_TRAFO = [
     ("dcac", "PV DC/AC ratio", "1.0", {}, {"pv_dc_ac_ratio": 1.0}),
     ("dcac", "PV DC/AC ratio", "1.4", {}, {"pv_dc_ac_ratio": 1.4}),
     ("minload", "Minimum load in the static snapshot", "×0 (no load)", {}, {"static_min_load_factor": 0.0}),
@@ -99,11 +100,29 @@ def _tornado_case(args) -> dict:
         set_overrides(None)
 
 
-def tornado_cases() -> list[tuple]:
-    """Every case of the tornado: the MV voltage at both ends of its planning band, then the
-    other inputs of TORNADO_CASES."""
+def trafo_cases(net=None) -> list[tuple]:
+    """The transformer's cases: pandapower's standard unit just below and just above the
+    network's own, for the same voltages (netmodel.standard_neighbours). The reference network's
+    0.4 MVA unit at 10 kV has both, 0.25 and 0.63 MVA; a network at another voltage has its own
+    two, and one whose unit is the smallest or the largest standard one has a single case."""
+    from ..paths import processed_ro
+    from .netmodel import get_model, standard_neighbours
+
+    if net is None:
+        if not processed_ro("grid", "net.json").exists():
+            return []                  # no network in this data folder: no transformer to vary
+        net = get_model().net
+    near = standard_neighbours(net)
+    return [("trafo", "Transformer rating", f"{unit['sn_mva']:g} MVA", {"trafo_type": unit["std_type"]}, {})
+            for unit in (near["smaller"], near["larger"]) if unit is not None]
+
+
+def tornado_cases(net=None) -> list[tuple]:
+    """Every case of the tornado: the MV voltage at both ends of its planning band, the voltage
+    margin, the transformer's neighbours, then the other inputs."""
     levels = mv_band_levels()
-    return [_mv_case(levels[0]), _mv_case(levels[-1])] + TORNADO_CASES
+    return ([_mv_case(levels[0]), _mv_case(levels[-1])] + _CASES_BEFORE_TRAFO + trafo_cases(net)
+            + _CASES_AFTER_TRAFO)
 
 
 def tornado(o: int, years, z_star: float, workers: int = 8) -> None:

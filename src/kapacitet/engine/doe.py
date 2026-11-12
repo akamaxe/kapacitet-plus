@@ -316,9 +316,13 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     kwp_cap = customer_caps()
     desired = np.clip(p_net[nonfirm], 0.0, None)
     cap = kwp_cap[nonfirm]
+    # With nobody to limit, or no hour in which a limit is reached, the record of what bound each
+    # critical hour is empty, not missing: a missing one means a result from before it was kept,
+    # which the audit trail refuses.
+    nothing_bound = {"binding": np.zeros(0, np.int8), "binding_line": np.zeros(0, np.int32)}
     if N == 0:
         return _finish(model, arrays, DoeResult(nonfirm, np.zeros(0, int), np.zeros((0, 0)), desired, cap,
-                                                np.zeros((0, H))), vm_slack, verify)
+                                                np.zeros((0, H)), **nothing_bound), vm_slack, verify)
 
     # 1) Critical hours: every non-firm customer exporting as desired violates a limit
     #    (linear screen, confirmed with the nonlinear power flow).
@@ -327,7 +331,8 @@ def compute(model: NetModel, arrays: dict[str, np.ndarray], nonfirm: np.ndarray,
     curtailed = np.zeros((N, H))
     if Hc == 0:
         return _finish(model, arrays, DoeResult(nonfirm, hours, np.zeros((N, 0)), desired, cap, curtailed,
-                                                info={"critical_hours": 0}), vm_slack, verify)
+                                                info={"critical_hours": 0, "policy": policy}, **nothing_bound),
+                       vm_slack, verify)
 
     # 2) Firm state on critical hours: non-firm customers export nothing.
     p_base = p_net[:, hours].copy()

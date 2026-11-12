@@ -440,19 +440,9 @@ def _static_parts(result: dict) -> dict:
 def next_transformer(net) -> dict | None:
     """The smallest of pandapower's standard transformers for the same voltages that is larger than
     the station's, or None when there is none."""
-    import pandapower as pp
+    from ..engine.netmodel import standard_neighbours
 
-    t = net.trafo.iloc[0]
-    try:
-        types = pp.available_std_types(net, element="trafo")
-    except Exception:  # noqa: BLE001 - a network without the standard library: nothing to propose
-        return None
-    same = types[(abs(types["vn_hv_kv"] - float(t["vn_hv_kv"])) < 1e-6)
-                 & (abs(types["vn_lv_kv"] - float(t["vn_lv_kv"])) < 1e-6)
-                 & (types["sn_mva"] > float(t["sn_mva"]) + 1e-9)].sort_values("sn_mva")
-    if same.empty:
-        return None
-    return {"std_type": str(same.index[0]), "sn_mva": float(same.iloc[0]["sn_mva"])}
+    return standard_neighbours(net)["larger"]
 
 
 def reinforcement(case: dict, sctx: dict) -> dict:

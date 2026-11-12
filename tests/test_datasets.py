@@ -356,3 +356,44 @@ def test_a_project_file_holds_the_tables_and_what_the_network_is(api):
     assert ds.import_files(win["id"]) == files
     assert c.get("/api/v1/datasets/no-such-net/project.zip").status_code == 404
     assert c.get("/api/v1/datasets/..%2Fx/project.zip").status_code == 404
+
+
+def test_a_build_never_writes_into_another_networks_folder(tmp_path, monkeypatch):
+    """Every step of a build writes into the data folder of the process it runs in. The server
+    starts the build with the network's own folder there; `kapacitet dataset build <id>` typed by
+    hand had the reference network's instead, and wrote that network's grid, profiles and results
+    over. The real steps now refuse any folder but the network's own, and the command typed by
+    hand starts itself again there."""
+    import subprocess
+    from types import SimpleNamespace
+
+    from kapacitet import datasets as ds
+    from kapacitet import paths, pipeline
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    ds_id = _dataset(ds)
+    monkeypatch.setattr(paths, "DATA", tmp_path)                    # the reference network's folder
+    assert not ds.own_folder(ds_id)
+    with pytest.raises(ds.DatasetError) as refused:
+        ds.build(ds_id)
+    assert refused.value.code == "wrong_folder" and str(tmp_path) in str(refused.value)
+    assert all(s["status"] == "waiting" for s in ds.record(ds_id)["steps"])       # no step began
+    assert not (tmp_path / "processed").exists()
+
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: calls.append((cmd, kw)) or SimpleNamespace(returncode=7))
+    with pytest.raises(SystemExit) as left:
+        pipeline.cmd_dataset(Namespace(id=ds_id, workers=2, quick=True))
+    assert left.value.code == 7 and len(calls) == 1                 # the child's own exit code
+    cmd, kw = calls[0]
+    assert cmd[1:] == ["-m", "kapacitet", "dataset", "build", ds_id, "--workers", "2", "--quick"]
+    assert kw["env"]["KAPACITET_DATA_DIR"] == str(ds.folder(ds_id)) and kw["env"]["KAPACITET_HOME"] == str(tmp_path)
+    assert "KAPACITET_SUPERVISED" not in kw["env"]
+    # a network that does not exist is said, and nothing is started
+    with pytest.raises(SystemExit) as unknown:
+        pipeline.cmd_dataset(Namespace(id="no-such-net", workers=2, quick=True))
+    assert unknown.value.code == 2 and len(calls) == 1
+    # in its own folder the build runs in this process (its real steps are not refused)
+    monkeypatch.setattr(paths, "DATA", ds.folder(ds_id))
+    assert ds.own_folder(ds_id) and set(ds._real_steps(ds_id, 2, True)) == set(ds.STEPS)

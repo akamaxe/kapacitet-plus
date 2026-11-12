@@ -422,10 +422,27 @@ def supervise(args: argparse.Namespace, command=None) -> int:
 
 
 def cmd_dataset(args: argparse.Namespace) -> None:
-    """Build an imported network in this process (KAPACITET_DATA_DIR is its folder)."""
+    """Build an imported network in this process, whose data folder is the network's own.
+
+    The server starts this command with KAPACITET_DATA_DIR on the network's folder. Typed by hand
+    it has the reference network's folder instead, and every step would write over that network's
+    grid, profiles and results: so it starts itself again with the network's environment
+    (datasets.child_env) and builds there."""
+    import subprocess
+
+    from . import datasets as ds
     from .datasets import DatasetError, build
 
     try:
+        if not ds.own_folder(args.id):
+            ds.record(args.id)                      # an unknown network says so, before anything starts
+            env = {**os.environ, **ds.child_env(args.id), "PYTHONUNBUFFERED": "1"}
+            env.pop("KAPACITET_SUPERVISED", None)
+            cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", args.id, "--workers", str(args.workers)]
+            if args.quick:
+                cmd.append("--quick")
+            log.info("network %s builds in its own folder, %s", args.id, ds.folder(args.id))
+            sys.exit(subprocess.run(cmd, env=env, cwd=str(ds.ROOT)).returncode)
         rec = build(args.id, workers=args.workers, quick=args.quick)
     except DatasetError as err:
         print(err)

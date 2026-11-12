@@ -126,6 +126,11 @@ def audit_totals(rows: list[dict]) -> dict:
             "per_customer": {cid: {"hours": len(v["hours"]), "kwh": v["kwh"]} for cid, v in per.items()}}
 
 
+class NoReinforcementCase(LookupError):
+    """The sensitivity holds no 0.63 MVA transformer case: the network's own unit is not the
+    0.4 MVA one the norm costs on file were chosen for."""
+
+
 def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
     """Reinforce the transformer, or connect the same houses with envelopes? Both from published results.
 
@@ -142,8 +147,14 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
     `basis` says what the envelope side rests on: the deployment the perfect-foresight search sized
     at the aggregate curtailment budget, which is the planning figure and not what can be issued
     the day before (that one curtails far more: results/operation).
+
+    The costs bracket a 630 kVA unit, so the comparison exists only for a network whose sensitivity
+    has that case (a 0.4 MVA transformer, as the reference network's): any other raises
+    NoReinforcementCase rather than pricing a unit nobody costed.
     """
-    big = next(c for c in tornado["cases"] if c["key"] == "trafo" and c["level"].startswith("0.63"))
+    big = next((c for c in tornado["cases"] if c["key"] == "trafo" and c["level"].startswith("0.63")), None)
+    if big is None:
+        raise NoReinforcementCase("no 0.63 MVA transformer case in the sensitivity")
     base = tornado["base"]
     t_lo, t_hi = cost["reinforce_trafo_500_sek"], cost["reinforce_trafo_800_sek"]
     station = cost["reinforce_station_800_sek"] + cost["reinforce_urban_supplement_sek"]
