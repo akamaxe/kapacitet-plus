@@ -591,7 +591,9 @@ uploaded from the setup page, unpacked into `data/processed/` and `data/raw/` an
 
 A DSO's network is hundreds of secondary substations, not one. A *study* is a folder of its own
 that holds them, kept outside the code and outside any git work tree (by default
-`%USERPROFILE%\kapacitet-studies\<id>`, or `KAPACITET_STUDY_DIR`), because it holds the DSO's data:
+`%USERPROFILE%\kapacitet-studies\<id>`, or `KAPACITET_STUDY_DIR`), because it holds the DSO's data.
+What hundreds of stations cost in time and disk has not been measured beyond three:
+[docs/study-scale.md](docs/study-scale.md) says how to measure it.
 
 ```bash
 .venv/Scripts/python -m kapacitet study demo  demo        # three synthetic stations, from pandapower's LV benchmarks
