@@ -265,6 +265,13 @@ block: the sources behind it, when its own files were computed (`computed_at`), 
 `results/meta.json` was last written (`full_run_at`: by any compute without `--only`, the extra
 stage alone included) and which of its inputs are real and which synthetic.
 
+Each file under `results/` also carries the block of the run that wrote it (`computed`: when, the
+commit of this code and the library versions; `engine/stamp.py`), because a stage can be run again
+alone after the code or a library has moved. A file written before the block existed has none, and
+nothing fills one in afterwards. In the published release only `meta.json` and
+`operation/index.json` say their versions: the rest will carry the block once they are computed
+again.
+
 ### Commands
 
 | Command | What it does |

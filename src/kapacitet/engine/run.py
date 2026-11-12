@@ -11,7 +11,6 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 import pandas as pd
 
-from .. import __version__
 from ..atomic import atomic_file, write_bytes_atomic, write_json_atomic, write_text_atomic
 from ..cache import on_clear
 from ..config import A, settings
@@ -21,6 +20,7 @@ from . import compliance, doe, economics, hosting
 from .delivery import share_pct
 from .netmodel import NetModel
 from .scenario import Scenario, adoption_order, customers, mask_from_share
+from .stamp import stamped, versions
 from .stateblob import encode_state
 
 log = logging.getLogger(__name__)
@@ -73,8 +73,9 @@ def largest_true(pred, lo: int, hi: int) -> int:
 
 def _write(name: str, obj) -> None:
     """One results file, replaced whole (kapacitet.atomic): the server, which rereads a file when
-    its date changes, never reads one half written."""
-    write_json_atomic(processed("results", name), obj, indent=1, default=_default)
+    its date changes, never reads one half written. It carries the block of the run that wrote it
+    (engine/stamp.py): when, by which commit and with which libraries."""
+    write_json_atomic(processed("results", name), stamped(obj), indent=1, default=_default)
 
 
 def save_npy(path, array: np.ndarray) -> None:
@@ -280,16 +281,8 @@ def _risk_case(args) -> dict:
 
 
 def _versions() -> dict[str, str]:
-    """Library versions behind the numbers, for reproducibility."""
-    import importlib.metadata as md
-
-    out = {"kapacitet": __version__}
-    for name in ("numpy", "scipy", "pandas", "pandapower", "cvxpy", "pvlib"):
-        try:
-            out[name] = md.version(name)
-        except Exception:  # pragma: no cover - not installed
-            pass
-    return out
+    """Library versions behind the numbers, for reproducibility (engine/stamp.py)."""
+    return versions()
 
 def compute_all(quick: bool = False, workers: int = 6) -> None:
     """The whole computation. `workers` processes run the parallel stages: six for the reference

@@ -73,7 +73,11 @@ def test_the_stage_writes_what_it_returns(band):
     from kapacitet.engine.run import _default
 
     out = band["out"]
-    assert band["written"] == json.loads(json.dumps(out, default=_default))
+    # the file is what the stage returned, plus the block of the run that wrote it (engine/stamp.py)
+    written = dict(band["written"])
+    block = written.pop("computed")
+    assert written == json.loads(json.dumps(out, default=_default))
+    assert set(block) == {"at", "code", "versions"} and block["versions"]["pandapower"]
     assert [r["vm_pu"] for r in out["levels"]] == [0.98, 1.00, 1.02, 1.04, 1.06]
     assert out["band_pu"] == [0.98, 1.06] and out["base_pu"] == 1.00
     assert (out["order"], out["years"], out["policy"]) == (0, list(synthetic_profiles.YEARS), "maxmin")

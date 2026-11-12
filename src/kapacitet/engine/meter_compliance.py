@@ -379,6 +379,8 @@ def write(report: dict, root: Path | None = None) -> tuple[Path, Path]:
     folder = Path(root or paths.PROCESSED) / "results"
     folder.mkdir(parents=True, exist_ok=True)
     js, txt = folder / "meter_compliance.json", folder / "meter_compliance_sv.txt"
-    write_json_atomic(js, report)
+    from .stamp import stamped
+
+    write_json_atomic(js, stamped(report))
     write_text_atomic(txt, text_sv(report))
     return js, txt

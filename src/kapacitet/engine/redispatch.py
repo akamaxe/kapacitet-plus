@@ -145,6 +145,8 @@ def write(year: int | None = None, policy: str | None = None) -> dict:
     from ..atomic import write_json_atomic, write_text_atomic
 
     report = build(year, policy)
-    write_json_atomic(processed("results", "redispatch.json"), report)
+    from .stamp import stamped
+
+    write_json_atomic(processed("results", "redispatch.json"), stamped(report))
     write_text_atomic(processed("results", "redispatch_sv.txt"), text_sv(report))
     return report

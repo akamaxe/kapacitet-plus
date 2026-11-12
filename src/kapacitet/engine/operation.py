@@ -50,9 +50,11 @@ SCHEME = {"foresight": "foresight", "dayahead": "climatological"}
 
 
 def _write_json(path, obj) -> None:
+    """One file of results/operation/, with the block of the run that wrote it (engine/stamp.py)."""
     from .run import _default
+    from .stamp import stamped
 
-    write_json_atomic(path, obj, indent=None, default=_default)
+    write_json_atomic(path, stamped(obj), indent=None, default=_default)
 
 
 def _days(values: np.ndarray, H: int) -> np.ndarray:

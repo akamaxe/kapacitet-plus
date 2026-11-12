@@ -55,5 +55,7 @@ def build() -> dict:
                {"name": "Ellevio — Elnätskapacitet i regionnätet",
                 "url": "https://www.ellevio.se/om-oss/elnat/elnatskapacitet-i-ellevios-regionnat/gavleborg/"},
            ]}
-    write_json_atomic(processed("results", "national.json"), out, indent=1)
+    from .stamp import stamped
+
+    write_json_atomic(processed("results", "national.json"), stamped(out), indent=1)
     return out

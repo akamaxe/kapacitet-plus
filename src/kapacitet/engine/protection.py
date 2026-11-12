@@ -124,7 +124,9 @@ def write() -> dict:
     net = load_net()
     _, lines, cust = load_tables()
     out = assess(net, lines, cust)
-    write_json_atomic(processed("results", "protection.json"), out, indent=1)
+    from .stamp import stamped
+
+    write_json_atomic(processed("results", "protection.json"), stamped(out), indent=1)
     s = out["summary"]
     log.info("protection: %d of %d feeders and %d of %d houses clear a fault within %.0f s",
              s["feeders_ok"], s["feeders"], s["houses_ok"], s["houses"], out["criterion"]["disconnect_s"])

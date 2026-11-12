@@ -785,5 +785,7 @@ def write() -> tuple[list, dict, dict | None]:
     cap_path = processed("results", "foresight.json")
     capacity = json.loads(cap_path.read_text(encoding="utf-8")) if cap_path.exists() else None
     rows = ladder(get_model(), show)
-    write_json_atomic(processed("results", "forecast.json"), ladder_payload(rows, show["year"]), indent=1)
+    from .stamp import stamped
+
+    write_json_atomic(processed("results", "forecast.json"), stamped(ladder_payload(rows, show["year"])), indent=1)
     return rows, show, capacity
