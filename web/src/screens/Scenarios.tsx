@@ -14,6 +14,7 @@ import { useApi } from "../lib/api";
 import type { Tokens } from "../lib/colors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 
 type Cell = any;
 
@@ -25,6 +26,7 @@ function stateOf(c: Cell): 0 | 1 | 2 {
 
 export default function Scenarios() {
   const t = useT();
+  const pt = useProjectT();
   const f = useFmt();
   const sc = useApi<any>("/scenarios");
   const D = sc.data?.data;
@@ -53,7 +55,7 @@ export default function Scenarios() {
     <div className="page">
       <div className="page-inner">
         <section className="region">
-          <h1 className="headline">{t("scn.title")}</h1>
+          <h1 className="headline">{pt("scn.title")}</h1>
           {/* the screen's answer, said first and at the size of an answer */}
           {firstStaticFail && lastDoe && (
             <p className="lead-answer">{t("scn.breaking", { pv: Math.round(firstStaticFail.pv * 100), pv2: Math.round(lastDoe.pv * 100) })}</p>
@@ -81,7 +83,7 @@ export default function Scenarios() {
             <ChartOrTable
               chart={
                 <Chart
-                  ariaLabel={t("scn.title")}
+                  ariaLabel={pt("scn.title")}
                   height={330}
                   deps={[cells, cur]}
                   build={(tk) => matrixOption(tk, cells, pvs, evs, t, cur ? { pv: cur.pv, ev: cur.ev } : null)}

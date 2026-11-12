@@ -14,6 +14,9 @@ import math
 from .cache import memo
 
 COORD_DECIMALS = 6        # about 0.1 m on the ground, finer than any drawing on the map
+M_PER_DEG_LAT = 111_320.0  # metres to a degree of latitude; a degree of longitude is this times cos(latitude)
+DRAWN_HOUSE_M = 10.0      # the side a house is drawn with when the data has neither outline nor footprint
+DRAWN_GAP_M = 3.0         # between houses drawn at one connection point
 SWEREF99TM = "EPSG:3006"
 WGS84 = "EPSG:4326"
 
@@ -60,6 +63,44 @@ def line_geometry(coords) -> dict | None:
     return {"type": "LineString", "coordinates": pts}
 
 
+def offset(lon, lat, east_m: float, north_m: float) -> tuple[float, float] | None:
+    """The position that many metres east and north of a point; None without a finite position."""
+    lon, lat = num(lon), num(lat)
+    if lon is None or lat is None:
+        return None
+    per_lon = M_PER_DEG_LAT * max(math.cos(math.radians(lat)), 1e-6)
+    return lon + east_m / per_lon, lat + north_m / M_PER_DEG_LAT
+
+
+def square_around(lon, lat, side_m) -> dict | None:
+    """A square of side_m metres centred on a point, its sides along the parallel and the meridian:
+    what a map draws for a house whose outline nobody gave. None without a position or a side."""
+    side = num(side_m)
+    if side is None or side <= 0:
+        return None
+    half = side / 2
+    ring = [offset(lon, lat, dx * half, dy * half) for dx, dy in ((-1, -1), (1, -1), (1, 1), (-1, 1), (-1, -1))]
+    if not all(ring):
+        return None
+    return {"type": "Polygon", "coordinates": [[xy(*p) for p in ring]]}
+
+
+def spread(n: int, cell_m: float) -> list[tuple[float, float]]:
+    """Where n things drawn at one point go so that each can be seen and picked: the cells of a
+    square grid of cell_m metres centred on the point, as (east, north) offsets in metres. One
+    thing stays on the point."""
+    if n <= 1:
+        return [(0.0, 0.0)] * max(n, 0)
+    cols = math.ceil(math.sqrt(n))
+    rows = math.ceil(n / cols)
+    return [((i % cols - (cols - 1) / 2) * cell_m, ((rows - 1) / 2 - i // cols) * cell_m) for i in range(n)]
+
+
+def straight(lon0, lat0, lon1, lat1) -> dict | None:
+    """The straight line between two positions: a cable drawn without a route."""
+    return line_geometry([[lon0, lat0], [lon1, lat1]])
+
+
 def feature(geometry: dict | None, properties: dict) -> dict:
     return {"type": "Feature", "geometry": geometry, "properties": properties}
 
@@ -103,5 +144,6 @@ def square_polygon(e0: int, n0: int, size_m: int) -> dict:
     return {"type": "Polygon", "coordinates": [[xy(*to_wgs84(e, n)) for e, n in corners]]}
 
 
-__all__ = ["COORD_DECIMALS", "SWEREF99TM", "collection", "feature", "house_geometry", "line_geometry", "num",
-           "point", "square_of", "square_polygon", "to_sweref", "to_wgs84", "xy"]
+__all__ = ["COORD_DECIMALS", "DRAWN_GAP_M", "DRAWN_HOUSE_M", "SWEREF99TM", "collection", "feature",
+           "house_geometry", "line_geometry", "num", "offset", "point", "spread", "square_around", "square_of",
+           "square_polygon", "straight", "to_sweref", "to_wgs84", "xy"]

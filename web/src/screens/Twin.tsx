@@ -1,6 +1,6 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
-import { MapView, fitTo } from "../components/MapView";
+import { MapView, fitTo, housePoints, keepInView } from "../components/MapView";
 import { DataTable, type Col } from "../components/DataTable";
 import { YearStrip } from "../components/YearStrip";
 import { SplitSkeleton } from "../components/Skeleton";
@@ -11,6 +11,7 @@ import { useApi, useGridState } from "../lib/api";
 import { loadingColor, powerColor, rampCss, tokens, voltageColor } from "../lib/colors";
 import { hoursInYear, hourLabel, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 import { faultText } from "../lib/reasons";
 import { SCENARIOS, useStore } from "../lib/store";
 import { nightOpacity, solarElevation } from "../lib/sun";
@@ -51,6 +52,7 @@ const yearStart = (year: number) => Date.UTC(year, 0, 1) - 3600_000;
  */
 export default function Twin() {
   const t = useT();
+  const pt = useProjectT();
   const scenario = useStore((s) => s.scenario);
   const setScenario = useStore((s) => s.setScenario);
   const theme = useStore((s) => s.theme);
@@ -227,7 +229,10 @@ export default function Twin() {
 
   const onReady = useCallback((map: MLMap) => {
     mapRef.current = map;
-    if (net.data?.bbox) fitTo(map, net.data.bbox, 60);
+    if (net.data?.bbox) {
+      fitTo(map, net.data.bbox, 60);
+      keepInView(map, housePoints(net.data.features));
+    }
     // the map could hover a house but never select one: the table, the panel and the
     // map all read the same selectedCid now, so picking in any of them moves the others
     map.on("click", "houses", (e: MapMouseEvent & { features?: any[] }) => {
@@ -301,11 +306,12 @@ export default function Twin() {
     <div className="split">
       <div className="map-col" ref={colRef}>
         <div className="map-wrap">
-          <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("twin.title", { n: houses.length })}>
+          <MapView center={center} zoom={16} pitch={50} bearing={-18} setup={setup} onReady={onReady}
+            basemap={net.data.drawing?.layout !== "schematic"} ariaLabel={t("twin.title", { n: houses.length })}>
             <Daylight center={center} year={year} />
             {st.isLoading && <div className="map-loading" role="status">{t("ui.loading")}</div>}
             {updating && <div className="updating" role="status">{t("twin.updating")}</div>}
-            <div className="map-toolbar"><button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={() => { if (mapRef.current && net.data.bbox) { mapRef.current.jumpTo({ pitch: 50, bearing: -18 }); fitTo(mapRef.current, net.data.bbox, 60); } }}><Icon name="reset" size={17} /></button></div>
+            <div className="map-toolbar"><button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={() => { if (mapRef.current && net.data.bbox) { mapRef.current.jumpTo({ pitch: 50, bearing: -18 }); fitTo(mapRef.current, net.data.bbox, 60); keepInView(mapRef.current, housePoints(net.data.features)); } }}><Icon name="reset" size={17} /></button></div>
             <MapLegend colorBy={colorBy} theme={theme} />
             <TipLayer register={tipRef} housesById={housesById} cablesById={cablesById} rows={rows} st={st} />
           </MapView>
@@ -365,7 +371,7 @@ export default function Twin() {
         </div>
 
         <Conditions agg={agg} ser={ser} year={year} center={center} />
-        <p className="source-line">{t("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
+        <p className="source-line">{pt("twin.sub", { addr: meta.data.substation?.address ?? "" })}</p>
       </aside>
     </div>
   );

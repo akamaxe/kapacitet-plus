@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
-import { MapView, fitTo } from "../components/MapView";
+import { MapView, fitTo, housePoints, keepInView } from "../components/MapView";
 import { Chart, axisStyle } from "../components/Chart";
 import { Icon } from "../components/Icon";
 import { toast } from "../components/Toast";
@@ -249,7 +249,10 @@ export default function Request() {
 
   const onReady = useCallback((map: MLMap) => {
     mapRef.current = map;
-    if (net.data?.bbox) fitTo(map, net.data.bbox, 50);
+    if (net.data?.bbox) {
+      fitTo(map, net.data.bbox, 50);
+      keepInView(map, housePoints(net.data.features));
+    }
     map.on("click", "houses", (e: MapMouseEvent & { features?: any[] }) => {
       const c = e.features?.[0]?.properties?.cid;
       if (c !== undefined) select(Number(c));
@@ -345,7 +348,8 @@ export default function Request() {
     <div className="split wide-panel">
       <div className="map-col">
         <div className="map-wrap">
-          <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady} ariaLabel={t("req.title")}>
+          <MapView center={meta.data.center} zoom={16} pitch={45} bearing={-18} setup={setup} onReady={onReady}
+            basemap={net.data.drawing?.layout !== "schematic"} ariaLabel={t("req.title")}>
             <div className="map-legend fit">
               <Legend items={[
                 ...(shown.has("firm") ? [{ key: "firm", color: tokens().dynamic, label: <Term id="firm">{t("twin.status.firm")}</Term> }] : []),

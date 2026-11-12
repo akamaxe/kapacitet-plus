@@ -158,8 +158,46 @@ def test_the_api_reads_the_tiny_grid(tiny):
 
     r = TestClient(main.app).get("/api/v1/network")
     assert r.status_code == 200, r.text
-    assert sum(f["properties"]["layer"] == "house" for f in r.json()["features"]) == 20
+    doc = r.json()
+    houses = [f for f in doc["features"] if f["properties"]["layer"] == "house"]
+    cables = [f for f in doc["features"] if f["properties"]["layer"] == "cable"]
+    assert len(houses) == 20
     assert main._engine()["model"].C == 20
+    # the tiny grid came as tables, with no outline for a house and no route for a cable: each
+    # house is a square of its footprint around its connection point, each cable a straight line
+    # between its buses, and the answer says how many it drew
+    assert all(f["geometry"]["type"] == "Polygon" and f["properties"]["drawn"] is True for f in houses)
+    assert all(f["geometry"]["type"] == "LineString" and len(f["geometry"]["coordinates"]) == 2
+               and f["properties"]["drawn"] is True for f in cables)
+    assert doc["drawing"] == {"layout": "geographic", "houses_drawn": 20, "cables_drawn": len(cables)}
+    for f in houses:
+        ring = f["geometry"]["coordinates"][0]
+        lon, lat = f["properties"]["lon"], f["properties"]["lat"]
+        assert min(p[0] for p in ring) < lon < max(p[0] for p in ring)
+        assert min(p[1] for p in ring) < lat < max(p[1] for p in ring)
+    # the squares stay inside what the map frames, give or take a house
+    west, south, east, north = doc["bbox"]
+    assert all(west - 3e-4 < p[0] < east + 3e-4 and south - 2e-4 < p[1] < north + 2e-4
+               for f in houses for p in f["geometry"]["coordinates"][0])
+
+
+def test_an_example_network_is_drawn_as_a_schematic(tiny, monkeypatch):
+    """An example network's coordinates are a layout around a point, not places: the answer says
+    `schematic`, and the map leaves the real streets out."""
+    from fastapi.testclient import TestClient
+
+    from kapacitet import datasets as ds
+    from kapacitet.api import main
+
+    monkeypatch.setattr(ds, "current_origin", lambda: {"kind": "template", "template": "dickert-short", "synthetic": True})
+    main._network.cache_clear()
+    try:
+        doc = TestClient(main.app).get("/api/v1/network").json()
+        assert doc["drawing"]["layout"] == "schematic" and doc["drawing"]["houses_drawn"] == 20
+        assert any("example network" in s for s in doc["provenance"]["synthetic"])
+        assert not any(s.startswith("LV network topology") for s in doc["provenance"]["real"])
+    finally:
+        main._network.cache_clear()          # the next reader gets the network as it is
 
 
 def test_processed_at_moves_every_copy_of_the_data_folder_and_restores_it(tmp_path):

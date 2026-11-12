@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { Roundel } from "./Shell";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
 
 /**
@@ -14,6 +15,7 @@ export function ReportRecord({ R, rows }: {
   rows: { customer_id: number; address: string; hours_limited: number; curtailed_kwh: number; share_of_own_export_pct: number }[];
 }) {
   const t = useT();
+  const pt = useProjectT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   // the hours a limit was needed, as on the screen (binding_constraint_necessary_hours)
@@ -75,8 +77,8 @@ export function ReportRecord({ R, rows }: {
 
       <footer className="pr-foot">
         <h2>{t("rec.basis")}</h2>
-        <p>{t("rec.real")}</p>
-        <p>{t("rec.synthetic")}</p>
+        <p>{pt("rec.real")}</p>
+        <p>{pt("rec.synthetic")}</p>
         <p>{t("rec.method")}</p>
       </footer>
     </article>,

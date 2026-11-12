@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import { useApi } from "../lib/api";
 import { useMe, useSignOut } from "../lib/auth";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 import { SCREENS, useStore, type Theme } from "../lib/store";
 import { Mark } from "./bits";
 import { Dialog } from "./Dialog";
@@ -187,12 +188,13 @@ export function MenuSheet({ open, onClose }: { open: boolean; onClose: () => voi
  */
 export function FootLine({ onKeys, onTour }: { onKeys: () => void; onTour?: () => void }) {
   const t = useT();
+  const pt = useProjectT();
   const meta = useApi<any>("/meta");
   return (
     <footer className="footline">
       <span className="fl-legend">
-        <span><Mark kind="real" />{t("tb.real")}</span>
-        <span><Mark kind="synthetic" />{t("tb.synthetic")}</span>
+        <span><Mark kind="real" />{pt("tb.real")}</span>
+        <span><Mark kind="synthetic" />{pt("tb.synthetic")}</span>
       </span>
       <span className="fl-year">
         {t("tb.year")} <span className="num">{meta.data?.reference_year ?? "–"}</span>

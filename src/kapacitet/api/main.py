@@ -353,7 +353,8 @@ def _has_inventory(path: str, stamp: float) -> bool:
 
 def data_origin() -> dict[str, list[str]]:
     """Which inputs of this data folder are real and which synthetic, from what it holds: an
-    operator's network (grid/summary.json says `imported`), metered household load (the
+    operator's network (grid/summary.json says `imported`; an example network is imported too, and
+    its origin says it is no operator's), metered household load (the
     temperature-corrected years, households/metered_<year>.npy) and an equipment inventory."""
     imported = _small_json(processed("grid", "summary.json")).get("imported") is True
     households = processed("households")
@@ -365,7 +366,12 @@ def data_origin() -> dict[str, list[str]]:
         inventory = False
     real: list[str] = []
     synthetic: list[str] = []
-    if imported:
+    from .. import datasets as ds
+
+    if imported and ds.is_synthetic(ds.current_origin()):
+        synthetic.append("LV network topology, cables, transformer and fuses (an example network: a benchmark "
+                         "network of pandapower, drawn schematically, not a real one)")
+    elif imported:
         real.append("LV network topology, cables, cabinets, transformer and fuses (the operator's export)")
     else:
         real.append("buildings, addresses, streets and the substation's position (OpenStreetMap)")
@@ -514,7 +520,11 @@ def meta() -> dict:
     from .. import datasets as ds
 
     current = ds.current()
-    out["dataset"] = {"id": current, "imported": current != ds.REFERENCE}
+    origin = ds.current_origin()
+    out["dataset"] = {"id": current, "imported": current != ds.REFERENCE,
+                      # where the network came from, and whether it is a made-up one (an example network)
+                      "origin": {k: origin[k] for k in ("kind", "template", "name") if k in origin},
+                      "synthetic": ds.is_synthetic(origin)}
     if current != ds.REFERENCE:
         try:
             out["dataset"]["name"] = ds.record(current)["name"]
@@ -763,9 +773,34 @@ def _network(stamp: tuple) -> dict:
     cons = result("consumption.json").get("nodal") if processed("results", "consumption.json").exists() else None
     import_ts = dict(zip(map(int, cons["customers"]), cons["timeseries_kw"])) if cons else {}
     feats = []
+    # A network that came as tables may have no outline for a house and no route for a cable: the
+    # house is then drawn as a square of its own footprint at its connection point (side by side
+    # where several share one), the cable as the straight line between its two buses. `drawn`
+    # marks each such feature, and `drawing` counts them, so the map can say what it shows.
+    at = {int(b.bus): (b.lon, b.lat) for b in buses.itertuples()}
+    shared: dict[tuple, list[int]] = {}
     for c in cust.itertuples():
-        feats.append({"type": "Feature", "geometry": _house_geometry(c.polygon, c.lon, c.lat),
+        if not (isinstance(c.polygon, str) and c.polygon) and _xy(c.lon, c.lat):
+            shared.setdefault(tuple(_xy(c.lon, c.lat)), []).append(int(c.cid))
+    side_of = {int(c.cid): (math.sqrt(f) if (f := _num(getattr(c, "footprint_m2", None))) and f > 0
+                            else geo.DRAWN_HOUSE_M) for c in cust.itertuples()}
+    place: dict[int, tuple[float, float]] = {}
+    for cids in shared.values():
+        cell = max(side_of[cid] for cid in cids) + geo.DRAWN_GAP_M
+        place.update(zip(cids, geo.spread(len(cids), cell)))
+    houses_drawn = cables_drawn = 0
+    for c in cust.itertuples():
+        geometry = _house_geometry(c.polygon, c.lon, c.lat)
+        drawn = False
+        if geometry is not None and geometry["type"] == "Point":
+            centre = geo.offset(c.lon, c.lat, *place.get(int(c.cid), (0.0, 0.0)))
+            square = geo.square_around(*centre, side_of[int(c.cid)]) if centre else None
+            if square is not None:
+                geometry, drawn = square, True
+                houses_drawn += 1
+        feats.append({"type": "Feature", "geometry": geometry,
                       "properties": {
+                          "drawn": drawn,
                           "layer": "house", "cid": int(c.cid), "bus": int(c.bus), "address": c.address or None,
                           "osm_id": c.osm_id, "building": c.building, "fuse_a": int(c.fuse_a),
                           "fuse_kva": _num(c.fuse_kva), "floor_m2": _num(c.floor_m2), "levels": _num(c.levels),
@@ -780,8 +815,15 @@ def _network(stamp: tuple) -> dict:
                           "has_hp": bool(has_hp[int(c.cid)]), "has_ev": bool(has_ev[int(c.cid)]),
                       }})
     for ln in lines.itertuples():
-        feats.append({"type": "Feature", "geometry": _line_geometry(getattr(ln, "coords", None)),
-                      "properties": {"layer": "cable", "line": int(ln.line), "kind": ln.kind, "std_type": ln.std_type,
+        geometry = _line_geometry(getattr(ln, "coords", None))
+        drawn = False
+        if geometry is None:
+            geometry = geo.straight(*at.get(int(ln.from_bus), (None, None)), *at.get(int(ln.to_bus), (None, None)))
+            drawn = geometry is not None
+            cables_drawn += drawn
+        feats.append({"type": "Feature", "geometry": geometry,
+                      "properties": {"layer": "cable", "drawn": drawn,
+                                     "line": int(ln.line), "kind": ln.kind, "std_type": ln.std_type,
                                      "length_m": round(float(ln.length_m), 1), "parallel": int(ln.parallel),
                                      "feeder": int(ln.feeder), "downstream": int(ln.downstream),
                                      "from_bus": int(ln.from_bus), "to_bus": int(ln.to_bus)}})
@@ -803,8 +845,14 @@ def _network(stamp: tuple) -> dict:
     ok = np.isfinite(lons) & np.isfinite(lats)
     # a network without coordinates has no box to frame: the map says so instead of guessing
     bbox = [float(lons[ok].min()), float(lats[ok].min()), float(lons[ok].max()), float(lats[ok].max())] if ok.any() else None
+    from .. import datasets as ds
+
     return {"type": "FeatureCollection", "features": feats,
             "bbox": bbox,
+            # what the map shows that the data did not give, and whether its positions are places
+            # (`geographic`) or a schematic layout around a point (`schematic`: an example network)
+            "drawing": {"layout": "schematic" if ds.is_synthetic(ds.current_origin()) else "geographic",
+                        "houses_drawn": houses_drawn, "cables_drawn": cables_drawn},
             "bus_order": buses["bus"].tolist()}
 
 

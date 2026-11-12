@@ -3,11 +3,12 @@ import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { useApi } from "../lib/api";
 import { tokens } from "../lib/colors";
 import { useT } from "../lib/i18n";
+import { useProjectKind, useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
 import { Mark } from "./bits";
 import { Icon } from "./Icon";
 import { Term } from "./Term";
-import { MapView, fitTo } from "./MapView";
+import { MapView, fitTo, housePoints, keepInView } from "./MapView";
 
 type Tip = { x: number; y: number; cid: number; address: string; status: string };
 
@@ -19,6 +20,8 @@ type Tip = { x: number; y: number; cid: number; address: string; status: string 
  */
 export function NetworkMap() {
   const t = useT();
+  const pt = useProjectT();
+  const kind = useProjectKind();
   const theme = useStore((s) => s.theme);
   const lang = useStore((s) => s.lang);
   const net = useApi<any>("/network");
@@ -34,6 +37,7 @@ export function NetworkMap() {
     if (!net.data?.bbox) return;
     fitTo(map, net.data.bbox, 24);
     map.setZoom(map.getZoom() + 0.35);
+    keepInView(map, housePoints(net.data.features));
   };
 
   const setup = useCallback(
@@ -153,7 +157,9 @@ export function NetworkMap() {
             setup={setup}
             onReady={onReady}
             gestureHelp={{ windows: t("net.gestures.windows"), mac: t("net.gestures.mac"), mobile: t("net.gestures.mobile") }}
-            ariaLabel={t("net.aria")}
+            // a schematic layout is no place: it is drawn on an empty ground, not over real streets
+            basemap={net.data.drawing?.layout !== "schematic"}
+            ariaLabel={pt("net.aria")}
           >
             <div className="map-toolbar">
               <button className="icon-btn" aria-label={t("twin.resetView")} title={t("twin.resetView")} onClick={reset}>
@@ -176,8 +182,14 @@ export function NetworkMap() {
         <span><i className="house-key firm" /><Term id="firm">{t("net.firm")}</Term></span>
         <span><i className="house-key nonfirm" /><Term id="nonfirm">{t("net.nonfirm")}</Term></span>
         <span><i className="house-key" />{t("twin.status.none")}</span>
-        <span className="net-src"><Mark kind="real" />{t("net.srcReal")}</span>
-        <span className="net-src"><Mark kind="synthetic" />{t("net.srcSyn")}</span>
+        {kind === "reference" ? (
+          <>
+            <span className="net-src"><Mark kind="real" />{t("net.srcReal")}</span>
+            <span className="net-src"><Mark kind="synthetic" />{t("net.srcSyn")}</span>
+          </>
+        ) : (
+          <span className="net-src"><Mark kind={kind === "example" ? "synthetic" : "real"} />{t(`net.src.${kind}`)}</span>
+        )}
       </div>
     </figure>
   );

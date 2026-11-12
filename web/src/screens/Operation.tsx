@@ -99,6 +99,9 @@ export default function Operation() {
   const DA = I.combos.dayahead[policy];
   const FS = I.combos.foresight[policy];
   const agreements: number[] = I.nonfirm_cids;
+  // a network where every installation connects firm has no house to issue limits for: the three
+  // sections that need one say so (NoAgreement), and nothing is asked of the API for a house that is not
+  const none = agreements.length === 0;
   const house = cid !== null && agreements.includes(cid) ? cid : agreements[0];
   const name = (c: number) => addresses.get(c) || t("dt.unnamed", { id: c });
   // until a day is chosen, the schedule opens on the season's most curtailed day
@@ -170,23 +173,27 @@ export default function Operation() {
               <p className="caption">{t("op.schedule.caption")}</p>
             </div>
           </div>
-          <div className="report-controls">
-            <label className="field-inline">
-              <span>{t("op.house")}</span>
-              <select value={house} onChange={(e) => select(Number(e.target.value))}>
-                {agreements.map((c) => <option key={c} value={c}>{name(c)}</option>)}
-              </select>
-            </label>
-            <label className="field-inline">
-              <span>{t("op.date")}</span>
-              <input type="date" value={day} min={`${year}-01-01`} max={`${year}-12-31`} required
-                onChange={(e) => e.target.value && setDate(e.target.value)} />
-            </label>
-          </div>
-          {cid !== null && cid !== house && (
-            <p className="caption-muted">{t("op.notAgreement", { house: name(cid), shown: name(house) })}</p>
+          {none ? <NoAgreement>{t("op.none.schedule")}</NoAgreement> : (
+            <>
+              <div className="report-controls">
+                <label className="field-inline">
+                  <span>{t("op.house")}</span>
+                  <select value={house} onChange={(e) => select(Number(e.target.value))}>
+                    {agreements.map((c) => <option key={c} value={c}>{name(c)}</option>)}
+                  </select>
+                </label>
+                <label className="field-inline">
+                  <span>{t("op.date")}</span>
+                  <input type="date" value={day} min={`${year}-01-01`} max={`${year}-12-31`} required
+                    onChange={(e) => e.target.value && setDate(e.target.value)} />
+                </label>
+              </div>
+              {cid !== null && cid !== house && (
+                <p className="caption-muted">{t("op.notAgreement", { house: name(cid), shown: name(house) })}</p>
+              )}
+              <DaySchedule cid={house} date={day} />
+            </>
           )}
-          <DaySchedule cid={house} date={day} />
         </section>
 
         {/* ---------------------------------------------------------------- the market comes first */}
@@ -197,7 +204,8 @@ export default function Operation() {
               <p className="caption">{t("op.market.caption")}</p>
             </div>
           </div>
-          <MarketAlternatives agreements={agreements} name={name} year={year as number} day={day} />
+          {none ? <NoAgreement>{t("op.none.market")}</NoAgreement>
+            : <MarketAlternatives agreements={agreements} name={name} year={year as number} day={day} />}
         </section>
 
         {/* ---------------------------------------------------------------- the season in the shadow */}
@@ -223,7 +231,7 @@ export default function Operation() {
               <p className="caption">{t("op.meter.caption")}</p>
             </div>
           </div>
-          <MeterCheck cid={house} date={day} name={name(house)} />
+          {none ? <NoAgreement>{t("op.none.meter")}</NoAgreement> : <MeterCheck cid={house} date={day} name={name(house)} />}
           <FleetCompliance name={name} onHouse={select} />
         </section>
 
@@ -240,6 +248,11 @@ export default function Operation() {
       </div>
     </div>
   );
+}
+
+/** What a section says when the network has no house with a conditional agreement. */
+function NoAgreement({ children }: { children: React.ReactNode }) {
+  return <div className="section-missing" role="note"><p className="caption">{children}</p></div>;
 }
 
 /* ==================================================================== a day */

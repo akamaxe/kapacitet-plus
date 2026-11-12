@@ -3,6 +3,7 @@ import { PRODUCT, isBranded, useBrand } from "../apply/Brand";
 import { Roundel } from "./Shell";
 import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 import { fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { useStore } from "../lib/store";
 
@@ -17,6 +18,7 @@ import { useStore } from "../lib/store";
  */
 export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLabel: string }) {
   const t = useT();
+  const pt = useProjectT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const brand = useBrand().data;
@@ -175,8 +177,8 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
 
       <footer className="pr-foot">
         <h2>{t("rec.basis")}</h2>
-        <p>{t("rec.real")}</p>
-        <p>{t("rec.synthetic")}</p>
+        <p>{pt("rec.real")}</p>
+        <p>{pt("rec.synthetic")}</p>
         <ul>{(res.provenance?.sources ?? []).map((s: string) => <li key={s}>{s}</li>)}</ul>
         <p>{t("rec.method")}</p>
         {isBranded(brand) && <p>{t("apply.foot", { product: PRODUCT })}</p>}

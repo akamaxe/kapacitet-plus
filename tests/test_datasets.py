@@ -397,3 +397,136 @@ def test_a_build_never_writes_into_another_networks_folder(tmp_path, monkeypatch
     # in its own folder the build runs in this process (its real steps are not refused)
     monkeypatch.setattr(paths, "DATA", ds.folder(ds_id))
     assert ds.own_folder(ds_id) and set(ds._real_steps(ds_id, 2, True)) == set(ds.STEPS)
+
+
+def test_a_house_without_an_outline_and_a_cable_without_a_route_can_be_drawn():
+    """A network that came as tables has connection points and buses, and no shapes. The maps draw
+    a house as a raised outline and a cable as a line, so they showed nothing of such a network.
+    A house is drawn as a square of its own footprint and a cable as the straight line between its
+    buses; houses that share a connection point stand side by side, so each can be picked."""
+    from kapacitet import geo
+
+    square = geo.square_around(18.0, 59.3, 12.0)
+    ring = square["coordinates"][0]
+    assert square["type"] == "Polygon" and len(ring) == 5 and ring[0] == ring[-1]
+    width = (ring[1][0] - ring[0][0]) * geo.M_PER_DEG_LAT * math.cos(math.radians(59.3))
+    height = (ring[2][1] - ring[1][1]) * geo.M_PER_DEG_LAT
+    assert width == pytest.approx(12.0, abs=0.15) and height == pytest.approx(12.0, abs=0.15)    # 0.1 m rounding
+    assert (ring[0][0] + ring[2][0]) / 2 == pytest.approx(18.0, abs=1e-6)                         # centred
+    assert (ring[0][1] + ring[2][1]) / 2 == pytest.approx(59.3, abs=1e-6)
+    for bad in ((float("nan"), 59.3, 12.0), (18.0, None, 12.0), (18.0, 59.3, 0.0), (18.0, 59.3, None),
+                (18.0, 59.3, float("inf"))):
+        assert geo.square_around(*bad) is None
+    json.dumps(square, allow_nan=False)
+    assert geo.straight(18.0, 59.3, 18.001, 59.3) == {"type": "LineString", "coordinates": [[18.0, 59.3], [18.001, 59.3]]}
+    assert geo.straight(None, None, 18.0, 59.3) is None and geo.straight(float("nan"), 1.0, 2.0, 3.0) is None
+    assert geo.offset(18.0, 59.3, 0.0, 111.32) == pytest.approx((18.0, 59.301))
+    assert geo.offset(None, 59.3, 1.0, 1.0) is None
+    assert geo.spread(0, 13.0) == [] and geo.spread(1, 13.0) == [(0.0, 0.0)]
+    for n in (2, 3, 4, 5, 9, 30):
+        cells = geo.spread(n, 13.0)
+        assert len(set(cells)) == n
+        assert all(abs(a[0] - b[0]) >= 13.0 - 1e-9 or abs(a[1] - b[1]) >= 13.0 - 1e-9
+                   for i, a in enumerate(cells) for b in cells[i + 1:]), n          # no two cells overlap
+        cols = math.ceil(math.sqrt(n))
+        assert abs(sum(x for x, _ in cells[:cols])) < 1e-9                         # a full row is centred
+
+
+def test_an_example_network_says_it_is_made_up(api, tmp_path, monkeypatch):
+    """What is real and what is synthetic follows where the network came from. An example network
+    is imported through the same four tables as an operator's export, and was called real for it:
+    'the operator's export'. Its origin says it is a benchmark network, so it is synthetic, and
+    its layout is a drawing, not a place."""
+    from conftest import processed_at
+
+    from kapacitet.importer import templates
+
+    c, ds, main = api
+    assert ds.is_synthetic({"kind": "template"}) and ds.is_synthetic({"kind": "project_file", "synthetic": True})
+    for real in ({"kind": "csv"}, {"kind": "project_file"}, {"kind": "project_file", "synthetic": False},
+                 {"kind": "reference"}, {}, None):
+        assert not ds.is_synthetic(real)
+    monkeypatch.delenv("KAPACITET_DATASET", raising=False)
+    assert ds.current_origin() == {"kind": "reference"}
+    assert c.get("/api/v1/meta").json()["dataset"] == {
+        "id": "reference", "imported": False, "origin": {"kind": "reference"}, "synthetic": False}
+
+    files = templates.files("dickert-short")
+    example = c.post("/api/v1/datasets", json={"name": "Short feeders", "files": files, "origin": {
+        "kind": "template", "template": "dickert-short"}}).json()["id"]
+    export = c.post("/api/v1/datasets", json={"name": "An export", "files": files}).json()["id"]
+
+    monkeypatch.setenv("KAPACITET_DATASET", example)
+    shown = c.get("/api/v1/meta").json()
+    assert shown["site"] == "Short feeders"
+    assert shown["dataset"]["imported"] is True and shown["dataset"]["synthetic"] is True
+    assert shown["dataset"]["origin"] == {"kind": "template", "template": "dickert-short",
+                                          "name": templates.get("dickert-short").name}
+    monkeypatch.setenv("KAPACITET_DATASET", export)
+    shown = c.get("/api/v1/meta").json()["dataset"]
+    assert shown["imported"] is True and shown["synthetic"] is False and shown["origin"] == {"kind": "csv"}
+    # a record that is gone is an export, never an error of every answer
+    monkeypatch.setenv("KAPACITET_DATASET", "no-such-net")
+    assert ds.current_origin() == {"kind": "csv"}
+
+    folder = tmp_path / "net" / "processed"
+    (folder / "grid").mkdir(parents=True)
+    (folder / "grid" / "summary.json").write_text(json.dumps({"imported": True}), encoding="utf-8")
+    with processed_at(folder):
+        monkeypatch.setenv("KAPACITET_DATASET", example)
+        made_up = main.data_origin()
+        assert not any(s.startswith("LV network topology") for s in made_up["real"])
+        assert any(s.startswith("LV network topology") and "example network" in s for s in made_up["synthetic"])
+        monkeypatch.setenv("KAPACITET_DATASET", export)
+        exported = main.data_origin()
+        assert any(s.startswith("LV network topology") and "operator's export" in s for s in exported["real"])
+        assert not any(s.startswith("LV network topology") for s in exported["synthetic"])
+
+
+def test_the_build_writes_the_two_reports_no_stage_does(tmp_path, monkeypatch):
+    """Operation reads the redispatch report and the fleet's compliance, which no stage of the
+    computation writes: each has its own command, and the screen named it. Typed for an imported
+    network, that command acts on the reference network's folder. The build writes both; the fleet
+    check uses the network's meter readings when it has any, and a labelled synthetic fleet when not."""
+    from kapacitet import datasets as ds
+    from kapacitet import paths
+    from kapacitet.engine import forecast, meter_compliance, redispatch, run
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    ds_id = _dataset(ds)
+    monkeypatch.setattr(paths, "DATA", ds.folder(ds_id))
+    monkeypatch.setattr(paths, "PROCESSED", ds.folder(ds_id) / "processed")
+    calls = []
+    monkeypatch.setattr(run, "compute_all", lambda **kw: calls.append(("compute", kw)))
+    monkeypatch.setattr(forecast, "write", lambda: calls.append(("forecast",)))
+    monkeypatch.setattr(redispatch, "write", lambda: calls.append(("redispatch",)))
+
+    def fleet(root, synthetic=False):
+        calls.append(("fleet", str(root), synthetic))
+        return {"readings": "synthetic"} if synthetic else None           # no readings came with the network
+
+    monkeypatch.setattr(meter_compliance, "build", fleet)
+    monkeypatch.setattr(meter_compliance, "write", lambda report, root: calls.append(("written", report["readings"], str(root))))
+    processed = str(ds.folder(ds_id) / "processed")
+    assert ds._real_steps(ds_id, 2, True)["compute"]() == {}
+    assert calls == [("compute", {"quick": True, "workers": 2}), ("forecast",), ("redispatch",),
+                     ("fleet", processed, False), ("fleet", processed, True), ("written", "synthetic", processed)]
+
+    # readings that came with the network are the ones checked
+    calls.clear()
+    monkeypatch.setattr(meter_compliance, "build", lambda root, synthetic=False: {"readings": "metered"})
+    assert ds._real_steps(ds_id, 2, True)["compute"]() == {}
+    assert calls[-1] == ("written", "metered", processed)
+
+    # a report that cannot be made is said in the step's record, and the build goes on
+    def refuse():
+        raise redispatch.RedispatchError("results/operation/index.json is missing")
+
+    def refuse_fleet(root, synthetic=False):
+        raise meter_compliance.MeterComplianceError("no envelopes")
+
+    monkeypatch.setattr(redispatch, "write", refuse)
+    monkeypatch.setattr(meter_compliance, "build", refuse_fleet)
+    assert ds._real_steps(ds_id, 2, True)["compute"]() == {"not_written": {
+        "redispatch": "results/operation/index.json is missing", "meter_compliance": "no envelopes"}}

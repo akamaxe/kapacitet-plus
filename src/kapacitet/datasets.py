@@ -200,6 +200,25 @@ def restart_soon(delay: float = 0.5) -> None:
 
 # ---------------------------------------------------------------- creating one
 
+def is_synthetic(origin: dict | None) -> bool:
+    """Whether a network is a made-up one: built from an example network, or from a project file
+    that says so of itself. Its coordinates are then a schematic layout, not places."""
+    origin = origin or {}
+    return origin.get("kind") == "template" or origin.get("synthetic") is True
+
+
+def current_origin() -> dict:
+    """Where the network this process runs on came from: {"kind": "reference"} for the reference
+    network, the record's origin for an imported one (an export, when the record says nothing)."""
+    ds_id = current()
+    if ds_id == REFERENCE:
+        return {"kind": "reference"}
+    try:
+        return dict(record(ds_id).get("origin") or {"kind": "csv"})
+    except DatasetError:
+        return {"kind": "csv"}
+
+
 def clean_origin(origin: dict | None) -> dict:
     """Where a network came from, as its record keeps it. A template's facts are the catalogue's,
     never the caller's; a file's name is kept short and on one line."""
@@ -491,11 +510,26 @@ def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
     def do_compute():
         # everything the screens read: capacity, envelopes, risk, the extra stages (operation and
         # protection included) and meta.json
-        from .engine import forecast, run
+        from .engine import forecast, meter_compliance, redispatch, run
 
         run.compute_all(quick=quick, workers=workers)
         forecast.write()          # the forecast ladder the Method screen reads (its own CLI command)
-        return {}
+        # The two reports Operation reads that no stage writes. Each has its own CLI command, which
+        # acts on the data folder it is typed in, so a note telling the reader to run it would send
+        # them to the reference network: they are written here. The fleet check uses the network's
+        # meter readings when it has any, and otherwise a synthetic fleet that says it is one.
+        notes = {}
+        try:
+            redispatch.write()
+        except redispatch.RedispatchError as err:
+            notes["redispatch"] = str(err)
+        try:
+            fleet = meter_compliance.build(PROCESSED) or meter_compliance.build(PROCESSED, synthetic=True)
+            if fleet is not None:
+                meter_compliance.write(fleet, PROCESSED)
+        except meter_compliance.MeterComplianceError as err:
+            notes["meter_compliance"] = str(err)
+        return {"not_written": notes} if notes else {}
 
     return {"import": do_import, "households": do_households, "profiles": do_profiles, "compute": do_compute}
 

@@ -9,6 +9,7 @@ import { useApi } from "../lib/api";
 import { type Tokens } from "../lib/colors";
 import { clock, dateTime, listJoin, monthLong, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
 
 /** One entry of config/assumptions.toml, as /assumptions serves it. */
@@ -466,8 +467,9 @@ export default function Method() {
 }
 
 function HowItWorks({ houses, pool, years }: { houses: number | string; pool: number | string; years: number | string }) {
-  const t = useT();
-  const steps = [1, 2, 3, 4, 5].map((i) => t(`met.step.${i}`, { houses, pool, years }));
+  const pt = useProjectT();
+  // the second step is how the network came to be, which depends on the project
+  const steps = [1, 2, 3, 4, 5].map((i) => pt(`met.step.${i}`, { houses, pool, years }));
   return (
     <ol className="list">
       {steps.map((s) => <li key={s}>{s}</li>)}

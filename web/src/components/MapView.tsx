@@ -86,7 +86,8 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
           }
         : {}),
     });
-    map.addControl(new maplibregl.AttributionControl({
+    // the credit belongs to the basemap: a drawing on an empty ground shows nothing of theirs
+    if (basemap) map.addControl(new maplibregl.AttributionControl({
       compact: true,
       customAttribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors · <a href="https://openfreemap.org">OpenFreeMap</a>',
     }));
@@ -160,4 +161,31 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
 /** Frame a box without undoing the tilt and turn the view was given: a 3D view stays 3D. */
 export function fitTo(map: MLMap, bbox: [number, number, number, number], padding = 40) {
   map.fitBounds([[bbox[0], bbox[1]], [bbox[2], bbox[3]]], { padding, duration: 0, bearing: map.getBearing(), pitch: map.getPitch() });
+}
+
+/** The positions of the houses of a network answer, for keepInView. */
+export function housePoints(features: any[] | undefined): [number, number][] {
+  const out: [number, number][] = [];
+  for (const ft of features ?? []) {
+    const { layer, lon, lat } = ft.properties ?? {};
+    if (layer === "house" && Number.isFinite(lon) && Number.isFinite(lat)) out.push([lon, lat]);
+  }
+  return out;
+}
+
+/**
+ * Step the view out until every point is on the canvas, `margin` pixels inside its edge. A box is
+ * framed as if seen from above, so a tilted view of a long, thin network cuts its ends off. A
+ * network about as wide as it is deep, as the reference one, is inside already or one step from it.
+ */
+export function keepInView(map: MLMap, points: [number, number][], margin = 28, steps = 30) {
+  const box = map.getContainer();
+  const w = box.clientWidth;
+  const h = box.clientHeight;
+  if (!w || !h || !points.length) return;
+  const outside = () => points.some((at) => {
+    const p = map.project(at);
+    return p.x < margin || p.y < margin || p.x > w - margin || p.y > h - margin;
+  });
+  for (let i = 0; i < steps && outside(); i++) map.setZoom(map.getZoom() - 0.1);
 }
