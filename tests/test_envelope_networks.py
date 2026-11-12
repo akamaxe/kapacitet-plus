@@ -104,3 +104,57 @@ def test_the_documents_tables_are_the_summarys():
     for line in m.tables(cases).splitlines():
         if line.startswith("|"):
             assert line in doc, line
+
+
+def test_what_the_document_and_the_readme_say_of_the_result_is_the_summarys():
+    """The sentences under the tables, and the README's paragraph, give ranges over the six cases.
+    Each is computed here again from the committed summary."""
+    if not SUMMARY.exists():
+        return
+    m = _load()
+    cases = json.loads(SUMMARY.read_text(encoding="utf-8"))
+    doc = " ".join(DOC.read_text(encoding="utf-8").split())
+    readme = " ".join((ROOT / "README.md").read_text(encoding="utf-8").split())
+
+    def pct(x: float) -> str:
+        return f"{abs(x):.1f} %"
+
+    def agg(c: dict, basis: str) -> float:
+        return 100.0 * (c[basis]["aggregate"]["kw"] / c["hourly_kw"] - 1.0)
+
+    assert len(cases) == 6 and not any(c["rule"]["passes"] for c in cases)
+    assert "**No case passes.**" in doc and "No case passes." in readme
+    best = [c["rule"]["best_gain_pct"] for c in cases]
+    dayahead = [c["rule"]["bases"]["dayahead"]["gain_pct"] for c in cases]
+    best_agg = [max(agg(c, b) for b in m.BASES) for c in cases]
+    assert max(best) < 0 and max(best_agg) < 0                       # below the hourly study on both budgets
+    assert all(c["rule"]["best_gain_pct"] == c["rule"]["bases"]["intraday_forecast"]["gain_pct"] for c in cases)
+    assert f"between {pct(max(best))} and {pct(min(best))} less than the hourly study" in doc
+    assert f"give between {pct(max(dayahead))} and {pct(min(dayahead))} less" in doc
+    assert f"in all six cases, by {pct(max(best_agg))} to {pct(min(best_agg))}" in doc
+    hours = {c[b][k]["violation_hours"] for c in cases for b in m.BASES for k in ("aggregate", "installation")}
+    assert hours == {0} and "0 hours above a limit" in doc
+    assert all(v == "fail" for c in cases for s in c["scorecard"].values() for v in s.values())
+
+    high = [c for c in cases if c["mv_pu"] == 1.06]
+    low = [c for c in cases if c["mv_pu"] == 1.0]
+    assert len(high) == 3 and all(c["binds"] == {"voltage": 20} for c in high)
+    ceilings = sorted(c["rule"]["ceiling_gain_pct"] for c in high)
+    assert f"{pct(ceilings[0])}, {pct(ceilings[1])} and {pct(ceilings[2])} more than the hourly study" in doc
+    best_high = [c["rule"]["best_gain_pct"] for c in high]
+    assert f"it stays {pct(max(best_high))} to {pct(min(best_high))} below" in doc
+    trafo = sorted(c["rule"]["ceiling_gain_pct"] for c in low if c["binds"] == {"transformer": 20})
+    cable = [c for c in low if c["binds"] == {"cable": 20}]
+    assert len(trafo) == 2 and len(cable) == 1 and not cable[0]["rule"]["room"]
+    assert f"(ceilings of {pct(trafo[0])} and {pct(trafo[1])})" in doc
+    assert f"adds only {pct(cable[0]['rule']['ceiling_gain_pct'])}" in doc
+    room = sorted(c["rule"]["ceiling_gain_pct"] for c in cases if c["rule"]["room"])
+    assert len(room) == 5 and f"{pct(room[0])} to {pct(room[-1])} in the five cases with room" in doc
+    over_static = [100.0 * (c["hourly_kw"] / c["static_kw"] - 1.0) for c in cases]
+    assert f"between {pct(min(over_static))} and {pct(max(over_static))} more than the static study" in doc
+
+    assert f"gives {pct(max(best))} to {pct(min(best))} less than the hourly study" in readme
+    assert f"up to {pct(room[-1])} more where the voltage limits" in readme
+    assert max(high, key=lambda c: c["rule"]["ceiling_gain_pct"])["rule"]["ceiling_gain_pct"] == room[-1]
+    assert f"connects {pct(min(over_static))} to {pct(max(over_static))} more than the static one" in readme
+    assert "Not computed yet." not in doc

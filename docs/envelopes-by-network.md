@@ -91,4 +91,72 @@ $PY tools/envelope_networks.py table <folder>              # the table below, fr
 
 ## Results
 
-Not computed yet.
+Computed on 12 November 2026 from commit `289c8cc`, the one that added the script, with pandapower
+3.5.6: six cases, each over 20 adoption orders and the 11 weather years. The summary the
+tables are made from is [`envelopes-by-network.json`](envelopes-by-network.json). The run was cut
+once, when the machine's session ended, and taken up again: a case's stages are separate files, so
+nothing computed before the cut was computed twice or changed.
+
+Capacity in kW AC with the 3 % budget held per installation (the rule's basis); the last three columns are against the hourly study.
+
+| Network | MV (pu) | Houses | Limit that binds (orders) | Static | Hourly study | Day before | Re-issued, largest change | Re-issued, forecast | Perfect foresight | Best issuable | Ceiling | Rule |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| Dickert, middle feeders | 1.00 | 60 | transformer 20 | 256.4 | 311.5 | 280.9 | 281.7 | 291.7 | 366.2 | -6.3 % | +17.6 % | does not pass |
+| Dickert, middle feeders | 1.06 | 60 | voltage 20 | 156.3 | 199.0 | 179.8 | 179.8 | 186.3 | 266.4 | -6.4 % | +33.9 % | does not pass |
+| Kerber Dorfnetz | 1.00 | 58 | cable 20 | 414.9 | 479.0 | 447.3 | 451.7 | 463.6 | 493.4 | -3.2 % | +3.0 % | does not pass (no room) |
+| Kerber Dorfnetz | 1.06 | 58 | voltage 20 | 158.1 | 196.2 | 176.8 | 177.0 | 187.3 | 247.3 | -4.5 % | +26.0 % | does not pass |
+| Kerber Landnetz, cable | 1.00 | 27 | transformer 20 | 102.7 | 122.8 | 112.9 | 113.6 | 115.5 | 147.5 | -5.9 % | +20.1 % | does not pass |
+| Kerber Landnetz, cable | 1.06 | 27 | voltage 20 | 62.6 | 77.5 | 72.9 | 73.4 | 74.1 | 100.0 | -4.4 % | +29.1 % | does not pass |
+
+The same with the budget held for the installations together (aggregate), the hours above a limit in the replay of every issuable basis (both budgets), and the product's own scorecard.
+
+| Network | MV (pu) | Day before | Re-issued, largest change | Re-issued, forecast | Perfect foresight | Hours above a limit | Scorecard, largest change | Scorecard, forecast |
+|---|---|---|---|---|---|---|---|---|
+| Dickert, middle feeders | 1.00 | 282.9 | 285.5 | 295.7 | 383.1 | 0 | fail / fail | fail / fail |
+| Dickert, middle feeders | 1.06 | 184.9 | 187.7 | 197.9 | 277.7 | 0 | fail / fail | fail / fail |
+| Kerber Dorfnetz | 1.00 | 452.9 | 458.0 | 475.0 | 493.4 | 0 | fail / fail | fail / fail |
+| Kerber Dorfnetz | 1.06 | 182.9 | 187.3 | 193.3 | 263.1 | 0 | fail / fail | fail / fail |
+| Kerber Landnetz, cable | 1.00 | 113.1 | 113.6 | 116.2 | 152.7 | 0 | fail / fail | fail / fail |
+| Kerber Landnetz, cable | 1.06 | 73.4 | 73.6 | 74.5 | 103.9 | 0 | fail / fail | fail / fail |
+
+### The rule, applied
+
+**No case passes.** In all six, what can be issued connects less solar than the hourly study
+without control, not 10 % more:
+
+- With the budget held per installation, the best issuable basis is in every case the re-issue
+  during the day with the quantile forecast, and it gives between 3.2 % and 6.4 % less than
+  the hourly study. The envelopes issued the day before give between 6.0 % and 9.9 % less.
+- Holding the budget for the installations together does not change the sign: the best issuable
+  basis is still below the hourly study in all six cases, by 0.6 % to 5.4 %.
+- Every issuable basis has 0 hours above a limit in the replay of every year. The envelopes are
+  safe; they are smaller than what the hourly study connects without them.
+- The product's own scorecard fails in every case, in both variants and on both budgets.
+
+### Where the voltage limits
+
+The question was whether envelopes win where the voltage, and not the transformer, is what limits.
+At 1.06 pu the voltage binds in all 20 adoption orders of all three networks, and there the room
+exists: with perfect foresight the envelopes would connect 26.0 %, 29.1 % and 33.9 % more than the
+hourly study. What can be issued does not reach it: it stays 4.4 % to 6.4 % below. At 1.00 pu
+the transformer binds in two networks (ceilings of 17.6 % and 20.1 %) and a cable in the third,
+where even perfect foresight adds only 3.0 %: that case had no room to pass.
+
+So the kind of limit is not what decides. In every case the distance between the ceiling and what
+can be issued is the forecast. Our reading: an envelope issued in advance has to hold for the
+sunniest and least loaded hour the planner cannot rule out, and that margin costs more capacity
+than the control gives back.
+
+### What follows
+
+By the rule above, written before the cases were computed, **the envelopes leave the product's
+pitch, and the code stays where it is.** What changes in the demo's screens and texts is a separate
+decision, and it is not made in this document.
+
+The tables also show what does hold in every case: the hourly study itself. Without any control it
+connects between 15.4 % and 27.3 % more than the static study. That figure needs no
+forecast, no agreement and no inverter that obeys a limit.
+
+What the result does not settle: whether a better forecast closes the gap (the ceiling says what
+there is to gain, 17.6 % to 33.9 % in the five cases with room), and what a DSO's own networks
+and measured MV voltage would give. Both need data this repository does not have.

@@ -65,7 +65,9 @@ Changes before 12 November 2026 are only in that history.
 
 - `tools/envelope_networks.py` and `docs/envelopes-by-network.md`: the capacity stages and the
   intraday scorecard on three benchmark networks at two MV voltages, with the decision rule
-  committed before any case was computed.
+  committed before any case was computed. **No case passes it:** what can be issued connects less
+  solar than the hourly study without control in all six, with no hour above a limit. The
+  document has the tables and what follows; the README says it beside the intraday scorecard.
 - `tools/study_scale.py` and `docs/study-scale.md`: a synthetic study of any number of stations and
   the time and disk of each. Run with three stations to see that it works; the measurement of 50
   has not been made, and the page carries no figure until it is.

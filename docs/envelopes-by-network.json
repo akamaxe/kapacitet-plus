@@ -1,0 +1,656 @@
+[
+ {
+  "network": "demo-dickert",
+  "name": "Dickert, middle feeders",
+  "mv_pu": 1.0,
+  "customers": 60,
+  "transformer": "0.25 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "transformer": 20
+  },
+  "static_kw": 256.41999999999996,
+  "hourly_kw": 311.485,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 383.1075
+   },
+   "installation": {
+    "kw": 366.195
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 282.85833333333335,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 280.93416666666667,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 285.5141666666667,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 281.69416666666666,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 295.7116666666667,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 291.7125,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 975.6,
+   "dayahead_s": 699.1,
+   "intraday_s": 2564.0,
+   "binding_s": 75.7
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -9.808123451637584,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -9.564130964037865,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -6.34781771192835,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -6.34781771192835,
+   "ceiling_gain_pct": 17.564248679711692,
+   "room": true,
+   "passes": false
+  }
+ },
+ {
+  "network": "demo-dickert",
+  "name": "Dickert, middle feeders",
+  "mv_pu": 1.06,
+  "customers": 60,
+  "transformer": "0.25 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "voltage": 20
+  },
+  "static_kw": 156.25333333333333,
+  "hourly_kw": 198.96749999999997,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 277.7175
+   },
+   "installation": {
+    "kw": 266.405
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 184.91583333333335,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 179.755,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 187.6525,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 179.755,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 197.85166666666666,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 186.29666666666668,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 1026.9,
+   "dayahead_s": 790.9,
+   "intraday_s": 2756.5,
+   "binding_s": 45.4
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -9.656099614258595,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -9.656099614258595,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -6.368292979171619,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -6.368292979171619,
+   "ceiling_gain_pct": 33.893726362345625,
+   "room": true,
+   "passes": false
+  }
+ },
+ {
+  "network": "demo-dorfnetz",
+  "name": "Kerber Dorfnetz",
+  "mv_pu": 1.0,
+  "customers": 58,
+  "transformer": "0.4 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "cable": 20
+  },
+  "static_kw": 414.92166666666674,
+  "hourly_kw": 478.9675,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 493.41333333333336
+   },
+   "installation": {
+    "kw": 493.41333333333336
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 452.9258333333334,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 447.2841666666667,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 457.9766666666667,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 451.65166666666664,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 474.97166666666664,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 463.58416666666665,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 308.2,
+   "dayahead_s": 1106.9,
+   "intraday_s": 2994.7,
+   "binding_s": 66.8
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -6.614923420343399,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -5.703066144014645,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -3.2117697616922514,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -3.2117697616922514,
+   "ceiling_gain_pct": 3.0160362307115607,
+   "room": false,
+   "passes": false
+  }
+ },
+ {
+  "network": "demo-dorfnetz",
+  "name": "Kerber Dorfnetz",
+  "mv_pu": 1.06,
+  "customers": 58,
+  "transformer": "0.4 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "voltage": 20
+  },
+  "static_kw": 158.10916666666668,
+  "hourly_kw": 196.20416666666665,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 263.05
+   },
+   "installation": {
+    "kw": 247.27
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 182.94833333333335,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 176.79000000000002,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 187.29416666666668,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 176.985,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 193.28333333333336,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 187.29416666666668,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 2027.0,
+   "dayahead_s": 1815.9,
+   "intraday_s": 3726.5,
+   "binding_s": 75.0
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -9.894879908258813,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -9.795493639703523,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -4.541187963218574,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -4.541187963218574,
+   "ceiling_gain_pct": 26.026885259827147,
+   "room": true,
+   "passes": false
+  }
+ },
+ {
+  "network": "demo-landnetz",
+  "name": "Kerber Landnetz, cable",
+  "mv_pu": 1.0,
+  "customers": 27,
+  "transformer": "0.1 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "transformer": 20
+  },
+  "static_kw": 102.67500000000001,
+  "hourly_kw": 122.78083333333335,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 152.6725
+   },
+   "installation": {
+    "kw": 147.47166666666666
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 113.06416666666667,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 112.90583333333333,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 113.63916666666668,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 113.63916666666668,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 116.1825,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 115.48916666666666,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 495.6,
+   "dayahead_s": 378.5,
+   "intraday_s": 1370.8,
+   "binding_s": 29.7
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -8.04278626550019,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -7.44551606181747,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -5.938766229799731,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -5.938766229799731,
+   "ceiling_gain_pct": 20.109680528312634,
+   "room": true,
+   "passes": false
+  }
+ },
+ {
+  "network": "demo-landnetz",
+  "name": "Kerber Landnetz, cable",
+  "mv_pu": 1.06,
+  "customers": 27,
+  "transformer": "0.1 MVA 10/0.4 kV",
+  "orders": 20,
+  "years": [
+   2015,
+   2025
+  ],
+  "quick": false,
+  "binds": {
+   "voltage": 20
+  },
+  "static_kw": 62.554166666666674,
+  "hourly_kw": 77.48583333333333,
+  "perfect_foresight": {
+   "aggregate": {
+    "kw": 103.91833333333332
+   },
+   "installation": {
+    "kw": 100.02083333333334
+   }
+  },
+  "dayahead": {
+   "aggregate": {
+    "kw": 73.4325,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 72.87,
+    "violation_hours": 0
+   }
+  },
+  "intraday_worst_change": {
+   "aggregate": {
+    "kw": 73.56083333333335,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 73.4325,
+    "violation_hours": 0
+   }
+  },
+  "intraday_forecast": {
+   "aggregate": {
+    "kw": 74.45583333333335,
+    "violation_hours": 0
+   },
+   "installation": {
+    "kw": 74.07666666666668,
+    "violation_hours": 0
+   }
+  },
+  "scorecard": {
+   "worst_change": {
+    "aggregate": "fail",
+    "installation": "fail"
+   },
+   "forecast": {
+    "aggregate": "fail",
+    "installation": "fail"
+   }
+  },
+  "seconds": {
+   "capacity_s": 914.3,
+   "dayahead_s": 697.7,
+   "intraday_s": 1918.7,
+   "binding_s": 15.4
+  },
+  "code": {
+   "version": "0.1.0",
+   "commit": "289c8ccc42e687a7c88665f83da909deaa73b533"
+  },
+  "versions": {
+   "kapacitet": "0.1.0",
+   "numpy": "2.4.6",
+   "scipy": "1.18.1",
+   "pandas": "2.3.3",
+   "pandapower": "3.5.6",
+   "cvxpy": "1.9.3",
+   "pvlib": "0.16.1"
+  },
+  "rule": {
+   "gain_threshold_pct": 10.0,
+   "bases": {
+    "dayahead": {
+     "gain_pct": -5.957002893001939,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_worst_change": {
+     "gain_pct": -5.231063742834707,
+     "violation_hours": 0,
+     "passes": false
+    },
+    "intraday_forecast": {
+     "gain_pct": -4.399728982717244,
+     "violation_hours": 0,
+     "passes": false
+    }
+   },
+   "best_gain_pct": -4.399728982717244,
+   "ceiling_gain_pct": 29.082735553810934,
+   "room": true,
+   "passes": false
+  }
+ }
+]

@@ -1245,8 +1245,18 @@ carries 569 kW (−6.6 %). The largest-past-change variant carries 590 kW (−3.
 a limit. Its solar forecast is beaten in 1.01 % of the forecast customer-hours, twice the
 nominal 0.50 %. Re-issuing during the day brings the day-ahead figure back up to the hourly
 study and no further: on this network, what can be issued connects no more solar than an hourly
-study without any control. [docs/envelopes-by-network.md](docs/envelopes-by-network.md) asks the
-same question of three other networks.
+study without any control.
+
+**The same on other networks.** Smedslätten is limited by its transformer and never by its
+voltage, so the question was asked again on three benchmark networks at two MV voltages, where
+the voltage, a cable or the transformer limits. The rule was committed before any case was
+computed: an issuable basis has to give at least 10 % more than the hourly study, with the budget
+per installation and no hour above a limit. No case passes. The best issuable basis gives
+3.2 % to 6.4 % less than the hourly study, although perfect foresight would give up to
+33.9 % more where the voltage limits. By that rule the envelopes leave the product's pitch;
+the hourly study, which connects 15.4 % to 27.3 % more than the static one on those
+networks without any control, is what holds. The method, the tables and what the result does not
+settle are in [docs/envelopes-by-network.md](docs/envelopes-by-network.md).
 
 ## Limitations
 
