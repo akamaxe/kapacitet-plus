@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import math
 import re
 import shutil
 from pathlib import Path
@@ -38,7 +39,7 @@ from pathlib import Path
 from .. import geo, seals
 from ..atomic import write_json_atomic, write_text_atomic
 from . import Study, StudyError, code_version, file_digest
-from . import csvio, disclosure, embed, runs
+from . import csvio, disclosure, embed, runs, validation
 from .config import METHOD_VERSION
 from .review import corrections, load_rows, run_dir
 
@@ -51,10 +52,20 @@ STATION_FILES = ("capacity.json", "peak_check.json", "validation_measured.json")
 TEMPLATE = Path(__file__).with_name("templates") / "grunder_for_berakning.sv.md"
 PLACEHOLDER = re.compile(r"\{\{\s*([a-z_]+)\s*\}\}")
 CAPACITY_COLUMNS = ["status", "quarter", "cell_id", "level", "name", "stations", "customers",
-                    "generation_kw", "generation_limited_by", "consumption_device", "consumption_kw",
-                    "consumption_limited_by", "three_phase_generation_kw", "three_phase_consumption_kw",
+                    "generation_kw", "generation_limited_by", "generation_shared_by_stations",
+                    "consumption_device", "consumption_kw",
+                    "consumption_limited_by", "consumption_shared_by_stations",
+                    "three_phase_generation_kw", "three_phase_consumption_kw",
                     "conditional_generation_kw", "corrected_generation_kw",
-                    "corrected_consumption_kw", "correction_note", "upstream_complete", "finding", "lon", "lat"]
+                    "corrected_consumption_kw", "correction_note", "upstream_complete", "rounded_to_kw",
+                    "finding", "lon", "lat"]
+# every published figure in kW: a small cell's are rounded down together ([disclosure] round_kw)
+KW_COLUMNS = ("generation_kw", "consumption_kw", "three_phase_generation_kw", "three_phase_consumption_kw",
+              "conditional_generation_kw", "corrected_generation_kw", "corrected_consumption_kw")
+# what a station outside the DSO's validation tolerances loses: every figure it would publish
+WITHHELD = ("published_generation_kw", "published_consumption_kw", "published_conditional_generation_kw",
+            "published_three_phase_generation_kw", "published_three_phase_consumption_kw")
+VALIDATION_FINDING = "validation: outside the DSO's tolerances, not published"
 DEVICE_SV = {"ev": "laddbox för elbil", "heat_pump": "värmepump"}
 LEVEL_SV = {"station": "nätstation", "grid": "ruta", "zone": "område", "study": "hela studien"}
 THREE_PHASE_COLUMNS = ("three_phase_generation_kw", "three_phase_consumption_kw")
@@ -157,7 +168,40 @@ def signoff_state(study: Study, q: str, rows: list[dict]) -> dict:
 def _finding(row: dict) -> str | None:
     bad = [f"{side}: {row.get(f'{side}_status') or 'not computed'}" for side in ("generation", "consumption")
            if row.get(f"{side}_status") != "ok"]
+    if row.get("validation_status") == "outside":
+        bad.append(VALIDATION_FINDING)
     return "; ".join(bad) or None
+
+
+def judged(study: Study, rows: list[dict]) -> tuple[list[dict], dict[str, dict]]:
+    """The rows with each station's verdict against the DSO's validation criteria as they stand now
+    (study/validation.py), and the verdicts. A station outside a tolerance keeps its row and loses
+    every figure it would publish: its cell then has none, and says why."""
+    verdicts = {r["station_id"]: validation.of(study, r["station_id"], r.get("customers")) for r in rows}
+    out = []
+    for r in rows:
+        status = verdicts[r["station_id"]]["status"]
+        r = {**r, "validation_status": status}
+        if status == "outside":
+            r.update({k: None for k in WITHHELD})
+        out.append(r)
+    return out, verdicts
+
+
+def _shared(members: list[dict], side: str) -> int | None:
+    """How many stations share the upstream level that caps the cell's figure: the count of the
+    member whose figure is the cell's (the lowest); None when the figure is a station's own."""
+    figures = [(m.get(f"published_{side}_kw"), m.get(f"published_{side}_shared_by")) for m in members]
+    if not figures or any(kw is None for kw, _ in figures):
+        return None
+    return min(figures, key=lambda t: t[0])[1]
+
+
+def round_down(value: float | None, step: float | None) -> float | None:
+    """`value` rounded down to a multiple of `step` (towards minus infinity: never a higher figure)."""
+    if value is None or not step:
+        return value
+    return float(math.floor(float(value) / step + 1e-9) * step)
 
 
 def _cell_finding(members: list[dict]) -> str | None:
@@ -188,6 +232,8 @@ def three_phase_shown(rows: list[dict]) -> bool:
 
 
 def _effective(row: dict, fix: dict, side: str) -> float | None:
+    if row.get("validation_status") == "outside":
+        return None                  # a correction lowers a figure; it never brings a withheld one back
     if side in ("generation", "consumption") and f"{side}_kw" in fix:
         return float(fix[f"{side}_kw"]["value"])
     return row.get(f"published_{side}_kw")
@@ -216,6 +262,8 @@ def cells(study: Study, q: str, rows: list[dict], fixes: dict, result: dict, sta
             "consumption_kw": disclosure.lowest([m.get("published_consumption_kw") for m in members]),
             "generation_limited_by": one.get("published_generation_limited_by") if one else "lowest_of_stations",
             "consumption_limited_by": one.get("published_consumption_limited_by") if one else "lowest_of_stations",
+            "generation_shared_by_stations": _shared(members, "generation"),
+            "consumption_shared_by_stations": _shared(members, "consumption"),
             "consumption_device": study.config.method.consumption_device,
             "corrected_generation_kw": (disclosure.lowest([_effective(m, fixes.get(m["station_id"], {}), "generation")
                                                            for m in members]) if corrected else None),
@@ -233,6 +281,12 @@ def cells(study: Study, q: str, rows: list[dict], fixes: dict, result: dict, sta
             # the same deployments checked with the unbalanced model, where the check publishes a figure
             for side in ("generation", "consumption"):
                 row[f"three_phase_{side}_kw"] = disclosure.lowest([_three_phase(m, side) for m in members])
+        # a small cell's figures are rounded down, so that two publications say less about one household
+        step = study.config.disclosure.step_kw(c["customers"])
+        row["rounded_to_kw"] = step
+        for key in KW_COLUMNS:
+            if key in row:
+                row[key] = round_down(row[key], step)
         out.append(row)
     return out
 
@@ -319,7 +373,10 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
     complete = sum(1 for r in up_rows if r.get("upstream_complete"))
     upstream = ("Nätföretagets uppgifter om ledig kapacitet i matande linjer, fördelningsstationer och "
                 "regionnät tillämpas som tak: det publicerade värdet är det lägsta av stationens eget och "
-                "varje nivås, och en kapacitet som flera stationer delar räknas inte ihop. En nivå utan "
+                "varje nivås, och en kapacitet som flera stationer delar räknas inte ihop. När ett värde "
+                "sätts av en nivå längre upp anger kolumnerna generation_shared_by_stations och "
+                "consumption_shared_by_stations hur många stationer som delar på just den kapaciteten: "
+                "värdena för de stationerna är samma kapacitet och får inte summeras. En nivå utan "
                 f"uppgift redovisas som ej angiven och gissas aldrig. Fullständig kedja: {complete} av "
                 f"{len(up_rows)} beräknade stationer.")
     if not (study.inputs / "upstream.csv").is_file():
@@ -351,6 +408,30 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
                        + (f" (rutor om {cfg.disclosure.grid_m} meter, dubblade, därefter område och hela studien)"
                           if lvl != "zone" else " (till hela studien)")
                        + ". En sammanslagen cell visar det lägsta värdet bland sina stationer, aldrig en summa.")
+    if cfg.disclosure.round_kw > 0 and cfg.disclosure.round_below_customers > 0:
+        disclosure_text += (f" I en cell med färre än {cfg.disclosure.round_below_customers} kunder avrundas varje "
+                            f"värde nedåt till närmaste {sv(cfg.disclosure.round_kw)} kW (kolumnen rounded_to_kw), "
+                            "så att skillnaden mellan två publiceringar säger mindre om ett enskilt hushåll; "
+                            f"värdet 0 betyder där mindre än {sv(cfg.disclosure.round_kw)} kW. "
+                            "Skillnaden mellan två publiceringar kan ändå visa att något har anslutits i cellen.")
+    crit = cfg.validation
+    n_within = sum(1 for r in shown if r.get("validation_status") == "within")
+    n_outside = sum(1 for r in shown if r.get("validation_status") == "outside")
+    n_compared = sum(1 for r in shown if r.get("validation_status") in ("no_criterion", "within", "outside"))
+    if crit.entered:
+        limits = [f"{validation.CRITERION_SV[k]} högst {sv(v, 4)}" for k, v in
+                  (("voltage_p95_pu", crit.voltage_p95_pu), ("transformer_p95_pct", crit.transformer_p95_pct))
+                  if v is not None]
+        if crit.min_metered_share is not None:
+            limits.append(f"{validation.CRITERION_SV['min_metered_share']} minst {sv(100 * crit.min_metered_share, 0)} procent")
+        validation_text = (f"Nätföretaget har angett godkännandekriterier ({crit.source}): {'; '.join(limits)}. "
+                           f"{n_within} av {len(shown)} publicerade stationer är validerade mot mätningar inom dem. "
+                           f"{n_outside} ligger utanför och har därför inget värde i publiceringen. Övriga saknar "
+                           "mätvärden eller har inte jämförts.")
+    else:
+        validation_text = ("Nätföretaget har inte angett några godkännandekriterier för modellen mot mätningar. "
+                           f"{n_compared} av {len(shown)} publicerade stationer har jämförts med mätningar "
+                           "(se valideringsrapporten), men ingen station redovisas som validerad.")
     equipment = ("Befintlig utrustning: de solceller och annan utrustning som nätföretaget har registrerat räknas som "
                  "befintliga i alla timmar." if (study.inputs / "equipment.csv").is_file() else
                  "Befintlig utrustning: nätföretaget har inte lämnat något register över befintlig utrustning, så "
@@ -382,7 +463,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         "load_power_factor": sv(_assumption(study, "load_power_factor")),
         "orders": " eller ".join(str(o) for o in orders) or "–", "percentile": " eller ".join(sv(p) for p in pct),
         "upstream": upstream, "conditional": conditional, "three_phase": three_phase, "corrections": corrections_text,
-        "disclosure": disclosure_text, "overrides": overrides,
+        "disclosure": disclosure_text, "validation": validation_text, "overrides": overrides,
         "equipment": equipment, "load_basis": load_basis,
     }
 
@@ -415,15 +496,25 @@ def validation_report(study: Study, q: str, rows: list[dict], result: dict, stat
            and not s.get("merged") and not s.get("suppressed")]
     own_ids = {r["station_id"] for r in own}
     merged = sum(1 for sid, s in result["stations"].items() if s["cell"] and sid not in own_ids)
-    with_data = 0
+    crit = study.config.validation
+    counts = {s: 0 for s in validation.STATUSES}
     for r in own:
-        path = study.station_dir(r["station_id"]) / "processed" / "results" / "validation_measured.json"
         lines += [f"## {r['station_id']} – {r.get('name') or r['station_id']}", ""]
-        if not path.is_file():
-            lines += ["Ingen validering körd (`kapacitet study validate`).", ""]
+        v = validation.read(study, r["station_id"])
+        verdict = validation.verdict(v, crit, r.get("customers"))
+        counts[verdict["status"]] += 1
+        lines.append(f"- Bedömning: {validation.SV[verdict['status']]}.")
+        for c in verdict["checks"]:
+            how = "högst" if c["criterion"] != "min_metered_share" else "minst"
+            scale, decimals = (100.0, 0) if c["criterion"] == "min_metered_share" else (1.0, 4)
+            value = "mätvärde saknas" if c["value"] is None else sv(c["value"] * scale, decimals)
+            where = f", {validation.BASIS_SV[c['basis']]}" if c["basis"] else ""
+            lines.append(f"- Kriterium, {validation.CRITERION_SV[c['criterion']]}{where}: {value} "
+                         f"({how} {sv(c['limit'] * scale, decimals)}): "
+                         f"{'uppfyllt' if c['ok'] else 'ej bedömt' if c['ok'] is None else 'ej uppfyllt'}.")
+        if v is None:
+            lines += ["- Ingen validering körd (`kapacitet study validate`).", ""]
             continue
-        v = json.loads(path.read_text(encoding="utf-8"))
-        with_data += 1
         m = v.get("measured") or {}
         if m.get("bases"):
             lines.append(f"- Uppmätta timmar: {m.get('hours_complete')}, mätta kunder: {m.get('metered_customers')}, "
@@ -433,7 +524,7 @@ def validation_report(study: Study, q: str, rows: list[dict], result: dict, stat
                 lines.append(f"- Transformatorbelastning ({name}, procentenheter): "
                              f"{_stats(b.get('transformer_pct'), decimals=1)}.")
         else:
-            lines.append(f"- Mätvärden: {m.get('status') or 'inga'}.")
+            lines.append("- Mätvärden: inga.")
         snap = v.get("dppower") or {}
         if snap:
             lines.append(f"- dpPower-ögonblicksbild: {len(snap)} timmar jämförda element för element.")
@@ -444,7 +535,14 @@ def validation_report(study: Study, q: str, rows: list[dict], result: dict, stat
                 if col in cal:
                     lines.append(f"- Statisk {label} (modell minus nätföretaget, kW): {_stats(cal[col], decimals=1)}.")
         lines.append("")
-    lines += ["## Sammanfattning", "", f"- Stationer som redovisas var för sig: {len(own)}, varav validerade: {with_data}.",
+    compared = counts["no_criterion"] + counts["within"] + counts["outside"]
+    lines += ["## Sammanfattning", "", f"- Stationer som redovisas var för sig: {len(own)}.",
+              f"- Jämförda med mätningar: {compared}.",
+              (f"- Validerade, inom nätföretagets toleranser ({crit.source}): {counts['within']}." if crit.entered else
+               "- Validerade: 0. Nätföretaget har inte angett några godkännandekriterier, så ingen station "
+               "redovisas som validerad."),
+              f"- Utanför toleranserna, publiceras inte: {counts['outside']}.",
+              f"- Utan mätvärden eller utan körd validering: {counts['not_measured'] + counts['not_validated']}.",
               f"- Stationer i sammanslagna celler, som inte redovisas var för sig: {merged}.", ""]
     return "\n".join(lines)
 
@@ -460,6 +558,9 @@ def publish(study: Study, q: str) -> dict:
     cfg = study.config
     result = disclosure.assign(rows, cfg.disclosure, study.id, fixes)
     state = signoff_state(study, q, rows)
+    # after the signature's check, which reads the files: a station outside the DSO's validation
+    # tolerances loses its figures here, in every file of the publication
+    rows, verdicts = judged(study, rows)
     status = SIGNED if state["signed"] else DRAFT
     published_at = dt.datetime.now(dt.timezone.utc).date().isoformat()
     folder = run_dir(study, q)
@@ -492,11 +593,17 @@ def publish(study: Study, q: str) -> dict:
         "signoff": ({"by": signoff["by"], "signed_at": signoff["signed_at"], "seal": signoff.get("seal"),
                      "valid": state["signed"], "changed_since": state["changed"]} if signoff else None),
         "disclosure": {"level": result["level"], "min_customers": result["min_customers"], "grid_m": result["grid_m"],
+                       "round_kw": cfg.disclosure.round_kw, "round_below_customers": cfg.disclosure.round_below_customers,
                        "cells": len([c for c in result["cells"].values() if not c["suppressed"]]),
                        "suppressed_cells": len([c for c in result["cells"].values() if c["suppressed"]]),
                        "stations_hidden": sum(1 for s in result["stations"].values() if s["hidden_by"])},
         "conditional_column": bool(cfg.method.approval_reference.strip()),
         "three_phase_columns": three_phase_shown(shown),
+        # the DSO's validation criteria and how many stations stand where against them: counts only,
+        # never which station
+        "validation": {"criteria": cfg.validation.model_dump() if cfg.validation.entered else None,
+                       "stations": {s: sum(1 for v in verdicts.values() if v["status"] == s)
+                                    for s in validation.STATUSES}},
         "corrections": sum(len(v) for v in fixes.values()), "correction_findings": len(findings),
         "outputs": public_outputs(study, q, rows), "files": files,
         "period": {"kind": runs.kind(q), "first_day": runs.period(q)[0].isoformat(),

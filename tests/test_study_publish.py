@@ -314,3 +314,131 @@ def test_a_measured_mv_file_with_a_bom_and_a_decimal_comma_is_read_and_a_naive_t
     bad.write_text("start;vm_pu\n2025-03-30T03:00:00;1,02\n", encoding="utf-8")
     with pytest.raises(ValueError, match="UTC offset"):
         vm.read_mv(bad)
+
+
+# ---------------------------------------------------------------- shared headroom, small cells, validation
+
+def _with(study, old: str, new: str):
+    """The study with one line of its study.toml changed."""
+    text = study.toml.read_text(encoding="utf-8")
+    assert old in text, old
+    study.toml.write_text(text.replace(old, new, 1), encoding="utf-8")
+    return open_study(study.root, allow_git=True)
+
+
+def _table(study) -> dict:
+    return {r["cell_id"]: r for r in rows_of(publish(study, Q2)["folder"] / "capacity.machine.csv")}
+
+
+def test_a_headroom_two_stations_share_is_published_with_how_many_share_it(study):
+    """Two stations under one feeder each show its 100 kW: the count says it is the same 100."""
+    study.inputs.mkdir(parents=True, exist_ok=True)
+    (study.inputs / "stations.csv").write_text("station_id,feeder_id\nS1,FS1\nS4,FS1\n", encoding="utf-8")
+    (study.inputs / "upstream.csv").write_text(
+        "level,id,parent_id,gen_headroom_kw,load_headroom_kw,source,as_of\n"
+        "feeder,FS1,,100,,planning 2026,2026-11-01\n", encoding="utf-8")
+    collect.collect(study, Q2)
+    by = {r["station_id"]: r for r in review(study, Q2)["rows"]}
+    assert by["S1"]["published_generation_shared_by"] == 2 and by["S1"]["published_consumption_shared_by"] is None
+    out = publish(study, Q2)
+    rows = {r["cell_id"]: r for r in rows_of(out["folder"] / "capacity.machine.csv")}
+    for sid in ("S1", "S4"):
+        assert float(rows[sid]["generation_kw"]) == 100.0 and rows[sid]["generation_limited_by"] == "feeder:FS1"
+        assert int(rows[sid]["generation_shared_by_stations"]) == 2
+        assert not rows[sid]["consumption_shared_by_stations"]          # its own figure: nobody shares it
+    text = (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "generation_shared_by_stations" in text and "får inte summeras" in text
+    gj = json.loads((out["folder"] / "capacity.geojson").read_text(encoding="utf-8"))
+    shared = {f["properties"]["cell_id"]: f["properties"]["generation_shared_by_stations"] for f in gj["features"]}
+    assert shared["S1"] == 2 and shared["S4"] == 2
+
+
+def test_a_small_cells_figures_are_rounded_down_and_the_dso_sets_the_step(tmp_path):
+    from kapacitet.study.publish import round_down
+
+    assert round_down(127.4, 10.0) == 120.0 and round_down(120.0, 10.0) == 120.0 and round_down(9.9, 10.0) == 0.0
+    assert round_down(-15.0, 10.0) == -20.0                      # down, never towards a higher figure
+    assert round_down(None, 10.0) is None and round_down(127.4, None) == 127.4
+    s = init_study(tmp_path / "nb", "Testnät AB", allow_git=True)
+    put(s, "A", 12, 17.955, 59.335, 127.4, 83.9)                 # under 20 customers: a small cell
+    put(s, "B", 25, 17.640, 59.860, 127.4, 83.9)
+    collect.collect(s, Q2)
+    out = publish(s, Q2)
+    rows = {r["cell_id"]: r for r in rows_of(out["folder"] / "capacity.machine.csv")}
+    assert (float(rows["A"]["generation_kw"]), float(rows["A"]["consumption_kw"])) == (120.0, 80.0)
+    assert float(rows["A"]["rounded_to_kw"]) == 10.0
+    assert (float(rows["B"]["generation_kw"]), float(rows["B"]["consumption_kw"])) == (127.4, 83.9)
+    assert not rows["B"]["rounded_to_kw"]
+    text = (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "färre än 20 kunder avrundas varje värde nedåt till närmaste 10 kW" in text and "rounded_to_kw" in text
+    manifest = json.loads((out["folder"] / "manifest.json").read_text(encoding="utf-8"))
+    assert (manifest["disclosure"]["round_kw"], manifest["disclosure"]["round_below_customers"]) == (10.0, 20)
+    # the DSO's own step, and none at all
+    rows = _table(_with(s, "round_kw = 10.0", "round_kw = 25.0"))
+    assert (float(rows["A"]["generation_kw"]), float(rows["A"]["consumption_kw"])) == (125.0, 75.0)
+    off = _with(s, "round_kw = 25.0", "round_kw = 0.0")
+    rows = _table(off)
+    assert float(rows["A"]["generation_kw"]) == 127.4 and not rows["A"]["rounded_to_kw"]
+    assert "avrundas" not in (off.runs / Q2 / "publication" / "grunder_for_berakning.md").read_text(encoding="utf-8")
+
+
+def _compared(study, sid: str, voltage_p95: float | None) -> None:
+    """A validation_measured.json: a replay at the measured MV voltage, or one without readings."""
+    block = lambda p95: {"n": 500, "bias": 0.001, "mae": p95 / 2, "rmse": p95 / 2, "p95": p95, "max": p95 * 1.5}  # noqa: E731
+    doc = ({"measured": {"status": "no meter readings"}} if voltage_p95 is None else
+           {"measured": {"hours_complete": 500, "mv": "measured", "metered_customers": 30,
+                         "bases": {"measured": {"hours": 500, "nonconverged_hours": 0, "voltage_pu": block(voltage_p95),
+                                                "transformer_pct": block(2.0)}}}})
+    path = study.station_dir(sid) / "processed" / "results" / "validation_measured.json"
+    path.write_text(json.dumps(doc), encoding="utf-8")
+
+
+def test_a_station_outside_the_dsos_tolerance_is_not_published_and_only_one_inside_is_validated(study):
+    study = _with(study, "[validation]\n", '[validation]\nvoltage_p95_pu = 0.005\nsource = "valideringsbeslut 2026-11"\n')
+    _compared(study, "S1", 0.012)                # outside the tolerance
+    _compared(study, "S4", 0.003)                # inside it
+    collect.collect(study, Q2)
+    (study.runs / Q2 / "corrections.csv").write_text(
+        "station_id;field;value;reason;by\nS1;generation_kw;50;known weak joint;reviewer\n", encoding="utf-8")
+    by = {r["station_id"]: r for r in review(study, Q2)["rows"]}
+    assert by["S1"]["validation_status"] == "outside" and "validation_outside" in by["S1"]["flags"]
+    assert by["S4"]["validation_status"] == "within" and by["S2"]["validation_status"] == "not_validated"
+    out = publish(study, Q2)
+    rows = {r["cell_id"]: r for r in rows_of(out["folder"] / "capacity.machine.csv")}
+    assert not rows["S1"]["generation_kw"] and not rows["S1"]["consumption_kw"]
+    assert not rows["S1"]["corrected_generation_kw"]             # a correction never brings it back
+    assert "validation: outside the DSO's tolerances" in rows["S1"]["finding"]
+    assert float(rows["S4"]["generation_kw"]) == 200.0 and not rows["S4"]["finding"]
+    report = (out["folder"] / "validation_report.sv.md").read_text(encoding="utf-8")
+    assert "Bedömning: utanför nätföretagets toleranser, publiceras inte." in report
+    assert "Bedömning: validerad: inom nätföretagets toleranser." in report
+    assert "0,012 (högst 0,005): ej uppfyllt." in report and "0,003 (högst 0,005): uppfyllt." in report
+    assert "Validerade, inom nätföretagets toleranser (valideringsbeslut 2026-11): 1." in report
+    assert "Utanför toleranserna, publiceras inte: 1." in report
+    manifest = json.loads((out["folder"] / "manifest.json").read_text(encoding="utf-8"))
+    counts = manifest["validation"]["stations"]
+    assert (counts["within"], counts["outside"], counts["not_validated"]) == (1, 1, 2)
+    assert manifest["validation"]["criteria"]["voltage_p95_pu"] == 0.005
+    assert "S1" not in json.dumps(manifest["validation"])        # counts, never which station
+    text = (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "1 av 4 publicerade stationer är validerade mot mätningar inom dem" in text
+    # the tolerance is the DSO's: widened, the same comparison is inside it and the figure is back
+    wider = _with(study, "voltage_p95_pu = 0.005", "voltage_p95_pu = 0.02")
+    assert float(_table(wider)["S1"]["generation_kw"]) == 120.0
+
+
+def test_a_comparison_without_criteria_or_without_readings_is_never_called_validated(study):
+    """The report used to count every station with the file as validated, readings or not."""
+    _compared(study, "S1", None)                 # `study validate` ran, and the station has no readings
+    _compared(study, "S4", 0.003)
+    collect.collect(study, Q2)
+    out = publish(study, Q2)
+    report = (out["folder"] / "validation_report.sv.md").read_text(encoding="utf-8")
+    assert "Bedömning: mätvärden saknas." in report and "Mätvärden: inga." in report
+    assert "Bedömning: jämförd med mätningar, inget godkännandekriterium angivet." in report
+    assert "Jämförda med mätningar: 1." in report and "Validerade: 0." in report
+    assert "varav validerade" not in report and "no meter readings" not in report
+    rows = {r["cell_id"]: r for r in rows_of(out["folder"] / "capacity.machine.csv")}
+    assert float(rows["S1"]["generation_kw"]) == 120.0           # nothing is withheld without a criterion
+    text = (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "ingen station redovisas som validerad" in text and "1 av 4 publicerade stationer har jämförts" in text

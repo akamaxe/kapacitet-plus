@@ -10,7 +10,9 @@ schema and written by DuckDB (beside, then moved in), so a reader never sees hal
 
 Beside it, runs/<run>/inputs.json keeps what each station's figures were computed from (the input
 digests its build recorded, and the upstream.csv the caps came from), so `study diff` can say why a
-figure changed between two runs. Each row also carries the station's position (its
+figure changed between two runs. Each row also carries how many stations share the upstream
+level that caps a figure, the station's verdict against the DSO's validation criteria
+(study/validation.py), the station's position (its
 transformer's busbar, WGS84) and the DSO's zone from inputs/stations.csv, which the disclosure of
 a publication groups by, and the envelope (conditional) capacity when the method is approved and
 its envelopes verified, capped by the same upstream chain. The three-phase figures (capacity.json's
@@ -26,6 +28,7 @@ import os
 from . import Study, StudyError
 from . import runs as runs_mod
 from . import upstream as up_mod
+from . import validation
 
 QUARTER = runs_mod.QUARTER
 FIELDS = (
@@ -40,8 +43,11 @@ FIELDS = (
     ("worst_generation_kw", "float64"), ("worst_generation_customer", "string"),
     ("worst_consumption_kw", "float64"), ("worst_consumption_customer", "string"),
     ("published_generation_kw", "float64"), ("published_generation_limited_by", "string"),
+    ("published_generation_shared_by", "int64"),
     ("published_consumption_kw", "float64"), ("published_consumption_limited_by", "string"),
-    ("upstream_complete", "bool_"), ("full_year_violations", "int64"), ("nonconverged_hours", "int64"),
+    ("published_consumption_shared_by", "int64"),
+    ("upstream_complete", "bool_"), ("validation_status", "string"),
+    ("full_year_violations", "int64"), ("nonconverged_hours", "int64"),
     ("conditional_generation_status", "string"), ("conditional_generation_kw", "float64"),
     ("published_conditional_generation_kw", "float64"), ("approval_reference", "string"),
     ("three_phase_status", "string"), ("three_phase_known_share", "float64"),
@@ -100,6 +106,8 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
                 customers=(rec.get("summary") or {}).get("customers"),
                 zone=(up["stations"].get(sid) or {}).get("zone"))
     base["lon"], base["lat"] = position(study, sid)
+    # against the DSO's criteria as they stand now (study/validation.py); `study publish` asks again
+    base["validation_status"] = validation.of(study, sid, base["customers"])["status"]
     if not path.is_file():
         return base, None
     cap = json.loads(path.read_text(encoding="utf-8"))
@@ -121,7 +129,9 @@ def row(study: Study, sid: str, up: dict) -> tuple[dict, dict | None]:
         worst_consumption_kw=(worst.get("consumption") or {}).get("kw"),
         worst_consumption_customer=(worst.get("consumption") or {}).get("customer_id"),
         published_generation_kw=pg["kw"], published_generation_limited_by=pg["limited_by"],
+        published_generation_shared_by=pg.get("shared_by_stations"),
         published_consumption_kw=pc["kw"], published_consumption_limited_by=pc["limited_by"],
+        published_consumption_shared_by=pc.get("shared_by_stations"),
         upstream_complete=bool(pg.get("complete")) and bool(pc.get("complete")),
         full_year_violations=(cap.get("verification") or {}).get("full_year_violations"),
         nonconverged_hours=(cap.get("verification") or {}).get("nonconverged_hours"),

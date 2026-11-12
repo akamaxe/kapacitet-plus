@@ -26,8 +26,10 @@ from kapacitet.study.review import review
 Q3, Q4, NOV = "2026Q3", "2026Q4", "2026-11"
 SIGNER = "Anna Exempel, nätchef"
 # the demo's three stations, with the figures a build would have written
+# (dorfnetz has 22 customers here: under 20 its figures would be rounded down to whole tens,
+# [disclosure] round_kw, and the page would have no decimal to format)
 FIGURES = {"demo-dickert": (40, 0.000, 0.000, 120.0, 80.0), "demo-landnetz": (30, 0.012, 0.004, 64.5, None),
-           "demo-dorfnetz": (12, -0.006, 0.010, 7.5, 31.0)}
+           "demo-dorfnetz": (22, -0.006, 0.010, 7.5, 31.0)}
 
 
 def capacity(sid: str, gen: float | None, cons: float | None) -> dict:

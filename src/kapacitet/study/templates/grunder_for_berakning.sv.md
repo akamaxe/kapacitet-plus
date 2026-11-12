@@ -69,6 +69,10 @@ timmar, aldrig som noll.
 
 {{conditional}}
 
+## Validering mot mätningar
+
+{{validation}}
+
 ## Granskning och korrigeringar
 
 {{corrections}}

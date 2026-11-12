@@ -10,7 +10,9 @@ published once they are applied.
 
 A station's chain is its feeder and every parent above it. The headroom of a node is shared by every
 station under it (`shared_by`), so it is not added up: the published value of a station is the
-minimum of its own capacity and each level's headroom, with the level that set it (`limited_by`).
+minimum of its own capacity and each level's headroom, with the level that set it (`limited_by`)
+and how many stations, this one included, stand under that level (`shared_by_stations`): two
+stations under a feeder with 150 kW left each show 150 kW, and the count says it is the same 150.
 A blank headroom is "not entered" and never guessed: the level is listed as such, takes no part in
 the minimum, and the published figure says the chain is incomplete. A station without a feeder, or
 a parent that is not in the file, is a finding of the chain.
@@ -125,13 +127,14 @@ def apply(up: dict, sid: str, generation_kw: float | None, consumption_kw: float
         col = SIDES[side]
         not_entered = [f"{n['level']}:{n['id']}" for n in nodes if n[col] is None]
         if own is None:
-            published[side] = {"kw": None, "limited_by": "finding", "not_entered": not_entered}
+            published[side] = {"kw": None, "limited_by": "finding", "shared_by_stations": None,
+                               "not_entered": not_entered}
             continue
-        kw, by = float(own), "station"
-        for n in nodes:
+        kw, by, shared = float(own), "station", None
+        for n, item in zip(nodes, listed):
             if n[col] is not None and n[col] < kw:
-                kw, by = float(n[col]), f"{n['level']}:{n['id']}"
+                kw, by, shared = float(n[col]), f"{n['level']}:{n['id']}", len(item["shared_by"])
         # complete: a chain was entered, with every level's headroom and no finding in it
-        published[side] = {"kw": kw, "limited_by": by, "not_entered": not_entered,
+        published[side] = {"kw": kw, "limited_by": by, "shared_by_stations": shared, "not_entered": not_entered,
                            "complete": bool(nodes) and not not_entered and not findings}
     return upstream, published

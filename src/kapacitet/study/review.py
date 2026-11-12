@@ -34,9 +34,11 @@ CORRECTION_COLUMNS = ("station_id", "field", "value", "reason", "by")
 TRUE = ("1", "true", "yes", "ja", "x", "sant")
 COLUMNS = [
     "station_id", "name", "status", "customers", "hidden", "margin_kw", "flags",
-    "generation_status", "published_generation_kw", "published_generation_limited_by", "generation_limit",
+    "generation_status", "published_generation_kw", "published_generation_limited_by",
+    "published_generation_shared_by", "generation_limit",
     "binding_mv_pu", "consumption_device", "consumption_status", "published_consumption_kw",
-    "published_consumption_limited_by", "consumption_limit", "upstream_complete",
+    "published_consumption_limited_by", "published_consumption_shared_by", "consumption_limit",
+    "upstream_complete", "validation_status",
     "worst_generation_kw", "worst_consumption_kw",
     "generation_baseline_violation_hours", "consumption_baseline_violation_hours",
     "full_year_violations", "nonconverged_hours", "conditional_generation_status",
@@ -79,6 +81,8 @@ def flags(row: dict, pinned: str) -> list[str]:
             out.append(f"{side}_baseline_violation")
     if row.get("generation_status") is not None and not row.get("upstream_complete"):
         out.append("upstream_incomplete")
+    if row.get("validation_status") == "outside":
+        out.append("validation_outside")
     if row.get("full_year_violations"):
         out.append("violations")
     if row.get("nonconverged_hours"):

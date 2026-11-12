@@ -8,13 +8,25 @@ writes `runs/<run>/publication/` (a run is a quarter such as `2026Q4` or a month
 | `capacity.csv`, `capacity.machine.csv` | one row per published cell, in the `[output]` dialect and in RFC 4180 |
 | `capacity.geojson` | the same cells on the map, WGS84 |
 | `grunder_for_berakning.md` | the basis of calculation, in Swedish, every value from the data |
-| `validation_report.sv.md` | the model against the DSO's measurements |
+| `validation_report.sv.md` | the model against the DSO's measurements, and each station's verdict against the DSO's own criteria (`[validation]`): one outside them is not published |
 | `embed/index.html`, `embed/embed.js`, `embed/embed.css` | the embeddable map |
 | `manifest.json` | what was published, from what, each file's sha256, the sign-off and its public key |
 
 `runs/<run>/disclosure_report.csv`, which says which station is in which cell, stays beside the
 folder and is never published. Every file of a publication that is not signed, or that changed
 after it was signed, says UTKAST.
+
+## What a publication can still give away
+
+A cell holds at least `min_customers` customers, and a small cell's figures are rounded down
+(`[disclosure] round_kw`, `round_below_customers`; the row's `rounded_to_kw` says to what). Neither
+hides a change. Publications are public and follow one another, so anyone can subtract one from
+the next: when a cell's figure drops, something was connected there since the last run, and in a
+cell of a few houses the neighbours may know which. Rounding makes that difference coarser (a
+connection smaller than the step often leaves the figure where it was), and merging cells makes it
+less attributable; neither removes it. A DSO that cannot accept it publishes at a coarser level
+(`level = "grid"` or `"zone"`), with a higher `min_customers`, or less often. The defaults here are
+this project's, not the result of a disclosure analysis of any DSO's network.
 
 ## The embeddable map
 

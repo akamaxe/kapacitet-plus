@@ -381,16 +381,20 @@ def test_the_published_value_is_the_minimum_over_the_levels_and_a_blank_is_not_e
     chain, published = upstream.apply(up, "A", 120.0, 25.0)
     assert [n["id"] for n in chain["chain"]] == ["F1", "S1", "R1"]
     assert chain["chain"][0]["shared_by"] == ["A", "B"] and not chain["hidden"]
-    assert published["generation"] == {"kw": 80.5, "limited_by": "feeder:F1", "not_entered": ["regional:R1"],
-                                       "complete": False}
+    # the feeder's headroom caps it, and two stations stand under that feeder (B, hidden, counts too)
+    assert published["generation"] == {"kw": 80.5, "limited_by": "feeder:F1", "shared_by_stations": 2,
+                                       "not_entered": ["regional:R1"], "complete": False}
     assert published["consumption"]["kw"] == 25.0 and published["consumption"]["limited_by"] == "station"
+    assert published["consumption"]["shared_by_stations"] is None           # its own figure: nobody shares it
     assert published["consumption"]["not_entered"] == ["feeder:F1", "regional:R1"]
     _, p = upstream.apply(up, "A", 30.0, 60.0)
     assert p["generation"]["limited_by"] == "station" and p["consumption"] == {
-        "kw": 40.0, "limited_by": "substation:S1", "not_entered": ["feeder:F1", "regional:R1"], "complete": False}
+        "kw": 40.0, "limited_by": "substation:S1", "shared_by_stations": 2,
+        "not_entered": ["feeder:F1", "regional:R1"], "complete": False}
     # a finding of the station stays a finding: no kW is made up for it
     _, p = upstream.apply(up, "A", None, 10.0)
     assert p["generation"]["kw"] is None and p["generation"]["limited_by"] == "finding"
+    assert p["generation"]["shared_by_stations"] is None
     assert upstream.apply(up, "B", 1.0, 1.0)[0]["hidden"]
     c, _ = upstream.apply(up, "C", 1.0, 1.0)
     assert c["chain"] == [] and "no feeder_id" in c["findings"][0]

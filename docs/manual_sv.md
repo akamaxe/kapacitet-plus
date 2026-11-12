@@ -170,6 +170,23 @@ GeoJSON, beräkningsgrunderna, valideringsrapporten, manifestet och kartan för 
 `disclosure_report.csv`, som säger vilken nätstation som ligger i vilken cell, stannar bredvid
 mappen och publiceras aldrig.
 
+**Små celler.** I en cell med färre än 20 kunder avrundas varje värde nedåt till närmaste 10 kW
+(`[disclosure] round_kw` och `round_below_customers` i `study.toml`). Det gör skillnaden mellan två
+publiceringar grövre, men tar inte bort den: sjunker värdet i en liten cell har något anslutits där.
+Värdena 10 kW och 20 kunder är programmets förval, inte en sekretessbedömning av ert nät.
+
+**Delad kapacitet längre upp.** Sätts ett värde av en nivå längre upp i nätet (`upstream.csv`)
+anger kolumnerna `generation_shared_by_stations` och `consumption_shared_by_stations` hur många
+nätstationer som delar på den kapaciteten. Värdena för de stationerna är samma kapacitet och får
+inte summeras.
+
+**Validering mot mätningar.** `study validate` jämför modellen med era mätningar men avgör
+ingenting. Vad som är godkänt bestämmer ni själva i `[validation]` i `study.toml`: största
+avvikelse för kundspänningen och för transformatorns belastning (95:e percentilen) och minsta andel
+kunder med mätvärden, med källa. Utan sådana kriterier redovisas ingen nätstation som validerad.
+Med dem publiceras en nätstation som ligger utanför inte alls: cellen saknar värde och fyndet
+anger varför.
+
 **Kartan på er webbplats.** Kopiera hela mappen `publication/` till webbplatsen och bädda in
 `embed/index.html` i en iframe. Kartan behöver inget bibliotek och hämtar inget utanför sin mapp,
 om inte studien anger en bakgrundskarta.

@@ -664,6 +664,12 @@ def validate(study: Study, sid: str) -> dict:
         out["calibrate_static"] = vm.calibrate_static(dso, hosting.nodal_pv_hc(get_model(vm_slack=band[1])),
                                                       hosting.nodal_import_hc(get_model(vm_slack=band[0]), hp, ev))
         out["calibrate_static"]["mv_pu"] = {"gen_kw": band[1], "load_kw": band[0]}
+    # what the comparison says against the DSO's criteria as they stand today; a publication reads
+    # the criteria again (study/validation.py), so a tolerance changed later needs no new replay
+    from . import validation as criteria
+
+    out["verdict"] = {**criteria.verdict(out, cfg.validation, int(m.C)),
+                      "criteria": cfg.validation.model_dump() if cfg.validation.entered else None}
     write_json_atomic(paths.PROCESSED / "results" / "validation_measured.json", out, default=run._default)
     return out
 

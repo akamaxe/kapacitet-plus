@@ -14,7 +14,14 @@ an unknown section or key is an error rather than a setting silently ignored. Th
                    it no envelope capacity is published)
     [mv]           band_low_pu, band_high_pu, source: generation is computed at the high end and
                    consumption at the low end
-    [disclosure]   level = "station" | "grid" | "zone", grid_m, min_customers = 5, hidden stations
+    [disclosure]   level = "station" | "grid" | "zone", grid_m, min_customers = 5, hidden stations,
+                   round_kw and round_below_customers: the figures of a cell with fewer customers than
+                   that are rounded down to a multiple of round_kw, so that two successive
+                   publications say less about one household (0 turns it off)
+    [validation]   the DSO's acceptance criteria for a station's model against its measurements
+                   (study/validation.py): voltage_p95_pu, transformer_p95_pct, min_metered_share and
+                   source. Without one, a station is compared with its measurements and never called
+                   validated; with them, a station outside a tolerance is not published
     [cases]        processing_days, protection = "dppower" | "kapacitet"
     [output]       csv_dialect = "sv-excel" (beside the machine copy, always written), retention_days
     [costs]        the DSO's own contract prices for `study options`: transformer_swap_sek by the new
@@ -143,6 +150,42 @@ class Disclosure(_Section):
     grid_m: int = Field(1000, gt=0)
     min_customers: int = Field(5, ge=1)
     hidden: list[str] = Field(default_factory=list)
+    # The figures of a cell with fewer than round_below_customers customers are rounded down to a
+    # multiple of round_kw (study/publish.py): k customers per cell says nothing about what two
+    # successive publications show together, and in a small cell a figure that drops can point at
+    # the one household that connected. Both values are the team's default, to be set with the
+    # DSO's own disclosure analysis; round_kw = 0 turns the rounding off.
+    round_kw: float = Field(10.0, ge=0.0)
+    round_below_customers: int = Field(20, ge=0)
+
+    def step_kw(self, customers: int | None) -> float | None:
+        """The step a cell of `customers` customers is rounded down to, or None when it is not."""
+        if self.round_kw <= 0 or customers is None or int(customers) >= self.round_below_customers:
+            return None
+        return float(self.round_kw)
+
+
+class Validation(_Section):
+    """The DSO's acceptance criteria for a station's model against its own measurements. Each is
+    the DSO's to set: none has a default, and without any a station is never called validated."""
+    # the 95th percentile of |model - measured| over the metered customers' voltages (pu), replayed
+    # at the measured MV voltage
+    voltage_p95_pu: float | None = Field(None, gt=0.0, le=0.5)
+    # the same for the transformer's loading, in percentage points
+    transformer_p95_pct: float | None = Field(None, gt=0.0, le=200.0)
+    # the least share of the station's customers that must have meter readings
+    min_metered_share: float | None = Field(None, gt=0.0, le=1.0)
+    source: str = ""
+
+    @property
+    def entered(self) -> bool:
+        return any(v is not None for v in (self.voltage_p95_pu, self.transformer_p95_pct, self.min_metered_share))
+
+    @model_validator(mode="after")
+    def _sourced(self):
+        if self.entered and not self.source.strip():
+            raise ValueError("[validation] a tolerance needs its source (who set it, and when)")
+        return self
 
 
 class Cases(_Section):
@@ -267,6 +310,7 @@ class StudyConfig(_Section):
     method: Method = Field(default_factory=Method)
     mv: Mv = Field(default_factory=Mv)
     disclosure: Disclosure = Field(default_factory=Disclosure)
+    validation: Validation = Field(default_factory=Validation)
     cases: Cases = Field(default_factory=Cases)
     output: Output = Field(default_factory=Output)
     costs: Costs = Field(default_factory=Costs)
@@ -424,6 +468,19 @@ def template(name: str = "", site: dict | None = None) -> str:
         "grid_m = 1000",
         "min_customers = 5               # cells with fewer customers are merged upward",
         "hidden = []                     # station ids never published",
+        "round_kw = 10.0                 # the figures of a cell with fewer than round_below_customers",
+        "round_below_customers = 20      # customers are rounded down to a multiple of round_kw (0: off).",
+        "                                # The team's default: set both with your own disclosure analysis",
+        "",
+        "[validation]",
+        "# Your own acceptance criteria for a station's model against its measurements (`study",
+        "# validate`). None has a default: without one a station is compared and reported, never called",
+        "# validated; with them, a station outside a tolerance is not published. The figures below only",
+        "# show the form.",
+        "# voltage_p95_pu = 0.01          # p95 of |model - measured| customer voltage, at the measured MV",
+        "# transformer_p95_pct = 5.0      # the same for the transformer's loading, in percentage points",
+        "# min_metered_share = 0.8        # the least share of the station's customers with readings",
+        '# source = "who set them, and when"',
         "",
         "[cases]",
         "# processing_days = 30",

@@ -53,7 +53,7 @@ wired in another order matters where `equipment.csv` gives the customer a single
 
 | file | columns | read by |
 | --- | --- | --- |
-| `upstream.csv` | `level` (`feeder`, `substation` or `regional`), `id`, `parent_id` (a feeder's is a substation, a substation's a regional grid), `gen_headroom_kw`, `load_headroom_kw`, `source`, `as_of`: one row per node above the stations. A station's published value is the lowest of its own capacity and each level's headroom (`limited_by`); a headroom several stations share is not added up (`shared_by`); a blank headroom is "not entered", never guessed, and the chain is then marked incomplete | `study collect` |
+| `upstream.csv` | `level` (`feeder`, `substation` or `regional`), `id`, `parent_id` (a feeder's is a substation, a substation's a regional grid), `gen_headroom_kw`, `load_headroom_kw`, `source`, `as_of`: one row per node above the stations. A station's published value is the lowest of its own capacity and each level's headroom (`limited_by`); a headroom several stations share is not added up (`shared_by`), and a figure capped by one says how many stations stand under that level, this one included (`generation_shared_by_stations` and `consumption_shared_by_stations` in the publication): two stations under a feeder with 150 kW left each show 150 kW, and the count says it is the same 150; a blank headroom is "not entered", never guessed, and the chain is then marked incomplete | `study collect` |
 
 The upstream caps apply after the computation, so a change of `upstream.csv` or `stations.csv`
 builds no station again: `study collect` applies the current files.
@@ -68,7 +68,7 @@ sit side by side, ordered by the start of their period and then its end, and the
 | step | files |
 | --- | --- |
 | `study collect --run 2026Q4` (or `--run 2026-11`) | `stations.parquet` (one row per station, the upstream caps applied), `inputs.json` (what each station's figures were computed from: the digests of its inputs, the upstream file, the method and the code) |
-| `study review` | `review.csv` and `review.machine.csv`: the stations with the least margin first (the smaller published figure; a station without one comes first), with `flags` saying what to look at |
+| `study review` | `review.csv` and `review.machine.csv`: the stations with the least margin first (the smaller published figure; a station without one comes first), with `flags` saying what to look at (`validation_outside` among them: the station will not be published) and each station's `validation_status` |
 | the reviewer | `corrections.csv`: `station_id`, `field`, `value`, `reason`, `by`. A correction is an overlay shown beside the computed value, never in its place, and can only make a figure more cautious: `generation_kw` or `consumption_kw` lowered, `hidden` set to true, or a `note`. One that cannot apply is listed and not applied |
 | `study sign --by "name, role"` | `signoff.json`: the sha256 of `study.toml`, the run's files and every station's results, sealed as a `publication` in the study's own chain (`evidence/seals.jsonl`), signed with the installation's key (`evidence/seal_key.pub`; `kapacitet seals verify <study>/evidence`) |
 | `study publish` | `publication/`: `capacity.csv` (the `[output]` dialect) and `capacity.machine.csv` (RFC 4180), `capacity.geojson`, `grunder_for_berakning.md`, `validation_report.sv.md`, `manifest.json` (each file's sha256 and the sign-off), and `embed/`, the embeddable map (`index.html`, `embed.js`, `embed.css`; [publication.md](publication.md)); `disclosure_report.csv` beside it, which says which station is in which cell and is never published |
@@ -85,6 +85,26 @@ of `grid_m`, or `zone`) and `min_customers` (k, 5 by default). A cell with fewer
 is merged upward (the station, then its square, doubled up to 64 × `grid_m`, then its zone, then
 the whole study) until it holds k; one that cannot is not published. A merged cell shows the lowest
 figure of its stations, never a sum. Hidden stations are left out and never count towards k.
+
+k customers per cell says nothing about two publications read together: in a small cell a figure
+that drops between two runs can point at the one household that connected something. So the
+figures of a cell with fewer than `round_below_customers` customers (20) are rounded down to a
+multiple of `round_kw` (10 kW), and the row says so (`rounded_to_kw`): a figure of 0 there means
+less than one step, not that nothing fits. Both values are this
+project's defaults, not a rule: set them with your own disclosure analysis (`round_kw = 0` turns
+the rounding off). Rounding makes the difference between two runs coarser; it does not remove it
+([publication.md](publication.md)).
+
+Whether a station's model is good enough is yours to say, in `[validation]`: `voltage_p95_pu` (the
+95th percentile of the absolute difference between the model's and the measured customer voltages,
+judged only at the measured MV voltage of `mv/<station>.csv`), `transformer_p95_pct` (the same for
+the transformer's loading, in percentage points) and `min_metered_share` (the least share of the
+station's customers with meter readings), with their `source`. None has a default. `study
+validate` only compares; the verdict is read from that comparison and the criteria as they stand
+when a run is collected or published (`study/validation.py`): `not_validated`, `not_measured`,
+`no_criterion` (compared, with nothing to judge it by), `within` or `outside`. Only `within` is
+ever called validated, and a station that is `outside` is not published: its cell has no figure
+and its finding says why. A correction cannot bring it back.
 
 The CSV dialects: `sv-excel` is `;` between fields, a decimal comma, UTF-8 with a byte-order mark
 and CRLF, which Excel opens as it is on a Swedish computer; `rfc4180` is `,` and a decimal point,
