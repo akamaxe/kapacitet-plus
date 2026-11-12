@@ -160,35 +160,53 @@ def parse_entsoe_xml(xml_bytes: bytes) -> pd.Series:
     Handles PT60M and PT15M resolutions and the A03 curve type (missing positions repeat the
     previous price). Periods are in UTC, so a delivery day across a daylight-saving change is
     simply 23 or 25 hours long. Where an hour is published at both resolutions, the 15-minute
-    values win. An acknowledgement document (no data) gives an empty series.
+    values win; an interval published twice keeps the later one in the document. An
+    acknowledgement document (no data) gives an empty series.
+
+    Each period's times are built as one array (a year is 365 periods of 24 points): stepping
+    through the points one timestamp at a time took seconds a year, and every weather year
+    before 2023 is read this way the first time a price is asked for.
     """
     root = ET.fromstring(xml_bytes)
-    ns = {"ns": root.tag.split("}")[0].strip("{") if root.tag.startswith("{") else ""}
-    by_res: dict[str, dict[pd.Timestamp, float]] = {"PT15M": {}, "PT60M": {}}
+    uri = root.tag.split("}")[0].strip("{") if root.tag.startswith("{") else ""
+    ns = {"ns": uri}
+    # the points' tags spelt out once: a year has some 17 000 of these lookups
+    point, position, amount = (f"{{{uri}}}{name}" if uri else name for name in ("Point", "position", "price.amount"))
+    times: dict[str, list[np.ndarray]] = {"PT15M": [], "PT60M": []}
+    values: dict[str, list[np.ndarray]] = {"PT15M": [], "PT60M": []}
     for period in root.iterfind(".//ns:TimeSeries/ns:Period", ns):
-        start = pd.Timestamp(period.find("ns:timeInterval/ns:start", ns).text)
-        end = pd.Timestamp(period.find("ns:timeInterval/ns:end", ns).text)
-        res = period.find("ns:resolution", ns).text
-        step = pd.Timedelta(minutes=15) if res == "PT15M" else pd.Timedelta(hours=1)
+        start = _utc64(period.find("ns:timeInterval/ns:start", ns).text)
+        end = _utc64(period.find("ns:timeInterval/ns:end", ns).text)
+        res = "PT15M" if period.find("ns:resolution", ns).text == "PT15M" else "PT60M"
+        step = np.timedelta64(15 if res == "PT15M" else 60, "m")
         n = int((end - start) / step)
         prices = np.full(n, np.nan)
-        for pt in period.iterfind("ns:Point", ns):
-            pos = int(pt.find("ns:position", ns).text)
+        for pt in period.iter(point):
+            pos = int(pt.findtext(position))
             if 1 <= pos <= n:
-                prices[pos - 1] = float(pt.find("ns:price.amount", ns).text)
-        prices = pd.Series(prices).ffill().to_numpy()
-        out = by_res["PT15M" if res == "PT15M" else "PT60M"]
-        for i in range(n):
-            out[start + i * step] = prices[i]
-    fine = by_res["PT15M"]
-    fine_hours = {t.floor("h") for t in fine}
-    merged = {t: v for t, v in by_res["PT60M"].items() if t.floor("h") not in fine_hours}
-    merged.update(fine)
-    if not merged:
+                prices[pos - 1] = float(pt.findtext(amount))
+        # A03: a position left out repeats the price before it (one before the first stays empty)
+        seen = np.where(np.isfinite(prices), np.arange(n), -1)
+        last = np.maximum.accumulate(seen)
+        times[res].append(start + np.arange(n) * step)
+        values[res].append(np.where(last >= 0, prices[np.maximum(last, 0)], np.nan))
+    fine_t = np.concatenate(times["PT15M"]) if times["PT15M"] else np.array([], dtype="datetime64[m]")
+    hour_t = np.concatenate(times["PT60M"]) if times["PT60M"] else np.array([], dtype="datetime64[m]")
+    fine_v = np.concatenate(values["PT15M"]) if values["PT15M"] else np.array([])
+    hour_v = np.concatenate(values["PT60M"]) if values["PT60M"] else np.array([])
+    # an hour published at both resolutions is the quarter-hours'
+    keep = ~np.isin(hour_t.astype("datetime64[h]"), np.unique(fine_t.astype("datetime64[h]")))
+    t = np.concatenate([hour_t[keep], fine_t])
+    if not len(t):
         return pd.Series(dtype=float, index=pd.DatetimeIndex([], tz="UTC"))
-    s = pd.Series(merged).sort_index()
-    s.index = pd.to_datetime(s.index, utc=True)
-    return s
+    index = pd.DatetimeIndex(t.astype("datetime64[ns]")).tz_localize("UTC")      # nanoseconds, as year_index is
+    s = pd.Series(np.concatenate([hour_v[keep], fine_v]), index=index)
+    return s[~s.index.duplicated(keep="last")].sort_index()
+
+
+def _utc64(text: str) -> np.datetime64:
+    """An ISO 8601 time of the document as a naive UTC datetime64 (minutes)."""
+    return pd.Timestamp(text).tz_convert("UTC").tz_localize(None).to_datetime64().astype("datetime64[m]")
 
 
 # --- ECB reference rate (EUR to SEK for the ENTSO-E years) ---------------------------------

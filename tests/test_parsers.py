@@ -98,3 +98,41 @@ def test_entsoe_xml_handles_both_resolutions_and_missing_positions():
     assert s.index[3] == pd.Timestamp("2025-01-01T03:00Z")
     assert (np.diff(s.index[3:].to_numpy()).astype("timedelta64[m]") == np.timedelta64(15, "m")).all()
     assert s.index.is_monotonic_increasing
+
+
+def _entsoe(*periods: str) -> bytes:
+    ns = "urn:iec62325.351:tc57wg16:451-3:publicationdocument:7:3"
+    series = "".join(f"<TimeSeries><curveType>A03</curveType>{p}</TimeSeries>" for p in periods)
+    return f'<?xml version="1.0"?><Publication_MarketDocument xmlns="{ns}">{series}</Publication_MarketDocument>'.encode()
+
+
+def _period(start: str, end: str, res: str, points: dict[int, float]) -> str:
+    pts = "".join(f"<Point><position>{i}</position><price.amount>{v}</price.amount></Point>" for i, v in points.items())
+    return (f"<Period><timeInterval><start>{start}</start><end>{end}</end></timeInterval>"
+            f"<resolution>{res}</resolution>{pts}</Period>")
+
+
+def test_entsoe_xml_keeps_the_quarter_hours_and_the_later_of_two_copies():
+    """The cases the per-period arrays have to get right, beyond the sample file."""
+    doc = _entsoe(
+        _period("2025-03-01T00:00Z", "2025-03-01T03:00Z", "PT60M", {1: 10.0, 2: 11.0, 3: 12.0}),
+        # the hour 01:00 again, at quarter-hours: these win over the hourly 11.0
+        _period("2025-03-01T01:00Z", "2025-03-01T02:00Z", "PT15M", {1: 20.0, 2: 21.0, 4: 23.0}),
+        # the hour 02:00 published twice: the later copy in the document is kept
+        _period("2025-03-01T02:00Z", "2025-03-01T03:00Z", "PT60M", {1: 99.0}),
+        # a period whose first position is missing: nothing comes before it to repeat
+        _period("2025-03-01T03:00Z", "2025-03-01T06:00Z", "PT60M", {2: 30.0}),
+    )
+    s = prices.parse_entsoe_xml(doc)
+    assert str(s.index.dtype) == "datetime64[ns, UTC]" and s.index.is_monotonic_increasing and s.index.is_unique
+    at = lambda text: s[pd.Timestamp(text)]  # noqa: E731
+    assert at("2025-03-01T00:00Z") == 10.0 and at("2025-03-01T02:00Z") == 99.0
+    assert pd.Timestamp("2025-03-01T01:00Z") in s.index and at("2025-03-01T01:00Z") == 20.0
+    assert [at(f"2025-03-01T01:{m}Z") for m in ("15", "30", "45")] == [21.0, 21.0, 23.0]      # A03 repeats 21
+    assert np.isnan(at("2025-03-01T03:00Z")) and at("2025-03-01T04:00Z") == 30.0 and at("2025-03-01T05:00Z") == 30.0
+    assert len(s) == 1 + 4 + 1 + 3
+    empty = prices.parse_entsoe_xml(_entsoe())
+    assert empty.empty and str(empty.index.tz) == "UTC"
+    # a time with another offset is the same instant
+    plus = prices.parse_entsoe_xml(_entsoe(_period("2025-03-01T01:00+01:00", "2025-03-01T02:00+01:00", "PT60M", {1: 5.0})))
+    assert plus.index[0] == pd.Timestamp("2025-03-01T00:00Z")
