@@ -364,3 +364,38 @@ def test_the_unbalanced_screens_keep_every_violating_hour_of_the_extremes(model3
     break the upper limit on another phase and a generation-only hour the lower one."""
     _assert_the_extremes_are_kept(model3, vm, seed=5, H=100)
 
+
+
+def test_a_network_with_a_loop_never_reaches_the_engine(tmp_path):
+    """A tie between the two feeders of the tiny grid. The check refuses the export, and the model
+    refuses the tables if they are built all the same: the engine takes each cable's direction of
+    flow from the customers behind it, which a section of a ring does not have, so an overload on
+    the tie was never counted as the generation's."""
+    import conftest
+    import pandas as pd
+
+    from kapacitet.engine.netmodel import NotRadialError, get_model, require_radial
+    from kapacitet.grid.builder import save
+    from kapacitet.importer.build import build_from_export
+    from kapacitet.importer.validate import read_export, validate
+
+    data = read_export(conftest.TINY_GRID)
+    assert validate(data).usable
+    tie = {c: None for c in data["lines"].columns}
+    tie.update(line_id="LTIE", from_bus="KA3", to_bus="KB5", length_m=30.0, std_type="NAYY 4x50 SE", parallel=1)
+    data["lines"] = pd.concat([data["lines"], pd.DataFrame([tie])], ignore_index=True)
+    report = validate(data)
+    assert not report.usable and [f.code for f in report.errors] == ["meshed_network"]
+    # built all the same, as a caller that skipped the check would
+    network, _ = build_from_export(data)
+    folder = tmp_path / "ring" / "processed"
+    with conftest.processed_at(folder, conftest.synthetic_profiles.YEARS):
+        save(network)
+        conftest.synthetic_profiles.write(folder, network.customers, pd.read_csv(conftest.TINY_GRID / "roofs.csv"))
+        with pytest.raises(NotRadialError, match="not radial: 1 cable sections close a loop"):
+            get_model()
+    # the rule itself: every bus has one section leading to it
+    tree = pd.DataFrame({"line": [0, 1, 2], "from_bus": [0, 1, 1], "to_bus": [1, 2, 3]})
+    require_radial(tree)
+    with pytest.raises(NotRadialError, match="at bus 3"):
+        require_radial(pd.concat([tree, pd.DataFrame({"line": [3], "from_bus": [2], "to_bus": [3]})], ignore_index=True))

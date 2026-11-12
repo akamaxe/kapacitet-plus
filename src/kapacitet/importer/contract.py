@@ -56,7 +56,10 @@ BUSES = Table(
 )
 
 LINES = Table(
-    "lines", "Low-voltage cables and overhead spans, one row per section.", "line_id",
+    "lines", "Low-voltage cables and overhead spans, one row per section. The sections must form a tree: one path "
+    "from the transformer to every bus. A ring that is closed in the export, or two rows between the same two "
+    "buses, is refused as a meshed network: open each ring at its normal open point, and give cables laid in "
+    "parallel as one row with their `parallel` count.", "line_id",
     [
         Column("line_id", "-", "Unique identifier."),
         Column("from_bus", "-", "bus_id at the substation end."),

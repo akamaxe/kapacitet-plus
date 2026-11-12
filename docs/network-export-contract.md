@@ -20,7 +20,7 @@ Every point where something connects: the substation, cable cabinets and service
 
 ## `lines.csv`
 
-Low-voltage cables and overhead spans, one row per section.
+Low-voltage cables and overhead spans, one row per section. The sections must form a tree: one path from the transformer to every bus. A ring that is closed in the export, or two rows between the same two buses, is refused as a meshed network: open each ring at its normal open point, and give cables laid in parallel as one row with their `parallel` count.
 
 | column | unit | required | meaning | if missing |
 | --- | --- | --- | --- | --- |

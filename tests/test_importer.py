@@ -93,10 +93,26 @@ def test_an_unreachable_bus_is_caught():
     assert findings(validate(data), ERROR, "island")
 
 
-def test_a_ring_is_reported_as_meshed():
+def test_a_ring_is_refused():
+    """The engine computes radial feeders only: a loop is an error, with how many sections close one."""
     data = good()
     data["lines"].loc[3] = ["L4", "S1", "S2", 20.0, "NAYY 4x50 SE", 1]
-    assert findings(validate(data), WARNING, "meshed network")
+    report = validate(data)
+    found = findings(report, ERROR, "meshed network")
+    assert found and found[0].count == 1 and found[0].params == {"n": 1} and not report.usable
+    assert "1 cable sections close a loop" in found[0].message and "normal open point" in found[0].message
+    assert not findings(validate(good()), ERROR, "meshed network")
+
+
+def test_two_cables_in_parallel_are_a_loop_too():
+    """The walk from the transformer used to skip the bus it came from, so a second cable between
+    the same two buses went unseen; it is a loop like any other."""
+    data = good()
+    first = data["lines"].iloc[0]
+    data["lines"].loc[len(data["lines"])] = ["L9", first["from_bus"], first["to_bus"], 20.0, "NAYY 4x50 SE", 1]
+    report = validate(data)
+    found = findings(report, ERROR, "meshed network")
+    assert found and found[0].count == 1 and not report.usable
 
 
 def test_an_orphan_customer_is_caught():

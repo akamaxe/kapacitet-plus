@@ -95,8 +95,9 @@ def test_closing_the_open_point_makes_the_feeders_a_ring(tmp_path):
     fx = cgmes_tiny.write(tmp_path, tie_open=False)
     st = _station(convert(fx.files, fx.mapping_file))
     assert len(st.tables["buses"]) == 12                                   # the tie node fused into K3
-    codes = [f.code for f in st.check.findings]
-    assert st.check.usable and codes.count("meshed_network") == 1
+    codes = [f.code for f in st.check.errors]
+    # a closed ring is refused: the engine computes radial feeders only
+    assert not st.check.usable and codes.count("meshed_network") == 1
 
 
 def test_the_engine_solves_the_station_as_pandapower_solves_the_cgmes_network(tmp_path, tiny, monkeypatch):

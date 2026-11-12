@@ -159,6 +159,27 @@ def outside_voltage_bounds(v_hi: np.ndarray, v_lo: np.ndarray, v_min: float, v_m
     return (v_lo.min(axis=0) < v_min + import_screen_v) | (v_hi.max(axis=0) > v_max - export_screen_v)
 
 
+class NotRadialError(ValueError):
+    """The network has a loop: a section that closes a ring or runs in parallel with another."""
+
+
+def require_radial(lines: pd.DataFrame) -> None:
+    """Refuse a network whose cable table is not a tree. Every bus but the transformer's has one
+    section leading to it (`to_bus`); a bus with two has a loop through it. The model takes each
+    cable's direction of flow from the customers behind it (`phi`), and a section of a loop has
+    none: an overload there would never count as the generation's, and the screens would not see
+    it. The network check refuses such an export (importer/validate.py); this is the same rule for
+    a network that reached the model another way."""
+    to_bus = lines["to_bus"].to_numpy()
+    _, first, counts = np.unique(to_bus, return_index=True, return_counts=True)
+    if (counts > 1).any():
+        twice = [str(to_bus[i]) for i in first[counts > 1]][:5]
+        raise NotRadialError(f"the network is not radial: {int((counts - 1).sum())} cable sections close a loop or run "
+                             f"in parallel (at bus {', '.join(twice)}). The engine computes radial feeders only: "
+                             "open each ring at its normal open point and give cables laid in parallel as one "
+                             "section with its `parallel` count (`kapacitet check` on the export says the same)")
+
+
 class NetModel:
     def __init__(self, vm_slack: float | None = None, tap_pos: int | None = None,
                  trafo_type: str | None = None):
@@ -168,6 +189,7 @@ class NetModel:
         if trafo_type is not None:
             pp.change_std_type(self.net, 0, trafo_type, element="trafo")
         self.buses, self.lines, self.cust = load_tables()
+        require_radial(self.lines)
         self.C = len(self.cust)
         self.pf = PowerFlowModel(self.net, self.cust["bus"].to_numpy())
         self.vm_slack = A("mv_voltage_pu") if vm_slack is None else vm_slack

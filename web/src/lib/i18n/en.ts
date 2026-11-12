@@ -824,7 +824,7 @@ const en: Dict = {
   "chk.msg.dangling_cable": "lines.csv refers to {column} values that are not in buses.csv",
   "chk.msg.transformer_bus": "The transformer's lv_bus is not in buses.csv",
   "chk.msg.island": "Buses that cannot be reached from the transformer",
-  "chk.msg.meshed_network": "The export is not radial; the engine assumes a radial feeder",
+  "chk.msg.meshed_network": "The network is not radial: {n} cable sections close a loop or run in parallel with another. The engine computes radial feeders only and could miss an overload on such a section, so the network cannot be used. Open each ring at its normal open point, and give cables laid in parallel as one section with its parallel count.",
   "chk.msg.cable_type": "Sections with neither a type name nor full r/x/c data; the site's default cable is assumed",
   "chk.msg.cable_length_missing": "Sections with a missing or non-positive length",
   "chk.msg.cable_length_long": "Sections longer than {m} m, which is unusual at low voltage and often means metres and feet are mixed",

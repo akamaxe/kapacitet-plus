@@ -825,7 +825,7 @@ const sv: Dict = {
   "chk.msg.dangling_cable": "lines.csv hänvisar till {column}-värden som inte finns i buses.csv",
   "chk.msg.transformer_bus": "Transformatorns lv_bus finns inte i buses.csv",
   "chk.msg.island": "Noder som inte kan nås från transformatorn",
-  "chk.msg.meshed_network": "Exporten är inte radiell; beräkningen förutsätter ett radiellt nät",
+  "chk.msg.meshed_network": "Nätet är inte radiellt: {n} kabelsträckor sluter en slinga eller ligger parallellt med en annan. Beräkningen förutsätter radiella ledningar och kan missa en överlast på en sådan sträcka, så nätet kan inte användas. Öppna varje slinga i dess normala öppningspunkt och ange parallellt förlagda kablar som en sträcka med antalet i kolumnen parallel.",
   "chk.msg.cable_type": "Sträckor utan typnamn eller fullständiga r/x/c-data; nätets standardkabel antas",
   "chk.msg.cable_length_missing": "Sträckor som saknar längd eller har en längd som inte är positiv",
   "chk.msg.cable_length_long": "Sträckor längre än {m} m, ovanligt på lågspänning och ofta ett tecken på att meter och fot har blandats",

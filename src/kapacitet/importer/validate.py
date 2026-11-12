@@ -42,7 +42,10 @@ MESSAGES = {
     "dangling_cable": "lines.csv refers to {column} values that are not in buses.csv",
     "transformer_bus": "the transformer's lv_bus is not in buses.csv",
     "island": "buses cannot be reached from the transformer",
-    "meshed_network": "the export is not radial; the engine assumes a radial feeder",
+    "meshed_network": ("the network is not radial: {n} cable sections close a loop or run in parallel with another. "
+                       "The engine computes radial feeders only and could miss an overload on such a section, so "
+                       "the network cannot be used: open each ring at its normal open point, and give cables laid "
+                       "in parallel as one section with its `parallel` count"),
     "cable_type": "sections with neither a type name nor full r/x/c data; the site default cable will be assumed",
     "cable_length_missing": "sections with a missing or non-positive length",
     "cable_length_long": "sections longer than {m} m, which is unusual at low voltage and often means metres and feet are mixed",
@@ -274,22 +277,26 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
     root = str(trafo["lv_bus"].iloc[0]) if len(trafo) == 1 else next(iter(known), None)
     if root is None:
         return
-    seen, stack, loops = {root}, [(root, None)], 0
+    seen, stack = {root}, [root]
     while stack:
-        node, came_from = stack.pop()
+        node = stack.pop()
         for nxt in adjacency.get(node, []):
-            if nxt == came_from:
-                continue
-            if nxt in seen:
-                loops += 1
-                continue
-            seen.add(nxt)
-            stack.append((nxt, node))
+            if nxt not in seen:
+                seen.add(nxt)
+                stack.append(nxt)
     unreached = len(known) - len(seen)
     if unreached:
         report.add(ERROR, "island", "island", unreached)
-    if loops:
-        report.add(WARNING, "meshed network", "meshed_network", loops // 2)
+    # A tree on the buses reached from the transformer has one section fewer than buses: every
+    # section beyond that closes a loop (a ring, or two cables in parallel between the same buses).
+    # The engine takes each cable's direction of flow from the customers behind it, which a
+    # section of a loop does not have, so an overload there would not count as the generation's:
+    # a network that is not radial is refused, not warned about.
+    sections = sum(1 for a, b in zip(lines["from_bus"].astype(str), lines["to_bus"].astype(str))
+                   if a in seen and b in seen)
+    loops = sections - (len(seen) - 1)
+    if loops > 0:
+        report.add(ERROR, "meshed network", "meshed_network", loops, n=loops)
 
 
 def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report) -> None:
