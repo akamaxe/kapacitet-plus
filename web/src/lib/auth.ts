@@ -19,7 +19,8 @@ export interface Me {
   /** by action: the roles it takes, from the server's route policy */
   needs: Partial<Record<Action, Role[]>>;
   /** sign-in asked for but not configured: why, naming no value (every API call is refused) */
-  misconfigured?: string;
+  /** sign-in is asked for and unusable; the reason is in the server's log, never in this reply */
+  misconfigured?: boolean;
 }
 
 /** Who is signed in, if sign-in is on. Asked once; signing out reloads the page. */

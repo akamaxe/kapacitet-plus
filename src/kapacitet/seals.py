@@ -83,7 +83,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,
 
 from . import __version__, actor, store, tsa
 from .atomic import append_line, write_bytes_atomic, write_json_atomic, write_text_atomic
-from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS
+from .paths import CONFIG, DATA, PROCESSED, RAW, SEAL_KEYS, inside
 
 log = logging.getLogger(__name__)
 _LOCK = threading.RLock()
@@ -226,17 +226,23 @@ class FolderChain:
         append_line(self.file, json.dumps(entry, sort_keys=True))
 
     def _copy(self, kind: str, item_id: str) -> Path:
-        return self.root / "sealed" / kind / f"{item_id}.json"
+        return inside(self.root / "sealed", kind, f"{item_id}.json")
 
     def copy_get(self, kind: str, item_id: str) -> bytes | None:
-        path = self._copy(kind, item_id)
+        try:
+            path = self._copy(kind, item_id)
+        except ValueError:                       # an id that names nothing under sealed/: no such copy
+            return None
         return path.read_bytes() if path.exists() else None
 
     def copy_put(self, kind: str, item_id: str, text: bytes) -> None:
         write_bytes_atomic(self._copy(kind, item_id), text)
 
     def copy_delete(self, kind: str, item_id: str) -> None:
-        self._copy(kind, item_id).unlink(missing_ok=True)
+        try:
+            self._copy(kind, item_id).unlink(missing_ok=True)
+        except ValueError:
+            pass
 
     def fingerprint_put(self, fp_digest: str, text: str) -> None:
         path = self.root / "sealed" / "fingerprints" / f"{fp_digest}.json"

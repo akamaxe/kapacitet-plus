@@ -65,7 +65,7 @@ NUMBERS = ("pv_kwp", "pv_kw_ac", "ev_kw", "bat_kwh")
 PHASES = ("pv_phases", "ev_phases")
 COLUMNS = REQUIRED + ("pv_kwp", "pv_kw_ac", "pv_phases", "ev_kw", "ev_phases", "hp", "bat_kwh")
 OPTIONAL = ("decision_dso",)
-CASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+CASE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}\Z")
 PROPOSALS = ("firm", "nonfirm", "review")
 VERDICT_COLUMNS = ["case_id", "received_at", "station", "connection_point_id", "proposal", "reason_codes",
                    "reason_sv", "curtailment_mean_pct", "curtailment_p90_pct", "fuse_ok", "phases_ok",

@@ -63,7 +63,7 @@ ERRORS = {
     "rate_limited": "too many requests: try again in {seconds} s",
     "auth_required": "sign in to use this",
     "role_required": "this needs the role {roles}",
-    "auth_misconfigured": "sign-in is turned on but not configured: {detail}",
+    "auth_misconfigured": "sign-in is turned on but not configured",      # the log says what is missing
 }
 
 # Requests a client may make per minute in each bucket; "upload" (the setup page's chunks) is not
@@ -316,7 +316,8 @@ def signed_in(scope: Scope, headers: Headers, method: str, path: str) -> JSONRes
     try:
         cfg = auth.config()
     except auth.AuthConfigError as exc:      # fail closed: sign-in was asked for
-        return refusal(503, "auth_misconfigured", detail=str(exc))
+        auth.report_misconfigured(exc)
+        return refusal(503, "auth_misconfigured")
     if cfg is None:
         return None
     allowed = roles_for(method, path)

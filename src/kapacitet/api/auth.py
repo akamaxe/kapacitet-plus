@@ -80,8 +80,9 @@ def _config() -> auth.Config:
     try:
         cfg = auth.config()
     except auth.AuthConfigError as exc:
-        raise HTTPException(503, {"code": "auth_misconfigured", "message": guard.ERRORS["auth_misconfigured"]
-                                  .format(detail=str(exc)), "params": {"detail": str(exc)}}) from exc
+        auth.report_misconfigured(exc)
+        raise HTTPException(503, {"code": "auth_misconfigured", "message": guard.ERRORS["auth_misconfigured"],
+                                  "params": {}}) from exc
     if cfg is None:
         raise _refusal(404, "auth_off")
     return cfg
@@ -91,13 +92,16 @@ def _config() -> auth.Config:
 def me(request: Request) -> dict:
     """Whether sign-in is on, who is signed in with which roles, and which actions they may take
     (`can`, by action; `needs`, the roles each action takes). Sign-in asked for but misconfigured:
-    `misconfigured` says why (naming no value), so the interface can show it; nothing is allowed."""
+    `misconfigured` is true and nothing is allowed. What is missing is the operator's to read, in
+    the server's log, at start-up and from `kapacitet instance check`: this route answers anyone,
+    signed in or not, so it does not describe the configuration."""
     needs = _needs()
     try:                        # memoized: no reading .env on every request
         cfg = auth.config()
     except auth.AuthConfigError as exc:
+        auth.report_misconfigured(exc)
         return {"enabled": True, "user": None, "can": {a: False for a in needs}, "needs": needs,
-                "misconfigured": str(exc)}
+                "misconfigured": True}
     if cfg is None:
         return {"enabled": False, "user": None, "can": {a: True for a in needs}, "needs": needs}
     s = auth.session_from_cookie(request.headers.get("cookie"), cfg)

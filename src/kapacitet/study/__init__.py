@@ -45,7 +45,7 @@ if TYPE_CHECKING:
     from .config import StudyConfig
 
 SCHEMA = "kapacitet.station/1"
-STATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$")
+STATION_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\Z")     # \Z: `$` lets a final newline through
 # names Windows keeps for devices: a folder cannot have one
 RESERVED = frozenset({"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)),
                       *(f"LPT{i}" for i in range(1, 10))})

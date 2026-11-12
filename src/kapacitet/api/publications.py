@@ -44,6 +44,7 @@ from fastapi.responses import Response
 
 from .. import seals
 from ..cache import on_clear
+from ..paths import inside
 from ..study import runs as run_ids
 from ..study import valid_id
 
@@ -101,16 +102,41 @@ _VERIFIED: dict[tuple, dict | None] = {}
 on_clear(_VERIFIED.clear)
 
 
+def study_folder(root: Path, study: str) -> Path | None:
+    """The folder of a study that can be served: an id that is a folder name, inside the studies'
+    folder, with its study.toml. None for anything else."""
+    if not valid_id(study):
+        return None
+    try:
+        folder = inside(root, study)
+    except ValueError:
+        return None
+    return folder if (folder / "study.toml").is_file() else None
+
+
+def run_folder(study_root: Path, run: str) -> Path | None:
+    """runs/<run> of a study, for a run id (a quarter or a month); None for anything else."""
+    if not run_ids.valid(run):
+        return None
+    try:
+        return inside(study_root, "runs", run)
+    except ValueError:
+        return None
+
+
 def signed_manifest(study_root: Path, run: str) -> dict | None:
     """The manifest of runs/<run>/publication when that publication is signed (see the module's
     docstring), else None. The check (seal chain and a sha256 of every file) is remembered while
     the manifest, the signoff, the seal chain and every listed file keep their mtime and size."""
-    pub = study_root / "runs" / run / "publication"
+    run_dir = run_folder(study_root, run)
+    if run_dir is None:
+        return None
+    pub = run_dir / "publication"
     try:
         listed = sorted(((json.loads((pub / MANIFEST).read_text(encoding="utf-8")).get("files")) or {}))
     except (OSError, ValueError, AttributeError):
         return None
-    key = (str(study_root), run, _stamp(pub / MANIFEST), _stamp(study_root / "runs" / run / "signoff.json"),
+    key = (str(study_root), run, _stamp(pub / MANIFEST), _stamp(run_dir / "signoff.json"),
            _stamp(study_root / "evidence" / "seals.jsonl"), tuple(_stamp(pub / n) for n in listed))
     if key not in _VERIFIED:
         if len(_VERIFIED) > 256:
@@ -120,10 +146,13 @@ def signed_manifest(study_root: Path, run: str) -> dict | None:
 
 
 def _check_signed(study_root: Path, run: str) -> dict | None:
-    pub = study_root / "runs" / run / "publication"
+    run_dir = run_folder(study_root, run)
+    if run_dir is None:
+        return None
+    pub = run_dir / "publication"
     try:
         manifest = json.loads((pub / MANIFEST).read_text(encoding="utf-8"))
-        signoff = json.loads((study_root / "runs" / run / "signoff.json").read_text(encoding="utf-8"))
+        signoff = json.loads((run_dir / "signoff.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     named = manifest.get("signoff") or {}
@@ -201,9 +230,9 @@ def _csp(manifest: dict) -> str:
 def publication_file(study: str, run: str, file: str, request: Request) -> Response:
     """One file of a signed publication, with its sha256 as a strong ETag."""
     root = _root()
-    if not valid_id(study) or not (root / study / "study.toml").is_file():
+    study_root = study_folder(root, study)
+    if study_root is None:
         raise refusal(404, "no_publication", study=study[:64], run=run[:16])
-    study_root = root / study
     if run == "latest":
         signed = signed_runs(study_root)
         if not signed:
@@ -219,9 +248,13 @@ def publication_file(study: str, run: str, file: str, request: Request) -> Respo
     files = manifest.get("files") or {}
     if name is None or PurePosixPath(name).name in NEVER or (name != MANIFEST and name not in files):
         raise refusal(404, "publication_file", file=file[:120])
-    pub = (study_root / "runs" / run / "publication").resolve()
-    path = (pub / name).resolve()
-    if not path.is_relative_to(pub) or not path.is_file():
+    try:
+        # the name is one of the manifest's own (or the manifest), and still has to stay in the folder
+        pub = inside(study_root, "runs", run, "publication").resolve()
+        path = inside(pub, *name.split("/")).resolve()
+    except ValueError:
+        raise refusal(404, "publication_file", file=file[:120]) from None
+    if not path.is_relative_to(pub) or not path.is_file():      # a link that leads out of the folder
         raise refusal(404, "publication_file", file=file[:120])
     body = path.read_bytes()
     sha = hashlib.sha256(body).hexdigest() if name == MANIFEST else files[name]["sha256"]

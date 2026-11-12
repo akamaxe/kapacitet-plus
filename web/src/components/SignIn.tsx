@@ -28,7 +28,7 @@ export function SignIn({ me }: { me: Me }) {
           // sign-in asked for but not configured: only the operator can fix it, so no button
           <section className="signin" aria-labelledby="signin-title">
             <h1 className="headline" id="signin-title">{t("auth.title")}</h1>
-            <p className="signin-error" role="alert">{t("err.auth_misconfigured", { detail: me.misconfigured })}</p>
+            <p className="signin-error" role="alert">{t("err.auth_misconfigured")}</p>
           </section>
         ) : (
         <section className="signin" aria-labelledby="signin-title">

@@ -1602,7 +1602,7 @@ const en: Dict = {
   "op.crit.exceedNote": "{year}: hours the neighbourhood's solar went past the plan the limits were issued against. Single houses went past it in {houses} house-hours (at worst {kw} kW) and below the load floor in {load}; every issue audits them.",
   "err.auth_required": "Sign in to use this.",
   "err.role_required": "This needs the role {roles}.",
-  "err.auth_misconfigured": "Sign-in is turned on but not configured: {detail}. The operator sets it up as docs/sso.md describes.",
+  "err.auth_misconfigured": "Sign-in is turned on but not configured, so nothing can be opened. The operator finds what is missing in the server's log or with kapacitet instance check, and sets it up as docs/sso.md describes.",
   "err.brand_name_too_long": "The name on the portal is longer than {max} characters.",
   "err.brand_contact_too_long": "The contact text is longer than {max} characters.",
   "err.brand_name_not_text": "The name on the portal is one line of plain text.",

@@ -49,6 +49,22 @@ SEAL_KEYS = _env_dir("KAPACITET_SEAL_KEY_DIR", HOME / "keys")
 WEB_DIST = ROOT / "web" / "dist"
 
 
+def inside(base: str | Path, *parts: str) -> Path:
+    """`base` joined with `parts`, refused (ValueError) unless the result is inside `base`.
+
+    Every identifier that arrives in a request and names a folder or a file (a network of the app,
+    a study and its run, a saved assessment, a sealed copy) becomes a path here. The callers check
+    the identifier's form first; this is the second lock, the same for all of them: the joined path
+    is normalised, so `..` and a doubled separator are resolved before the test, and it has to
+    start with the folder it was joined to. Nothing is resolved on disk, so the path is the one
+    the caller would have written by hand."""
+    root = os.path.abspath(base)
+    full = os.path.normpath(os.path.join(root, *parts))
+    if not full.startswith(root + os.sep):
+        raise ValueError(f"{'/'.join(parts)!r} is not inside {root}")
+    return Path(full)
+
+
 def processed(*parts: str) -> Path:
     """Path inside data/processed, creating the parent folder."""
     path = PROCESSED.joinpath(*parts)

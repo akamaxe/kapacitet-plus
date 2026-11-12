@@ -1603,7 +1603,7 @@ const sv: Dict = {
   "op.crit.exceedNote": "{year}: timmar då områdets solel gick förbi planen som gränserna utfärdades mot. Enskilda hus gick förbi den under {houses} hustimmar (som mest {kw} kW) och under lastgolvet under {load}; varje utfärdande granskar dem.",
   "err.auth_required": "Logga in för att använda det här.",
   "err.role_required": "Det här kräver rollen {roles}.",
-  "err.auth_misconfigured": "Inloggning är påslagen men inte konfigurerad: {detail}. Operatören ställer in den enligt docs/sso.md.",
+  "err.auth_misconfigured": "Inloggning är påslagen men inte konfigurerad, så ingenting kan öppnas. Operatören ser vad som saknas i serverns logg eller med kapacitet instance check, och ställer in den enligt docs/sso.md.",
   "err.brand_name_too_long": "Namnet i portalen är längre än {max} tecken.",
   "err.brand_contact_too_long": "Kontakttexten är längre än {max} tecken.",
   "err.brand_name_not_text": "Namnet i portalen är en rad vanlig text.",

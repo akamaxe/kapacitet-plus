@@ -29,8 +29,11 @@ _RESERVED = frozenset({"_module", "_class", "_object"})
 _FRAME_KEYS = _RESERVED | {"orient", "dtype", "is_multiindex", "is_multicolumn",
                            "index_name", "column_name", "index_names", "column_names"}
 _SURROGATE = re.compile("[\ud800-\udfff]")
-# Characters that do not show: controls, surrogates, zero-width and direction marks, the BOM.
-_INVISIBLE = re.compile("[\\s\x00-\x1f\x7f-\x9f\ud800-\udfff­​-‏‪-‮⁠-⁤﻿]")
+# Characters that do not show: white space, controls, surrogates, the soft hyphen, zero-width and
+# direction marks, the BOM. Written as escapes, each range once: the controls leave out the ones
+# \s already holds (\t to \r, \x1c to \x1f, \x85).
+_INVISIBLE = re.compile(r"[\s\x00-\x08\x0e-\x1b\x7f-\x84\x86-\x9f\ud800-\udfff\xad\u200b-\u200f\u202a-\u202e"
+                        r"\u2060-\u2064\ufeff]")
 
 
 class GridFileError(ValueError):

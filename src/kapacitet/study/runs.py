@@ -15,8 +15,9 @@ import datetime as dt
 import re
 from pathlib import Path
 
-QUARTER = re.compile(r"^(\d{4})Q([1-4])$")
-MONTH = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])$")
+# \Z, not $: a run id names a folder, and `$` would let a final newline through
+QUARTER = re.compile(r"^(\d{4})Q([1-4])\Z")
+MONTH = re.compile(r"^(\d{4})-(0[1-9]|1[0-2])\Z")
 EXAMPLE = "a quarter such as 2026Q4 or a month such as 2026-11"
 # what a run is called in the Swedish texts, by kind: the word in a sentence and in a table's label
 WORD_SV = {"quarter": "kvartal", "month": "månad"}

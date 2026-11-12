@@ -47,15 +47,16 @@ describe("actions a role cannot take", () => {
     expect(el.textContent).toBe("");
   });
 
-  it("shows why sign-in is misconfigured, in the reader's language, with no button to press", async () => {
+  it("says sign-in is misconfigured and where the operator finds why, with no button to press", async () => {
     host = document.createElement("div");
     document.body.appendChild(host);
-    const me: Me = { enabled: true, user: null, can: {}, needs, misconfigured: "KAPACITET_SESSION_SECRET is too short" };
+    const me: Me = { enabled: true, user: null, can: {}, needs, misconfigured: true };
     await act(async () => {
       root = createRoot(host as HTMLElement);
       root.render(<QueryClientProvider client={new QueryClient()}><SignIn me={me} /></QueryClientProvider>);
     });
-    expect(host.querySelector("[role=alert]")?.textContent).toContain("KAPACITET_SESSION_SECRET is too short");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("turned on but not configured");
+    expect(host.querySelector("[role=alert]")?.textContent).toContain("kapacitet instance check");
     expect(host.querySelector("button")).toBeNull();
   });
 

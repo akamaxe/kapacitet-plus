@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 from ..atomic import append_line, gzip_json_atomic, write_bytes_atomic, write_text_atomic
+from ..paths import inside
 
 _LOCKS: dict[str, threading.RLock] = {}
 _GUARD = threading.Lock()
@@ -55,7 +56,7 @@ class Records:
         self.root = Path(root)
 
     def _path(self, job_id: str) -> Path:
-        return self.root / f"{job_id}.json.gz"
+        return inside(self.root, f"{job_id}.json.gz")
 
     @contextmanager
     def locked(self) -> Iterator[None]:
@@ -68,7 +69,10 @@ class Records:
             append_line(self.root / "index.jsonl", json.dumps(line))
 
     def get(self, job_id: str) -> dict | None:
-        path = self._path(job_id)
+        try:
+            path = self._path(job_id)
+        except ValueError:                       # an id that is no file name: there is no such record
+            return None
         if not path.exists():
             return None
         with gzip.open(path, "rt", encoding="utf-8") as fh:

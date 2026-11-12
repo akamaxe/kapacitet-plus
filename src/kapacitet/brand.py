@@ -39,7 +39,7 @@ CONTRAST_MIN = 4.5
 # the portal's light theme (web/src/styles/tokens.css): the page's ground and the text on the accent
 PORTAL_BACKGROUND = "#ffffff"
 PORTAL_ON_ACCENT = "#ffffff"
-ACCENT = re.compile(r"^#[0-9a-fA-F]{6}$")
+ACCENT = re.compile(r"^#[0-9a-fA-F]{6}\Z")
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 KEPT_CHUNKS = (b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND")
 # the bit depths each PNG colour type allows

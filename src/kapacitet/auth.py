@@ -61,6 +61,19 @@ class AuthConfigError(ValueError):
     """Sign-in is asked for but cannot run; the message names variables, never their values."""
 
 
+_REPORTED: set[str] = set()
+
+
+def report_misconfigured(exc: Exception) -> None:
+    """Say in the server's log why sign-in cannot run, once per reason. The API's replies only say
+    that it cannot (they answer anyone, signed in or not); what is missing is the operator's to
+    read here, at start-up (`serve`) and from `kapacitet instance check`."""
+    reason = str(exc)
+    if reason not in _REPORTED:
+        _REPORTED.add(reason)
+        log.error("sign-in is asked for but misconfigured: %s", reason)
+
+
 class AuthError(ValueError):
     """A login that cannot complete: `code` is what the interface says about it."""
 

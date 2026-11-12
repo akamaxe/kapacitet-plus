@@ -36,12 +36,12 @@ import time
 from pathlib import Path
 
 from . import procs
-from .paths import DATASETS, HOME, RAW, ROOT
+from .paths import DATASETS, HOME, RAW, ROOT, inside
 
 REFERENCE = "reference"
 RESTART = 75                       # the exit code that asks the supervisor for a restart
 STEPS = ("import", "households", "profiles", "compute")
-_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}$")
+_ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}\Z")      # \Z: `$` would let a final newline through
 MAX_BUILDS = int(os.environ.get("KAPACITET_MAX_BUILDS", "1"))
 BUILD_TIMEOUT_S = float(os.environ.get("KAPACITET_BUILD_TIMEOUT_S", str(4 * 3600)))
 # launching checks how many builds run and then starts one: two at once could both pass the check
@@ -76,9 +76,13 @@ _alive = procs.alive
 
 
 def folder(ds_id: str) -> Path:
+    """The folder of a network: an id of the form the app gives, inside the networks' folder."""
     if not _ID.match(ds_id or ""):
         raise DatasetError("unknown_dataset", id=ds_id)
-    return DATASETS / ds_id
+    try:
+        return inside(DATASETS, ds_id)
+    except ValueError:
+        raise DatasetError("unknown_dataset", id=ds_id) from None
 
 
 def record(ds_id: str) -> dict:
@@ -235,7 +239,9 @@ def launch(ds_id: str, workers: int = 2) -> int:
         root = folder(ds_id)
         env = {**os.environ, **child_env(ds_id), "PYTHONUNBUFFERED": "1"}
         env.pop("KAPACITET_SUPERVISED", None)
-        cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", ds_id, "--workers", str(workers)]
+        # the id of the record read from disk, not the caller's text: what is launched is a network
+        # that exists, by the name its own record gives it
+        cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", str(rec["id"]), "--workers", str(int(workers))]
         if rec.get("quick"):
             cmd.append("--quick")
         kwargs: dict = {}

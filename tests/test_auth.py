@@ -389,7 +389,11 @@ def test_with_sign_in_off_the_guard_asks_nobody_and_there_is_no_actor():
     assert _client().get(f"{API}/auth/login", follow_redirects=False).status_code == 404
 
 
-def test_sign_in_asked_for_but_not_configured_fails_closed_and_names_no_value(monkeypatch):
+def test_sign_in_asked_for_but_not_configured_fails_closed_and_names_no_value(monkeypatch, caplog):
+    import logging
+
+    auth._REPORTED.clear()                              # each reason is logged once per process
+    caplog.set_level(logging.ERROR, logger="kapacitet.auth")
     monkeypatch.setenv("KAPACITET_AUTH", "oidc")
     monkeypatch.setenv("KAPACITET_OIDC_ISSUER", ISSUER)
     monkeypatch.setenv("KAPACITET_OIDC_CLIENT_SECRET", CLIENT_SECRET)
@@ -399,8 +403,10 @@ def test_sign_in_asked_for_but_not_configured_fails_closed_and_names_no_value(mo
     try:
         r = _client().get(f"{API}/seals/key")
         assert r.status_code == 503 and _code(r) == "auth_misconfigured"
-        detail = r.json()["detail"]["params"]["detail"]
-        assert "KAPACITET_OIDC_CLIENT_ID" in detail and "KAPACITET_SESSION_SECRET" in detail
+        # the reply says that sign-in cannot run, to anyone; what is missing is in the server's log
+        assert r.json()["detail"]["params"] == {} and "KAPACITET_" not in r.text
+        said = " ".join(rec.getMessage() for rec in caplog.records)
+        assert "KAPACITET_OIDC_CLIENT_ID" in said and "KAPACITET_SESSION_SECRET" in said
         assert CLIENT_SECRET not in r.text and ISSUER not in r.text
         monkeypatch.setenv("KAPACITET_OIDC_CLIENT_ID", CLIENT_ID)
         monkeypatch.setenv("KAPACITET_SESSION_SECRET", "too-short")
@@ -411,7 +417,10 @@ def test_sign_in_asked_for_but_not_configured_fails_closed_and_names_no_value(mo
         me = _client().get(f"{API}/auth/me")               # and /auth/me tells it why, in its words
         assert me.status_code == 200 and "too-short" not in me.text
         body = me.json()
-        assert body["enabled"] and body["user"] is None and "KAPACITET_SESSION_SECRET" in body["misconfigured"]
+        # this route answers anyone, so it says that sign-in is unusable and never what is missing
+        assert body["enabled"] and body["user"] is None and body["misconfigured"] is True
+        assert "KAPACITET_SESSION_SECRET" not in me.text
+        assert "KAPACITET_SESSION_SECRET must be at least" in " ".join(rec.getMessage() for rec in caplog.records)
         assert not any(body["can"].values())
         monkeypatch.setenv("KAPACITET_AUTH", "saml")
         auth.config.cache_clear()
