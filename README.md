@@ -144,6 +144,13 @@ The bundle records a checksum and the modification time of every file, and `unbu
 the sums and restores the times (the API dates each result by its files); it never overwrites
 existing files unless asked with `--force`.
 
+A copy unpacked from the release holds no saved assessment, application or decision: those are
+the server's own records (`data/requests/`), and they never travel in a bundle. That makes it the
+copy to show: a copy that has been tried on lists its trial evaluations and applications beside
+the real figures, and nothing on screen says they were trials. To start one clean, stop the
+server and move `data/requests/` and `data/keys/` away together (the seal chain verifies only with
+its key), or point `KAPACITET_DATA_DIR` at a fresh unpack.
+
 The release's file is pinned: `config/data-release.json`, committed with the code, holds its
 sha256 and size. `bundle --pin` rewrites it, so commit that file in the same push as the upload.
 `unbundle --sha256` refuses any other file (or give it a digest, `--expect-sha256 <hex>`), the codespace
