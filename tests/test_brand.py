@@ -236,6 +236,48 @@ def test_chunk_order_and_the_image_stream_are_checked(client, raw):
     assert not (folder / "brand-logo.png").exists()
 
 
+def _image(width: int, height: int, depth: int = 8, colour: int = 2, interlace: int = 0, data: bytes | None = None) -> bytes:
+    """A PNG of that header whose image data is `data` unpacked (all zeros of the right length by default)."""
+    from kapacitet.brand import image_bytes
+
+    ihdr = struct.pack(">IIBBBBB", width, height, depth, colour, 0, 0, interlace)
+    body = bytes(image_bytes(width, height, depth, colour, interlace)) if data is None else data
+    extra = [chunk(b"PLTE", b"\x00\x00\x00\xff\xff\xff")] if colour == 3 else []
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + b"".join(extra) + chunk(b"IDAT", zlib.compress(body))
+            + chunk(b"IEND", b""))
+
+
+def test_the_image_data_is_the_image_the_header_declares():
+    """A 1 × 1 logo whose data unpacked to megabytes, a stream cut short and one too short for its
+    size all passed: the stream was only unpacked up to a ceiling. It has to be the whole stream,
+    exactly the image's bytes, and nothing after it."""
+    from kapacitet.brand import BrandError, clean_png, image_bytes
+
+    assert image_bytes(4, 3, 8, 2, 0) == 3 * (1 + 12)                 # three scanlines of four RGB pixels
+    assert image_bytes(5, 1, 1, 0, 0) == 1 + 1                        # five 1-bit pixels pack into one byte
+    assert image_bytes(1, 1, 8, 6, 1) == 1 + 4                        # interlaced: only the first pass has a pixel
+    assert image_bytes(8, 8, 8, 0, 1) == 1 * 2 + 1 * 2 + 1 * 3 + 2 * 3 + 2 * 5 + 4 * 5 + 4 * 9
+    for header in ((4, 3, 8, 2, 0), (16, 16, 8, 6, 0), (5, 2, 1, 0, 0), (7, 5, 4, 3, 0), (8, 8, 8, 0, 1),
+                   (3, 3, 16, 4, 1), (1024, 2, 8, 2, 0)):
+        assert clean_png(_image(*header)).width == header[0], header
+
+    def refused(raw: bytes) -> bool:
+        try:
+            clean_png(raw)
+        except BrandError as exc:
+            return exc.code == "logo_malformed"
+        return False
+
+    bomb = _image(1, 1, data=bytes(4 * 1024 * 1024))                   # a few kilobytes that unpack to megabytes
+    assert len(bomb) < 16 * 1024 and refused(bomb)
+    assert refused(_image(16, 16, data=bytes(10)))                     # too short for 16 × 16
+    assert refused(_image(4, 3, data=bytes(3 * 13 + 1)))               # one byte more than the image
+    whole = zlib.compress(bytes(3 * 13))
+    assert refused(png(idat=whole[:-4]))                               # the stream is cut short
+    assert refused(png(idat=whole + b"trailing"))                      # bytes after the end of the stream
+    assert not refused(png(idat=whole))
+
+
 def test_an_oversize_text_gets_the_logo_code_not_a_generic_422(client):
     c, _ = client
     r = c.put("/api/v1/settings/brand-logo", json={"png_base64": "A" * 500_000})

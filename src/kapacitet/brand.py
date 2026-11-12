@@ -188,6 +188,26 @@ def _chunk(kind: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
 
 
+_CHANNELS = {0: 1, 2: 3, 3: 1, 4: 2, 6: 4}      # samples per pixel, by colour type
+# Adam7's seven passes: the first pixel (x, y) of each and its step (dx, dy)
+_ADAM7 = ((0, 0, 8, 8), (4, 0, 8, 8), (0, 4, 4, 8), (2, 0, 4, 4), (0, 2, 2, 4), (1, 0, 2, 2), (0, 1, 1, 2))
+
+
+def image_bytes(width: int, height: int, depth: int, colour: int, interlace: int) -> int:
+    """The length of the unpacked image data a PNG of this header holds: each scanline is a filter
+    byte and its pixels, packed to whole bytes; an interlaced image is seven smaller images."""
+    bits = _CHANNELS[colour] * depth
+    line = lambda w: 1 + (w * bits + 7) // 8  # noqa: E731
+    if not interlace:
+        return height * line(width)
+    total = 0
+    for x0, y0, dx, dy in _ADAM7:
+        w, h = (width - x0 + dx - 1) // dx, (height - y0 + dy - 1) // dy
+        if w > 0 and h > 0:
+            total += h * line(w)
+    return total
+
+
 def clean_png(raw: bytes) -> Logo:
     """The PNG checked and rebuilt from its kept chunks (KEPT_CHUNKS), or a BrandError."""
     if len(raw) > LOGO_MAX_BYTES:
@@ -216,11 +236,17 @@ def clean_png(raw: bytes) -> Logo:
         raise BrandError("logo_malformed")  # IDAT chunks must be consecutive
     if b"PLTE" in kinds and kinds.index(b"PLTE") > first:
         raise BrandError("logo_malformed")  # the palette comes before the image data
+    # the image data is the image the header declares: the whole stream, exactly that many bytes
+    # and nothing after it. A stream cut short, one that unpacks to more (a few kilobytes can hold
+    # megabytes) or one with bytes left over is a file a browser would be handed as it is.
+    expected = image_bytes(width, height, depth, colour, interlace)
+    unpack = zlib.decompressobj()
     try:
-        zlib.decompressobj().decompress(b"".join(d for k, d in chunks if k == b"IDAT"),
-                                        width * height * 8 + height + 1024)
+        data = unpack.decompress(b"".join(d for k, d in chunks if k == b"IDAT"), expected + 1)
     except zlib.error:
         raise BrandError("logo_malformed") from None
+    if len(data) != expected or not unpack.eof or unpack.unconsumed_tail or unpack.unused_data:
+        raise BrandError("logo_malformed")
     kept = b"".join(_chunk(k, d) for k, d in chunks if k in KEPT_CHUNKS)
     png = PNG_SIGNATURE + kept
     return Logo(png=png, sha256=hashlib.sha256(png).hexdigest(), width=width, height=height)
