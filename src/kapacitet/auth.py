@@ -296,16 +296,30 @@ def _client():
     return httpx.Client(timeout=10.0, transport=_HTTP_TRANSPORT, follow_redirects=False)
 
 
+def _unreachable(exc: Exception) -> "AuthError":
+    """A provider that cannot be reached (no name, no route, no answer in time, a broken reply):
+    the kind of failure only, since the error's own text can carry the address it was sent to."""
+    return AuthError("provider_unavailable", f"the identity provider did not answer ({type(exc).__name__})")
+
+
 def _get_json(url: str, refresh: bool = False) -> dict:
+    import httpx
+
     with _DOCS_LOCK:
         hit = _DOCS.get(url)
         if hit and not refresh and time.time() - hit[0] < DOC_TTL_S:
             return hit[1]
-    with _client() as c:
-        r = c.get(url, headers={"Accept": "application/json"})
+    try:
+        with _client() as c:
+            r = c.get(url, headers={"Accept": "application/json"})
+    except httpx.HTTPError as exc:
+        raise _unreachable(exc) from None
     if r.status_code != 200:
         raise AuthError("provider_unavailable", f"the identity provider answered {r.status_code}")
-    doc = r.json()
+    try:
+        doc = r.json()
+    except ValueError:
+        doc = None
     if not isinstance(doc, dict):
         raise AuthError("provider_unavailable", "the identity provider sent no JSON object")
     with _DOCS_LOCK:
@@ -350,15 +364,23 @@ def finish_login(cfg: Config, tx: dict, code: str, state: str) -> dict:
     """Exchange the code (with the PKCE verifier) and verify the ID token; returns its claims."""
     if not hmac.compare_digest(str(tx.get("state", "")), state or ""):
         raise AuthError("login_failed", "the login's state does not match")
+    import httpx
+
     doc = discovery(cfg)
-    with _client() as c:
-        r = c.post(doc["token_endpoint"], data={
-            "grant_type": "authorization_code", "code": code, "redirect_uri": tx["redirect_uri"],
-            "code_verifier": tx["verifier"]}, auth=(cfg.client_id, cfg.client_secret),
-            headers={"Accept": "application/json"})
+    try:
+        with _client() as c:
+            r = c.post(doc["token_endpoint"], data={
+                "grant_type": "authorization_code", "code": code, "redirect_uri": tx["redirect_uri"],
+                "code_verifier": tx["verifier"]}, auth=(cfg.client_id, cfg.client_secret),
+                headers={"Accept": "application/json"})
+    except httpx.HTTPError as exc:
+        raise _unreachable(exc) from None
     if r.status_code != 200:
         # the provider's error code only: its description can echo what was sent
-        err = r.json().get("error", "") if r.headers.get("content-type", "").startswith("application/json") else ""
+        try:
+            err = r.json().get("error", "") if r.headers.get("content-type", "").startswith("application/json") else ""
+        except (ValueError, AttributeError):
+            err = ""
         raise AuthError("login_failed", f"the provider refused the code ({str(err)[:60] or r.status_code})")
     try:
         id_token = r.json().get("id_token")

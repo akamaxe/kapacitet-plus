@@ -575,3 +575,39 @@ def test_the_access_log_never_carries_the_callbacks_code():
     assert RedactCallback().filter(rec)
     assert "abc123secret" not in rec.getMessage() and "/api/v1/auth/callback?[redacted]" in rec.getMessage()
     assert any(isinstance(f, RedactCallback) for f in logging.getLogger("uvicorn.access").filters)
+
+
+def test_a_provider_that_does_not_answer_is_said_and_never_a_server_error(oidc, monkeypatch):
+    """With the identity provider down, login answered 500, the callback 500 and logout 500 after
+    revoking the session without clearing its cookie. Each now says provider_unavailable, and a
+    logout still ends the session here."""
+    c = _client()
+    assert _sign_in(c, oidc, roles=["planner"]).status_code == 302
+    assert c.get(f"{API}/auth/me").json()["user"] is not None
+
+    def down(request):
+        raise httpx.ConnectError("getaddrinfo failed for login.example.org", request=request)
+
+    def start(next_hash="#/request"):
+        return c.get(f"{API}/auth/login", params={"next": next_hash}, follow_redirects=False)
+
+    # a login that started while the provider still answered
+    began = start()
+    code = oidc.authorize(began.headers["location"], roles=["planner"])
+    state = parse_qs(urlsplit(began.headers["location"]).query)["state"][0]
+    monkeypatch.setattr(auth, "_HTTP_TRANSPORT", httpx.MockTransport(down))
+    auth.forget_provider()                                     # nothing remembered of its documents
+    r = start()
+    assert r.status_code == 502 and _code(r) == "provider_unavailable"
+    assert "login.example.org" not in r.text and "ConnectError" in r.text      # the kind, not the address
+    back = c.get(f"{API}/auth/callback", params={"code": code, "state": state}, follow_redirects=False)
+    assert back.status_code == 302 and back.headers["location"] == "/?signin=provider_unavailable"
+    out = c.post(f"{API}/auth/logout", json={})
+    assert out.status_code == 200 and out.json() == {"ok": True, "logout_url": None}
+    assert any(h.startswith(auth.SESSION_COOKIE + "=;") or f"{auth.SESSION_COOKIE}=" in h and "Max-Age=0" in h
+               for h in _set_cookies(out))
+    # a reply that is no JSON is the same kind of failure
+    monkeypatch.setattr(auth, "_HTTP_TRANSPORT", httpx.MockTransport(lambda request: httpx.Response(200, text="<html>")))
+    auth.forget_provider()
+    r = start()
+    assert r.status_code == 502 and _code(r) == "provider_unavailable"

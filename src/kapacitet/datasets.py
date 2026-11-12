@@ -60,6 +60,7 @@ class DatasetError(ValueError):
 ERRORS = {
     "unknown_dataset": "unknown network {id}",
     "not_usable": "the export does not pass the check, so it cannot be built",
+    "not_in_contract": "not part of the contract: {tables}",
     "building": "network {id} is being built",
     "not_ready": "network {id} is not ready: its build has not finished",
     "in_use": "network {id} is in use; switch to another one first",
@@ -165,8 +166,13 @@ def create(name: str, files: dict[str, str], quick: bool = True) -> dict:
 
     import pandas as pd
 
+    from .importer.contract import BY_NAME
     from .importer.validate import validate
 
+    # the API refuses these first; whoever calls this directly gets the same answer
+    unknown = sorted(set(files) - set(BY_NAME))
+    if unknown:
+        raise DatasetError("not_in_contract", tables=", ".join(unknown))
     data = {k: pd.read_csv(io.StringIO(v)) for k, v in files.items()}
     report = validate(data)
     if not report.usable:
@@ -175,8 +181,9 @@ def create(name: str, files: dict[str, str], quick: bool = True) -> dict:
     ds_id = f"{slug}-{secrets.token_hex(3)}"
     root = folder(ds_id)
     (root / "import").mkdir(parents=True, exist_ok=False)
-    for table, text in files.items():
-        (root / "import" / f"{table}.csv").write_text(text, encoding="utf-8")
+    for table in BY_NAME:                    # by the contract's own names, never the caller's keys
+        if table in files:
+            inside(root / "import", f"{table}.csv").write_text(files[table], encoding="utf-8")
     rec = {"id": ds_id, "name": name.strip()[:80] or ds_id, "created": _now(), "status": "uploaded", "quick": quick,
            "report": report.to_dict(), "customers": int(len(data["customers"])),
            "steps": [{"name": s, "status": "waiting"} for s in STEPS]}

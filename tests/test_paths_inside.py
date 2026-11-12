@@ -63,3 +63,16 @@ def test_a_record_or_a_sealed_copy_asked_for_by_a_path_does_not_exist(tmp_path):
         chain.copy_put("decision", "../../private", b"{}")
     chain.copy_delete("decision", "../../private")              # nothing to delete, and nothing deleted
     assert (tmp_path / "evidence" / "private.json").exists()
+
+
+def test_a_network_is_kept_only_under_the_contracts_own_table_names(tmp_path, monkeypatch):
+    """`create` wrote one file per key of what it was handed. The API lets only the contract's
+    tables through; the function now refuses the rest itself, before anything is written."""
+    from kapacitet import datasets
+
+    monkeypatch.setattr(datasets, "DATASETS", tmp_path / "datasets")
+    files = {"buses": "bus_id,kind\nS,substation\n", "../../outside": "x\n1\n"}
+    with pytest.raises(datasets.DatasetError) as refused:
+        datasets.create("Trial", files)
+    assert refused.value.code == "not_in_contract" and "../../outside" in str(refused.value)
+    assert not (tmp_path / "datasets").exists() and not list(tmp_path.rglob("outside*"))
