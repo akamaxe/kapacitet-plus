@@ -3,6 +3,10 @@ import { isLang, loadLang, type Lang } from "./i18n/core";
 
 export type Screen = "national" | "twin" | "compare" | "request" | "operation" | "report" | "scenarios" | "method";
 export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "operation", "report", "scenarios", "method"];
+/** The start window (the projects) or the workbench of the project that is open. */
+export type View = "start" | "work";
+/** The screen a project opens on the first time; afterwards it opens where it was left. */
+export const OPENING: Screen = "compare";
 export type Scenario = "static" | "uncontrolled" | "doe";
 /** The envelope a screen reads: perfect foresight (the planning bound) or issued the day before. */
 export type Basis = "foresight" | "dayahead";
@@ -30,7 +34,8 @@ function writeLS(key: string, value: string) {
 
 /**
  * `#/<screen>?hour=…&scenario=…&cid=…` — what someone is looking at, so a view can be
- * sent to a colleague and a figure in a report can be traced back to it.
+ * sent to a colleague and a figure in a report can be traced back to it. `#/start`, or an address
+ * with nothing after it, is the start window.
  *
  * Only things that change what the numbers mean travel: the hour, the scenario, the selected
  * house and, on the request screen, the saved assessment being read (`job`). A link that
@@ -41,7 +46,9 @@ export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
 
 export interface UrlView {
   screen: Screen;
-  /** a screen name in the link that does not exist (the view falls back to the opening screen) */
+  /** the link is to the start window: nothing named, `start`, or a screen that does not exist */
+  start?: boolean;
+  /** a screen name in the link that does not exist (the start window shows instead) */
   notFound?: string;
   hour?: number;
   scenario?: Scenario;
@@ -65,9 +72,13 @@ export function parseHash(hash: string = window.location.hash): UrlView {
   const raw = hash.replace(/^#\/?/, "");
   const [path, search] = raw.split("?");
   const known = (SCREENS as string[]).includes(path);
-  const screen = known ? (path as Screen) : "compare";
+  const screen = known ? (path as Screen) : OPENING;
   const q = new URLSearchParams(search ?? "");
-  const out: UrlView = { screen, ...(path && !known ? { notFound: path } : {}) };
+  const out: UrlView = {
+    screen,
+    ...(known ? {} : { start: true }),
+    ...(path && path !== "start" && !known ? { notFound: path } : {}),
+  };
   // Number(null) is 0, so every one of these needs the presence check first: without it
   // a link with no hour reads as hour 0 and resets the view on every tab click.
   const num = (key: string) => {
@@ -100,7 +111,7 @@ let written = "";
 
 /** The parts of the view a link carries. */
 export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
-  Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset">>;
+  Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset" | "view">>;
 
 /** The basis a report opens on: what is issued the day before. Perfect foresight is the planning
  *  bound, which nobody can issue, so it is the one a link has to ask for. */
@@ -108,6 +119,8 @@ export const DEFAULT_BASIS: Basis = "dayahead";
 
 /** The address for what is on screen. Pure, like parseHash. */
 export function hashFor(st: LinkedView): string {
+  // the start window is the same place on every project, so it carries nothing else
+  if (st.view === "start") return "#/start";
   const q = new URLSearchParams();
   // omit anything at its default, and anything this screen does not read: an hour on the
   // method appendix is noise in a link somebody is meant to paste somewhere
@@ -162,6 +175,8 @@ function scheduleDateWrite() {
 }
 
 interface State {
+  /** the start window, or the workbench showing `screen` */
+  view: View;
   screen: Screen;
   lang: Lang;
   theme: Theme;
@@ -192,7 +207,10 @@ interface State {
   singleKeys: boolean;
   setSingleKeys: (on: boolean) => void;
   setTour: (step: number | null, instant?: boolean) => void;
+  /** a screen of the open project; from the start window this is what opening the project does */
   setScreen: (s: Screen) => void;
+  /** the start window, or back into the project on the screen it was left on */
+  setView: (v: View) => void;
   /** switches once the language's dictionary has loaded, so nothing shows in a half-loaded language */
   setLang: (l: Lang) => Promise<void>;
   setTheme: (t: Theme) => void;
@@ -211,8 +229,15 @@ const DEFAULT_HOUR = (31 + 28 + 31 + 30 + 31 + 30 + 11) * 24 + 12;
 
 const initial = parseHash();
 
+/** The screen the project was left on, kept across visits so that opening it returns there. */
+function storedScreen(): Screen {
+  const s = readLS("kap.screen", OPENING);
+  return (SCREENS as string[]).includes(s) ? (s as Screen) : OPENING;
+}
+
 export const useStore = create<State>((set) => ({
-  screen: initial.screen,
+  view: initial.start ? "start" : "work",
+  screen: initial.start ? storedScreen() : initial.screen,
   // an unknown stored language would leave every lookup empty, so it falls back to English
   lang: ((v) => (isLang(v) ? v : "en"))(readLS("kap.lang", "en")),
   // day is the default (DESIGN.md); a value this version does not know falls back to it
@@ -239,8 +264,13 @@ export const useStore = create<State>((set) => ({
   },
   setTour: (tour, instant = false) => set((s) => ({ tour, tourInstant: tour === null ? false : s.tour === null ? instant : s.tourInstant, tourOffered: false })),
   setScreen: (screen) => {
-    set({ screen });
+    set({ screen, view: "work" });
+    writeLS("kap.screen", screen);
     writeHash(true); // a screen is a place, so it gets a history entry
+  },
+  setView: (view) => {
+    set({ view });
+    writeHash(true);
   },
   setLang: async (lang) => {
     try {
@@ -325,7 +355,8 @@ function onHashChange() {
   const v = parseHash();
   written = window.location.hash;
   useStore.setState({
-    screen: v.screen,
+    // the start window keeps the screen the project was on, for when it is opened again
+    ...(v.start ? { view: "start" as const } : { view: "work" as const, screen: v.screen }),
     ...(v.hour !== undefined ? { hour: v.hour, hourTouched: true } : {}),
     ...(v.scenario ? { scenario: v.scenario } : {}),
     // a link without a parameter means "this screen", not "forget what I had selected"

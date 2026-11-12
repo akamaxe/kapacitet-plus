@@ -1,26 +1,24 @@
 import { useRef, useState } from "react";
+import { CheckReport, type Report } from "./CheckReport";
 import { Icon } from "./Icon";
-import { Status } from "./bits";
-import { CreateNetwork } from "./Networks";
+import { CreateProjectForm } from "./NewProject";
 import { API, apiWrite, useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
 import { RoleNote } from "./RoleNote";
-import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { refusalOf, refusalText } from "../lib/errors";
-
-const SEVERITY: Record<string, "critical" | "warning"> = { error: "critical", warning: "warning" };
+import { useStore } from "../lib/store";
 
 /**
  * Bring your own network: the four CSV files a DSO exports from its GIS, and the data-quality
  * check that says what is missing before anybody promises a capacity for it. Files are read in
- * the browser and sent as text to POST /check; nothing is stored.
+ * the browser and sent as text to POST /check; nothing is stored. A network that passes can be
+ * made a project here, as in the start window's own steps.
  */
 export function NetworkCheck() {
   const t = useT();
-  const f = useFmt();
   const contract = useApi<any>("/contract");
-  const [report, setReport] = useState<any | null>(null);
+  const [report, setReport] = useState<Report | null>(null);
   const [busy, setBusy] = useState(false);
   const role = useCan("check");
   const [error, setError] = useState<string | null>(null);
@@ -30,21 +28,6 @@ export function NetworkCheck() {
   const input = useRef<HTMLInputElement>(null);
   const tables: any[] = contract.data?.tables ?? [];
   const names = new Set(tables.map((tb) => tb.name));
-  // a check this version has no words for keeps the engine's own name
-  const checkLabel = (check: string) => {
-    const key = `chk.${check.replace(/ /g, "_")}`;
-    const label = t(key);
-    return label === key ? check : label;
-  };
-
-  // the engine's sentence, said in the reader's language when this version knows its code
-  const findingText = (x: { code?: string; params?: Record<string, string | number>; message: string }) => {
-    if (!x.code) return x.message;
-    const key = `chk.msg.${x.code}`;
-    const text = t(key, x.params);
-    return text === key ? x.message : text;
-  };
-
   const check = async (files: Record<string, string>) => {
     setBusy(true);
     setError(null);
@@ -123,27 +106,14 @@ export function NetworkCheck() {
         {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
         {ignored.length > 0 && <p className="caption-muted">{t("met.imp.ignored", { files: ignored.join(", ") })}</p>}
         {report && (
-          <div className="stack" aria-live="polite">
-            <div className="netcheck-verdict">
-              {report.usable ? <Status kind="good">{t("met.imp.usable")}</Status> : <Status kind="critical">{t("met.imp.unusable")}</Status>}
-              <span className="netcheck-score">{t("met.imp.score", { s: f(report.score) })}</span>
-            </div>
-            <p className="caption-muted">{Object.entries(report.tables ?? {}).map(([k, v]) => `${k}: ${f(v as number)}`).join(" · ")}</p>
-            {report.findings.length === 0 ? (
-              <p className="caption">{t("met.imp.clean")}</p>
-            ) : (
-              <ul className="netcheck-findings">
-                {report.findings.map((x: any, i: number) => (
-                  <li key={i}>
-                    {SEVERITY[x.severity]
-                      ? <Status kind={SEVERITY[x.severity]}>{t(`met.imp.sev.${x.severity}`)}</Status>
-                      : <span className="status measured">{t(`met.imp.sev.${x.severity}`)}</span>}
-                    <span><strong>{checkLabel(x.check)}</strong>{x.count ? ` (${f(x.count)})` : ""} — {findingText(x)}</span>
-                  </li>
-                ))}
-              </ul>
+          <div className="stack">
+            <CheckReport report={report} />
+            {report.usable && checked && (
+              <div className="stack netcreate">
+                <h4>{t("new.build.title")}</h4>
+                <CreateProjectForm files={checked} origin={{ kind: "csv" }} onCreated={() => useStore.getState().setView("start")} />
+              </div>
             )}
-            {report.usable && checked && <CreateNetwork files={checked} />}
           </div>
         )}
       </section>

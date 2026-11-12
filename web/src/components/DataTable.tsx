@@ -30,8 +30,10 @@ export function DataTable<T>({
   searchLabel,
   selected,
   onSelect,
+  onOpen,
   initialSort,
   className,
+  search = true,
 }: {
   rows: T[];
   cols: Col<T>[];
@@ -41,9 +43,13 @@ export function DataTable<T>({
   searchLabel?: string;
   selected?: string | number | null;
   onSelect?: (row: T) => void;
+  /** A double click, or Enter on the row that is already picked: open what the row stands for. */
+  onOpen?: (row: T) => void;
   initialSort?: string;
   /** A class on the wrapper, for a table that reads differently on a phone (its cells carry `dt-c-<key>`). */
   className?: string;
+  /** The search field and the count above the table; a list of a few rows goes without. */
+  search?: boolean;
 }) {
   const t = useT();
   const id = useId();
@@ -82,7 +88,7 @@ export function DataTable<T>({
 
   return (
     <div className={className ? `dt ${className}` : "dt"}>
-      <div className="dt-bar">
+      {search && <div className="dt-bar">
         <label className="dt-search">
           <Icon name="search" size={16} />
           <input
@@ -97,7 +103,7 @@ export function DataTable<T>({
         <span className="caption-muted" id={`${id}-count`} aria-live="polite">
           {t("dt.showing", { n: shown.length, total: rows.length })}
         </span>
-      </div>
+      </div>}
       <div className="dt-scroll">
         <table className="data">
           <caption className="sr-only">{caption}</caption>
@@ -108,7 +114,7 @@ export function DataTable<T>({
                 return (
                   <th
                     key={c.key}
-                    className={c.numeric ? "r" : undefined}
+                    className={c.numeric ? `r dt-h-${c.key}` : `dt-h-${c.key}`}
                     aria-sort={on ? (sort!.dir === 1 ? "ascending" : "descending") : "none"}
                   >
                     <button className="dt-sort" onClick={() => cycle(c.key)}>
@@ -124,20 +130,33 @@ export function DataTable<T>({
             </tr>
           </thead>
           <tbody>
-            {shown.map((r) => {
+            {shown.map((r, i) => {
               const k = rowKey(r);
+              const picked = selected != null && k === selected;
               return (
                 <tr
                   key={k}
-                  aria-current={selected != null && k === selected ? "true" : undefined}
+                  aria-current={picked ? "true" : undefined}
                   tabIndex={onSelect ? 0 : undefined}
                   onClick={onSelect ? () => onSelect(r) : undefined}
+                  onDoubleClick={onOpen ? () => onOpen(r) : undefined}
                   onKeyDown={
                     onSelect
                       ? (e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
-                            onSelect(r);
+                            // Enter on the picked row opens it; anywhere else it picks, as Space does
+                            if (e.key === "Enter" && onOpen && picked) onOpen(r);
+                            else onSelect(r);
+                          } else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                            // the arrows walk the rows, and the pick follows the focus
+                            const next = shown[i + (e.key === "ArrowDown" ? 1 : -1)];
+                            const row = e.currentTarget[e.key === "ArrowDown" ? "nextElementSibling" : "previousElementSibling"];
+                            if (next && row instanceof HTMLElement) {
+                              e.preventDefault();
+                              row.focus();
+                              onSelect(next);
+                            }
                           }
                         }
                       : undefined

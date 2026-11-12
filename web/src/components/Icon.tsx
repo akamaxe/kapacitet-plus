@@ -24,6 +24,8 @@ const paths = {
   copy: "M9 9h10v10H9V9Zm-4 6V5h10",
   download: "M12 4v10m-4-4 4 4 4-4M5 19h14",
   upload: "M12 20V10m-4 4 4-4 4 4M5 5h14",
+  plus: "M12 5v14M5 12h14",
+  folder: "M3 6h6l2 2h10v11H3V6Z",
 } as const;
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths; size?: number }) {

@@ -17,7 +17,7 @@ function preloadOpening(): Plugin {
         if (!bundle) return [];
         const files = Object.values(bundle);
         const font = files.find((f) => /familjen-grotesk-latin-wght-normal-[\w-]+\.woff2$/.test(f.fileName));
-        const opening = files.find((f) => f.type === "chunk" && (f as { facadeModuleId?: string | null }).facadeModuleId?.replace(/\\/g, "/").endsWith("/screens/Compare.tsx"));
+        const opening = files.find((f) => f.type === "chunk" && (f as { facadeModuleId?: string | null }).facadeModuleId?.replace(/\\/g, "/").endsWith("/screens/Start.tsx"));
         const tags = [];
         if (font) tags.push({ tag: "link", attrs: { rel: "preload", as: "font", type: "font/woff2", href: `/${font.fileName}`, crossorigin: "" }, injectTo: "head" as const });
         if (opening) tags.push({ tag: "link", attrs: { rel: "modulepreload", crossorigin: "", href: `/${opening.fileName}` }, injectTo: "head" as const });

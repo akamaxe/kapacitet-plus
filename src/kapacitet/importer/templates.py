@@ -182,7 +182,7 @@ def files(template_id: str) -> dict[str, str]:
 
 def origin(template: Template) -> dict:
     """What a network made from this template says about where it comes from."""
-    return {"kind": "template", "template": template.id, "name": f"{template.name} (synthetic)",
+    return {"kind": "template", "template": template.id, "name": template.name,
             "generator": template.generator, "synthetic": True, "synthetic_parts": list(SYNTHETIC_PARTS)}
 
 

@@ -2462,3 +2462,84 @@ main h1:focus, main h1:focus-visible { outline: none; }
   .setting-row { grid-template-columns: minmax(0, 1fr); }
   .setting-row dd { justify-items: start; text-align: left; }
 }
+
+/* ---------------------------------------------------------------- the start window
+   What one sees on entering: a column of things to start with, and the projects as a table with
+   the picked one as a data sheet under it. The column is parted from the list by a hairline. */
+.start { display: grid; grid-template-columns: var(--start-col-w) minmax(0, 1fr); height: 100%; min-height: 0; }
+.start-side { display: flex; flex-direction: column; gap: var(--space-5); min-height: 0; overflow-y: auto; padding: var(--space-6) var(--space-5); border-right: 1px solid var(--border); }
+.start-side h2 { margin: 0; font-size: var(--text-h2); line-height: var(--lh-h2); letter-spacing: var(--track-h2); }
+.start-side h3 { margin: 0 0 var(--space-1); color: var(--text-secondary); font-size: var(--text-small); font-weight: 600; }
+.start-actions { display: grid; gap: var(--space-2); }
+.start-actions .btn { justify-content: flex-start; }
+.start-links { display: grid; margin: 0; padding: 0; list-style: none; }
+.start-links button,
+.start-links a { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-height: 40px; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; font-size: var(--text-small); font-weight: 500; text-align: left; text-decoration: none; cursor: pointer; }
+.start-links button:hover,
+.start-links a:hover { color: var(--accent-hover); text-decoration: underline; text-underline-offset: 3px; }
+.start-main { max-width: 1180px; margin: 0; }
+/* about seven projects, then the list scrolls under its header */
+.start-table .dt-scroll { max-height: 320px; }
+.proj-name { display: inline-flex; align-items: center; gap: var(--space-3); min-width: 0; }
+.proj-name strong { font-weight: 600; }
+.proj-detail { display: grid; gap: var(--space-3); }
+.proj-detail .block-head { margin-bottom: 0; }
+.proj-detail h2 { margin: 0; }
+.proj-detail > p { margin: 0; }
+.proj-actions { margin-top: var(--space-2); }
+
+/* a project's facts are words as often as figures: they wrap, where a reading would not */
+.proj-detail .tile .t-value { white-space: normal; }
+.proj-detail .tile { column-gap: var(--space-4); }
+
+.proj-log summary { cursor: pointer; color: var(--text-secondary); font-size: var(--text-small); font-weight: 500; }
+.proj-log summary:hover { color: var(--text-primary); }
+.proj-log .payload { margin-top: var(--space-2); }
+
+/* a new project, in three steps: the step being taken is underlined in ink, like the section
+   being read in a long screen's bar */
+.new-steps { display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-6); margin: 0; padding: 0; list-style: none; color: var(--text-muted); font-size: var(--text-small); font-weight: 500; }
+.new-steps li { display: inline-flex; align-items: baseline; gap: var(--space-2); padding-bottom: var(--space-1); border-bottom: 2px solid transparent; }
+.new-steps li[data-done] { color: var(--text-secondary); }
+.new-steps li[aria-current="step"] { color: var(--text-primary); font-weight: 600; border-bottom-color: var(--text-primary); }
+.new-project .block { display: flex; flex-direction: column; gap: var(--space-3); }
+.new-project .block > p { margin: 0; }
+.new-project .seg { align-self: flex-start; }
+.new-project h1:focus { outline: none; }
+/* the example networks: one line each, picked like a row of a table */
+/* eight networks show at once and the rest scroll, so the step's action stays in view */
+.new-templates { display: grid; max-width: 78ch; max-height: 328px; min-width: 0; margin: 0; padding: 0; overflow-y: auto; border: 0; border-top: 1px solid var(--border); }
+.new-templates label { display: grid; grid-template-columns: auto minmax(0, 1fr) 14ch 9ch; align-items: center; gap: var(--space-3); min-height: 40px; padding: 0 var(--space-2); border-bottom: 1px solid var(--border); font-size: var(--text-small); cursor: pointer; }
+.new-templates label:hover { background: var(--bg-inset); }
+.new-templates label[data-picked] { background: var(--accent-quiet); }
+.new-templates input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.nt-name { color: var(--text-primary); font-weight: 500; }
+.nt-fact { color: var(--text-secondary); text-align: right; white-space: nowrap; }
+.new-form { align-items: flex-start; gap: var(--space-3); }
+.new-form > p { margin: 0; }
+.new-name input { min-width: 30ch; }
+
+@media (max-width: 700px) {
+  .new-templates label { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .new-templates .nt-fact:last-child { display: none; }
+  .new-name { flex-wrap: wrap; }
+  .new-name input { min-width: 0; width: 100%; }
+  /* the project and its state stack, so the list reads without scrolling sideways */
+  .start-table .dt-c-name { white-space: normal; }
+  .proj-name { flex-wrap: wrap; row-gap: var(--space-1); }
+  .proj-detail .tiles { grid-template-columns: minmax(0, 1fr); }
+  /* the list keeps the project, its size and its results; the transformer is in the sheet below */
+  .start-table .dt-h-trafo,
+  .start-table .dt-c-trafo { display: none; }
+  .start-main { padding: var(--space-5) var(--space-4) var(--space-6); }
+}
+
+@media (max-width: 900px) {
+  .start { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .start-side { flex-direction: row; flex-wrap: wrap; align-items: flex-start; gap: var(--space-3) var(--space-6); padding: var(--space-4); border-right: 0; border-bottom: 1px solid var(--border); overflow: visible; }
+  .start-side h2 { width: 100%; }
+  .start-links { grid-auto-flow: column; gap: var(--space-5); }
+  .start-links button,
+  .start-links a { width: auto; }
+  .start-side h3 { display: none; }
+}

@@ -12,9 +12,13 @@ describe("parseHash", () => {
     });
   });
 
-  it("falls back to the opening screen and remembers the name it did not know", () => {
-    expect(parseHash("#/nowhere")).toEqual({ screen: "compare", notFound: "nowhere" });
-    expect(parseHash("")).toEqual({ screen: "compare" });
+  it("opens the start window for an address that names no screen, and remembers a name it did not know", () => {
+    expect(parseHash("")).toEqual({ screen: "compare", start: true });
+    expect(parseHash("#/")).toEqual({ screen: "compare", start: true });
+    expect(parseHash("#/start")).toEqual({ screen: "compare", start: true });
+    expect(parseHash("#/nowhere")).toEqual({ screen: "compare", start: true, notFound: "nowhere" });
+    // a link to a screen is a link into the project, as it always was
+    expect(parseHash("#/twin").start).toBeUndefined();
   });
 
   it("reads a missing or empty parameter as unchanged, never as zero", () => {
@@ -72,6 +76,13 @@ describe("hashFor", () => {
     expect(parseHash("#/report?basis=foresight")).toEqual({ screen: "report", basis: "foresight" });
   });
 
+  it("gives the start window one address, whatever else is in the view", () => {
+    expect(hashFor({ ...base, view: "start" })).toBe("#/start");
+    expect(hashFor({ ...base, view: "start", selectedCid: 7, hourTouched: true, dataset: "my-net-1a2b3c" })).toBe("#/start");
+    expect(hashFor({ ...base, view: "work" })).toBe("#/twin");
+    expect(parseHash(hashFor({ ...base, view: "start" })).start).toBe(true);
+  });
+
   it("round-trips through parseHash", () => {
     const view: LinkedView = { ...base, screen: "request", hourTouched: true, hour: 123, selectedCid: 3, job: "abcdefabcdef" };
     expect(parseHash(hashFor(view))).toEqual({ screen: "request", hour: 123, cid: 3, job: "abcdefabcdef" });
@@ -84,7 +95,7 @@ describe("writing the address", () => {
 
   beforeEach(() => {
     vi.useFakeTimers();
-    useStore.setState({ screen: "compare", playing: false, hourTouched: false, selectedCid: null, job: null, scenario: "doe" });
+    useStore.setState({ view: "work", screen: "compare", playing: false, hourTouched: false, selectedCid: null, job: null, scenario: "doe" });
     replace = vi.spyOn(window.history, "replaceState");
     push = vi.spyOn(window.history, "pushState");
   });
@@ -101,6 +112,20 @@ describe("writing the address", () => {
     useStore.getState().setScenario("static");
     expect(push).toHaveBeenCalledTimes(1);
     expect(replace).toHaveBeenLastCalledWith(null, "", "#/twin?scenario=static");
+  });
+
+  it("makes an entry for the start window and for opening the project from it", () => {
+    useStore.getState().setScreen("twin");
+    useStore.getState().setView("start");
+    expect(push).toHaveBeenLastCalledWith(null, "", "#/start");
+    expect(useStore.getState().screen).toBe("twin");          // the project is still on its screen
+    useStore.getState().setView("work");
+    expect(push).toHaveBeenLastCalledWith(null, "", "#/twin");
+    useStore.getState().setView("start");
+    useStore.getState().setScreen("report");                  // a screen chosen from the start window opens the project
+    expect(useStore.getState().view).toBe("work");
+    expect(push).toHaveBeenLastCalledWith(null, "", "#/report");
+    expect(window.localStorage.getItem("kap.screen")).toBe("report");
   });
 
   it("writes a run of hour changes once, 250 ms after the last", () => {
@@ -147,6 +172,12 @@ describe("the portal's address", () => {
     initUrlSync(); // once is enough, however often it is asked
     window.location.hash = "#/twin";
     window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(useStore.getState().screen).toBe("twin");
+    expect(useStore.getState().view).toBe("work");
+    // back to the start window: the screen the project was on is kept for when it is opened again
+    window.location.hash = "#/start";
+    window.dispatchEvent(new HashChangeEvent("hashchange"));
+    expect(useStore.getState().view).toBe("start");
     expect(useStore.getState().screen).toBe("twin");
   });
 });

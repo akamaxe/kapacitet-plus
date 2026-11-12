@@ -92,6 +92,7 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
   // the scope is the site the data describe, read from the data like every other fact
   const meta = useApi<any>("/meta");
   const screen = useStore((s) => s.screen);
+  const view = useStore((s) => s.view);
   const lang = useStore((s) => s.lang);
   const setLang = useStore((s) => s.setLang);
   const theme = useStore((s) => s.theme);
@@ -110,14 +111,14 @@ export function TopBar({ onSearch, onMenu }: { onSearch: () => void; onMenu: () 
       <button className="top-tool menu-btn" onClick={onMenu} aria-label={t("shell.menu")} aria-haspopup="dialog">
         <Icon name="menu" size={20} />
       </button>
-      <a className="brand" href="#/compare" aria-label="Kapacitet+">
+      <a className="brand" href="#/start" aria-label={t("start.go")}>
         <Roundel />
         <span className="brand-name">Kapacitet+</span>
       </a>
       <span className="brand-scope">{meta.data ? `${meta.data.site} · ${meta.data.bidding_zone}` : ""}</span>
       <nav className="topnav" aria-label={t("shell.navigation")}>
         {SCREENS.map((s) => (
-          <a key={s} href={`#/${s}`} aria-current={screen === s ? "page" : undefined}>{t(`tab.${s}`)}</a>
+          <a key={s} href={`#/${s}`} aria-current={view === "work" && screen === s ? "page" : undefined}>{t(`tab.${s}`)}</a>
         ))}
       </nav>
       <div className="top-tools">

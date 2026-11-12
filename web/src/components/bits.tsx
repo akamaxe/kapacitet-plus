@@ -196,9 +196,12 @@ export function SectionMissing({ title, q }: { title: string; q: { isError?: boo
   const t = useT();
   if (!q.isError) return null;
   const e = q.error instanceof ApiError ? q.error : null;
+  // a refusal this version has words for (`err.<code>`) is said in them
+  const key = e?.info?.code ? `err.${e.info.code}` : "";
+  const named = key && t(key) !== key ? t(key) : null;
   return (
     <div className="section-missing" role="note">
-      <p className="caption"><strong>{title}</strong> · {e?.info?.code === "not_computed" ? t("ui.notComputedHow", { file: e.info.file ?? "" }) : e?.status === 0 ? t("ui.offline") : t("ui.missing")}</p>
+      <p className="caption"><strong>{title}</strong> · {e?.info?.code === "not_computed" ? t("ui.notComputedHow", { file: e.info.file ?? "" }) : e?.status === 0 ? t("ui.offline") : named ?? t("ui.missing")}</p>
       {e?.info?.command && <CommandLine command={e.info.command} />}
     </div>
   );

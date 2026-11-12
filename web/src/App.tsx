@@ -24,6 +24,7 @@ const Operation = lazy(() => import("./screens/Operation"));
 const Report = lazy(() => import("./screens/Report"));
 const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
+const Start = lazy(() => import("./screens/Start"));
 
 /**
  * What a screen looks like while its code arrives: the same skeleton the screen shows while
@@ -52,17 +53,19 @@ export default function App() {
 function Main() {
   const t = useT();
   const screen = useStore((s) => s.screen);
+  // the start window (the projects), or the workbench on `screen`
+  const view = useStore((s) => s.view);
   // a fresh clone has no results: say how to make them instead of showing empty screens
   const health = useApi<any>("/health");
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
-  // the network the server is on goes into every link; a link made on another one says so once
+  // the project the server is on goes into every link; a link made on another one says so once
   const serverDataset: string | undefined = health.data?.dataset;
   useEffect(() => {
     if (!serverDataset) return;
     const st = useStore.getState();
     useStore.setState({ dataset: serverDataset });
     if (st.linkDataset && st.linkDataset !== serverDataset) {
-      toast.info(t("nets.linkOther", { link: st.linkDataset, current: serverDataset }));
+      toast.info(t("proj.linkOther", { link: st.linkDataset, current: serverDataset }));
       useStore.setState({ linkDataset: null });
     }
     syncUrl();
@@ -73,7 +76,7 @@ function Main() {
   const notFound = useStore((s) => s.notFound);
   const selectedCid = useStore((s) => s.selectedCid);
 
-  // a link to a screen that does not exist opens the first one, and says so once
+  // a link to a screen that does not exist opens the start window, and says so once
   useEffect(() => {
     if (!notFound) return;
     toast.info(t("ui.noScreen", { name: notFound }));
@@ -95,8 +98,9 @@ function Main() {
   // heading, so a screen reader announces where it has arrived (not on the first load, and not
   // while the tour holds the focus on its own card)
   const firstScreen = useRef(true);
+  const place = view === "start" ? t("start.title") : t(`tab.${screen}`);
   useEffect(() => {
-    document.title = `${t(`tab.${screen}`)} · Kapacitet+`;
+    document.title = `${place} · Kapacitet+`;
     if (firstScreen.current) {
       firstScreen.current = false;
       return;
@@ -113,23 +117,24 @@ function Main() {
     };
     go();
     return () => cancelAnimationFrame(raf);
-  }, [screen, t]);
+  }, [screen, view, place]);
 
-  // a first visit is offered the tour after a moment; it never starts by itself
+  // a first visit to a project is offered the tour after a moment; it never starts by itself,
+  // and not on the start window, where there is no project in view to tour
   useEffect(() => {
-    if (tourSeen()) return;
+    if (view !== "work" || tourSeen()) return;
     const id = window.setTimeout(() => {
       if (!modalOpen() && useStore.getState().tour === null) useStore.setState({ tourOffered: true });
     }, 1500);
     return () => window.clearTimeout(id);
-  }, []);
+  }, [view]);
   const [palette, setPalette] = useState(false);
   const [keys, setKeys] = useState(false);
   const [menu, setMenu] = useState(false);
   const [attempt, setAttempt] = useState(0);
 
-  // Keys: 1–8 jump to a screen, Ctrl+→/← step, ⌘K or / opens the palette, ? the key
-  // sheet, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
+  // Keys: 0 is the start window, 1–8 jump to a screen, Ctrl+→/← step, ⌘K or / opens the
+  // palette, ? the key sheet, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -152,7 +157,10 @@ function Main() {
       const plain = !e.ctrlKey && !e.metaKey && e.key.length === 1;
       if (plain && !st.singleKeys) return;
       const digit = Number(e.key);
-      if (digit >= 1 && digit <= SCREENS.length && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      if (e.key === "0" && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+        if (st.view !== "start") st.setView("start");
+        e.preventDefault();
+      } else if (digit >= 1 && digit <= SCREENS.length && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
         st.setScreen(SCREENS[digit - 1]);
         e.preventDefault();
       } else if (e.key === "/" ) {
@@ -161,10 +169,10 @@ function Main() {
       } else if (e.key === "?") {
         setKeys(true);
         e.preventDefault();
-      } else if (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight")) {
+      } else if (st.view === "work" && (e.key === "PageDown" || (e.ctrlKey && e.key === "ArrowRight"))) {
         st.setScreen(SCREENS[Math.min(SCREENS.length - 1, i + 1)]);
         e.preventDefault();
-      } else if (e.key === "PageUp" || (e.ctrlKey && e.key === "ArrowLeft")) {
+      } else if (st.view === "work" && (e.key === "PageUp" || (e.ctrlKey && e.key === "ArrowLeft"))) {
         st.setScreen(SCREENS[Math.max(0, i - 1)]);
         e.preventDefault();
       } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
@@ -217,8 +225,14 @@ function Main() {
     <div className="app">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
       <TopBar onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} />
-      <main id="main" tabIndex={-1} aria-label={t(`tab.${screen}`)}>
-        {setupNeeded ? <Setup health={health.data} /> : (
+      <main id="main" tabIndex={-1} aria-label={place}>
+        {setupNeeded ? <Setup health={health.data} /> : view === "start" ? (
+        <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`start-${attempt}`}>
+          <Suspense fallback={<PageSkeleton blocks={2} />}>
+            <Start onKeys={() => setKeys(true)} />
+          </Suspense>
+        </ErrorBoundary>
+        ) : (
         <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
           <Suspense fallback={<ScreenSkeleton screen={screen} />}>
             {screen === "national" && <National />}
@@ -234,9 +248,9 @@ function Main() {
         )}
       </main>
       {/* with nothing computed there is nothing to tour: no offer and no link until the data is in */}
-      <FootLine onKeys={() => setKeys(true)} onTour={setupNeeded ? undefined : () => useStore.getState().setTour(0)} />
-      {!setupNeeded && <Tour />}
-      {!setupNeeded && <TourOffer />}
+      <FootLine onKeys={() => setKeys(true)} onTour={setupNeeded || view === "start" ? undefined : () => useStore.getState().setTour(0)} />
+      {!setupNeeded && view === "work" && <Tour />}
+      {!setupNeeded && view === "work" && <TourOffer />}
       <Palette open={palette} onClose={() => setPalette(false)} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
       <MenuSheet open={menu} onClose={() => setMenu(false)} />

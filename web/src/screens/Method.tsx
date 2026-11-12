@@ -1,5 +1,4 @@
 import { NetworkCheck } from "../components/NetworkCheck";
-import { NetworksPanel } from "../components/Networks";
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
@@ -437,7 +436,11 @@ export default function Method() {
             </div>
           </div>
           <NetworkCheck />
-          <NetworksPanel />
+          <section className="block stack" aria-labelledby="nets-title">
+            <div className="block-head"><h3 id="nets-title">{t("start.projects")}</h3></div>
+            <p className="caption">{t("met.imp.projects")}</p>
+            <div><a className="btn ghost small" href="#/start">{t("start.go")}</a></div>
+          </section>
         </section>
 
         {/* ---------------------------------------------------------------- limits & refs */}

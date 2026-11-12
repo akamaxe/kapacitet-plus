@@ -57,6 +57,8 @@
   /* the side panel beside a map (app.css narrows both between 1101 and 1350 px) */
   --panel-w: 460px;
   --panel-w-wide: 560px;
+  /* the start window's column of things to start with */
+  --start-col-w: 280px;
 
   /* stacking */
   --z-sticky: 3;
