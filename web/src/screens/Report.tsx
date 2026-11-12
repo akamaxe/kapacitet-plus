@@ -43,7 +43,7 @@ export default function Report() {
   const lang = useStore((s) => s.lang);
   const cid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
-  const basis = useStore((s) => s.basis);
+  const wanted = useStore((s) => s.basis);
   const chosen = useStore((s) => s.policy);
   const setBasis = useStore((s) => s.setBasis);
   const setPolicy = useStore((s) => s.setPolicy);
@@ -55,8 +55,12 @@ export default function Report() {
   const active: string | undefined = settings.data?.settings?.allocation_policy;
   const ops = useApi<any>("/operation/index");
   const policy = chosen ?? active ?? "maxmin";
+  // the report opens on what is issued the day before; where that basis is not computed (before the
+  // operation stage only the perfect-foresight filing is published) it reads that one, and says so
+  const noDayAhead = wanted === "dayahead" && !ops.isLoading && !ops.data?.combos?.dayahead?.[policy];
+  const basis = noDayAhead ? "foresight" : wanted;
   const q = `basis=${basis}&policy=${policy}`;
-  const comp = useApi<any>(settings.data ? `/compliance?${q}` : null);
+  const comp = useApi<any>(settings.data && !ops.isLoading ? `/compliance?${q}` : null);
   const net = useApi<any>("/network");
   const R = comp.data?.data;
 
@@ -85,7 +89,7 @@ export default function Report() {
     [R, addresses, t],
   );
 
-  if (settings.isLoading || comp.isLoading || net.isLoading) return <PageSkeleton bar hero blocks={2} />;
+  if (settings.isLoading || ops.isLoading || comp.isLoading || net.isLoading) return <PageSkeleton bar hero blocks={2} />;
   if (!R) return <Missing of={[settings, comp, net]} />;
 
   const H = hoursInYear(R.year);
@@ -140,6 +144,7 @@ export default function Report() {
                 </div>
               )}
               <p className="caption-muted">{t(basis === "dayahead" ? "rep.basis.dayaheadNote" : "rep.basis.foresightNote")}</p>
+              {noDayAhead && <p className="caption-muted">{t("rep.basis.noDayAhead")}</p>}
               {policy !== active && active && <p className="caption-muted">{t("rep.ruleView", { rule: t(`pol.${policy}`), active: t(`pol.${active}`) })}</p>}
               <div className="answer-actions">
                 <a className="btn" href={`${API}/compliance.txt?${q}`} download><Icon name="download" size={15} />{t("rep.dl.filing")}</a>

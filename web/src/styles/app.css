@@ -1887,34 +1887,35 @@ ol.list {
 }
 
 /* ---------------------------------------------------------------- the opening answer
-   Three stops on one line, like a metro line read downwards: the static study and what can be
-   issued today in the muted ink at h1, the perfect-foresight bound at display size with the
-   budget it is held to. The screen's one display figure. */
+   Three stops on one line, like a metro line read downwards: the static study in the muted ink at
+   h1, what can be issued today at display size on a filled stop (the screen's one display
+   figure), and the perfect-foresight bound in the muted ink at h1 with the budget it is held to:
+   nobody can issue it, so it does not lead. */
 .answer-stops { list-style: none; margin: var(--space-4) 0 0; padding: 0; display: grid; gap: var(--space-3); font-variant-numeric: tabular-nums; }
 .as-stop { --dot-y: calc(var(--text-h1) * var(--lh-h1) / 2); position: relative; display: grid; gap: 2px; padding-left: var(--space-6); min-width: 0; }
-.as-stop.as-bound { --dot-y: calc(var(--text-display) * var(--lh-display) / 2); }
+.as-stop.as-issuable { --dot-y: calc(var(--text-display) * var(--lh-display) / 2); }
 /* the stop: a ring in its series colour on the page ground */
 .as-stop::before { content: ""; position: absolute; left: 0; top: calc(var(--dot-y) - 7px); width: 14px; height: 14px; box-sizing: border-box; border-radius: 50%; border: 3px solid var(--as-colour); background: var(--bg-base); }
 /* the line to the next stop */
 .as-stop:not(:last-child)::after { content: ""; position: absolute; left: 6px; top: calc(var(--dot-y) + 7px); bottom: calc(-1 * var(--space-3) - var(--dot-y) + 7px); width: 2px; background: var(--border-strong); }
 .as-static { --as-colour: var(--neutral-series); }
-.as-issuable { --as-colour: var(--series-dynamic-quiet); }
-.as-bound { --as-colour: var(--series-dynamic); }
-.as-bound::before { background: var(--series-dynamic); }
+.as-issuable { --as-colour: var(--series-dynamic); }
+.as-issuable::before { background: var(--series-dynamic); }
+.as-bound { --as-colour: var(--series-dynamic-quiet); }
 .as-value { font-size: var(--text-h1); line-height: var(--lh-h1); font-weight: 600; color: var(--text-muted); }
-.as-bound .as-value { font-size: var(--text-display); line-height: var(--lh-display); font-weight: 700; letter-spacing: var(--track-display); color: var(--text-primary); }
+.as-issuable .as-value { font-size: var(--text-display); line-height: var(--lh-display); font-weight: 700; letter-spacing: var(--track-display); color: var(--text-primary); }
 .as-value small { margin-left: var(--space-1); font-size: var(--text-h3); font-weight: 500; letter-spacing: 0; color: var(--text-muted); }
 .as-label { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2); font-size: var(--text-small); font-weight: 500; color: var(--text-primary); }
 .as-note { font-size: var(--text-caption); color: var(--text-muted); max-width: 80ch; }
 /* the budget the bound is held to, said beside the figure it qualifies */
 .basis-mark { padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .answer-ratio { color: var(--good); font-weight: 600; }
-/* each stop's length against the bound, under its figure: pencil, the quiet green solid to the low
-   end of the issuable range and hatched to its high end, and the full green line of the bound */
+/* each stop's length against the bound, under its figure: pencil, the green solid to the low end
+   of the issuable range and hatched to its high end, and the quiet green line of the bound */
 .as-bar { display: block; height: 6px; margin: 2px 0 var(--space-1); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
 .as-static .as-bar { background: var(--neutral-series); }
-.as-issuable .as-bar { background: linear-gradient(90deg, var(--series-dynamic-quiet) 0 var(--lo), transparent var(--lo)), repeating-linear-gradient(135deg, var(--series-dynamic-quiet) 0 2px, transparent 2px 5px); }
-.as-bound .as-bar { width: 100%; background: var(--series-dynamic); }
+.as-issuable .as-bar { background: linear-gradient(90deg, var(--series-dynamic) 0 var(--lo), transparent var(--lo)), repeating-linear-gradient(135deg, var(--series-dynamic) 0 2px, transparent 2px 5px); }
+.as-bound .as-bar { width: 100%; background: var(--series-dynamic-quiet); }
 .answer-sheet { width: 100%; margin-top: var(--space-3); border-top: 1px solid var(--border); }
 /* the opening answer's action sits between the answer and its data sheet */
 .hero-actions + .answer-sheet { margin-top: var(--space-5); }
@@ -1946,8 +1947,8 @@ ol.list {
   .net-figure { min-height: 380px; }
 }
 @media (max-width: 700px) {
-  .as-bound .as-value { font-size: var(--text-h1); line-height: var(--lh-h1); }
-  .as-stop.as-bound { --dot-y: calc(var(--text-h1) * var(--lh-h1) / 2); }
+  .as-issuable .as-value { font-size: var(--text-h1); line-height: var(--lh-h1); }
+  .as-stop.as-issuable { --dot-y: calc(var(--text-h1) * var(--lh-h1) / 2); }
   .net-figure { min-height: 440px; }
   .net-key .net-src:first-of-type { margin-left: 0; }
 }

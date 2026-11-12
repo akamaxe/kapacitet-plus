@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { AnswerStops } from "../components/AnswerStops";
+import { AnswerStops, heroStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
 import { PriceBasis, rangeParams } from "../components/PriceBasis";
 import { Chart } from "../components/LazyChart";
@@ -73,6 +73,10 @@ export default function Compare() {
   if (!H || !S) return <Missing of={[hosting, show, risk, val]} />;
 
   const m = H.summary.measures;
+  // the houses the issuable range connects: the hourly study's and, when published, the day-ahead envelopes'
+  const stops = heroStops(H);
+  const [hLo, hHi] = stops?.issuableHouses ?? [m.timeseries.adopters.median, m.timeseries.adopters.median];
+  const issuableHouses = hLo === hHi ? f(hLo) : `${f(hLo)}–${f(hHi)}`;
   const zStar = H.summary.z_star_pct;
   const years = H.summary.years;
   const pol = S.policies;
@@ -125,7 +129,8 @@ export default function Compare() {
                 <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
               <div className="tiles cols-1 answer-sheet">
-                <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${f(m.doe.adopters.median)}`} />
+                <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${issuableHouses}`}
+                  note={t("cmp.sheet.housesNote", { n: f(m.doe.adopters.median) })} />
                 <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
                 <Tile label={t("cmp.sheet.overHours", { year: S.year })} value={f(ver.uncontrolled_violation_hours)} unit="h" tone="danger" />
                 <Tile

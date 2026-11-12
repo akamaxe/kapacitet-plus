@@ -15,9 +15,11 @@ function hosting(withForesight: boolean) {
       summary: {
         z_star_pct: 4,
         budget_basis: { doe: "aggregate", doe_installation: "installation" },
-        measures: { static: kw(401), timeseries: kw(612), doe: kw(803), doe_installation: kw(733) },
+        measures: { static: kw(401), timeseries: { kw_ac: { median: 612 }, adopters: { median: 74 } }, doe: kw(803),
+          doe_installation: kw(733) },
       },
-      ...(withForesight ? { foresight: { median_kw: { climatological: 577 }, violation_hours: 0, planning_full_year_violations: 0 } } : {}),
+      ...(withForesight ? { foresight: { median_kw: { climatological: 577 }, median_adopters: { climatological: 71 },
+        violation_hours: 0, planning_full_year_violations: 0 } } : {}),
     },
   };
 }
@@ -62,6 +64,11 @@ describe("the opening answer", () => {
     expect(stop(el, "installation")).toMatch(/^733\skW/);
     // the bound says the budget it is held to
     expect(el.querySelector(".basis-mark")?.textContent).toMatch(/\b4\s%/);
+    // the ratio line is what can be issued over the static study (577/401 and 612/401), never the bound's 2.0
+    expect(stop(el, "ratio")).toMatch(/^×1\.4–1\.5\s/);
+    expect(stop(el, "ratio")).not.toContain("2.0");
+    // the display figure is the issuable stop: the bound is not the one that leads
+    expect(el.querySelector(".as-issuable [data-stop='issuable']")).not.toBeNull();
   });
 
   it("still renders without foresight.json: the issuable stop is the hourly study alone", async () => {
@@ -69,6 +76,7 @@ describe("the opening answer", () => {
     expect(stop(el, "issuable")).toBe("612kW");
     expect(stop(el, "bound")).toBe("803kW");
     expect(el.textContent).toContain("not computed yet");
+    expect(stop(el, "ratio")).toMatch(/^×1\.5\s/);            // one figure when the range has one end
   });
 });
 
@@ -76,12 +84,14 @@ describe("heroStops", () => {
   it("orders the range and leaves out what is not published", () => {
     const s = heroStops(hosting(true).data)!;
     expect(s.issuable).toEqual([577, 612]);
+    expect(s.issuableHouses).toEqual([71, 74]);
     expect(s.dayAheadKw).toBe(577);
     expect(s.budget).toBe("aggregate");
     const bare = hosting(false).data as any;
     delete bare.summary.measures.doe_installation;
     const b = heroStops(bare)!;
     expect(b.issuable).toEqual([612, 612]);
+    expect(b.issuableHouses).toEqual([74, 74]);
     expect(b.perInstallationKw).toBeNull();
     expect(heroStops({ summary: { measures: {} } })).toBeNull();
     const unaudited = hosting(true).data as any;

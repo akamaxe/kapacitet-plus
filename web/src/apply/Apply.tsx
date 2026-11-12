@@ -280,6 +280,8 @@ function Answer({ a }: { a: any }) {
           : t("apply.ans.envelope", { mean: f(e.curtailment_mean_pct, 1), p90: f(e.curtailment_p90_pct, 1) })}
       </p>
       <ul className="portal-points">
+        {/* a yes that is not firm rests on the limit: the worst-case check alone would not admit it */}
+        {!a.firm && <li>{t("apply.ans.static")}</li>}
         {!a.firm && !never && e.hours_limited_ref != null && <li>{t("apply.ans.hours", { h: f(e.hours_limited_ref) })}</li>}
         {e.ev_unmet_pct != null && e.ev_unmet_pct > 0 && <li>{t("apply.ans.ev", { pct: f(e.ev_unmet_pct, 1) })}</li>}
         {a.fuse && <li>{fuseText(t, f, a.fuse)}</li>}

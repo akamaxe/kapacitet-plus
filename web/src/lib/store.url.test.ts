@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { hashFor, initUrlSync, parseHash, useStore, type LinkedView } from "./store";
+import { DEFAULT_BASIS, hashFor, initUrlSync, parseHash, useStore, type LinkedView } from "./store";
 
-// The URL rule (CLAUDE.md): the address describes what is on screen, a missing parameter means
+// The URL rule: the address describes what is on screen, a missing parameter means
 // "unchanged", only a change of screen makes a history entry, and the hour is written at most
 // once per 250 ms and never while playing.
 
@@ -64,9 +64,12 @@ describe("hashFor", () => {
   });
 
   it("carries the basis away from its default and a chosen rule, on the report", () => {
-    expect(hashFor({ ...base, screen: "report", basis: "foresight", policy: null })).toBe("#/report");
-    expect(hashFor({ ...base, screen: "report", basis: "dayahead", policy: "prorata" })).toBe("#/report?basis=dayahead&policy=prorata");
-    expect(hashFor({ ...base, screen: "twin", basis: "dayahead", policy: "prorata" })).toBe("#/twin");
+    // the report opens on what is issued the day before: perfect foresight is the one a link asks for
+    expect(DEFAULT_BASIS).toBe("dayahead");
+    expect(hashFor({ ...base, screen: "report", basis: "dayahead", policy: null })).toBe("#/report");
+    expect(hashFor({ ...base, screen: "report", basis: "foresight", policy: "prorata" })).toBe("#/report?basis=foresight&policy=prorata");
+    expect(hashFor({ ...base, screen: "twin", basis: "foresight", policy: "prorata" })).toBe("#/twin");
+    expect(parseHash("#/report?basis=foresight")).toEqual({ screen: "report", basis: "foresight" });
   });
 
   it("round-trips through parseHash", () => {

@@ -3,12 +3,14 @@
  * from /hosting, each a published median.
  *
  * 1. the static study, the worst hour;
- * 2. what can be issued today, a range from the hourly study and the envelopes issued the day
- *    before (foresight.json); with only the hourly study published, that one figure;
- * 3. the perfect-foresight bound, the screen's display figure, marked with the budget it is held
- *    to, and the per-installation figure beside it.
+ * 2. what can be issued today, the screen's display figure: a range from the hourly study and the
+ *    envelopes issued the day before (foresight.json); with only the hourly study published, that
+ *    one figure;
+ * 3. the perfect-foresight bound, which nobody can issue, marked with the budget it is held to,
+ *    and the per-installation figure beside it.
  *
- * Each stop draws its length against the bound under its figure, so the ratio is seen as well as said.
+ * Each stop draws its length against the bound under its figure, so the distances are seen as well
+ * as said. The ratio line under them is what can be issued over the static study, never the bound's.
  *
  * It reads /hosting itself, so the screen and a test get the same answer from the same request.
  */
@@ -21,6 +23,8 @@ export interface Stops {
   staticKw: number;
   /** the issuable range, low and high; equal when only the hourly study is published */
   issuable: [number, number];
+  /** the houses with solar at each end of the issuable range, when published */
+  issuableHouses: [number, number] | null;
   /** the day-ahead median, when foresight.json is published */
   dayAheadKw: number | null;
   boundKw: number;
@@ -40,9 +44,13 @@ export function heroStops(H: any): Stops | null {
   const da: number | null = audited ? H.foresight.median_kw?.climatological ?? null : null;
   const lo = da == null ? ts : Math.min(ts, da);
   const hi = da == null ? ts : Math.max(ts, da);
+  const tsHouses: number | null = m.timeseries?.adopters?.median ?? null;
+  const daHouses: number | null = da == null ? null : H.foresight.median_adopters?.climatological ?? null;
+  const houses = [tsHouses, daHouses].filter((n): n is number => n != null);
   return {
     staticKw: m.static.kw_ac.median,
     issuable: [lo, hi],
+    issuableHouses: houses.length ? [Math.min(...houses), Math.max(...houses)] : null,
     dayAheadKw: da,
     boundKw: m.doe.kw_ac.median,
     perInstallationKw: m.doe_installation?.kw_ac?.median ?? null,
@@ -60,6 +68,9 @@ export function AnswerStops() {
   const [lo, hi] = s.issuable;
   const range = Math.abs(hi - lo) < 0.5 ? f(lo) : `${f(lo)}–${f(hi)}`;
   const pct = (v: number) => `${(v / s.boundKw) * 100}%`;
+  // what can be issued over the static study, at each end of the range, to one decimal
+  const [rLo, rHi] = [f(lo / s.staticKw, 1), f(hi / s.staticKw, 1)];
+  const ratio = rLo === rHi ? rLo : `${rLo}–${rHi}`;
   return (
     <>
       {/* each stop carries its own length against the bound, so the line reads as figures and as
@@ -88,7 +99,7 @@ export function AnswerStops() {
           )}
         </li>
       </ol>
-      <p className="answer-ratio">{t("cmp.ratioLine", { r: f(s.boundKw / s.staticKw, 1) })}</p>
+      <p className="answer-ratio" data-stop="ratio">{t("cmp.ratioLine", { r: ratio })}</p>
     </>
   );
 }

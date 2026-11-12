@@ -102,6 +102,10 @@ let written = "";
 export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
   Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset">>;
 
+/** The basis a report opens on: what is issued the day before. Perfect foresight is the planning
+ *  bound, which nobody can issue, so it is the one a link has to ask for. */
+export const DEFAULT_BASIS: Basis = "dayahead";
+
 /** The address for what is on screen. Pure, like parseHash. */
 export function hashFor(st: LinkedView): string {
   const q = new URLSearchParams();
@@ -117,7 +121,7 @@ export function hashFor(st: LinkedView): string {
   // the screens that read a basis and a rule carry them: the basis away from its default, the rule
   // whenever one was chosen over the DSO's setting (which can change under a link)
   const readsCombo = st.screen === "report";
-  if (readsCombo && st.basis && st.basis !== "foresight") q.set("basis", st.basis);
+  if (readsCombo && st.basis && st.basis !== DEFAULT_BASIS) q.set("basis", st.basis);
   if (readsCombo && st.policy) q.set("policy", st.policy);
   // a view of an imported network names it, so the link cannot be read on the reference network
   if (st.dataset && st.dataset !== "reference") q.set("ds", st.dataset);
@@ -219,7 +223,7 @@ export const useStore = create<State>((set) => ({
   playing: false,
   selectedCid: initial.cid ?? null,
   job: initial.job ?? null,
-  basis: initial.basis ?? "foresight",
+  basis: initial.basis ?? DEFAULT_BASIS,
   policy: initial.policy ?? null,
   opDate: initial.date ?? null,
   dataset: null,

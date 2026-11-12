@@ -129,6 +129,7 @@ export default function Method() {
     { id: "inputs", label: t("met.assumptions") },
     ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
     ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    ...(ID ? [{ id: "intraday", label: t("met.nav.id") }] : []),
     ...(MV ? [{ id: "mvband", label: t("met.nav.mv") }] : []),
     ...(P ? [{ id: "protection", label: t("met.nav.prot") }] : []),
     { id: "import", label: t("met.nav.imp") },
@@ -567,6 +568,12 @@ function MvBand({ MV }: { MV: any }) {
   );
 }
 
+/** A percentage with its sign said: +1.2 or −0.2 (the minus sign, not a hyphen). */
+function signed(f: (v: number | null | undefined, d?: number) => string, v: number | null | undefined): string {
+  if (v == null) return f(null);
+  return `${v < 0 ? "−" : "+"}${f(Math.abs(v), 1)}`;
+}
+
 /** The intraday stop between the day-ahead plan and perfect foresight, and the replica's scorecard. */
 function Intraday({ ID, F }: { ID: any; F: any }) {
   const t = useT();
@@ -632,6 +639,16 @@ function Intraday({ ID, F }: { ID: any; F: any }) {
   return (
     <section className="block stack" id="intraday">
       <div className="block-head"><h3>{t("met.id.title")}</h3></div>
+      {/* the verdict before the method: whether the replica passes its own scorecard, on both budgets */}
+      <p className="lead-answer" data-verdict={ID.scorecard.result}>
+        {ID.median_kw == null
+          ? t("met.id.verdict.withheld")
+          : t(`met.id.verdict.${ID.scorecard.result}`, {
+            kw: f(ID.median_kw, 0), hourly: f(ID.scorecard.gain_over_hourly_pct.hourly_kw, 0),
+            gain: signed(f, ID.scorecard.gain_over_hourly_pct.value), min: f(ID.scorecard.gain_over_hourly_pct.threshold),
+            inst: f(ID.installation.median_kw, 0), instGain: signed(f, ID.installation.scorecard.gain_over_hourly_pct.value),
+          })}
+      </p>
       <p className="caption">
         {t("met.id.caption", { gates: listJoin(lang, (ID.gates_h as number[]).map((g) => f(g))), lag: f(ID.measurement_lag_h), years: f(ID.years.length - 1) })}
       </p>

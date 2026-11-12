@@ -614,17 +614,22 @@ function FleetCompliance({ name, onHouse }: { name: (c: number) => string; onHou
   return (
     <section className="block stack">
       {head}
+      {/* simulated readings are said before the figures and on each of them: the envelope is
+          already applied to them, so "within the envelope" shows the check, not that anyone complied */}
+      {synthetic && <p className="lead-answer">{t("op.fleet.simulatedLead")}</p>}
       <p className="caption">
-        {t("op.fleet.caption", { from: studyDate(lang, R.period.from), to: studyDate(lang, R.period.to), kw: f(R.tolerance_kw, 2) })}
+        {t(synthetic ? "op.fleet.captionSim" : "op.fleet.caption", { from: studyDate(lang, R.period.from), to: studyDate(lang, R.period.to), kw: f(R.tolerance_kw, 2) })}
         {" · "}<Chip kind={synthetic ? "synthetic" : "real"} />
       </p>
       <div className="tiles cols-4">
         <Tile label={t("op.fleet.nonCompliant")} value={f(S.non_compliant)} tone={S.non_compliant > 0 ? "danger" : undefined}
-          note={t("op.fleet.nonCompliantNote", { n: f(S.agreements), none: f(S.no_readings) })} />
+          note={t(synthetic ? "op.fleet.nonCompliantNoteSim" : "op.fleet.nonCompliantNote", { n: f(S.agreements), none: f(S.no_readings) })} />
         <Tile label={t("op.fleet.hoursAbove")} value={f(S.intervals_above)} unit="h"
-          note={t("op.fleet.hoursAboveNote", { n: f(S.intervals_checked) })} />
-        <Tile label={t("op.fleet.energy")} value={f(S.energy_above_kwh, 1)} unit="kWh" />
-        <Tile label={t("op.fleet.within")} value={f(S.intervals_within_pct, 2)} unit="%" />
+          note={t(synthetic ? "op.fleet.hoursAboveNoteSim" : "op.fleet.hoursAboveNote", { n: f(S.intervals_checked) })} />
+        <Tile label={t("op.fleet.energy")} value={f(S.energy_above_kwh, 1)} unit="kWh"
+          note={synthetic ? t("op.fleet.simulated") : undefined} />
+        <Tile label={t("op.fleet.within")} value={f(S.intervals_within_pct, 2)} unit="%"
+          note={synthetic ? t("op.fleet.simulated") : undefined} />
       </div>
       <DataTable rows={R.per_customer} cols={cols} rowKey={(r: any) => r.cid} caption={t("op.fleet.table")}
         searchLabel={t("op.fleet.search")} onSelect={(r: any) => onHouse(r.cid)} className="dt-window" />

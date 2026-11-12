@@ -9,8 +9,9 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
   await page.goto("/#/report");
   await expect(page.getByRole("heading", { level: 1, name: /The year's report, \d{4}/ })).toBeVisible({ timeout: 60_000 });
 
-  await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
-  await expect(page).toHaveURL(/basis=dayahead/);
+  // the report opens on what is issued the day before, so the address leaves that basis out (store.ts hashFor)
+  await expect(page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page).not.toHaveURL(/basis=/);
   await expect(page.getByRole("row", { name: /Limited hours that needed it/ })).toBeVisible();
   // the binding rows count the hours a limit was needed, with the plan's own count beside them
   await expect(page.getByRole("row", { name: /the plan issued the day before limited/ }).first()).toBeVisible();
@@ -23,11 +24,12 @@ test("the report reads the day-ahead basis and another rule, and prints", async 
 
   // on the perfect-foresight basis no day-ahead plan was issued, so no row names one
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" }).click();
-  // perfect foresight is the default basis, so the address leaves it out (store.ts hashFor)
-  await expect(page).not.toHaveURL(/basis=/);
+  // perfect foresight is the planning bound, which a link has to ask for
+  await expect(page).toHaveURL(/basis=foresight/);
   await expect(page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Perfect foresight" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText(/the plan issued the day before limited/)).toHaveCount(0);
   await page.getByRole("group", { name: "Basis" }).getByRole("button", { name: "Issued the day before" }).click();
+  await expect(page).not.toHaveURL(/basis=/);
 
   await page.getByLabel("Sharing rule").selectOption("prorata");
   await expect(page).toHaveURL(/policy=prorata/);
