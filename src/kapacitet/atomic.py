@@ -3,9 +3,13 @@
 Every whole-file writer here streams into a temporary file beside the target, flushes it to disk
 and renames it over the target with `os.replace`, which is atomic on the same file system: a
 reader finds the old file or the new one, never a mixture, and a crash leaves the old file and at
-most a stray temporary (named `.<name>.<random>.tmp`, so a glob for `*.json` never picks it up).
-`append_line` adds one line to a log with O_APPEND under a lock, so concurrent writers, threads or
-processes, each land a whole line.
+most a stray temporary (named `.<start of the name>.<random>.tmp`, so a glob for `*.json` never
+picks it up, and no longer than the file's own name, so a folder that can hold the file can hold
+its temporary). `append_line` adds one line to a log with O_APPEND under a lock, so concurrent
+writers, threads or processes, each land a whole line.
+
+A path Windows refuses for its length alone is said as that (`PathTooLongError`): the system's own
+answer is "no such file or directory" about a folder that is plainly there.
 
     write_bytes_atomic(path, data)        write_text_atomic(path, text)
     write_json_atomic(path, obj)          savez_atomic(path, x=arr)
@@ -14,6 +18,7 @@ processes, each land a whole line.
 
 from __future__ import annotations
 
+import errno
 import gzip
 import json
 import os
@@ -32,6 +37,81 @@ from typing import IO, Any
 _REPLACE_TRIES = 20
 _REPLACE_WAIT_S = 0.01
 _REPLACE_WAIT_MAX_S = 0.2
+
+
+# What Windows opens unless long paths are switched on for the machine (LongPathsEnabled): a path
+# of MAX_PATH characters with its final NUL, and a folder with room left for an 8.3 file name.
+WINDOWS_PATH_LIMIT = 259
+WINDOWS_FOLDER_LIMIT = 247
+
+
+class PathTooLongError(OSError):
+    """A path Windows refused for its length alone. An OSError like the one it replaces, so what
+    catches that still does; its text says the length, the limit and what to do, and ends with the
+    whole path."""
+
+
+def too_long(path: str | Path, folder: bool = False, windows: bool | None = None) -> PathTooLongError | None:
+    """The error to raise for `path` if its length is why Windows will not open it, else None.
+    `windows` stands in for the platform in a test."""
+    if not (os.name == "nt" if windows is None else windows):
+        return None
+    full = os.path.abspath(path)
+    limit = WINDOWS_FOLDER_LIMIT if folder else WINDOWS_PATH_LIMIT
+    if len(full) <= limit:
+        return None
+    return PathTooLongError(
+        errno.ENAMETOOLONG,
+        f"this {'folder' if folder else 'path'} is {len(full)} characters long and Windows opens at most {limit} "
+        "unless long paths are switched on: keep the data or the study in a shorter folder, or enable long "
+        "paths on the machine (LongPathsEnabled)", full)
+
+
+def _explained(exc: OSError, path: Path, folder: bool = False) -> OSError:
+    """`exc`, or what it means: Windows answers "not found" (errno 2, WinError 3 or 206) for a path
+    past its limit, whatever is on the disk."""
+    if isinstance(exc, FileNotFoundError) or getattr(exc, "winerror", None) in (3, 206):
+        return too_long(path, folder) or exc
+    return exc
+
+
+def _make_folder(folder: Path) -> None:
+    try:
+        folder.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        said = _explained(exc, folder, folder=True)
+        if said is exc:
+            raise
+        raise said from exc
+
+
+def _open(path: Path, flags: int, target: Path | None = None) -> int:
+    """os.open. `target` is the file a temporary stands for: when both are too long, the error
+    names the one the caller knows."""
+    try:
+        return os.open(path, flags, 0o666)
+    except FileExistsError:
+        raise
+    except OSError as exc:
+        said = _explained(exc, target) if target is not None else exc
+        if said is exc:
+            said = _explained(exc, path)
+        if said is exc:
+            raise
+        raise said from exc
+
+
+_TEMPORARY_TAIL = 13      # `.` + eight hex digits + `.tmp`
+
+
+def temporary_for(path: Path) -> Path:
+    """A hidden name beside `path` for its temporary file: the start of the file's name, eight random
+    hex digits and `.tmp`. It is never longer than the name itself (13 characters for a shorter
+    name), so the temporary fits wherever the file does: a 64-digit name plus a 14-character
+    suffix was what pushed a deep study folder past what Windows opens."""
+    head = path.name[: max(0, len(path.name) - _TEMPORARY_TAIL - 1)]
+    tail = f".{secrets.token_hex(4)}.tmp"
+    return path.with_name(f".{head}{tail}" if head else tail)
 
 
 def _replace(tmp: Path, path: Path) -> None:
@@ -81,12 +161,12 @@ def atomic_file(path: str | Path) -> Iterator[IO[bytes]]:
     ones (the umask applies). On any exception it is removed and `path` is left as it was.
     """
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _make_folder(path.parent)
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
     while True:
-        tmp = path.with_name(f".{path.name}.{secrets.token_hex(4)}.tmp")
+        tmp = temporary_for(path)
         try:
-            fd = os.open(tmp, flags, 0o666)
+            fd = _open(tmp, flags, target=path)
             break
         except FileExistsError:
             continue
@@ -221,10 +301,10 @@ def append_line(path: str | Path, line: str) -> None:
     if "\n" in line or "\r" in line:
         raise ValueError("append_line takes one line, without line breaks")
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    _make_folder(path.parent)
     data = (line + "\n").encode("utf-8")
     with _thread_lock(path):
-        fd = os.open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0), 0o666)
+        fd = _open(path, os.O_RDWR | os.O_APPEND | os.O_CREAT | getattr(os, "O_BINARY", 0))
         try:
             with _process_lock(fd):
                 size = os.lseek(fd, 0, os.SEEK_END)

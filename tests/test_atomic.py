@@ -194,3 +194,86 @@ def test_append_after_a_torn_tail_keeps_the_new_line_whole(tmp_path):
     atomic.append_line(log, json.dumps({"i": 3}))
     lines = log.read_text(encoding="utf-8").splitlines()
     assert json.loads(lines[-1]) == {"i": 3} and json.loads(lines[0]) == {"i": 1}
+
+
+def _of_length(base, length: int) -> str:
+    """An absolute path under `base` of exactly `length` characters, in components a disk accepts."""
+    path = str(base)
+    while len(path) + 1 + 40 < min(length, 200):        # the folders stay well inside any limit
+        path = os.path.join(path, "d" * 40)
+    rest = length - len(path) - 1
+    assert 0 < rest < 200, (len(str(base)), length)
+    return os.path.join(path, "e" * rest)
+
+
+def test_a_temporary_is_never_longer_than_its_file(tmp_path):
+    """The temporary was the file's whole name plus 14 characters, so the deepest file of a study
+    (a 64-digit fingerprint) failed in a folder that could hold the file itself."""
+    for name in ("a", "a.json", "settings.json", "0123456789abc", "0123456789abcd", "seals.jsonl",
+                 "f" * 64 + ".json", "stations.parquet"):
+        tmp = atomic.temporary_for(tmp_path / name)
+        assert tmp.parent == tmp_path and tmp.name != name
+        assert tmp.name.startswith(".") and tmp.name.endswith(".tmp") and not tmp.match("*.json")
+        assert len(tmp.name) <= max(len(name), 13), name
+    long = atomic.temporary_for(tmp_path / ("f" * 64 + ".json")).name
+    assert long.startswith(".ffff") and len(long) == 69                 # it still says whose it is
+    assert atomic.temporary_for(tmp_path / "a.json") != atomic.temporary_for(tmp_path / "a.json")
+
+
+def test_a_path_past_windows_limit_is_said_as_that(tmp_path):
+    """Windows answers "no such file or directory" for a path past its limit, about a folder that is
+    plainly there. The limit is the system's, so the platform is a parameter here."""
+    import pickle
+
+    fits, over = _of_length(tmp_path, 259), _of_length(tmp_path, 260)
+    assert atomic.too_long(fits, windows=True) is None
+    assert atomic.too_long(over, windows=False) is None                 # elsewhere a long path is just a path
+    said = atomic.too_long(over, windows=True)
+    assert type(said) is atomic.PathTooLongError and isinstance(said, OSError) and said.filename == over
+    text = str(said)
+    assert "260 characters" in text and "at most 259" in text and "LongPathsEnabled" in text
+    assert text.rstrip("'").endswith(over.replace("\\", "\\\\"))        # the whole path, at the end
+    # a folder has less room: Windows keeps space in it for a short file name
+    assert atomic.too_long(_of_length(tmp_path, 247), folder=True, windows=True) is None
+    assert "at most 247" in str(atomic.too_long(_of_length(tmp_path, 248), folder=True, windows=True))
+    # a worker process hands its error to its parent pickled
+    again = pickle.loads(pickle.dumps(said))
+    assert type(again) is atomic.PathTooLongError and str(again) == text and again.filename == over
+    # only "not found" is read as length: any other refusal of a long path stays what it was
+    denied = PermissionError(13, "Permission denied", over)
+    assert atomic._explained(denied, over) is denied
+
+
+@pytest.mark.skipif(os.name != "nt", reason="the limit is Windows' own")
+def test_a_write_windows_refuses_for_its_length_names_the_path(tmp_path):
+    probe = _of_length(tmp_path, 265)
+    os.makedirs(os.path.dirname(probe), exist_ok=True)
+    try:
+        os.close(os.open(probe, os.O_WRONLY | os.O_CREAT, 0o666))
+    except FileNotFoundError:
+        pass
+    else:
+        pytest.skip("long paths are switched on for this machine")
+
+    over = _of_length(tmp_path, 262)
+    with pytest.raises(atomic.PathTooLongError, match="262 characters") as said:
+        atomic.write_text_atomic(over, "{}")
+    assert said.value.filename == over and isinstance(said.value.__cause__, FileNotFoundError)
+    with pytest.raises(atomic.PathTooLongError, match="262 characters"):
+        atomic.append_line(over, "a line")
+    with pytest.raises(atomic.PathTooLongError, match="this folder is 250 characters"):
+        atomic.write_text_atomic(os.path.join(_of_length(tmp_path, 250), "a.json"), "{}")
+    # a short name in a folder too deep for its temporary: the temporary's path is the one said
+    near = _of_length(tmp_path, 247)
+    with pytest.raises(atomic.PathTooLongError) as tmp_said:
+        atomic.write_text_atomic(os.path.join(near, "a.json"), "{}")
+    assert tmp_said.value.filename.endswith(".tmp") and "261 characters" in str(tmp_said.value)
+
+    # the case that failed: a 64-digit name whose path fits and whose old temporary did not
+    folder = _of_length(tmp_path, 259 - 69 - 1)
+    target = os.path.join(folder, "f" * 64 + ".json")
+    assert len(target) == 259
+    atomic.write_text_atomic(target, "{}")
+    with open(target, encoding="utf-8") as fh:
+        assert fh.read() == "{}"
+    assert [n for n in os.listdir(folder) if n.endswith(".tmp")] == []

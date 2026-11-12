@@ -283,3 +283,55 @@ def test_the_protection_row_comes_from_kapacitet_only_when_the_study_asks(statio
     assert r["protection_mode"] == "kapacitet" and r["protection"]["cid"] == r["cid"]
     md = (out["folder"] / "annex" / "F1.md").read_text(encoding="utf-8")
     assert "IEC 60909" in md and "Bekräftas i dpPower" in md
+
+
+def test_a_station_that_fails_says_why(station, tmp_path, monkeypatch):
+    """`study sync` answered "the station's process ended with 1" and nothing more, and a case's own
+    error was cut at 200 characters, which is where an error about a file keeps the file's name."""
+    from kapacitet import procs
+    from kapacitet.study import cases, sync
+
+    log = station.station_dir("tiny") / procs.LOG
+    kept = log.read_bytes() if log.exists() else None
+    last = "kapacitet.atomic.PathTooLongError: [Errno 38] this path is 269 characters long: 'C:\\\\deep\\\\ab12.json'"
+
+    def dies(study, sid, action, batch):
+        with open(study.station_dir(sid) / procs.LOG, "ab") as fh:
+            fh.write(("Traceback (most recent call last):\n  File \"x.py\", line 1, in <module>\n" + last + "\n\n").encode())
+        return 1
+
+    try:
+        path = _csv(tmp_path / "dies.csv", "F1;2026-10-01;C11;8;;;;;;;")
+        row = _verdicts(cases.run(station, path, runner=dies))["F1"]
+        assert row["error"] == "station_failed"
+        assert row["error_text"] == f"the station's check failed: the station's process ended with 1: {last} (see {log})"
+        head = HEADER.rstrip("\n").replace(";decision_dso", "") + ";decision;decided_at\n"
+        approved = tmp_path / "dies_approved.csv"
+        approved.write_text(head + "F2;2026-08-01;C09;8;;;;;;;nonfirm;2026-08-10\n", encoding="utf-8")
+        out = sync.run(station, approved, None, runner=dies)
+        text = {r["case_id"]: r for r in out["rows"]}["F2"]["error_text"]
+        assert "ended with 1: " + last in text and str(log) in text
+        # a process that left nothing in its log still says where to look
+        log.write_bytes(b"")
+        silent = cases.process_failure(station, "tiny", {"failed": 3, "log": []})
+        assert silent == f"the station's process ended with 3 (see {log})"
+        assert cases.process_failure(station, "tiny", {"failed": None}).startswith("the station's process did not finish (")
+    finally:
+        if kept is None:
+            log.unlink(missing_ok=True)
+        else:
+            log.write_bytes(kept)
+
+    # one case's own failure: the whole error when it is short, its start and its end when it is long
+    deep = "C:\\study\\" + "\\".join(["d" * 40] * 18) + "\\" + "f" * 64 + ".json"
+
+    def breaks(*args, **kwargs):
+        raise FileNotFoundError(2, "No such file or directory", deep)
+
+    monkeypatch.setattr(cases, "check_one", breaks)
+    row = _verdicts(cases.run(station, path, runner=runner))["F1"]
+    assert row["error"] == "station_failed" and row["error_text"].endswith("f" * 64 + ".json'")
+    assert "FileNotFoundError: [Errno 2] No such file or directory" in row["error_text"] and " ... " in row["error_text"]
+    assert len(row["error_text"]) < 700
+    assert cases.cause(ValueError("a short one")) == "ValueError: a short one"
+    assert cases.cause(KeyError()) == "KeyError" and cases.cause(RuntimeError("two\n  lines")) == "RuntimeError: two lines"

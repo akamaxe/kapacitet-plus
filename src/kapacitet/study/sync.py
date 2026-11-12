@@ -28,8 +28,8 @@ from pathlib import Path
 
 from ..atomic import write_json_atomic
 from . import Study, StudyError
-from .cases import (CaseError, Runner, batch_dir, group, read_cases, row_error, run_stations,
-                    station_context, station_output)
+from .cases import (CaseError, Runner, batch_dir, group, process_failure, read_cases, row_error,
+                    run_stations, station_context, station_output)
 from .csvio import write as write_csv
 
 EXTRA = ("decision", "decided_at")
@@ -151,8 +151,8 @@ def run(study: Study, approved_csv: str | Path, pending_csv: str | Path | None =
     rows = []
     for sid, doc in got.items():
         if "failed" in doc:
-            errors += [row_error(c["case_id"], "station_failed", station=sid,
-                                 detail=f"the station's process ended with {doc['failed']}")
+            why = process_failure(study, sid, doc)
+            errors += [row_error(c["case_id"], "station_failed", station=sid, detail=why)
                        for c in work[sid]["approved"] + work[sid]["pending"]]
             continue
         rows += [{**r, "status": "approved", "flags": ";".join(r["flags"])} for r in doc["approved"]]

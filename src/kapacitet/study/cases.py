@@ -112,6 +112,35 @@ def row_error(case_id: str, code: str, station: str = "", **params) -> dict:
             "error_text": ROW_ERRORS[code].format(**params)}
 
 
+CAUSE_LENGTH = 600
+
+
+def _middle_cut(text: str, limit: int = CAUSE_LENGTH) -> str:
+    """`text` on one line and within `limit`, keeping its start and its end: an error about a file
+    ends with the file's name, which a cut at the end is what lost."""
+    text = " ".join(text.split())
+    if len(text) <= limit:
+        return text
+    keep = (limit - 5) // 2
+    return f"{text[:keep]} ... {text[-keep:]}"
+
+
+def cause(exc: BaseException) -> str:
+    """What failed, for a row of the errors file: the error's kind and its own text."""
+    text = _middle_cut(str(exc))
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+def process_failure(study: Study, sid: str, doc: dict) -> str:
+    """Why a station's process gave no result: how it ended, the last line it wrote (a Python
+    process ends its traceback with the error itself) and where the rest is."""
+    code = doc["failed"]
+    how = "the station's process did not finish" if code is None else f"the station's process ended with {code}"
+    last = next((ln.strip() for ln in reversed(doc.get("log") or []) if ln.strip()), "")
+    where = f"see {study.station_dir(sid) / procs.LOG}"
+    return f"{how}: {_middle_cut(last)} ({where})" if last else f"{how} ({where})"
+
+
 # ---------------------------------------------------------------- reading the cases
 
 def _truth(column: str, text: str) -> bool:
@@ -526,7 +555,7 @@ def station_cases(study: Study, sid: str, batch: str) -> dict:
                 errors.append(row_error(case["case_id"], err.code, station=sid, **err.params))
             except Exception as exc:  # noqa: BLE001 - one case's failure is its row, not the batch's
                 log.exception("case %s failed", case["case_id"])
-                errors.append(row_error(case["case_id"], "station_failed", station=sid, detail=str(exc)[:200]))
+                errors.append(row_error(case["case_id"], "station_failed", station=sid, detail=cause(exc)))
     out = {"station": sid, "batch": batch, "fingerprint": sctx["fingerprint"], "mv_band_pu": list(sctx["band"]),
            "queues": sctx["queues"], "results": results, "errors": errors}
     write_json_atomic(station_output(batch), out, default=_plain)
@@ -757,8 +786,8 @@ def run(study: Study, csv_path: str | Path, batch: str | None = None, compare: b
     results = []
     for sid, doc in got.items():
         if "failed" in doc:
-            errors += [row_error(c["case_id"], "station_failed", station=sid,
-                                 detail=f"the station's process ended with {doc['failed']}") for c in work[sid]["cases"]]
+            why = process_failure(study, sid, doc)
+            errors += [row_error(c["case_id"], "station_failed", station=sid, detail=why) for c in work[sid]["cases"]]
             continue
         results += doc["results"]
         errors += doc["errors"]
