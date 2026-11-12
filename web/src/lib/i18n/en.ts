@@ -1430,6 +1430,8 @@ const en: Dict = {
   "ei.rec.none": "Not stated",
   "err.unknown_dataset": "Unknown network {id}.",
   "err.not_usable": "The export does not pass the check, so it cannot be built.",
+  "err.not_an_origin": "{kind} is not a way a network is made.",
+  "err.unknown_template": "There is no example network {id}.",
   "err.building": "Network {id} is being built.",
   "err.not_ready": "Network {id} is not ready: its build has not finished.",
   "err.in_use": "Network {id} is in use; switch to another one first.",

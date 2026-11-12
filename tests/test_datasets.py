@@ -263,3 +263,96 @@ def test_the_network_map_is_valid_json_without_geometry():
     assert _line_geometry("[[NaN, NaN], [18.0, 59.3]]") is None
     feature = {"geometry": _house_geometry("", math.inf, 1.0), "properties": {"kwp": _num(float("nan"))}}
     json.dumps(feature, allow_nan=False)          # a NaN would raise here, as the API's encoder does
+
+
+# ---------------------------------------------------------------- the networks as projects
+
+def _computed(root, customers=27, static=62.6, hourly=77.5, quick=True):
+    """The three small files a project list reads, as a build leaves them."""
+    (root / "processed" / "grid").mkdir(parents=True, exist_ok=True)
+    (root / "processed" / "results").mkdir(parents=True, exist_ok=True)
+    (root / "processed" / "grid" / "summary.json").write_text(json.dumps(
+        {"customers": customers, "feeders": 2, "buses": 56, "lines": 54, "trafo_type": "0.1 MVA 10/0.4 kV"}), encoding="utf-8")
+    (root / "processed" / "results" / "meta.json").write_text(json.dumps(
+        {"computed_at": "2026-11-12T10:00:00+00:00", "quick": quick, "reference_year": 2025, "years": [2023, 2024, 2025]}),
+        encoding="utf-8")
+    (root / "processed" / "results" / "hosting_summary.json").write_text(json.dumps(
+        {"measures": {"static": {"kw_ac": {"median": static}}, "timeseries": {"kw_ac": {"median": hourly}}}}), encoding="utf-8")
+
+
+def test_the_listing_says_what_each_network_is(api, tmp_path):
+    """A project list shows a network's size, its transformer, when it was computed and the capacity
+    of the static and of the hourly study: read from the network's own files, None when not there."""
+    c, ds, _ = api
+    empty = c.get("/api/v1/datasets").json()
+    assert empty["items"] == [] and set(empty["reference"]["summary"].values()) == {None}
+    _computed(tmp_path, customers=120, static=413.45, hourly=608.84, quick=False)
+    ds_id = _dataset(ds)
+    listed = c.get("/api/v1/datasets").json()
+    ref = listed["reference"]["summary"]
+    assert (ref["customers"], ref["feeders"], ref["trafo_type"]) == (120, 2, "0.1 MVA 10/0.4 kV")
+    assert (ref["static_kw"], ref["hourly_kw"], ref["quick"]) == (413.45, 608.84, False)
+    assert ref["years"] == [2023, 2025] and ref["n_years"] == 3 and ref["computed_at"].startswith("2026-11-12")
+    item = listed["items"][0]
+    assert item["id"] == ds_id and set(item["summary"].values()) == {None}      # uploaded, nothing computed
+    _computed(ds.DATASETS / ds_id)
+    item = c.get("/api/v1/datasets").json()["items"][0]
+    assert item["summary"]["customers"] == 27 and item["summary"]["hourly_kw"] == 77.5
+    # a file cut short is a network with nothing to show, never an error of the list
+    (ds.DATASETS / ds_id / "processed" / "results" / "meta.json").write_text("{", encoding="utf-8")
+    assert c.get("/api/v1/datasets").json()["items"][0]["summary"]["computed_at"] is None
+
+
+def test_where_a_network_came_from_is_kept_and_a_templates_facts_are_the_catalogues(api):
+    from kapacitet.importer import templates
+
+    c, ds, _ = api
+    files = templates.files("dickert-short")
+    made = c.post("/api/v1/datasets", json={"name": "Short feeders", "files": files, "origin": {
+        "kind": "template", "template": "dickert-short", "name": "anything the page says", "synthetic": False}})
+    assert made.status_code == 200, made.text
+    rec = made.json()
+    assert rec["origin"] == templates.origin(templates.get("dickert-short")) and rec["origin"]["synthetic"] is True
+    assert rec["customers"] == 12
+    plain = c.post("/api/v1/datasets", json={"name": "An export", "files": files}).json()
+    assert plain["origin"] == {"kind": "csv"}
+    opened = c.post("/api/v1/datasets", json={"name": "From a file", "files": files, "origin": {
+        "kind": "project_file", "name": "  kapacitet-project-x.zip\n", "synthetic": True}}).json()
+    assert opened["origin"] == {"kind": "project_file", "name": "kapacitet-project-x.zip", "synthetic": True}
+    before = len(list(ds.DATASETS.iterdir()))
+    bad = c.post("/api/v1/datasets", json={"name": "No such", "files": files, "origin": {"kind": "template", "template": "nope"}})
+    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "unknown_template"
+    assert c.post("/api/v1/datasets", json={"name": "x", "files": files, "origin": {"kind": "drawn"}}).status_code == 422
+    assert len(list(ds.DATASETS.iterdir())) == before                      # nothing written for either
+
+
+def test_a_project_file_holds_the_tables_and_what_the_network_is(api):
+    import io
+    import zipfile
+
+    from kapacitet.importer import templates
+
+    c, ds, _ = api
+    files = templates.files("dickert-short")
+    rec = c.post("/api/v1/datasets", json={"name": "Short feeders", "files": files,
+                                           "origin": {"kind": "template", "template": "dickert-short"}}).json()
+    got = c.get(f"/api/v1/datasets/{rec['id']}/project.zip")
+    assert got.status_code == 200 and got.headers["content-type"] == "application/zip"
+    assert f'filename="kapacitet-project-{rec["id"]}.zip"' in got.headers["content-disposition"]
+    with zipfile.ZipFile(io.BytesIO(got.content)) as z:
+        assert sorted(z.namelist()) == ["README.md", "buses.csv", "customers.csv", "lines.csv", "project.json", "transformer.csv"]
+        doc = json.loads(z.read("project.json"))
+        assert doc["schema"] == ds.PROJECT_SCHEMA and doc["name"] == "Short feeders" and doc["customers"] == 12
+        assert doc["origin"]["template"] == "dickert-short" and doc["origin"]["synthetic"] is True
+        assert doc["tables"] == ["buses", "lines", "transformer", "customers"]
+        # what goes out is what came in, so the file opens by the same door as any export
+        assert {n: z.read(f"{n}.csv").decode("utf-8") for n in doc["tables"]} == files
+        assert "bus_id" in z.read("README.md").decode("utf-8")
+    # an export made on Windows ends its lines CR LF: it is stored as it came and leaves with one kind
+    crlf = {k: v.replace("\n", "\r\n") for k, v in files.items()}
+    win = c.post("/api/v1/datasets", json={"name": "From Windows", "files": crlf}).json()
+    stored = (ds.DATASETS / win["id"] / "import" / "buses.csv").read_bytes()
+    assert stored == crlf["buses"].encode("utf-8") and b"\r\r\n" not in stored
+    assert ds.import_files(win["id"]) == files
+    assert c.get("/api/v1/datasets/no-such-net/project.zip").status_code == 404
+    assert c.get("/api/v1/datasets/..%2Fx/project.zip").status_code == 404

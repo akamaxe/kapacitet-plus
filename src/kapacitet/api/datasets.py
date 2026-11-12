@@ -13,10 +13,13 @@ from __future__ import annotations
 
 import os
 
-from fastapi import APIRouter, HTTPException
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel, Field
 
 from .. import datasets as ds
+from ..cache import memo
 
 router = APIRouter(prefix="/api/v1", tags=["datasets"])
 MAX_BYTES = 5_000_000
@@ -26,10 +29,28 @@ def refusal(err: ds.DatasetError, status: int = 409) -> HTTPException:
     return HTTPException(status, {"code": err.code, "message": str(err), "params": err.params})
 
 
+class Origin(BaseModel):
+    """Where a new network comes from: an export, an example network or a project file."""
+
+    kind: Literal["csv", "template", "project_file"]
+    template: str | None = Field(None, max_length=40, description="with kind template: the example network's id")
+    name: str | None = Field(None, max_length=120, description="the file's or the project's own name")
+    synthetic: bool | None = Field(None, description="with kind project_file: what the file says of itself")
+
+
 class NewDataset(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     files: dict[str, str] = Field(..., description="the contract's four tables as CSV text, as for /check")
     quick: bool = Field(True, description="one weather year and fewer adoption orders: minutes, not an hour")
+    origin: Origin | None = Field(None, description="where the network comes from; an export when left out")
+
+
+@memo(maxsize=16)
+def _template_files(template_id: str) -> dict[str, str]:
+    """A template's tables are built by pandapower (a second or two) and never change: kept."""
+    from ..importer import templates
+
+    return templates.files(template_id)
 
 
 def _jobs_running() -> bool:
@@ -55,7 +76,8 @@ def list_datasets() -> dict:
 
     _reap()
     return {"current": ds.current(), "active": ds.active(), "supervised": os.environ.get("KAPACITET_SUPERVISED") == "1",
-            "reference": {"id": ds.REFERENCE, "name": settings().site.name}, "items": ds.listing()}
+            "reference": {"id": ds.REFERENCE, "name": settings().site.name, "summary": ds.summary()},
+            "items": ds.listing()}
 
 
 @router.post("/datasets")
@@ -75,7 +97,8 @@ def create_dataset(body: NewDataset) -> dict:
     except ds.DatasetError as err:
         raise refusal(err) from err
     try:
-        rec = ds.create(body.name, body.files, quick=body.quick)
+        rec = ds.create(body.name, body.files, quick=body.quick,
+                        origin=body.origin.model_dump(exclude_none=True) if body.origin else None)
     except ds.DatasetError as err:
         raise refusal(err, 422) from err
     except Exception as err:    # a table pandas cannot read
@@ -95,6 +118,52 @@ def get_dataset(ds_id: str) -> dict:
     except ds.DatasetError as err:
         raise refusal(err, 404) from err
     return {**rec, "building": ds.building(ds_id), "log": ds.log_tail(ds_id)}
+
+
+@router.get("/datasets/{ds_id}/project.zip")
+def project_file(ds_id: str) -> Response:
+    """A network as a project file: its tables as the contract's CSV files, what it is, and the
+    contract. For the reference network, the same tables as /contract/example."""
+    from ..config import settings
+
+    if ds_id == ds.REFERENCE:
+        from . import main
+
+        name, files = settings().site.name, main._example()
+        origin = {"kind": "reference", "synthetic_parts": ["the cable network and the transformer: generated "
+                                                           "along the streets OpenStreetMap maps"]}
+        customers = ds.summary().get("customers")
+    else:
+        try:
+            rec = ds.record(ds_id)
+            files = ds.import_files(ds_id)
+        except ds.DatasetError as err:
+            raise refusal(err, 404) from err
+        name, origin, customers = rec["name"], rec.get("origin") or {"kind": "csv"}, rec.get("customers")
+    data = ds.project_archive(name, files, origin, customers)
+    return Response(data, media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="kapacitet-project-{ds_id}.zip"'})
+
+
+@router.get("/templates")
+def list_templates() -> dict:
+    """The example networks a project can start from: pandapower's LV benchmark networks."""
+    from ..importer import templates
+
+    return {"templates": templates.listing(), "synthetic_parts": list(templates.SYNTHETIC_PARTS)}
+
+
+@router.get("/templates/{template_id}")
+def get_template(template_id: str) -> dict:
+    """One example network as the contract's four tables, as CSV text (as /contract/example)."""
+    from ..importer import templates
+
+    try:
+        template = templates.get(template_id)
+    except KeyError:
+        raise refusal(ds.DatasetError("unknown_template", id=template_id[:40]), 404) from None
+    return {"id": template.id, "name": template.name, "files": _template_files(template.id),
+            "origin": templates.origin(template)}
 
 
 @router.post("/datasets/{ds_id}/build")

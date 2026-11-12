@@ -3,8 +3,10 @@
 The networks are built at run time by pandapower itself (`create_dickert_lv_network` and two of
 the Kerber `kb_extrem_*` networks), written as the export contract through
 importer/from_pandapower.py, and handed to the study exactly as a DSO's folders would be. The fuse
-of each house, its roof area and the coordinates are drawn here from a fixed seed, so the demo is
-the same everywhere; every station says it is synthetic in its provenance.
+of each house, its roof area and the coordinates are drawn here from a fixed seed, and so is the
+service cable pandapower draws at random for each house of the Kerber networks
+(importer/templates.seeded), so the demo is the same everywhere; every station says it is synthetic
+in its provenance.
 """
 
 from __future__ import annotations
@@ -13,15 +15,11 @@ import math
 from pathlib import Path
 from typing import Callable
 
-import numpy as np
-import pandas as pd
-
+from ..importer.templates import FUSE_SHARE, FUSES, customer_map, layout, seeded
 from . import Study, init_study
 from .intake import add_contract, check, split
 
 NAME = "Demo DSO (synthetic)"
-FUSES = (16, 20, 25)
-FUSE_SHARE = (0.3, 0.5, 0.2)
 
 
 def _networks() -> list[tuple[str, str, str, Callable]]:
@@ -39,51 +37,6 @@ def _networks() -> list[tuple[str, str, str, Callable]]:
     ]
 
 
-def customer_map(net, seed: int) -> dict[int, dict]:
-    """A fuse and a roof area for every load of the network, from a fixed seed."""
-    rng = np.random.default_rng(seed)
-    out = {}
-    for idx in net.load.index:
-        out[int(idx)] = {"customer_id": f"C{int(idx)}",
-                         "fuse_a": int(rng.choice(FUSES, p=FUSE_SHARE)),
-                         "footprint_m2": round(float(rng.uniform(80.0, 200.0)), 1)}
-    return out
-
-
-def layout(tables: dict[str, pd.DataFrame], lat: float, lon: float) -> pd.DataFrame:
-    """Schematic coordinates: each feeder leaves the substation at its own angle and every section
-    is drawn at its length, a branch turning off its parent's direction."""
-    buses, lines = tables["buses"], tables["lines"]
-    root = str(tables["transformer"]["lv_bus"].iloc[0])
-    nbr: dict[str, list[tuple[str, float]]] = {}
-    for r in lines.itertuples():
-        nbr.setdefault(str(r.from_bus), []).append((str(r.to_bus), float(r.length_m)))
-        nbr.setdefault(str(r.to_bus), []).append((str(r.from_bus), float(r.length_m)))
-    pos = {root: (0.0, 0.0)}
-    heading = {root: 0.0}
-    first = nbr.get(root, [])
-    stack = []
-    for i, (b, length) in enumerate(first):
-        stack.append((b, root, length, 2 * math.pi * i / max(len(first), 1)))
-    while stack:
-        bus, parent, length, angle = stack.pop()
-        if bus in pos:
-            continue
-        x0, y0 = pos[parent]
-        pos[bus] = (x0 + length * math.cos(angle), y0 + length * math.sin(angle))
-        heading[bus] = angle
-        kids = [(b, ln) for b, ln in nbr.get(bus, []) if b not in pos]
-        for j, (b, ln) in enumerate(kids):
-            turn = 0.0 if j == 0 else (1 if j % 2 else -1) * math.radians(60)
-            stack.append((b, bus, ln, angle + turn))
-    m_per_deg_lat = 111_320.0
-    m_per_deg_lon = m_per_deg_lat * math.cos(math.radians(lat))
-    out = buses.copy()
-    out["lon"] = [lon + pos.get(str(b), (0.0, 0.0))[0] / m_per_deg_lon for b in out["bus_id"]]
-    out["lat"] = [lat + pos.get(str(b), (0.0, 0.0))[1] / m_per_deg_lat for b in out["bus_id"]]
-    return out
-
-
 def create(path: str | Path, allow_git: bool = False) -> Study:
     """A new study with the three synthetic stations imported and checked (not yet built)."""
     import tempfile
@@ -98,7 +51,8 @@ def create(path: str | Path, allow_git: bool = False) -> Study:
                              "lon": ref.center_lon, "temperature_station": cfg.temperature_station,
                              "zone": ref.bidding_zone})
     for k, (sid, name, generator, make) in enumerate(_networks()):
-        net = make()
+        with seeded(7100 + k):       # pandapower draws the Kerber networks' service cables at random
+            net = make()
         tables = contract_tables(net, 0, customer_map(net, seed=7100 + k))
         # the stations sit about 1.5 km apart, around the reference site
         angle = 2 * math.pi * k / 3
@@ -115,3 +69,6 @@ def create(path: str | Path, allow_git: bool = False) -> Study:
     split(study)
     check(study)
     return study
+
+
+__all__ = ["FUSES", "FUSE_SHARE", "NAME", "create", "customer_map", "layout"]

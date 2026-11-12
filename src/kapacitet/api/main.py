@@ -14,6 +14,7 @@ import gzip
 import hashlib
 import io
 import json
+import mimetypes
 import math
 import logging
 import os
@@ -1690,6 +1691,10 @@ _json_default = records.json_default
 
 
 # ------------------------------------------------------------------------------ web UI
+
+# the web app's manifest (what lets a browser install the interface with a window of its own):
+# Python's table of types does not know the extension, and a browser wants it named
+mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 if WEB_DIST.exists():
     app.mount("/assets", StaticFiles(directory=WEB_DIST / "assets"), name="assets")

@@ -40,23 +40,12 @@ PER_RING = 12
 
 
 def networks() -> list[tuple[str, str, Callable]]:
-    """(short name, how pandapower makes it, the maker): every benchmark LV network that passes the
-    contract's check with more than one customer."""
-    import pandapower.networks as pn
+    """(short name, how pandapower makes it, the maker): the product's example networks
+    (importer/templates.py), every benchmark LV network that passes the contract's check with more
+    than one customer."""
+    from kapacitet.importer.templates import TEMPLATES
 
-    out = [(f"kerber-{short}", f"pandapower.networks.{fn}()", getattr(pn, fn)) for short, fn in (
-        ("land-ol", "kb_extrem_landnetz_freileitung"), ("land-kabel", "kb_extrem_landnetz_kabel"),
-        ("land-ol-trafo", "kb_extrem_landnetz_freileitung_trafo"), ("land-kabel-trafo", "kb_extrem_landnetz_kabel_trafo"),
-        ("dorf", "kb_extrem_dorfnetz"), ("dorf-trafo", "kb_extrem_dorfnetz_trafo"),
-        ("vorstadt-1", "kb_extrem_vorstadtnetz_1"), ("vorstadt-2", "kb_extrem_vorstadtnetz_2"),
-        ("vorstadt-trafo-1", "kb_extrem_vorstadtnetz_trafo_1"), ("vorstadt-trafo-2", "kb_extrem_vorstadtnetz_trafo_2"))]
-    for feeders in ("short", "middle", "long"):
-        out.append((f"dickert-{feeders}",
-                    f"pandapower.networks.create_dickert_lv_network(feeders_range='{feeders}', linetype='cable', "
-                    "customer='multiple', case='average')",
-                    lambda feeders=feeders: pn.create_dickert_lv_network(
-                        feeders_range=feeders, linetype="cable", customer="multiple", case="average")))
-    return out
+    return [(t.id, t.generator, t.make) for t in TEMPLATES]
 
 
 def place(k: int, lat: float, lon: float) -> tuple[float, float]:
@@ -75,7 +64,7 @@ def create(path: Path, stations: int) -> list[str]:
     from kapacitet.config import settings
     from kapacitet.importer.from_pandapower import contract_tables, write_contract
     from kapacitet.study import init_study
-    from kapacitet.study.demo import customer_map, layout
+    from kapacitet.importer.templates import customer_map, layout, seeded
     from kapacitet.study.intake import add_contract, check, split
 
     warnings.filterwarnings("ignore")
@@ -89,7 +78,8 @@ def create(path: Path, stations: int) -> list[str]:
     for k in range(stations):
         short, generator, make = kinds[k % len(kinds)]
         sid = f"s{k + 1:03d}-{short}"
-        net = make()
+        with seeded(SEED + k):
+            net = make()
         tables = contract_tables(net, 0, customer_map(net, seed=SEED + k))
         tables["buses"] = layout(tables, *place(k, ref.center_lat, ref.center_lon))
         origin = {"format": "pandapower", "name": f"{short} {k + 1} (synthetic)", "generator": generator,

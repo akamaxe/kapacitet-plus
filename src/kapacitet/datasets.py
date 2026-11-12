@@ -9,6 +9,10 @@
         build.lock     the PID of a build in progress
     data/active.json   which network the server uses: "reference" or an id
 
+The interface calls a network a project. `summary` is what its list shows of one, read from the
+network's own files, and `project_archive` is a network as one file: its four tables and what it
+is, to be opened on another installation by the same door as any export.
+
 A build runs as `python -m kapacitet dataset build <id>`, separate from the server, with
 KAPACITET_DATA_DIR on the network's folder and KAPACITET_RAW_DIR on the reference network's
 downloads (weather and prices are the same), and the reference network's household profiles
@@ -40,6 +44,8 @@ from .paths import DATASETS, HOME, RAW, ROOT, inside
 
 REFERENCE = "reference"
 RESTART = 75                       # the exit code that asks the supervisor for a restart
+PROJECT_SCHEMA = "kapacitet.project/1"
+ORIGIN_KINDS = ("csv", "template", "project_file")
 STEPS = ("import", "households", "profiles", "compute")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}\Z")      # \Z: `$` would let a final newline through
 MAX_BUILDS = int(os.environ.get("KAPACITET_MAX_BUILDS", "1"))
@@ -60,6 +66,8 @@ class DatasetError(ValueError):
 ERRORS = {
     "unknown_dataset": "unknown network {id}",
     "not_usable": "the export does not pass the check, so it cannot be built",
+    "not_an_origin": "{kind} is not a way a network is made",
+    "unknown_template": "there is no example network {id}",
     "not_in_contract": "not part of the contract: {tables}",
     "building": "network {id} is being built",
     "not_ready": "network {id} is not ready: its build has not finished",
@@ -109,8 +117,40 @@ def listing() -> list[dict]:
         except ValueError:
             continue
         rec["building"] = building(rec["id"])
+        rec["summary"] = summary(path.parent)
         out.append(rec)
     return sorted(out, key=lambda r: r.get("created", ""), reverse=True)
+
+
+def _read(path: Path) -> dict:
+    try:
+        doc = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return doc if isinstance(doc, dict) else {}
+
+
+def summary(root: Path | None = None) -> dict:
+    """What a project list shows of the network in `root` (the reference network's folder by
+    default): its size, its transformer, when and how it was computed, and the capacity of the
+    static and of the hourly study. Read from the network's own files; what is not there is None,
+    never a guess."""
+    base = (HOME if root is None else Path(root)) / "processed"
+    grid = _read(base / "grid" / "summary.json")
+    meta = _read(base / "results" / "meta.json")
+    measures = _read(base / "results" / "hosting_summary.json").get("measures") or {}
+
+    def median_kw(name: str) -> float | None:
+        value = ((measures.get(name) or {}).get("kw_ac") or {}).get("median")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    years = [y for y in meta.get("years") or [] if isinstance(y, int)]
+    return {"customers": grid.get("customers"), "feeders": grid.get("feeders"), "buses": grid.get("buses"),
+            "lines": grid.get("lines"), "trafo_type": grid.get("trafo_type"),
+            "computed_at": meta.get("computed_at"), "quick": meta.get("quick"),
+            "reference_year": meta.get("reference_year"),
+            "years": [min(years), max(years)] if years else None, "n_years": len(years) or None,
+            "static_kw": median_kw("static"), "hourly_kw": median_kw("timeseries")}
 
 
 # ---------------------------------------------------------------- which network is in use
@@ -159,7 +199,31 @@ def restart_soon(delay: float = 0.5) -> None:
 
 # ---------------------------------------------------------------- creating one
 
-def create(name: str, files: dict[str, str], quick: bool = True) -> dict:
+def clean_origin(origin: dict | None) -> dict:
+    """Where a network came from, as its record keeps it. A template's facts are the catalogue's,
+    never the caller's; a file's name is kept short and on one line."""
+    if not origin:
+        return {"kind": "csv"}
+    kind = origin.get("kind")
+    if kind not in ORIGIN_KINDS:
+        raise DatasetError("not_an_origin", kind=str(kind)[:40])
+    if kind == "template":
+        from .importer import templates
+
+        try:
+            return templates.origin(templates.get(str(origin.get("template"))))
+        except KeyError:
+            raise DatasetError("unknown_template", id=str(origin.get("template"))[:40]) from None
+    out: dict = {"kind": kind}
+    name = " ".join(str(origin.get("name") or "").split())[:120]
+    if name:
+        out["name"] = name
+    if kind == "project_file" and origin.get("synthetic") is not None:
+        out["synthetic"] = bool(origin.get("synthetic"))
+    return out
+
+
+def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | None = None) -> dict:
     """Validate an export and keep it as a new network, ready to build. Nothing is written for an
     export that does not pass the check."""
     import io
@@ -173,6 +237,7 @@ def create(name: str, files: dict[str, str], quick: bool = True) -> dict:
     unknown = sorted(set(files) - set(BY_NAME))
     if unknown:
         raise DatasetError("not_in_contract", tables=", ".join(unknown))
+    origin = clean_origin(origin)             # before anything is written
     data = {k: pd.read_csv(io.StringIO(v)) for k, v in files.items()}
     report = validate(data)
     if not report.usable:
@@ -183,11 +248,51 @@ def create(name: str, files: dict[str, str], quick: bool = True) -> dict:
     (root / "import").mkdir(parents=True, exist_ok=False)
     for table in BY_NAME:                    # by the contract's own names, never the caller's keys
         if table in files:
-            inside(root / "import", f"{table}.csv").write_text(files[table], encoding="utf-8")
+            # as bytes: in text mode Windows would turn each line end of an export made there
+            # (CR LF) into CR CR LF, a blank line between every two rows
+            inside(root / "import", f"{table}.csv").write_bytes(files[table].encode("utf-8"))
     rec = {"id": ds_id, "name": name.strip()[:80] or ds_id, "created": _now(), "status": "uploaded", "quick": quick,
-           "report": report.to_dict(), "customers": int(len(data["customers"])),
+           "origin": origin, "report": report.to_dict(), "customers": int(len(data["customers"])),
            "steps": [{"name": s, "status": "waiting"} for s in STEPS]}
     return _save(rec)
+
+
+def project_archive(name: str, files: dict[str, str], origin: dict, customers: int | None = None) -> bytes:
+    """A network as one file: project.json (what it is), its tables as the contract's CSV files and
+    the contract itself as README.md. Results are not in it: they are computed again where it is
+    opened, by that installation's own version."""
+    import io
+    import zipfile
+
+    from . import __version__
+    from .importer.contract import BY_NAME
+    from .importer.export import readme
+
+    tables = [t for t in BY_NAME if t in files]
+    doc = {"schema": PROJECT_SCHEMA, "name": name, "exported_at": _now(), "kapacitet": __version__,
+           "customers": customers, "origin": origin, "tables": tables}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("project.json", json.dumps(doc, ensure_ascii=False, indent=1))
+        for table in tables:
+            z.writestr(f"{table}.csv", files[table])
+        z.writestr("README.md", readme())
+    return buf.getvalue()
+
+
+def import_files(ds_id: str) -> dict[str, str]:
+    """The tables an imported network was made from, as CSV text."""
+    from .importer.contract import BY_NAME
+
+    root = folder(ds_id) / "import"
+    out = {}
+    for table in BY_NAME:
+        path = inside(root, f"{table}.csv")
+        if path.is_file():
+            # one kind of line end, whatever the export had (and whatever an older version stored)
+            text = path.read_bytes().decode("utf-8")
+            out[table] = text.replace("\r\r\n", "\n").replace("\r\n", "\n")
+    return out
 
 
 def delete(ds_id: str) -> None:

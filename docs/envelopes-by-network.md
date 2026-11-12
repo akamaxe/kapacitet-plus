@@ -77,6 +77,11 @@ thresholds are not changed after the results are known.
   assumptions about meter readings are the ones stated in the README.
 - Three networks at two voltages are six points, not a law: a pass or a fail here says where to
   look with real data, not what a DSO will find.
+- pandapower draws one thing at random that the run below did not fix: in the two Kerber networks
+  each house's service cable is one of two types, at even odds. The demo fixes that draw since
+  (`importer/templates.seeded`), so `prepare` now builds the same networks every time, and they are
+  not the draw behind these tables: a repeat runs on service cables that differ house by house.
+  The Dickert network has no such draw.
 
 ## How to repeat it
 

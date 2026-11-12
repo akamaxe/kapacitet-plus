@@ -1431,6 +1431,8 @@ const sv: Dict = {
   "ei.rec.none": "Inte intygat",
   "err.unknown_dataset": "Okänt nät {id}.",
   "err.not_usable": "Exporten klarar inte kontrollen och kan därför inte byggas.",
+  "err.not_an_origin": "{kind} är inget sätt att skapa ett nät.",
+  "err.unknown_template": "Det finns inget exempelnät {id}.",
   "err.building": "Nätet {id} byggs just nu.",
   "err.not_ready": "Nätet {id} är inte klart: bygget har inte blivit färdigt.",
   "err.in_use": "Nätet {id} används; byt till ett annat först.",
