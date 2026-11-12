@@ -173,14 +173,16 @@ volume; CI builds it on every push:
 ```bash
 docker build -t kapacitet .
 mkdir -p data
-docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet
-docker run -p 127.0.0.1:8000:8000 -v kapacitet-data:/app/data kapacitet   # or a named volume
+docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off -v "$PWD/data:/app/data" kapacitet
+docker run -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off -v kapacitet-data:/app/data kapacitet   # or a named volume
 ```
 
-The port is published on 127.0.0.1 only, because the API has no login: whoever reaches the port
-can use all of it, approvals included. Inside the container the server listens on 0.0.0.0, which is
-what Docker needs to forward the port; reaching it from another machine needs a reverse proxy with
-TLS and a login in front. The server runs as an unprivileged user (uid 10001) and writes only to
+Inside the container the server listens on 0.0.0.0, which is what Docker needs to forward the
+port, so it starts only when `KAPACITET_AUTH` says whether sign-in is wanted: `oidc`
+([docs/sso.md](docs/sso.md)) or `off`. These examples run it without sign-in, which is why the port
+is published on 127.0.0.1 only: whoever reaches the port can use all of the API, approvals
+included. Reaching it from another machine needs sign-in, or a reverse proxy with TLS and a login
+in front. The server runs as an unprivileged user (uid 10001) and writes only to
 `/app/data`. A folder of the host keeps its owner there, so the container runs as you (`--user`),
 on a folder made beforehand (Docker would make a missing one as root); without that the server
 reads the data but cannot save an evaluation, the queue or an application. A named volume starts
@@ -195,7 +197,7 @@ lists the commands to run.
 A copy without results can also take the data file from its setup page, in the browser, when
 its server allows it (`KAPACITET_SETUP_UPLOAD=1`): only on the reference network and while the copy
 has no results. The container takes it that way with
-`docker run -p 127.0.0.1:8000:8000 -e KAPACITET_SETUP_UPLOAD=1 kapacitet`.
+`docker run -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off -e KAPACITET_SETUP_UPLOAD=1 kapacitet`.
 
 Settings come from the environment: `KAPACITET_DATA_DIR` (another data folder),
 `KAPACITET_HOME` (where the imported networks, `datasets/`, and `active.json` live; the data
@@ -1280,7 +1282,8 @@ some heating with the house's thermal mass, which is not modelled, and its impor
 the house's own solar. The **queue** is one per server, first come first served. **Sign-in** is
 optional and off by default (`KAPACITET_AUTH=oidc`: OpenID Connect with four roles,
 [docs/sso.md](docs/sso.md)). Without it whoever reaches the port can use all of the API,
-approvals included, so the server must not be reachable from another machine as it is. With it
+approvals included: `serve` says so when it starts, and refuses to listen on anything but this
+machine until `KAPACITET_AUTH` is set to `oidc` or, on purpose, to `off`. With sign-in on
 every write asks for a role, but it has only been tried against an in-process provider, never
 a real one. The **reinforcement** comparison uses Ei's norm values,
 standard costs at 2022 prices rather than quotes, undiscounted, with the bigger unit's capacity

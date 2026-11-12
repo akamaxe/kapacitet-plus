@@ -43,9 +43,12 @@ def test_the_docker_examples_publish_the_port_on_loopback_only():
                 if re.match(r"[/.$~]|[A-Za-z]:", src):    # a path, not a named volume
                     assert re.search(r"(?:--user|-u)[ =]", line), f"{rel}: bind mount without --user"
     for rel in ("README.md", "Dockerfile"):
-        text = " ".join(_read(rel).split())
+        text = " ".join(_read(rel).replace("#", " ").split())
         assert "-p 127.0.0.1:8000:8000" in text, rel
-        assert "has no login" in text, f"{rel} says why the port stays on this machine"
+        assert "whoever reaches the port can use all of the API" in text, f"{rel} says why the port stays on this machine"
+        # the image listens on 0.0.0.0, so every example says whether sign-in is wanted
+        for line in (ln for ln in re.sub(r"\\\n\s*", " ", _read(rel)).splitlines() if "docker run" in ln and " -p " in ln):
+            assert "KAPACITET_AUTH=" in line, f"{rel}: {line.strip()}"
 
 
 def _final_stage(dockerfile: str) -> list[str]:

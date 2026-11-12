@@ -6,16 +6,17 @@
 #
 #   docker build -t kapacitet .
 #   mkdir -p data
-#   docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -v "$PWD/data:/app/data" kapacitet
+#   docker run --user "$(id -u):$(id -g)" -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off -v "$PWD/data:/app/data" kapacitet
 #
 # or, with a named volume instead of a folder of the host:
 #
-#   docker run -p 127.0.0.1:8000:8000 -v kapacitet-data:/app/data kapacitet
+#   docker run -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off -v kapacitet-data:/app/data kapacitet
 #
-# The port is published on 127.0.0.1 only, because the API has no login: whoever reaches the port
-# can use all of it, approvals included. Inside the container the server listens on 0.0.0.0, which
-# is what Docker needs to forward the port; reaching it from another machine needs a reverse proxy
-# with TLS and a login in front.
+# Inside the container the server listens on 0.0.0.0, which is what Docker needs to forward the
+# port, so it starts only when KAPACITET_AUTH says whether sign-in is wanted: `oidc` (docs/sso.md)
+# or `off`. The examples run it without sign-in, and that is why the port is published on
+# 127.0.0.1 only: whoever reaches the port can use all of the API, approvals included. Reaching it
+# from another machine needs sign-in, or a reverse proxy with TLS and a login in front.
 #
 # The server runs as an unprivileged user (uid 10001) and writes only to /app/data. A folder of the
 # host keeps its owner there, so the first example runs the container as yourself (`--user`), on a

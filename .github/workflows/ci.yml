@@ -141,10 +141,15 @@ jobs:
           uid=$(docker run --rm kapacitet id -u)
           echo "the image runs as uid $uid"
           test "$uid" != 0
-      # without data the API still answers, and /health says what is missing. The port is published
-      # on 127.0.0.1 only, as the README and the Dockerfile say to run it: the API has no login.
+      # the image listens on 0.0.0.0 inside the container, so it does not start until KAPACITET_AUTH
+      # says whether sign-in is wanted
       - run: |
-          docker run -d --name kapacitet -p 127.0.0.1:8000:8000 kapacitet
+          code=0; timeout 120 docker run --rm kapacitet || code=$?
+          test "$code" = 2 || { echo "expected the refusal (exit 2), got $code"; exit 1; }
+      # without data the API still answers, and /health says what is missing. The port is published
+      # on 127.0.0.1 only, as the README and the Dockerfile say to run it without sign-in.
+      - run: |
+          docker run -d --name kapacitet -p 127.0.0.1:8000:8000 -e KAPACITET_AUTH=off kapacitet
           for i in $(seq 1 30); do curl -fs http://127.0.0.1:8000/api/v1/health && break; sleep 2; done
           if ! curl -fs http://127.0.0.1:8000/api/v1/health | grep -q '"status":"ok"'; then docker logs kapacitet; exit 1; fi
           curl -fs http://127.0.0.1:8000/ | grep -q '<div id="root">'

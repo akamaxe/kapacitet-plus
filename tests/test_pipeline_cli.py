@@ -6,6 +6,7 @@ which step runs, with which `--only` and how many workers.
 
 from __future__ import annotations
 
+import os
 import shutil
 
 import pytest
@@ -297,3 +298,86 @@ def test_purge_needs_an_age_and_stays_away_from_a_running_server(tmp_path, monke
     with another_server(tmp_path):
         assert _exit_code(["purge", "--older-than", "30"]) == 2
         assert "KAPACITET_RETENTION_DAYS" in capsys.readouterr().out and len(asked) == 2
+
+
+# ---------------------------------------------------------------- an open server says so
+
+@pytest.fixture
+def no_sign_in_settings(monkeypatch):
+    """Sign-in as the environment of the test says, never as the developer's .env does."""
+    from kapacitet import auth
+
+    monkeypatch.setattr(auth, "_dotenv", lambda: None)
+    for name in [n for n in os.environ if n.startswith(("KAPACITET_AUTH", "KAPACITET_OIDC_", "KAPACITET_SESSION_"))]:
+        monkeypatch.delenv(name)
+    auth.config.cache_clear()
+    yield monkeypatch
+    auth.config.cache_clear()
+
+
+def test_only_a_loopback_address_keeps_the_server_on_this_machine():
+    for host in ("127.0.0.1", "localhost", "LOCALHOST", "::1", "[::1]", "127.0.0.2", "app.localhost"):
+        assert pipeline.is_loopback(host), host
+    for host in ("0.0.0.0", "::", "192.168.1.20", "kapacitet.dso.example", "", "localhost.example.org"):
+        assert not pipeline.is_loopback(host), host
+
+
+def test_a_server_without_sign_in_says_so_and_does_not_listen_beyond_this_machine(no_sign_in_settings, caplog, capsys):
+    import argparse
+    import logging
+
+    import uvicorn
+
+    from kapacitet import auth
+
+    monkeypatch = no_sign_in_settings
+    started = []
+    monkeypatch.setattr(uvicorn, "run", lambda *a, **k: started.append(k["host"]))
+    monkeypatch.setattr(pipeline, "_wait_for_port", lambda host, port: None)
+    monkeypatch.setattr(pipeline, "data_in_checkout_warning", lambda: None)
+
+    def serve(host: str) -> list[str]:
+        caplog.clear()
+        with caplog.at_level(logging.WARNING, logger="kapacitet"):
+            pipeline._serve_child(argparse.Namespace(host=host, port=8123))
+        return [r.getMessage() for r in caplog.records]
+
+    # on this machine it starts, and says that whoever reaches the port can use all of it
+    said = serve("127.0.0.1")
+    assert started == ["127.0.0.1"] and any("sign-in is off" in m and "approvals included" in m for m in said)
+    # beyond it, with nobody having said whether sign-in is wanted: it does not start
+    with pytest.raises(SystemExit) as stop:
+        serve("0.0.0.0")
+    err = capsys.readouterr().err
+    assert stop.value.code == 2 and started == ["127.0.0.1"]
+    assert "refusing to listen on 0.0.0.0 without sign-in" in err and "KAPACITET_AUTH=off" in err and "KAPACITET_AUTH=oidc" in err
+    # off on purpose (the container's port published on 127.0.0.1 only): it starts, and still says so
+    monkeypatch.setenv("KAPACITET_AUTH", "off")
+    said = serve("0.0.0.0")
+    assert started == ["127.0.0.1", "0.0.0.0"] and any("sign-in is off" in m for m in said)
+    # asked for and incomplete: the guard refuses every request, and the start-up says which variable
+    monkeypatch.setenv("KAPACITET_AUTH", "oidc")
+    auth.config.cache_clear()
+    said = serve("0.0.0.0")
+    assert any("misconfigured" in m and "KAPACITET_OIDC_ISSUER" in m for m in said)
+    # complete: nothing to say
+    for name, value in (("KAPACITET_OIDC_ISSUER", "https://login.example.org/tenant"), ("KAPACITET_OIDC_CLIENT_ID", "kapacitet"),
+                        ("KAPACITET_OIDC_CLIENT_SECRET", "client-secret-value"), ("KAPACITET_SESSION_SECRET", "s" * 40)):
+        monkeypatch.setenv(name, value)
+    auth.config.cache_clear()
+    assert pipeline.open_server_notice("0.0.0.0") is None and serve("0.0.0.0") == []
+
+
+def test_the_supervisor_passes_the_refusal_on(monkeypatch):
+    """A child that refuses to listen ends with 2: the supervisor ends with it, and starts nothing again."""
+    import argparse
+    import sys
+
+    runs = []
+
+    def command(env):
+        runs.append(1)
+        return [sys.executable, "-c", "import sys; sys.exit(2)"]
+
+    assert pipeline.supervise(argparse.Namespace(host="0.0.0.0", port=0, site=None), command=command) == 2
+    assert runs == [1]

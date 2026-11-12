@@ -320,9 +320,55 @@ def data_in_checkout_warning() -> str | None:
             "cannot end up in a commit")
 
 
+def is_loopback(host: str) -> bool:
+    """Whether a server listening on `host` can only be reached from this machine."""
+    import ipaddress
+
+    name = (host or "").strip().strip("[]").lower()
+    if name == "localhost" or name.endswith(".localhost"):
+        return True
+    try:
+        return ipaddress.ip_address(name).is_loopback
+    except ValueError:
+        return False                         # any other name, 0.0.0.0 and :: included
+
+
+def open_server_notice(host: str) -> tuple[str, str] | None:
+    """What `serve` has to say before it listens: None with sign-in on, otherwise ("warn", text),
+    or ("refuse", text) when it would listen beyond this machine and nobody has said whether
+    sign-in is wanted. KAPACITET_AUTH=off says it is off on purpose (a port published on 127.0.0.1
+    only, a proxy with its own login in front): then the server starts and says so. This is the
+    rule `kapacitet instance check` already holds an installation to."""
+    from . import auth
+
+    try:
+        on = auth.enabled()
+        if on:
+            auth.config()                    # complete, or it says which variable is missing
+            return None
+    except auth.AuthConfigError as exc:      # names the variable, never a value
+        # asked for and unusable: the guard refuses every request, so nothing is open; say why
+        return "warn", f"sign-in is asked for but misconfigured, so every request is refused until it is fixed: {exc}"
+    open_to = ("whoever reaches this port can use all of the API, approvals included "
+               "(KAPACITET_AUTH=oidc turns sign-in on: docs/sso.md)")
+    if not is_loopback(host) and not auth._env("KAPACITET_AUTH"):
+        return "refuse", (f"refusing to listen on {host} without sign-in: {open_to}. Set KAPACITET_AUTH=oidc, or "
+                          "KAPACITET_AUTH=off to say it is off on purpose (the port published on 127.0.0.1 only, "
+                          "or a proxy with its own login in front)")
+    return "warn", f"sign-in is off: {open_to}"
+
+
 def _serve_child(args: argparse.Namespace) -> None:
     import uvicorn
 
+    # before anything listens: an open server says so, and one open beyond this machine does not start
+    notice = open_server_notice(args.host)
+    if notice is not None:
+        kind, text = notice
+        if kind == "refuse":
+            print(text, file=sys.stderr)
+            sys.exit(2)
+        log.warning(text)
     # here, not in the supervisor: the child runs on the network's own folder, once per switch
     warning = data_in_checkout_warning()
     if warning:
