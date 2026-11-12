@@ -49,6 +49,8 @@ Changes before 12 November 2026 are only in that history.
   line of the station's log and where the log is. A case's own error is no longer cut at 200
   characters, which lost the file's name.
 - A logo whose image data was not exactly the image its header declares was accepted.
+- The RFC 3161 tokens a chain still owes were listed in the folder's own order, not in line order;
+  with PostgreSQL, in whatever order the table gave them. Both are now in line order.
 - An identity provider that does not answer gave a server error; it is now `provider_unavailable`.
 - `kapacitet study options` ended with a `KeyError` and exit code 1 after writing its files.
 - The first evaluation after a start waited on eight years of ENTSO-E prices read point by point;
@@ -64,5 +66,8 @@ Changes before 12 November 2026 are only in that history.
 - `tools/envelope_networks.py` and `docs/envelopes-by-network.md`: the capacity stages and the
   intraday scorecard on three benchmark networks at two MV voltages, with the decision rule
   committed before any case was computed.
+- `tools/study_scale.py` and `docs/study-scale.md`: a synthetic study of any number of stations and
+  the time and disk of each. Run with three stations to see that it works; the measurement of 50
+  has not been made, and the page carries no figure until it is.
 - `SECURITY.md`, and the paragraphs of elmarknadslagen (2026:1281) that replace ellagen's on
   1 January 2027 beside the conditions of Ei2025:01.
