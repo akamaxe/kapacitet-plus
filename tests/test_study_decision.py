@@ -369,3 +369,30 @@ def test_the_command_line_runs_the_portfolio(tmp_path, capsys):
     main(["study", "portfolio", str(study.root), "--run", Q, "--allow-git"])
     assert "4 stations" in capsys.readouterr().out
     assert (study.runs / Q / "portfolio.csv").is_file() and (study.runs / Q / "portfolio_sv.md").is_file()
+
+
+def test_the_command_line_runs_the_options_and_ends_cleanly(tmp_path, capsys, monkeypatch):
+    """`study options` printed its count and then died on a key only `devplan` returns: the command
+    reads what `decision.options` gives, and ends with 0 when no station failed."""
+    from kapacitet.pipeline import main
+
+    study = make(tmp_path, COSTS, approval="Styrelsebeslut 2026-10")
+    docs = {sid: {**doc(), "approval_reference": "Styrelsebeslut 2026-10"} for sid in ("S1", "S2", "S3", "S4")}
+    real = decision.options
+    monkeypatch.setattr(decision, "options", lambda st, q, **kw: real(st, q, runner=runner_for(docs)))
+    main(["study", "options", str(study.root), "--run", Q, "--allow-git"])       # no SystemExit, no KeyError
+    out = capsys.readouterr().out
+    assert "4 stations" in out and "(4 computed now)" in out and "failed" not in out
+    assert (study.runs / Q / "options.csv").is_file()
+
+
+def test_the_command_line_ends_with_one_when_a_station_failed(tmp_path, capsys, monkeypatch):
+    from kapacitet.pipeline import main
+
+    study = make(tmp_path, COSTS)
+    docs = {"S1": doc(), "S2": doc(), "S3": doc(), "S4": {"failed": "the station's process ended with 1"}}
+    real = decision.options
+    monkeypatch.setattr(decision, "options", lambda st, q, **kw: real(st, q, runner=runner_for(docs)))
+    with pytest.raises(SystemExit) as stop:
+        main(["study", "options", str(study.root), "--run", Q, "--allow-git"])
+    assert stop.value.code == 1 and "S4: failed" in capsys.readouterr().out
