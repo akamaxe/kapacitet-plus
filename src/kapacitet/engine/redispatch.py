@@ -18,6 +18,7 @@ from __future__ import annotations
 import json
 
 from .. import dso, market
+from ..language import NOT_REVIEWED_SV
 from ..paths import processed, processed_ro
 
 BASIS = "dayahead"
@@ -136,7 +137,8 @@ def text_sv(r: dict) -> str:
         lines.append(f"  {e['recorded_at'][:10]}  {what}: {kinds}{by}")
     if not ma["records"]:
         lines.append("  inga: nätbolaget har inte registrerat några")
-    lines += ["", "Simulerade siffror från ett syntetiskt nät, inte uppmätta: underlag, aldrig en juridisk bedömning."]
+    lines += ["", "Simulerade siffror från ett syntetiskt nät, inte uppmätta: underlag, aldrig en juridisk bedömning.",
+              NOT_REVIEWED_SV]
     return "\n".join(lines) + "\n"
 
 

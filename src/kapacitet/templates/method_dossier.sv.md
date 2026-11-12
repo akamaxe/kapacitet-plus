@@ -19,6 +19,9 @@ källa. {{kind_note}}
 Underlaget redovisar vad modellen visar och vad nätbolaget har angett. Det är aldrig en juridisk
 bedömning: om villkoren är uppfyllda avgör Ei.
 
+Språket har inte granskats av någon med svenska som modersmål: granska texten innan den skickas
+eller publiceras.
+
 ## Vad som beräknas
 
 {{computed}}

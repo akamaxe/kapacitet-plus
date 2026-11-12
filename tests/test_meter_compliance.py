@@ -87,6 +87,9 @@ def test_injected_over_export_is_flagged_with_the_right_energy(root):
     assert r["injected"] == {"5": share}
     text = mc.text_sv(r)
     assert "kund 5 (C1)" not in text and "kund 5 (C5)" in text
+    from kapacitet.language import NOT_REVIEWED_SV
+
+    assert text.rstrip().endswith(NOT_REVIEWED_SV)
 
 
 def test_the_tolerance_holds(root):

@@ -133,10 +133,19 @@ class Method(_Section):
     approval_reference: str = ""
 
 
+MV_SOURCE_DEFAULT = "planning band, not measured"
+MV_SOURCE_DEFAULT_SV = "planeringsband, inte uppmätt"
+
+
 class Mv(_Section):
     band_low_pu: float = Field(0.98, ge=0.9, le=1.1)
     band_high_pu: float = Field(1.06, ge=0.9, le=1.1)
-    source: str = "planning band, not measured"
+    source: str = MV_SOURCE_DEFAULT
+
+    @property
+    def source_sv(self) -> str:
+        """The source as a Swedish text gives it: our default in Swedish, the DSO's own words as written."""
+        return MV_SOURCE_DEFAULT_SV if self.source.strip() == MV_SOURCE_DEFAULT else self.source
 
     @model_validator(mode="after")
     def _band(self):
@@ -461,7 +470,7 @@ def template(name: str = "", site: dict | None = None) -> str:
         "[mv]",
         "band_low_pu = 0.98              # consumption is computed here",
         "band_high_pu = 1.06             # generation is computed here",
-        'source = "planning band, not measured"',
+        'source = "planning band, not measured"   # printed in the publication: your own words in Swedish',
         "",
         "[disclosure]",
         'level = "station"               # or "grid" (squares of grid_m) or "zone"',

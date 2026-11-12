@@ -42,6 +42,7 @@ import numpy as np
 import pandas as pd
 
 from .. import paths
+from ..language import NOT_REVIEWED_SV
 
 SCHEMA = "kapacitet.meter_compliance/1"
 BASIS = "dayahead"
@@ -368,7 +369,7 @@ def text_sv(r: dict) -> str:
     if not over:
         lines.append("  inga")
     lines += ["", ("Syntetiska värden, inte uppmätta: underlag, aldrig en juridisk bedömning." if r["readings"] == "synthetic"
-                   else "Underlag för uppföljning, aldrig en juridisk bedömning.")]
+                   else "Underlag för uppföljning, aldrig en juridisk bedömning."), NOT_REVIEWED_SV]
     return "\n".join(lines) + "\n"
 
 

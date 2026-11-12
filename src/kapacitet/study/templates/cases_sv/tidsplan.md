@@ -4,6 +4,9 @@ UTKAST framtaget av Kapacitet+ som underlag för en handläggare hos {{dso_name}
 beslut och har inte granskats juridiskt. Kapacitet+ föreslår endast: varje beslut fattas av en
 person hos nätföretaget.
 
+Språket har inte granskats av någon med svenska som modersmål: granska texten innan den skickas
+eller publiceras.
+
 | | |
 |---|---|
 | Ärende | {{case_id}} |

@@ -38,6 +38,7 @@ from pathlib import Path
 
 from .. import geo, seals
 from ..atomic import write_json_atomic, write_text_atomic
+from ..language import NOT_REVIEWED_SV
 from . import Study, StudyError, code_version, file_digest
 from . import csvio, disclosure, embed, runs, validation
 from .config import METHOD_VERSION
@@ -364,7 +365,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         status = f"Signerad av {s['by']} den {s['signed_at'][:10]} (sigill {s['seal']['id']})."
     else:
         status = (f"**{DRAFT}**: inte signerad" + (" sedan underlaget ändrades efter signeringen" if state["signoff"]
-                                                  else "") + ". Får inte publiceras som fastställd.")
+                                                  else "") + f". Får inte publiceras som fastställd. {NOT_REVIEWED_SV}")
     weather = weather_source(study)
     weather_text = (f"från SMHI (STRÅNG och mätstationen {weather.get('station')}) för studiens plats"
                     if weather["source"] == "study" else
@@ -459,7 +460,7 @@ def criteria_values(study: Study, q: str, rows: list[dict], result: dict, fixes:
         "v_min_pu": sv(_assumption(study, "v_min_pu")), "v_max_pu": sv(_assumption(study, "v_max_pu")),
         "v_margin_pu": sv(_assumption(study, "v_margin_pu")),
         "thermal_limit_pct": sv(_assumption(study, "thermal_limit_pct")),
-        "mv_low_pu": sv(cfg.mv.band_low_pu), "mv_high_pu": sv(cfg.mv.band_high_pu), "mv_source": cfg.mv.source,
+        "mv_low_pu": sv(cfg.mv.band_low_pu), "mv_high_pu": sv(cfg.mv.band_high_pu), "mv_source": cfg.mv.source_sv,
         "load_power_factor": sv(_assumption(study, "load_power_factor")),
         "orders": " eller ".join(str(o) for o in orders) or "–", "percentile": " eller ".join(sv(p) for p in pct),
         "upstream": upstream, "conditional": conditional, "three_phase": three_phase, "corrections": corrections_text,

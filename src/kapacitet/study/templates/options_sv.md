@@ -3,6 +3,9 @@
 UNDERLAG framtaget av Kapacitet+ för {{dso_name}}: internt, inte en projektering och inte ett
 beslut. Kapacitet+ föreslår endast: varje beslut fattas av en person hos nätföretaget.
 
+Språket har inte granskats av någon med svenska som modersmål: granska texten innan den skickas
+eller publiceras.
+
 | | |
 |---|---|
 | Nätstation | {{station}} ({{station_id}}) |

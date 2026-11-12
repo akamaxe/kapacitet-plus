@@ -53,6 +53,7 @@ from pathlib import Path
 
 from .. import paths, procs
 from ..atomic import write_json_atomic, write_text_atomic
+from ..language import NOT_REVIEWED_SV
 from . import RESERVED, Study, StudyError, valid_id
 from .config import METHOD_VERSION
 from .csvio import number, read
@@ -644,6 +645,7 @@ def annex(r: dict) -> tuple[str, dict]:
     lines = [f"# Bilaga: teknisk bedömning av anslutningsärende {r['case_id']}", "",
              "Framtagen av Kapacitet+. Det är ett förslag, inte ett beslut: en handläggare hos nätföretaget "
              "prövar ärendet och fattar beslutet. Kapacitet+ föreslår aldrig att en ansökan avslås.", "",
+             NOT_REVIEWED_SV, "",
              "| | |", "|---|---|",
              f"| Ärende | {r['case_id']} |", f"| Anslutningspunkt | {r['connection_point_id']} |",
              f"| Nätstation | {r['station']} |", f"| Ansökan mottagen | {r['received_at']} |",

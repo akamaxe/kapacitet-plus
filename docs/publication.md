@@ -16,6 +16,10 @@ writes `runs/<run>/publication/` (a run is a quarter such as `2026Q4` or a month
 folder and is never published. Every file of a publication that is not signed, or that changed
 after it was signed, says UTKAST.
 
+The two Swedish texts of a draft also say that no native speaker has reviewed their language
+(`kapacitet/language.py`). Nobody has: read them before you sign, because the sentence leaves with
+the signature, which is where the DSO takes the text as its own.
+
 ## What a publication can still give away
 
 A cell holds at least `min_customers` customers, and a small cell's figures are rounded down

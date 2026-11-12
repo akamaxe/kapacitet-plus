@@ -719,7 +719,7 @@ def _mv_study(f: Facts, study, caps: list[dict]) -> str:
     cfg = study.config
     low = f.num("study.mv_low_pu", cfg.mv.band_low_pu, "study.toml [mv] band_low_pu", 2, "pu", True)
     high = f.num("study.mv_high_pu", cfg.mv.band_high_pu, "study.toml [mv] band_high_pu", 2, "pu", True)
-    msrc = f.text("study.mv_source", cfg.mv.source, "study.toml [mv] source")
+    msrc = f.text("study.mv_source", cfg.mv.source_sv, "study.toml [mv] source")
     src = "capacity.json of every computed station: generation.binding_mv_pu"
     at_low = f.num("study.binding_low", sum(1 for c in caps if (c.get("generation") or {}).get("binding_mv_pu") == cfg.mv.band_low_pu), src)
     at_high = f.num("study.binding_high", sum(1 for c in caps if (c.get("generation") or {}).get("binding_mv_pu") == cfg.mv.band_high_pu), src)

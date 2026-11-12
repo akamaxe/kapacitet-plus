@@ -224,6 +224,9 @@ def test_the_report_reads_the_issued_basis_and_never_the_planning_figure(monkeyp
     assert r["legal_basis"].endswith("art. 13.4")
     text = redispatch.text_sv(r)
     assert "Icke-marknadsbaserad omdirigering, rapportår 2025" in text and "0,3 MWh" in text and "kabel 4" in text
+    from kapacitet.language import NOT_REVIEWED_SV
+
+    assert text.rstrip().endswith(NOT_REVIEWED_SV)
     assert "SEK" in text and " kr" not in text
 
     dso.update(dso.DsoSettingsChange(redispatch_compensation_sek=1500))

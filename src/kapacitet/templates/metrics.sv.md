@@ -7,6 +7,9 @@ Ett värde vars källa saknas står som saknat, med kommandot som skriver källa
 Siffrorna kommer från simuleringar och från det som installationen har registrerat, inte från
 nätbolagets egen uppföljning.
 
+Språket har inte granskats av någon med svenska som modersmål: granska texten innan den skickas
+eller publiceras.
+
 ## Användning
 
 {{ use }}

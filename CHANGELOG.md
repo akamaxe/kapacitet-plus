@@ -34,8 +34,22 @@ Changes before 12 November 2026 are only in that history.
 - **Results files** written from now on carry a `computed` block: when, the commit of the code and
   the library versions.
 
+- **Swedish texts say that their language is not reviewed.** The notes of `study options` and
+  `portfolio`, the development-plan inputs, a case's annex and drafts, the method dossier, the
+  redispatch and meter-compliance pages and a draft publication carry one sentence saying that no
+  native speaker has read them. A signed publication does not: signing is where the DSO takes the
+  text as its own. The MV band's default source is printed in Swedish.
+
 ### Fixed
 
+- A study in a deep folder on Windows failed with "no such file or directory": a temporary file
+  was 14 characters longer than its file. It is now never longer, and a path Windows refuses for
+  its length says the length, the limit and what to do.
+- A station whose process ended without a result said only its exit code; it now gives the last
+  line of the station's log and where the log is. A case's own error is no longer cut at 200
+  characters, which lost the file's name.
+- A logo whose image data was not exactly the image its header declares was accepted.
+- An identity provider that does not answer gave a server error; it is now `provider_unavailable`.
 - `kapacitet study options` ended with a `KeyError` and exit code 1 after writing its files.
 - The first evaluation after a start waited on eight years of ENTSO-E prices read point by point;
   a year is now read in arrays, with identical results.

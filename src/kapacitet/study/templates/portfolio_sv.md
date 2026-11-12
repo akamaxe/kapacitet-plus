@@ -3,6 +3,9 @@
 UNDERLAG framtaget av Kapacitet+ för {{dso_name}}: internt, inte för publicering, och inte ett
 beslut. Kapacitet+ föreslår endast: varje beslut fattas av en person hos nätföretaget.
 
+Språket har inte granskats av någon med svenska som modersmål: granska texten innan den skickas
+eller publiceras.
+
 {{stations}} nätstationer, den med minst marginal per kund först. Marginalen är den minsta av den
 publicerade effekten för ny produktion och för ny förbrukning ({{device}}), efter begränsningarna i
 överliggande nät och granskarens rättelser, delad med antalet kunder. En station utan värde på

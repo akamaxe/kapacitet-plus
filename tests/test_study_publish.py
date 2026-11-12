@@ -124,8 +124,13 @@ def test_an_unsigned_publication_is_a_draft_and_writes_every_file(study):
     for name, f in manifest["files"].items():
         from kapacitet.study import file_digest
         assert file_digest(folder / name) == f["sha256"]
-    assert DRAFT in (folder / "grunder_for_berakning.md").read_text(encoding="utf-8")
-    assert DRAFT in (folder / "validation_report.sv.md").read_text(encoding="utf-8")
+    from kapacitet.language import NOT_REVIEWED_SV
+
+    for name in ("grunder_for_berakning.md", "validation_report.sv.md"):
+        text = (folder / name).read_text(encoding="utf-8")
+        assert DRAFT in text and NOT_REVIEWED_SV in text, name     # a draft says nobody native has read it
+    assert "planeringsband, inte uppmätt" in (folder / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert "planning band" not in (folder / "grunder_for_berakning.md").read_text(encoding="utf-8")
     assert all(r["status"] == DRAFT for r in rows_of(folder / "capacity.csv"))
     gj = json.loads((folder / "capacity.geojson").read_text(encoding="utf-8"))
     assert gj["type"] == "FeatureCollection" and gj["status"] == DRAFT
@@ -154,6 +159,11 @@ def test_signing_seals_the_outputs_in_the_studys_chain_and_a_change_makes_it_a_d
     manifest = json.loads((out["folder"] / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["signoff"]["valid"] and manifest["signoff"]["by"] == "Test Person, network manager"
     assert DRAFT not in (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    from kapacitet.language import NOT_REVIEWED_SV
+
+    # signing is where the DSO takes the text as its own: the note about its language goes with the draft
+    assert NOT_REVIEWED_SV not in (out["folder"] / "grunder_for_berakning.md").read_text(encoding="utf-8")
+    assert NOT_REVIEWED_SV not in (out["folder"] / "validation_report.sv.md").read_text(encoding="utf-8")
     # the signoff's seal is signed, and the manifest carries the public key that checks it, never the private
     key = manifest["seal_key"]
     assert key["key_id"] == doc["seal"]["key_id"] == manifest["signoff"]["seal"]["key_id"]
