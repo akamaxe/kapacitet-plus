@@ -1415,9 +1415,10 @@ main:focus { outline: none; }
 @media (max-width: 900px) {
   .overview-hero { gap: var(--space-4); }
   .grid-2, .grid-2.wide-first { grid-template-columns: minmax(0, 1fr); }
-  .topbar { gap: var(--space-3); padding: 0 var(--space-3); }
+  /* the bands keep the page's 16 px margin: only the gaps between their parts tighten */
+  .topbar { gap: var(--space-3); }
   .sb-legend > span + span, .sb-version { display: none; }
-  .statusbar { gap: var(--space-4); padding: 0 var(--space-3); }
+  .statusbar { gap: var(--space-4); }
 }
 @media (max-width: 700px) {
   .top-user, .sb-project, .sb-legend, .sb-output-last { display: none; }

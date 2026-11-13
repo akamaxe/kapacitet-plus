@@ -6,7 +6,50 @@ Changes before 12 November 2026 are only in that history.
 
 ## Unreleased
 
+### Added
+
+- **A start window, and projects.** The interface opens on the projects of the server: the
+  reference network and every network made in the app. *New project…* makes one in three steps
+  from a network export (four CSV tables), from one of thirteen example networks (pandapower's
+  low-voltage benchmark networks, synthetic and labelled so) or from a project file, and
+  *Export (.zip)* writes a project as one. `GET /api/v1/templates`, `GET /api/v1/templates/{id}`
+  and `GET /api/v1/datasets/{id}/project.zip` are new; `GET /api/v1/datasets` gained each
+  network's summary and where it came from.
+- **A workbench around the open project.** A bar with the logo and six menus (File, View, Study,
+  Results, Tools, Help), a project tree (the network with its transformer, feeders and houses, the
+  studies, the results), an output window that keeps what the program did with its time, and a
+  status bar. Keys: **0** the start window, **T** the project tree, **O** the output window;
+  **1**–**8** as before.
+- **Study > Computation status…** says what is computed for the project, when, and the command
+  that computes each part again. `/health` now gives every part its command, missing or not.
+- **Installable.** The browser can install the interface with a window and an icon of its own
+  (a web manifest; no service worker, nothing cached).
+
 ### Changed
+
+- **Links to a screen are unchanged; a link to nothing opens the start window.** `#/compare` and
+  the other seven open the project on that screen as before. `/` and `#/start` are the start
+  window, where `/` used to open Static vs envelopes.
+- **The eight screens left the top bar.** They are entries of the View, Study and Results menus
+  and rows of the project tree, under the names they had. The language and the keys moved to the
+  status bar, the theme and full screen to the View menu, the tour to Help.
+- **`kapacitet dataset build <id>` builds in the network's own folder.** Typed by hand it used the
+  folder it was typed in, which is the reference network's, and wrote that network's grid,
+  profiles and results over. It now starts itself again in the network's folder, and a build
+  refuses any other. A network's build also writes the redispatch report and the fleet's
+  compliance check, and for an imported network every "not computed" note and `/health` name that
+  build as the command, not `compute`.
+- **A network made from tables is drawn.** `GET /api/v1/network` gives a house without an outline
+  a square of its own footprint and a cable without a route a straight line, marks each such
+  feature `drawn`, and says in `drawing` how many there are and whether the layout is a place or a
+  schematic. `GET /api/v1/meta` says where the open network came from and whether it is synthetic,
+  and each response's provenance follows it.
+- **The sensitivity's transformer cases follow the network.** They are the standard units next to
+  the network's own, for its own voltages, where they were 0.25 and 0.63 MVA at 10 kV for every
+  network. The reference network's cases are the same as before.
+- **The name and the logo are not part of the MIT licence.** The logo's files are in the
+  repository (`web/public/brand`, the icons) so that the interface can show them; the README's
+  licence section says the licence gives no right to use them for anything else.
 
 - **The server refuses to listen beyond this machine without sign-in.** `kapacitet serve` with a
   host other than a loopback address now ends with exit code 2 until `KAPACITET_AUTH` is set to

@@ -334,20 +334,55 @@ is decided, and the token never reaches a log line, the manifest or a bundle.
 
 ### Getting around
 
-Start `python -m kapacitet serve` and open `http://127.0.0.1:8000`. **1**–**8** jump straight to
-a screen, Ctrl + arrow keys or PageUp/PageDown step through them, **F** toggles full screen,
-**EN**/**SV** in the top bar switch language, and **?** lists every key.
+Start `python -m kapacitet serve` and open `http://127.0.0.1:8000`. It opens on the **start
+window**, as the programs a network planner works in do: the projects on this server as a table,
+the picked one as a data sheet, and one action to open it. A project is one low-voltage network
+with its studies. The 120 houses of Smedslätten are the reference project; *New project…* makes
+another in three steps (source, check, build) from a network export of four CSV tables, from one
+of thirteen example networks (pandapower's low-voltage benchmark networks, which are synthetic and
+say so), or from a project file; *Export (.zip)* writes a project as one. See
+[Networks in the app](#networks-in-the-app).
+
+Inside a project the frame is a workbench:
+
+- **The bar** carries the logo (which leads back to the start window), six menus, the open
+  project's name (which opens its properties) and the search. *File* makes, opens, imports and
+  exports projects and prints; *View* has the two screens that look at the network, the project
+  tree, the output window, full screen, the theme and the language; *Study* has the four studies
+  and *Computation status…*, which says what is computed for the project, when, and the command
+  that computes each part again (the heavy studies run from the command line, not from the
+  browser); *Results* has the annual report and the method; *Tools* has the search, the check of a
+  network export, the DSO's settings and the key sheet; *Help* has the tour, the manual and what
+  the program is. The menus are walked with the arrow keys, and fold into one sheet on a narrow
+  window.
+- **The project tree**, down the left, holds the network (its map, its transformer, its feeders and
+  the houses on each), the studies, the results and the reference. A study opens its screen; a
+  house is selected everywhere. **T** folds it to a rail of icons.
+- **The output window** keeps what the program did for you, with its time: an evaluation and its
+  stages, a project opened or built, a file sealed, every notice. It is closed until you ask for it:
+  **O**, or the last line in the status bar.
+- **The status bar** says whether the server answers and its version, the project and its year, what
+  is real and what is synthetic, the language (**EN**/**SV**) and the keys.
+
+**0** is the start window, **1**–**8** jump straight to a screen, Ctrl + arrow keys or
+PageUp/PageDown step through them, **F** toggles full screen and **?** lists every key.
 
 **Ctrl + K** is the way in if you know what you are looking for: it searches the eight screens,
-all 120 houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and the
-handful of actions the chrome offers. Picking a house selects it everywhere.
+all the project's houses by address — diacritics folded, so `slatt` finds Smedslättsvägen — and
+what the menus do. Picking a house selects it everywhere.
+
+The browser can install Kapacitet+ with a window and an icon of its own (in Chrome or Edge,
+*Install Kapacitet+* in the address bar). It is the same page, served by the same
+`kapacitet serve`: nothing is cached, and it works only while the server runs.
 
 The interface opens on a white ground for new visitors; a designed night theme and the system
-setting are in the top bar, and the choice is remembered. The eight screens sit in that bar, and
-when they no longer fit (measured in each language) they fold into a menu. **Static vs envelopes** opens with the network on the real
+setting are in *View*, and the choice is remembered. **Static vs envelopes** opens with the network on the real
 map in 3D: the houses raised by their floors and coloured by how their solar is connected, the
 cables and the substation. Drag to move and turn it (the wheel zooms with Ctrl held, so the page
-still scrolls), and click a house to test a connection there.
+still scrolls), and click a house to test a connection there. A project made from tables has no
+outlines and no cable routes: its houses are drawn as squares at their connection points and its
+cables as straight lines, and an example network, whose layout is a drawing and not a place, is
+shown on an empty ground.
 
 In the twin, step an hour at a time, scrub the year (the strip reads out the hour under the
 pointer), play at 1×/4×/8× speed, or return to the hour the transformer is most loaded without
@@ -404,7 +439,7 @@ to navigate screens without affecting form fields.
 8. **Method & data** — live status of every API, every assumption with its source, the validation
    charts, the forecast schemes, a check for your own network export, and the limitations.
 
-New here? The *Tour* in the foot line walks through these screens in two minutes.
+New here? *Help > Guided tour* walks through these screens in two minutes.
 
 ## How it works
 
@@ -516,7 +551,7 @@ python -m pytest tests/test_properties_*.py --hypothesis-profile=deep   # random
 The interface has its own, in `web/`:
 
 ```bash
-npm run test:unit        # Vitest: formatting, dictionaries, the URL rule, the map's binary reader
+npm run test:unit        # Vitest: formatting, dictionaries, the URL rule, the menus, the project tree, the output window
 npm run test:e2e         # Playwright on a fresh clone's view: the API with an empty data folder
 npm run test:e2e:local   # Playwright on this machine's computed data (reuses a server on :8130)
 npm run perf             # what the opening screen costs a first visit (bytes, requests, LCP; docs/perf.md)
@@ -552,21 +587,35 @@ The import is faithful, not approximate. Writing the reference network out in th
 
 ### Networks in the app
 
-The same import runs from the Method screen, without touching the reference network. Check an
-export (or the worked example), give it a name and *Create and build*: the four files are kept
-in `data/datasets/<id>/import/`, and a separate process builds the network in its own folder,
+The same import runs from the start window, without touching the reference network: a network
+made in the app is a **project**. *New project…* takes a name and a source (a network export, one
+of the example networks of `GET /api/v1/templates`, or a project file), shows the data-quality
+check and builds it: the four files are kept in `data/datasets/<id>/import/` with where they came
+from, and a separate process builds the network in its own folder,
 `python -m kapacitet dataset build <id> --workers 2` with `KAPACITET_DATA_DIR` on that folder and
 `KAPACITET_RAW_DIR` on the reference network's downloads. It reads the export, copies the
 reference network's household profiles, builds the profiles for every weather year and computes
-everything the screens read; `dataset.json` records each step, and `build.log` keeps the output.
+everything the screens read, the redispatch report and the fleet's compliance check included;
+`dataset.json` records each step, and `build.log` keeps the output.
 A *quick* build (one weather year and fewer adoption orders in the computation) takes minutes.
 One build runs at a time (`KAPACITET_MAX_BUILDS`), the network in use is never rebuilt under the
 server that reads it (`in_use`), `POST /api/v1/datasets/{id}/cancel` stops a build and every
 process it started, and one that runs past `KAPACITET_BUILD_TIMEOUT_S` (4 h) is stopped the next
-time the networks are read.
+time the networks are read. Typed by hand, `dataset build <id>` starts itself again in the
+project's own folder, and a build refuses any other folder: every step writes into the data
+folder of the process it runs in, and that must never be another network's. The stage commands
+(`compute`, `forecast`, …) act on the folder they are typed in, which is the reference network's:
+for a project made in the app, *Computation status…* and every "not computed" note name its own
+build instead.
 
-`python -m kapacitet serve` now runs the server as the child of a small supervisor. *Use this
-network* asks first, then writes `data/active.json` and has the server exit with code 75; the
+A project file (`GET /api/v1/datasets/{id}/project.zip`, *Export (.zip)*) is the project's four
+tables, what it is (`project.json`) and the contract; results are not in it, and are computed
+again where it is opened. An example network says it is synthetic wherever it shows: in the
+project list, in the status bar's legend, on the printed records and in each response's
+provenance.
+
+`python -m kapacitet serve` runs the server as the child of a small supervisor. *Open project*
+on a project the server is not on asks first, then writes `data/active.json` and has the server exit with code 75; the
 supervisor starts it again on the network's folder, so no cache survives the switch. Switching
 is refused without the supervisor (`KAPACITET_SUPERVISE=0` runs the server directly) and while an
 evaluation or a decision is running, and it never happens by itself. Assessments, the queue and

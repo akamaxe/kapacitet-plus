@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-11-02T00:00:00Z",
+  "generatedAt": "2026-11-13T00:00:00Z",
   "title": "Design System: Kapacitet+",
   "extensions": {
     "colorMeta": {
@@ -24,7 +24,7 @@
         "role": "primary",
         "displayName": "Chrome Blue",
         "canonical": "#123e7c",
-        "purpose": "The top bar; stays a deep blue at night.",
+        "purpose": "The bar at the top; stays a deep blue at night.",
         "tonalRamp": [
           "#152338",
           "#1e3c67",
@@ -264,7 +264,7 @@
         "role": "neutral",
         "displayName": "Print Ink",
         "canonical": "#000000",
-        "purpose": "Printed text, the brand roundel and the head rule.",
+        "purpose": "Printed text and the head rule.",
         "tonalRamp": [
           "#262626",
           "#424242",
@@ -336,7 +336,7 @@
       },
       "caption": {
         "displayName": "Caption",
-        "purpose": "Sources, units, axis ticks, notes, the foot line."
+        "purpose": "Sources, units, axis ticks, notes, the status bar."
       }
     },
     "shadows": [
@@ -380,16 +380,20 @@
     ],
     "breakpoints": [
       {
-        "name": "nav-gap-tightens",
-        "value": "1680px"
-      },
-      {
-        "name": "scope-hides",
-        "value": "1600px"
+        "name": "tree-beside",
+        "value": "1280px"
       },
       {
         "name": "search-label-hides",
-        "value": "1440px"
+        "value": "1280px"
+      },
+      {
+        "name": "tree-rail",
+        "value": "1100px"
+      },
+      {
+        "name": "project-name-hides",
+        "value": "1100px"
       },
       {
         "name": "panel-narrows",
@@ -421,10 +425,50 @@
       },
       {
         "name": "menu-sheet",
-        "value": "measured: the bar folds when the eight labels (at 600, with the bar's gaps) no longer fit beside the brand, scope and tools; unfolds with 24px slack"
+        "value": "measured: the bar folds when the menus' names no longer fit beside the logo and the tools; unfolds with 24px slack"
       }
     ],
     "layout": [
+      {
+        "name": "menubar-h",
+        "value": "44px",
+        "purpose": "The workbench's bar with the logo and the menus; 52px on coarse pointers."
+      },
+      {
+        "name": "menu-top-h",
+        "value": "30px",
+        "purpose": "A menu's name and the bar's tools; 44px on coarse pointers."
+      },
+      {
+        "name": "tree-w",
+        "value": "272px",
+        "purpose": "The project tree beside the screen, from 1280px."
+      },
+      {
+        "name": "rail-w",
+        "value": "48px",
+        "purpose": "The tree folded to the eight screens' icons, from 1100px."
+      },
+      {
+        "name": "output-h",
+        "value": "208px",
+        "purpose": "The output window, when it is open."
+      },
+      {
+        "name": "statusbar-h",
+        "value": "30px",
+        "purpose": "The status bar; 44px on coarse pointers."
+      },
+      {
+        "name": "topbar-h",
+        "value": "56px",
+        "purpose": "The applicant's page's bar, tall enough for a DSO's logo."
+      },
+      {
+        "name": "start-col-w",
+        "value": "280px",
+        "purpose": "The start window's column of things to start with."
+      },
       {
         "name": "panel-w",
         "value": "460px",
@@ -517,12 +561,28 @@
       "css": ".ds-field{display:grid;grid-template-columns:1fr auto;gap:4px 12px;align-items:center;padding:12px 16px;border-radius:var(--radius-md,8px);background:var(--bg-inset,#f2f4f6);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-field label{color:var(--text-secondary,#3d4752);font-size:.8125rem}.ds-field output{font-weight:600;font-variant-numeric:tabular-nums;color:var(--accent,#123e7c)}.ds-field input{grid-column:1/-1;width:100%;min-height:40px;accent-color:var(--accent,#123e7c);cursor:pointer}.ds-field input:focus-visible{outline:2px solid var(--focus,#123e7c);outline-offset:2px}"
     },
     {
-      "name": "Top Bar",
+      "name": "Menu Bar",
       "kind": "nav",
-      "refersTo": "top-bar",
-      "description": "SL-blue chrome: roundel and name, the eight screens as text, the current one white and underlined; folds into the menu sheet when the labels no longer fit (measured).",
-      "html": "<header class=\"ds-top\"><span class=\"ds-brand\"><svg width=\"26\" height=\"26\" viewBox=\"0 0 26 26\" aria-hidden=\"true\"><circle cx=\"13\" cy=\"13\" r=\"13\" fill=\"#fff\"/><path d=\"M13 7v12M7 13h12\" stroke=\"#123e7c\" stroke-width=\"2.6\" stroke-linecap=\"round\"/></svg>Kapacitet+</span><nav><a href=\"#\">Sweden</a><a href=\"#\">Neighbourhood</a><a href=\"#\" aria-current=\"page\">Static vs envelopes</a><a href=\"#\">Connection request</a><a href=\"#\">Operation</a><a href=\"#\">Annual report</a><a href=\"#\">2030 scenarios</a><a href=\"#\">Method &amp; data</a></nav></header>",
-      "css": ".ds-top{display:flex;align-items:stretch;gap:24px;height:56px;padding:0 24px;background:var(--chrome,#123e7c);color:#fff;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-brand{display:inline-flex;align-items:center;gap:8px;font-size:1.0625rem;font-weight:700}.ds-top nav{display:flex;gap:24px;margin-left:auto}.ds-top a{position:relative;display:inline-flex;align-items:center;color:var(--chrome-ink-2,#c9d6ea);font-size:.8125rem;font-weight:500;text-decoration:none;transition:color 120ms cubic-bezier(.23,1,.32,1)}.ds-top a:hover{color:#fff}.ds-top a[aria-current=page]{color:#fff;font-weight:600}.ds-top a[aria-current=page]::after{content:'';position:absolute;left:0;right:0;bottom:0;height:3px;background:#fff}.ds-top a:focus-visible{outline:2px solid #fff;outline-offset:-2px}"
+      "refersTo": "menu-bar",
+      "description": "SL-blue chrome, 44 px: the logo (the brand kit's own file; the stand-in here only marks its place), six menus as words, the open project's name and the search. The menu that is open and the one under the pointer turn white on the bar's hover tone; an open menu is a sheet just under the bar. Folds into a menu sheet when the names no longer fit (measured).",
+      "html": "<header class=\"ds-bar\"><svg width=\"100\" height=\"22\" viewBox=\"0 0 100 22\" role=\"img\" aria-label=\"Kapacitet+\"><text x=\"0\" y=\"17\" font-size=\"18\" font-weight=\"600\" fill=\"#fff\">Kapacitet</text><path d=\"M93 3v8M89 7h8\" stroke=\"#F4600C\" stroke-width=\"2.4\"/></svg><div role=\"menubar\" class=\"ds-menus\"><button role=\"menuitem\" aria-expanded=\"false\">File</button><button role=\"menuitem\" aria-expanded=\"true\">View</button><button role=\"menuitem\" aria-expanded=\"false\">Study</button><button role=\"menuitem\" aria-expanded=\"false\">Results</button><button role=\"menuitem\" aria-expanded=\"false\">Tools</button><button role=\"menuitem\" aria-expanded=\"false\">Help</button></div><span class=\"ds-project\">Smedslätten, Bromma (Stockholm)</span></header>",
+      "css": ".ds-bar{display:flex;align-items:center;gap:16px;height:44px;padding:0 16px;background:var(--chrome,#123e7c);color:#fff;font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif)}.ds-menus{display:flex;gap:2px}.ds-menus button{min-height:30px;padding:0 12px;border:0;border-radius:4px;background:none;color:var(--chrome-ink-2,#c9d6ea);font:500 .8125rem/1 inherit;cursor:pointer;transition:color 120ms cubic-bezier(.23,1,.32,1),background-color 120ms cubic-bezier(.23,1,.32,1)}.ds-menus button:hover,.ds-menus button[aria-expanded=true]{color:#fff;background:rgba(255,255,255,.12)}.ds-menus button:focus-visible{outline:2px solid #fff;outline-offset:2px}.ds-project{margin-left:auto;color:var(--chrome-ink-2,#c9d6ea);font-size:.8125rem;font-weight:500}"
+    },
+    {
+      "name": "Project Tree",
+      "kind": "nav",
+      "refersTo": "project-tree",
+      "description": "What the open project holds, down the left: rows of 28 px, indented 14 px a level, groups at 600, the screen on show on SL wash in SL blue, a house with the square key of its connection. A row is a line of the tree, not a button.",
+      "html": "<div class=\"ds-tree\" role=\"tree\" aria-label=\"Project\"><div role=\"treeitem\" aria-level=\"1\" aria-expanded=\"true\" class=\"g\" style=\"--l:1\">Smedslätten</div><div role=\"treeitem\" aria-level=\"2\" aria-expanded=\"true\" class=\"g\" style=\"--l:2\">Studies</div><div role=\"treeitem\" aria-level=\"3\" aria-current=\"page\" style=\"--l:3\">Static vs envelopes</div><div role=\"treeitem\" aria-level=\"3\" style=\"--l:3\">Connection request</div><div role=\"treeitem\" aria-level=\"2\" aria-expanded=\"false\" class=\"g\" style=\"--l:2\">Results</div></div>",
+      "css": ".ds-tree{width:272px;padding:8px 0;border-right:1px solid var(--border,#e1e5e9);background:var(--bg-base,#fff);font-family:var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);font-size:.8125rem;color:var(--text-primary,#16202b)}.ds-tree [role=treeitem]{display:flex;align-items:center;min-height:28px;padding:0 12px 0 calc(8px + (var(--l) - 1) * 14px + 22px);cursor:pointer}.ds-tree .g{font-weight:600}.ds-tree [role=treeitem]:hover{background:var(--bg-inset,#f2f4f6)}.ds-tree [aria-current=page]{background:var(--accent-quiet,#e4ecf7);color:var(--accent,#123e7c);font-weight:600}"
+    },
+    {
+      "name": "Status Bar",
+      "kind": "nav",
+      "refersTo": "status-bar",
+      "description": "On the ground with a hairline above, caption size, muted, 30 px: whether the server answers and its version, the project and its year, the output window's last line (which opens the window), the real and synthetic marks with their words, the languages and the key sheet.",
+      "html": "<footer class=\"ds-status\"><span>Connected v0.1.0</span><span class=\"p\"><b>Smedslätten</b> · SE3 · Reference year 2025</span><span class=\"o\"><b>Output</b> 14:03 Request evaluated in 0.6 s</span><span><i class=\"r\"></i>real: weather, buildings, prices</span><span><i class=\"s\"></i>synthetic: LV cables, households</span></footer>",
+      "css": ".ds-status{display:flex;align-items:center;gap:24px;height:30px;padding:0 16px;border-top:1px solid var(--border,#e1e5e9);background:var(--bg-base,#fff);color:var(--text-muted,#56606b);font:400 .75rem/1 var(--font-sans,'Familjen Grotesk',system-ui,sans-serif);white-space:nowrap}.ds-status .p{color:var(--text-secondary,#3d4752)}.ds-status b{font-weight:500;color:var(--text-secondary,#3d4752)}.ds-status .o{flex:1;overflow:hidden;text-overflow:ellipsis}.ds-status i{display:inline-block;width:9px;height:9px;margin-right:8px;background:var(--text-secondary,#3d4752)}.ds-status i.s{background:none;border:1.5px dashed var(--text-secondary,#3d4752)}"
     },
     {
       "name": "Data Sheet",
@@ -567,9 +627,11 @@
   ],
   "narrative": {
     "northStar": "The Network on the Map, in Stockholm's Colours",
-    "overview": "The neighbourhood grid is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. Around it, the interface takes its colours from Stockholm's public transport: a white ground, ink type, one SL-blue top bar carrying the eight screens, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in an inbox and a queue, issues each day's limits and files the year's report, and for the applicant on the other side of the same connection, who has a page of their own. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets and between regions, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads on a 1536×730 laptop and projected in a lit meeting room, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
+    "overview": "The interface is a power-engineering workbench. What one sees on entering is a start window, where a project (one low-voltage network with its studies) is opened or made; inside a project, a bar with the logo and six menus, a project tree down the left, an output window and a status bar frame the screen in use. That topology is the one of the tools the audience works in every day, and it was asked for by name; its drawing is this product's own. The network is shown where it is: the real Smedslätten map in 3D, the houses raised by their floors and coloured by how their solar is connected, the synthetic cables in ink and the substation where OpenStreetMap places it. The colours are those of Stockholm's public transport: a white ground, ink type, one SL-blue bar, and the line colours (green, amber, red) kept for the data. It is a working tool for a DSO connection planner, who answers requests, decides them in an inbox and a queue, issues each day's limits and files the year's report, and for the applicant on the other side of the same connection, who has a page of their own. Hierarchy comes from type size, weight and colour fields, not from boxes; hairlines appear in tables, data sheets, between regions and between the frame's docks, and nowhere as decoration. (The redesign first drew the network as a schematic metro-line diagram; the user chose the 3D map instead, and that decision overrides the direction's first signature. The eight screens were tabs in the bar until the user asked for the frame of an engineering program.)\n\nIt is dense where the work is (the Neighbourhood instrument, the request form, the Annual report's tables) and calm where the answer is (Static vs envelopes, one figure at display size). It reads on a 1536×730 laptop and projected in a lit meeting room, and it holds on a phone. Night is a designed second theme, not an inversion: the same roles on a deep ground, the line colours lifted, the chrome kept a deep SL blue.",
     "keyCharacteristics": [
+      "A start window with the projects, and a workbench around the one that is open: a menu bar, a project tree, an output window, a status bar. No ribbon of icons, no bevels, no windows inside windows.",
       "White ground, ink type, SL blue only on the chrome, the one action, selection, links and focus.",
+      "The logo is the brand kit's drawing, never typed; its orange plus is the one place that colour appears.",
       "Line colours live in the data: green firm, amber envelope or near a limit, red only above a rating.",
       "One typeface, Familjen Grotesk, with its default tabular figures for every reading.",
       "No boxed cards: regions part by hairlines and space; only floating layers cast a shadow.",
@@ -632,7 +694,7 @@
     "dos": [
       "**Do** read every colour, size, space, radius and duration from a role token; add a missing one to `tokens.css` first, as a primitive and a role, for both themes.",
       "**Do** take every figure from the API; the interface holds only units and labels.",
-      "**Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the foot line, under the opening map and beside each source.",
+      "**Do** label what is real and what is synthetic on every screen: a filled 9 px square for real, a dashed one for synthetic, with the word, in the status bar, under the opening map and beside each source.",
       "**Do** keep one `--text-display` figure per screen and one SL-blue primary action per view.",
       "**Do** draw static against dynamic as one comparison, pencil against green.",
       "**Do** give every status a mark and a word (circle, triangle, cross); colour never carries meaning alone.",
@@ -640,7 +702,9 @@
       "**Do** write money as SEK (`SEK/kWh`, `SEK/yr`, `kSEK`, `kSEK/yr`) and every real-time date through `format.dateTime`.",
       "**Do** put a decision after its evidence, and the destructive answer of a confirm dialog last, as a ghost button, with Cancel first and focused.",
       "**Do** write every string in `lib/i18n/{en,sv}.ts`, in English and Swedish, with the terms of `docs/glossary.md`.",
-      "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such."
+      "**Do** keep the network where it is: the real map, real footprints, the synthetic cables labelled as such.",
+      "**Do** give everything the program does an entry in the menu a planner would look in, and disable what cannot be done now instead of hiding it.",
+      "**Do** write what a person starts to the output window, with its time; a notice alone is gone in six seconds."
     ],
     "donts": [
       "**Don't** colour chrome, headings, buttons or fields with green, amber or red; those belong to the data.",
@@ -651,7 +715,9 @@
       "**Don't** use letter-spaced uppercase, kickers above headings, Title Case, two-tone headlines, a monospace or a second display face.",
       "**Don't** animate keyboard-opened dialogs, the palette or screen changes, and don't let anything pulse or loop.",
       "**Don't** write \"kr\", or build a date string by hand.",
-      "**Don't** start the tour, or anything else, for the viewer.",
+      "**Don't** start the tour, open the output window, or do anything else for the viewer.",
+      "**Don't** rebuild the logo from a mark and the name set in the interface's typeface, and don't use its orange anywhere else.",
+      "**Don't** dress the frame as a desktop program of the 1990s: no bevels, no ribbon of icons, no toolbar of unlabelled buttons, no windows inside windows.",
       "**Don't** show customers, pilots, testimonials, or a patented or proprietary algorithm; none exist."
     ]
   }

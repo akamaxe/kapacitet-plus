@@ -65,6 +65,16 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | market alternatives (consulted) | marknadsbaserade alternativ (som undersökts) | flexibility markets, bilateral flexibility, tariffs |
 | non-market-based redispatch | icke-marknadsbaserad omdirigering | EU 2019/943, art. 13; here, curtailed solar |
 | imported network | importerat nät | a network built from an operator's export |
+| project | projekt | one low-voltage network with its studies: what the start window lists and opens |
+| start window | startfönster | what one sees on entering: the projects, and the way to make one |
+| example network | exempelnät | one of pandapower's low-voltage benchmark networks; synthetic, and says so |
+| project file | projektfil | a project's tables and what it is, as one .zip; results are computed again where it is opened |
+| menu bar; File, View, Study, Results, Tools, Help | menyrad; Arkiv, Visa, Studie, Resultat, Verktyg, Hjälp | the menus of the workbench |
+| project tree | projektträd | the network, the studies, the results and the reference, down the left |
+| output window, output | utdatafönster, utdata | what the program did, with its time |
+| status bar | statusrad | the server, the project and its year, real against synthetic, language and keys |
+| computation status | beräkningsstatus | what is computed for a project, and the command that computes each part |
+| build (of a project) | bygge | the process that computes a project made in the app |
 
 Money is always **SEK**, never "kr", in every language. Numbers use a narrow no-break space for
 thousands and each language's own decimal mark (a comma in Swedish).

@@ -12,7 +12,9 @@ Two users on either side of one connection, served equally:
 
 - **The connection planner at a Swedish distribution system operator (DSO).** They work through a queue of
   applications for solar, EV chargers, heat pumps and batteries. Their job is to decide whether a connection
-  fits, on what terms, and to leave evidence behind for the decision.
+  fits, on what terms, and to leave evidence behind for the decision. They work every day in power-engineering
+  programs (PowerFactory, ETAP, PVsyst) and expect to find a project where those put one: opened from a start
+  window, with menus, a project tree, an output window and a status bar around the study in hand.
 - **The applicant** — a household, a solar or battery developer, a large consumer — who is offered a non-firm
   connection and has to judge it: how much of their energy would be curtailed, and what that costs them. A
   household has its own small page, the applicant's portal (`#/apply`): pick the address, ask, read the answer
@@ -21,10 +23,13 @@ Two users on either side of one connection, served equally:
 
 ## Product Purpose
 
-Kapacitet+ is a digital twin of one Swedish low-voltage neighbourhood, Smedslätten in Bromma (Stockholm, SE3):
-120 real villas around the substation OpenStreetMap maps at Smedslättsvägen 71A. It puts two connection
-studies side by side: the conservative worst-case hosting capacity DSOs use today, and the capacity unlocked by
-Dynamic Operating Envelopes (DOE), export and import limits that vary hour by hour and per customer.
+Kapacitet+ studies how much a low-voltage network takes. A project is one network with its studies. The
+reference project is a digital twin of one Swedish neighbourhood, Smedslätten in Bromma (Stockholm, SE3): 120
+real villas around the substation OpenStreetMap maps at Smedslättsvägen 71A. Other projects are made from a
+DSO's network export (four CSV tables), from an example network (pandapower's low-voltage benchmark
+networks, which are synthetic and say so) or from a project file. Each project puts two connection studies side
+by side: the conservative worst-case hosting capacity DSOs use today, and the capacity unlocked by Dynamic
+Operating Envelopes (DOE), export and import limits that vary hour by hour and per customer.
 
 Success means a viewer can see how much more solar the same grid takes with envelopes and what that costs the
 customers who join beyond the static limit. They can also test one house's request and get a verdict with its
@@ -39,7 +44,17 @@ non-firm offer.
 
 ## Operating Context
 
-- Eight screens:
+- The start window (`/`, `#/start`) is what one sees on entering: the projects on this server as a table, the
+  picked one as a data sheet, "New project…" (three steps: source, check, build) and "Open project file…". The
+  project the server is on opens at once; another one restarts the server on its folder, so it asks first.
+- Inside a project, the workbench frames the screen in use: a bar with the logo, six menus (File, View, Study,
+  Results, Tools, Help), the project's name and the search; a project tree (the network with its transformer,
+  feeders and houses, the studies, the results, the reference) that folds to a rail of icons; an output window
+  with what the program did and when, closed until asked for; and a status bar (the server, the project and its
+  year, the last output line, real against synthetic, the language, the keys).
+- The heavy studies run from the command line, not from the interface: Study > Computation status says what is
+  computed for the project, when, and the command that computes each part again.
+- Eight screens, the project's modules, each an entry of a menu and a row of the tree:
   - Sweden: national production, consumption and prices.
   - Neighbourhood: the twin at any hour of the reference year, under three scenarios.
   - Static vs DOE: the central comparison, what the extra solar is worth, and what deferring the
@@ -55,12 +70,15 @@ non-firm offer.
   - Annual report: the year's filing for conditional connection agreements on either basis and under any
     sharing rule, its hourly audit trail, each house's own record, and the evidence for Ei (Ei2025:01).
   - 2030: adoption scenarios.
-  - Method & data: sources, inputs, validation, protection, forecasts, and other networks imported and
-    switched to.
+  - Method & data: sources, inputs, validation, protection, forecasts, and the check of a network export.
 - The applicant's portal (`#/apply`) is its own small page, without the application's chrome.
 - URLs describe what is on screen: `#/<screen>?hour=&scenario=&cid=`, plus `job=` for a saved assessment,
   `basis=`/`policy=` on the report, `date=` on the operation screen and `ds=` on an imported network.
-- Keyboard shortcuts: 1–8 for the screens, Ctrl+K for search, ? for the key sheet, F for full screen.
+- Keyboard shortcuts: 0 for the start window, 1–8 for the screens, T for the project tree, O for the output
+  window, Ctrl+K for search, ? for the key sheet, F for full screen. The menu bar and the tree are walked with
+  the arrow keys.
+- It can be installed from the browser, with a window and an icon of its own (a web manifest; no service worker,
+  nothing cached).
 - Light and dark themes.
 - Used mostly on a desktop or laptop, also projected in meetings. It must still work on a phone.
 

@@ -1,0 +1,22 @@
+{
+  "url": "http://127.0.0.1:8160/",
+  "measured_at": "2026-11-13T13:24:39.957Z",
+  "runs": 3,
+  "median": {
+    "requests": 31,
+    "total_kb": 261,
+    "kb": {
+      "document": 1,
+      "script": 158,
+      "font": 19,
+      "stylesheet": 16,
+      "other": 1,
+      "api": 63,
+      "image": 4
+    },
+    "lcp_ms": 372,
+    "dcl_ms": 147,
+    "long_tasks": 0,
+    "long_task_ms": 0
+  }
+}

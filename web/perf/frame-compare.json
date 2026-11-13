@@ -1,0 +1,23 @@
+{
+  "url": "http://127.0.0.1:8160/#/compare",
+  "measured_at": "2026-11-13T13:24:31.411Z",
+  "runs": 3,
+  "median": {
+    "requests": 62,
+    "total_kb": 1154,
+    "kb": {
+      "document": 1,
+      "script": 655,
+      "stylesheet": 26,
+      "font": 19,
+      "other": 1,
+      "api": 132,
+      "image": 4,
+      "fetch": 317
+    },
+    "lcp_ms": 528,
+    "dcl_ms": 155,
+    "long_tasks": 3,
+    "long_task_ms": 374
+  }
+}

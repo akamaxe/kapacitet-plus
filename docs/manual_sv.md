@@ -10,7 +10,7 @@ publiceras, och var nätbolagets inställningar och bevis finns.
 
 Handboken innehåller inga siffror från beräkningarna. Den säger var en siffra finns, inte vad den
 är: siffrorna står i vyerna och i filerna som kommandona skriver. Gränssnittet märker vilka data
-som är verkliga och vilka som är syntetiska; förklaringen står i sidfoten.
+som är verkliga och vilka som är syntetiska; förklaringen står i statusraden.
 
 Kommandona skrivs här som `kapacitet …`. Samma kommando fungerar som `python -m kapacitet …`.
 `kapacitet <kommando> --help` visar alla val.
@@ -38,10 +38,40 @@ en roll.
 Utan inloggning (en demo eller en lokal kopia) får alla göra allt. Hur inloggningen slås på står i
 [sso.md](sso.md).
 
+## Startfönstret och projekten
+
+Starta servern med `kapacitet serve` och öppna adressen den skriver ut. Först visas
+**startfönstret**: projekten på servern i en tabell, det valda projektets uppgifter och knappen
+*Öppna projekt*. Ett projekt är ett lågspänningsnät med sina studier. Det projekt som servern
+redan står på öppnas direkt. Ett annat projekt kräver att servern startar om i projektets mapp:
+fönstret frågar först och går in i projektet när servern är tillbaka. Bedömningar, kö och
+ansökningar hör till varje projekt och stannar där.
+
+*Nytt projekt…* skapar ett projekt i tre steg (källa, kontroll, bygge) från en nätexport med fyra
+CSV-tabeller, från ett exempelnät eller från en projektfil; det kräver rollen administratör. Ett
+exempelnät är syntetiskt och märks så i projektlistan, i statusraden och på utskrifterna.
+*Exportera (.zip)* skriver ett projekt som en projektfil: dess tabeller och vad det är, utan
+resultat, som beräknas på nytt där filen öppnas.
+
+Inne i ett projekt ramas vyn in av fyra delar:
+
+- **Menyraden** överst: Arkiv, Visa, Studie, Resultat, Verktyg och Hjälp. Varje vy finns i en meny
+  med sin siffertangent. *Studie › Beräkningsstatus…* visar vad som är beräknat för projektet,
+  när, och med vilket kommando varje del beräknas på nytt. De tunga studierna körs från
+  kommandoraden, inte från webbläsaren.
+- **Projektträdet** till vänster: nätet (kartan, transformatorn, de utgående ledningarna och husen
+  på var och en), studierna, resultaten och referensen. En studie öppnar sin vy, och ett hus väljs
+  i alla vyer. T fäller ihop trädet till en rad med ikoner.
+- **Utdatafönstret** nederst: vad programmet har gjort för dig, med klockslag: en bedömning och
+  dess steg, ett projekt som öppnas eller byggs, en fil som förseglas. Det är stängt tills du
+  öppnar det med O eller med sista raden i statusraden.
+- **Statusraden**: om servern svarar, projektet och referensåret, vilka data som är verkliga och
+  vilka som är syntetiska, språk och tangenter.
+
 ## Vyerna
 
-Starta servern med `kapacitet serve` och öppna adressen den skriver ut. Siffertangenterna 1–8
-väljer en vy, Ctrl + K söker vyer, adresser och åtgärder, och ? visar alla tangenter. Adressfältet
+Tangenten 0 går till startfönstret och siffertangenterna 1–8 väljer en vy. Ctrl + K söker vyer,
+adresser och det menyerna gör, och ? visar alla tangenter. Adressfältet
 beskriver det du tittar på, så en länk visar samma sak för den som får den.
 
 | Vy | Till för |
@@ -287,10 +317,11 @@ kan inte ändra dem.
 Accentfärgen och logotypen har krav som blocket *Portal* anger. Logotypen rensas från text och
 metadata innan den sparas.
 
-**Nät.** Under Metod & data › Ditt nät kontrollerar en planerare ett näts export, och en
-administratör kan göra den till ett importerat nät. Servern byter nät bara när någon trycker *Byt*,
-aldrig av sig själv; bedömningar, kö och ansökningar hör till varje nät och stannar där. Samma
-kontroll från kommandoraden: `kapacitet check <mapp>`.
+**Nät.** Under Metod & data › Ditt nät kontrollerar en planerare ett näts export, och i
+startfönstret gör en administratör den till ett projekt med *Nytt projekt…*. Servern byter projekt
+bara när någon öppnar ett annat projekt och bekräftar, aldrig av sig själv; bedömningar, kö och
+ansökningar hör till varje projekt och stannar där. Samma kontroll från kommandoraden:
+`kapacitet check <mapp>`.
 
 ## Beviskedjan
 

@@ -11,6 +11,25 @@ the wire (compressed), in kB. The JSON behind each row is in `web/perf/`.
 | Before the change (`before-m12.json`, 2 Nov) | 41 | 1 061 | 605 | 144 | 270 | 712 ms | 3, 285 ms |
 | After the change (`after-m12.json`, 2 Nov) | 46 | 1 023 | 608 | 102 | 270 | 204 ms | 1, 135 ms |
 
+## With the workbench frame (13 Nov 2026)
+
+The interface now opens on the start window, and a project's screens stand inside a frame (a menu
+bar, a project tree, an output window, a status bar). Measured the same way, on port 8160, on a
+copy of the published data:
+
+| | requests | total | script | API | map tiles and fonts (fetch) | largest paint | long tasks |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| The start window, `/` (`frame-start.json`) | 31 | 261 | 158 | 63 | 0 | 372 ms | 0 |
+| The comparison screen, `#/compare` (`frame-compare.json`) | 62 | 1 154 | 655 | 132 | 317 | 528 ms | 3, 374 ms |
+
+What one sees on entering costs a quarter of what the comparison screen does: the start window
+draws no map and no chart, so neither library is downloaded until a project is opened. The
+comparison screen was not measured on the same day without the frame, so its difference from the
+row of 2 November is everything added to the interface since then (the Operation screen's parts,
+sign-in, the settings, the frame), not the frame alone. The frame's own code is in the
+application's chunk (45 kB, 14 kB compressed); its dialogs load when the first one opens, and the
+logo is two image files of 8 kB each, of which a page shows one.
+
 ## What changed
 
 - **The chart and the map load beside the words, not before them.** The comparison screen no longer
@@ -34,11 +53,11 @@ decoder pin it from both sides.
 ## Budgets
 
 - **CI** (`web/e2e/ci/budget.spec.ts`): the entry chunk stays under 80 kB compressed (66 kB when the
-  budget was set), and a screen with no chart or map, the setup screen of a fresh clone, downloads
-  neither library.
+  budget was set, 69 kB with the frame), and a screen with no chart or map, the setup screen of a
+  fresh clone, downloads neither library.
 - **Local** (`web/e2e/local/budget.spec.ts`): the comparison screen's largest paint stays under
-  1 500 ms (204 ms when the budget was set), and the heatmaps are requested only once their section
-  nears.
+  1 500 ms (204 ms when the budget was set, 528 ms with the frame on a machine that was also
+  serving the tests), and the heatmaps are requested only once their section nears.
 
 Numbers vary between runs and machines; the budgets are set well above the measured values so a
 regression shows and noise does not.
