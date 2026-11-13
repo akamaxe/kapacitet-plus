@@ -1079,12 +1079,19 @@ svg { flex-shrink: 0; }
 .top-project:active,
 .menu-top:active,
 .sb-btn:active,
+.rail-btn:active,
 .toast-close:active,
 .dt-sort:active {
   transform: scale(0.97);
 }
 
 .app { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--menubar-h) minmax(0, 1fr) var(--statusbar-h); }
+/* the project tree's dock takes a column of its own beside the screen: the tree, or its rail */
+.app[data-dock="tree"] { grid-template-columns: var(--tree-w) minmax(0, 1fr); }
+.app[data-dock="rail"] { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
+.app > .topbar { grid-row: 1; grid-column: 1 / -1; }
+.app > main { grid-row: 2; grid-column: -2 / -1; }
+.app > .statusbar { grid-row: 3; grid-column: 1 / -1; }
 
 /* the bar at the top: SL blue, the logo, the menus as words, the open project and the search */
 .topbar {
@@ -1230,6 +1237,46 @@ svg { flex-shrink: 0; }
 .menu-sheet .menu-item { min-height: 44px; font-size: var(--text-body); }
 .menu-sheet .menu-keys { display: none; }
 
+/* the project tree (components/ProjectTree.tsx): ink on the ground, parted from the screen by a
+   hairline; a row is a line of the tree, not a button */
+.tree-dock { grid-row: 2; grid-column: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--border); background: var(--bg-base); }
+.tree-head { display: flex; align-items: center; justify-content: space-between; flex: none; min-height: 40px; padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--border); color: var(--text-secondary); font-size: var(--text-caption); font-weight: 600; }
+.tree-head .icon-btn { min-width: 28px; min-height: 28px; padding: 0; border-color: transparent; background: none; }
+.tree { flex: 1; min-height: 0; padding: var(--space-2) 0 var(--space-4); overflow-y: auto; }
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 28px;
+  padding: 0 var(--space-3) 0 calc(var(--space-2) + (var(--level) - 1) * 14px);
+  color: var(--text-primary);
+  font-size: var(--text-small);
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.tree-row:focus { outline: none; }
+.tree-row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.tree-row[data-kind="project"], .tree-row[data-kind="group"] { font-weight: 600; }
+.tree-row[data-kind="feeder"], .tree-row[data-kind="trafo"], .tree-row[data-kind="house"] { color: var(--text-secondary); }
+.tree-row[aria-selected="true"] { background: var(--bg-inset); color: var(--text-primary); font-weight: 600; }
+.tree-row[aria-current="page"] { background: var(--accent-quiet); color: var(--accent); font-weight: 600; }
+.tree-twist { display: inline-flex; justify-content: center; flex: none; width: 14px; color: var(--text-muted); }
+.tree-row[aria-expanded="true"] > .tree-twist svg { transform: rotate(90deg); }
+.tree-row > svg { color: var(--text-muted); }
+.tree-row[aria-current="page"] > svg { color: inherit; }
+.tree-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tree-count { margin-left: auto; padding-left: var(--space-2); color: var(--text-muted); font-size: var(--text-caption); font-weight: 400; }
+.tree-wait { margin: 0; padding: var(--space-2) var(--space-4); }
+/* folded: the eight screens as icons, in the tree's order */
+.tree-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-height: 0; padding: var(--space-2) 0; overflow-y: auto; }
+.rail-group { display: flex; flex-direction: column; align-items: center; gap: 2px; padding-top: var(--space-1); border-top: 1px solid var(--border); }
+.rail-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 36px; height: 36px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); cursor: pointer; }
+.rail-btn[aria-current="page"] { background: var(--accent-quiet); color: var(--accent); }
+/* on a window that cannot hold it open beside the screen, the tree is a drawer against the left edge */
+.scrim.scrim-left { justify-items: start; align-items: stretch; padding: 0; }
+.dialog.drawer { display: flex; flex-direction: column; height: 100dvh; border-radius: 0; }
+
 /* the status bar: the server, the project and its year, what is surveyed and what assumed, the
    language and the key sheet */
 .statusbar { display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 0 var(--space-4); border-top: 1px solid var(--border); background: var(--bg-base); color: var(--text-muted); font-size: var(--text-caption); white-space: nowrap; overflow: hidden; }
@@ -1256,6 +1303,10 @@ main:focus { outline: none; }
 @media (hover: hover) and (pointer: fine) {
   .menu-top:hover, .top-tool:hover, .top-search:hover, .top-project:hover { color: var(--chrome-ink); background: var(--chrome-hover); }
   .sb-btn:hover { color: var(--text-primary); }
+  .tree-row:hover { background: var(--bg-inset); }
+  .tree-row[aria-current="page"]:hover { background: var(--accent-quiet); }
+  .rail-btn:hover { background: var(--bg-inset); color: var(--text-primary); }
+  .rail-btn[aria-current="page"]:hover { background: var(--accent-quiet); color: var(--accent); }
   .icon-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
   .btn:hover:not(:disabled) { background: var(--accent-hover); }
   .btn.ghost:hover:not(:disabled) { background: var(--bg-inset); color: var(--text-primary); border-color: var(--border-strong); }
@@ -1358,7 +1409,8 @@ main:focus { outline: none; }
 @media (pointer: coarse) {
   /* the frame's bands grow with their targets */
   :root { --menubar-h: 52px; --menu-top-h: 44px; --statusbar-h: 44px; }
-  .seg button, .table-toggle, .sb-btn, .menu-item { min-height: 44px; }
+  .seg button, .table-toggle, .sb-btn, .menu-item, .tree-row { min-height: 44px; }
+  .rail-btn { width: 44px; height: 44px; }
   .icon-btn, .btn { min-height: 44px; min-width: 44px; }
 }
 

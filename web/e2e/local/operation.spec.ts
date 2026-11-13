@@ -51,4 +51,10 @@ test("the operation screen is the fifth of eight, by key and in the menu", async
   await expect(page).toHaveURL(/#\/operation/);
   await page.keyboard.press("8");
   await expect(page).toHaveURL(/#\/method/);
+  // the Study menu lists it with the same key
+  await page.getByRole("menubar").getByRole("menuitem", { name: "Study" }).click();
+  const entry = page.getByRole("menu").getByRole("menuitem", { name: /^Operation/ });
+  await expect(entry.locator(".menu-keys")).toHaveText("5");
+  await entry.click();
+  await expect(page).toHaveURL(/#\/operation/);
 });

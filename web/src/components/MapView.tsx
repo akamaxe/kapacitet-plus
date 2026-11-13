@@ -132,8 +132,13 @@ export function MapView({ center, zoom, pitch = 0, bearing = 0, setup, onReady, 
       if (/fetch|Failed|NetworkError|style/i.test(String(e?.error?.message ?? ""))) fallback();
     });
     const timer = window.setTimeout(fallback, 8000);
+    // MapLibre follows the window's size, not its own box's: opening or folding the project tree
+    // changes the box alone, and the map would keep drawing for the old one
+    const box = new ResizeObserver(() => map.resize());
+    box.observe(ref.current);
     return () => {
       window.clearTimeout(timer);
+      box.disconnect();
       attribObserver.disconnect();
       map.remove();
       mapRef.current = null;

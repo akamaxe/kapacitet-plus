@@ -82,6 +82,7 @@ export function Dialog({
   title,
   labelledBy,
   width = 560,
+  side,
   children,
 }: {
   open: boolean;
@@ -89,6 +90,8 @@ export function Dialog({
   title?: string;
   labelledBy?: string;
   width?: number;
+  /** a drawer against that edge, as tall as the window, instead of a sheet in the middle */
+  side?: "left";
   children: ReactNode;
 }) {
   const panel = useDismissable(open, onClose);
@@ -100,9 +103,9 @@ export function Dialog({
   );
   if (!open) return null;
   return createPortal(
-    <div className="scrim" onMouseDown={onScrim}>
+    <div className={side ? `scrim scrim-${side}` : "scrim"} onMouseDown={onScrim}>
       <div
-        className="dialog"
+        className={side ? "dialog drawer" : "dialog"}
         role="dialog"
         aria-modal="true"
         aria-label={labelledBy ? undefined : title}

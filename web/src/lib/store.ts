@@ -205,6 +205,9 @@ interface State {
   notFound: string | null;
   /** what the start window was asked to begin on arriving: a new project, from the file given or from nothing */
   startIntent: { file: File | null } | null;
+  /** the project tree is open beside the screen (a wide window), not folded to its rail */
+  treeOpen: boolean;
+  setTreeOpen: (open: boolean) => void;
   /** the shortcuts that are one character (the screen numbers, F, /, ?), which a speech-input user may need off */
   singleKeys: boolean;
   setSingleKeys: (on: boolean) => void;
@@ -260,6 +263,11 @@ export const useStore = create<State>((set) => ({
   tourOffered: false,
   notFound: initial.notFound ?? null,
   startIntent: null,
+  treeOpen: readLS("kap.tree", "open") !== "rail",
+  setTreeOpen: (treeOpen) => {
+    writeLS("kap.tree", treeOpen ? "open" : "rail");
+    set({ treeOpen });
+  },
   singleKeys: readLS("kap.keys", "on") !== "off",
   setSingleKeys: (on) => {
     writeLS("kap.keys", on ? "on" : "off");

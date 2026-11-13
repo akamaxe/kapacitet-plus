@@ -26,6 +26,7 @@ const paths = {
   upload: "M12 20V10m-4 4 4-4 4 4M5 5h14",
   plus: "M12 5v14M5 12h14",
   folder: "M3 6h6l2 2h10v11H3V6Z",
+  tree: "M6 4v13h5M6 9h5m2-3h6v6h-6V6Zm0 8h6v6h-6v-6Z",
 } as const;
 
 export function Icon({ name, size = 20 }: { name: keyof typeof paths; size?: number }) {

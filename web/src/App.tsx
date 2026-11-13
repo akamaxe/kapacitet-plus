@@ -4,13 +4,15 @@ import { menuOpen } from "./components/Menu";
 import type { FrameDialog } from "./components/FrameDialogs";
 import { useT } from "./lib/i18n";
 import { MANUAL } from "./lib/links";
+import { TREE_BESIDE, TREE_RAIL, useMedia } from "./lib/media";
 import { buildMenus } from "./lib/menus";
 import { lastScreen, projectFileUrl } from "./lib/projects";
 import { settleOn, whenThere } from "./lib/scroll";
 import { PageSkeleton, SplitSkeleton } from "./components/Skeleton";
-import { modalOpen } from "./components/Dialog";
+import { Dialog, modalOpen } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
+import { ProjectTree, TreeRail } from "./components/ProjectTree";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts, toast } from "./components/Toast";
 import { Setup } from "./components/Setup";
@@ -154,6 +156,26 @@ function Main() {
   const theme = useStore((s) => s.theme);
   const canProjects = useCan("datasets").ok;
   const ready = !!health.data && !setupNeeded;
+  // The project tree: beside the screen on a wide window, where it is the tree or its rail of
+  // icons as the reader left it; a rail alone on a middling one; and on any window that cannot
+  // hold it open, a drawer. It belongs to a project that has something to show.
+  const treeOpen = useStore((s) => s.treeOpen);
+  const beside = useMedia(TREE_BESIDE);
+  const railFits = useMedia(TREE_RAIL);
+  const [drawer, setDrawer] = useState(false);
+  const hasTree = view === "work" && ready;
+  const dock: "tree" | "rail" | null = !hasTree ? null : beside && treeOpen ? "tree" : railFits ? "rail" : null;
+  useEffect(() => {
+    if (!hasTree || beside) setDrawer(false);
+  }, [hasTree, beside]);
+  const besideRef = useRef(beside);
+  besideRef.current = beside;
+  const toggleTree = () => {
+    const st = useStore.getState();
+    if (besideRef.current) st.setTreeOpen(!st.treeOpen);
+    else setDrawer((was) => !was);
+  };
+  const treeShown = hasTree && (beside ? treeOpen : drawer);
   const menus = useMemo(() => {
     const st = () => useStore.getState();
     // a screen's section: the screen is lazy and its sections come with its data, so the place is
@@ -163,7 +185,7 @@ function Main() {
       st().setScreen(to);
       whenThere(id, (el) => settleOn(el, 72));
     };
-    return buildMenus(t, { view, screen, ready, canProjects, theme, lang }, {
+    return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown }, {
       screen: (s) => st().setScreen(s),
       start: () => { if (st().view !== "start") st().setView("start"); },
       newProject: () => {
@@ -194,6 +216,7 @@ function Main() {
       },
       properties: () => openDialog("properties"),
       print: () => window.print(),
+      toggleTree,
       fullscreen: toggleFullscreen,
       theme: (th) => st().setTheme(th),
       lang: (l) => void st().setLang(l),
@@ -210,7 +233,9 @@ function Main() {
       manual: () => window.open(MANUAL, "_blank", "noopener,noreferrer"),
       about: () => openDialog("about"),
     });
-  }, [t, view, screen, ready, canProjects, theme, lang]);
+  }, [t, view, screen, ready, canProjects, theme, lang, treeShown]);
+  const toggleTreeRef = useRef(toggleTree);
+  toggleTreeRef.current = toggleTree;
 
   // Keys: 0 is the start window, 1–8 jump to a screen, Ctrl+→/← step, ⌘K or / opens the
   // palette, ? the key sheet, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
@@ -257,6 +282,9 @@ function Main() {
         e.preventDefault();
       } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
         toggleFullscreen();
+      } else if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey && st.view === "work") {
+        toggleTreeRef.current();
+        e.preventDefault();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -301,9 +329,16 @@ function Main() {
   }, []);
 
   return (
-    <div className="app">
+    <div className="app" data-dock={dock ?? undefined}>
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
       <AppBar menus={menus} onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} onProject={() => openDialog("properties")} />
+      {dock && (
+        <aside className="tree-dock" data-dock={dock} aria-label={t("tree.title")}>
+          {dock === "tree"
+            ? <ProjectTree onFold={toggleTree} />
+            : <TreeRail onOpen={toggleTree} />}
+        </aside>
+      )}
       <main id="main" tabIndex={-1} aria-label={place}>
         {setupNeeded ? <Setup health={health.data} /> : view === "start" ? (
         <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`start-${attempt}`}>
@@ -333,6 +368,9 @@ function Main() {
       <Palette open={palette} onClose={() => setPalette(false)} menus={menus} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
       <MenuSheet open={menu} onClose={() => setMenu(false)} menus={menus} />
+      <Dialog open={drawer && hasTree && !beside} onClose={() => setDrawer(false)} title={t("tree.title")} width={320} side="left">
+        <ProjectTree onFold={() => setDrawer(false)} onLeaf={() => setDrawer(false)} />
+      </Dialog>
       {dialogsWanted && (
         <Suspense fallback={null}>
           <FrameDialogs which={dialog} onClose={() => setDialog(null)} onStart={() => useStore.getState().setView("start")} />

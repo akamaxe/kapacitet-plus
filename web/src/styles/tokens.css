@@ -61,6 +61,9 @@
   /* the side panel beside a map (app.css narrows both between 1101 and 1350 px) */
   --panel-w: 460px;
   --panel-w-wide: 560px;
+  /* the project tree beside the screen, and its rail of icons when it is folded */
+  --tree-w: 272px;
+  --rail-w: 48px;
   /* the start window's column of things to start with */
   --start-col-w: 280px;
 
