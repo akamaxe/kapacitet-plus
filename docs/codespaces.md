@@ -22,7 +22,8 @@ The data come by themselves: the codespace downloads them from the project's
 4. If it asks whether you trust the authors of the files in this folder, choose
    **Trust Folder and Continue**. Kapacitet+ runs either way, but only then does the editor show
    what it is doing, which keeps the codespace running while you use it.
-5. Kapacitet+ opens in a new tab, with its screens.
+5. Kapacitet+ opens in a new tab, on its start window. The project in the list is the one the data
+   are for: choose **Open project**.
 
 ## The next times
 
