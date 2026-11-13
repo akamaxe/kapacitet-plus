@@ -71,6 +71,8 @@ function Main() {
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
   // the project the server is on goes into every link; a link made on another one says so once
   const serverDataset: string | undefined = health.data?.dataset;
+  // the project's name, once there is something computed to name
+  const site: string | undefined = useApi<any>(health.data && !setupNeeded ? "/meta" : null).data?.site;
   useEffect(() => {
     if (!serverDataset) return;
     const st = useStore.getState();
@@ -83,7 +85,6 @@ function Main() {
   }, [serverDataset, t]);
   // the output window's first line of a project: which one is open. Once per project and session,
   // so it is also the line that follows the reload a change of project makes.
-  const site: string | undefined = useApi<any>(health.data && !setupNeeded ? "/meta" : null).data?.site;
   useEffect(() => {
     if (!serverDataset || !site) return;
     let said: string | null = null;
@@ -125,8 +126,14 @@ function Main() {
   // while the tour holds the focus on its own card)
   const firstScreen = useRef(true);
   const place = view === "start" ? t("start.title") : t(`tab.${screen}`);
+  // The document is named for the screen and, inside a project, for the project. Installed with a
+  // window of its own, that window already carries the program's name before the title.
+  const titled = [place, view === "work" ? site : undefined, window.matchMedia?.("(display-mode: standalone)").matches ? undefined : "Kapacitet+"]
+    .filter(Boolean).join(" · ");
   useEffect(() => {
-    document.title = `${place} · Kapacitet+`;
+    document.title = titled;
+  }, [titled]);
+  useEffect(() => {
     if (firstScreen.current) {
       firstScreen.current = false;
       return;

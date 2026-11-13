@@ -127,3 +127,25 @@ test("a narrow window gets the same menus as a sheet", async ({ page }) => {
   await sheet.getByRole("button", { name: "About Kapacitet+…" }).click();
   await expect(page.getByRole("dialog").getByText("MIT, the code")).toBeVisible();
 });
+
+test("a browser can install it with a window of its own", async ({ page, request }) => {
+  const manifest = await request.get("/site.webmanifest");
+  expect(manifest.ok()).toBeTruthy();
+  expect(manifest.headers()["content-type"]).toContain("application/manifest+json");
+  const doc = await manifest.json();
+  expect(doc.display).toBe("standalone");
+  for (const icon of doc.icons) {
+    const file = await request.get(icon.src);
+    expect(file.ok(), icon.src).toBeTruthy();
+    expect(file.headers()["content-type"]).toContain("image/png");
+  }
+  await page.goto("/");
+  await expect(page.locator('link[rel="manifest"]')).toHaveAttribute("href", "/site.webmanifest");
+  // Chrome's own verdict on the page. A test's browser is a private window, which Chrome never
+  // installs from: that one objection is the browser's, not the page's.
+  const cdp = await page.context().newCDPSession(page);
+  const { installabilityErrors } = await cdp.send("Page.getInstallabilityErrors");
+  expect(installabilityErrors.map((e) => e.errorId).filter((id) => id !== "in-incognito")).toEqual([]);
+  const { errors } = await cdp.send("Page.getAppManifest");
+  expect(errors).toEqual([]);
+});

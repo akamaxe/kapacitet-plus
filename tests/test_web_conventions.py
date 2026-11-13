@@ -103,3 +103,51 @@ def test_colours_come_from_tokens():
             if hexcol.search(line):
                 hits.append(f"{p.name}:{i + 1}")
     assert not hits, f"raw hex colours outside the tokens: {hits}"
+
+
+def test_the_interface_can_be_installed_with_a_window_of_its_own():
+    """A browser offers to install the interface when its manifest names it, says where it starts
+    and gives it icons of 192 and 512 px; the files it names have to be there. The bar of the
+    installed window is the application's own bar: one colour, written in three places."""
+    import json
+
+    public = WEB.parent / "public"
+    manifest = json.loads((public / "site.webmanifest").read_text(encoding="utf-8"))
+    assert manifest["name"] == manifest["short_name"] == "Kapacitet+"
+    assert (manifest["start_url"], manifest["scope"], manifest["display"]) == ("/", "/", "standalone")
+    sizes = {icon["sizes"] for icon in manifest["icons"] if icon.get("purpose", "any") == "any"}
+    assert {"192x192", "512x512"} <= sizes
+    assert any(icon.get("purpose") == "maskable" for icon in manifest["icons"])
+    for icon in manifest["icons"]:
+        file = public / icon["src"].lstrip("/")
+        assert file.is_file(), icon["src"]
+        # a PNG says its own size in its header: the manifest must not promise another
+        data = file.read_bytes()
+        assert data[1:4] == b"PNG" and icon["type"] == "image/png", icon["src"]
+        width, height = int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+        assert f"{width}x{height}" == icon["sizes"], icon["src"]
+
+    page = (WEB.parent / "index.html").read_text(encoding="utf-8")
+    assert '<link rel="manifest" href="/site.webmanifest"' in page
+    linked = re.findall(r'<link rel="(?:icon|apple-touch-icon)" href="([^"]+)"', page)
+    assert len(linked) >= 2
+    for href in linked:
+        assert (public / href.lstrip("/")).is_file(), href
+    tokens = (WEB / "styles" / "tokens.css").read_text(encoding="utf-8")
+    chrome = re.search(r"^\s*--sl-chrome:\s*(#[0-9a-fA-F]{6});", tokens, re.M).group(1)
+    themed = re.search(r'<meta name="theme-color" content="([^"]+)"', page).group(1)
+    assert themed.lower() == manifest["theme_color"].lower() == chrome.lower()
+
+
+def test_the_logo_is_the_brand_kits_file_and_is_never_typed():
+    """The logo is a drawing: the two cuts the interface shows are files of the brand kit, and no
+    component rebuilds it from a roundel and the name set in the interface's typeface."""
+    brand = WEB.parent / "public" / "brand"
+    for cut in ("color", "reversed"):
+        text = (brand / f"kapacitet-logo-{cut}.svg").read_text(encoding="utf-8")
+        assert text.lstrip().startswith("<svg") and 'id="K"' in text and 'id="plus"' in text, cut
+    logo = (WEB / "components" / "Logo.tsx").read_text(encoding="utf-8")
+    assert "/brand/kapacitet-logo-color.svg" in logo and "/brand/kapacitet-logo-reversed.svg" in logo
+    for path in SOURCES:
+        text = path.read_text(encoding="utf-8")
+        assert "Roundel" not in text and 'className="roundel"' not in text, path.name

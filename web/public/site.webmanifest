@@ -1,0 +1,16 @@
+{
+  "id": "/",
+  "name": "Kapacitet+",
+  "short_name": "Kapacitet+",
+  "description": "How much solar a low-voltage network takes: a static study, an hourly study and dynamic operating envelopes.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#123e7c",
+  "background_color": "#0B2545",
+  "icons": [
+    { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
