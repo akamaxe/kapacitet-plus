@@ -111,6 +111,12 @@ def test_the_build_records_each_step_and_where_it_stopped(tmp_path, monkeypatch)
     assert stopped["status"] == "failed" and by["profiles"]["status"] == "failed"
     assert "profiles broke" in by["profiles"]["error"] and by["compute"]["status"] == "waiting"
     assert not ds.building(ds_id)
+    assert ds.record(ds_id)["error"] == "profiles broke"
+
+    # built again, it forgets the failure: a "ready" never carries the last build's error
+    again = ds.build(ds_id, steps={s: (lambda: {}) for s in ds.STEPS})
+    assert again["status"] == "ready" and "error" not in again and "error" not in ds.record(ds_id)
+    assert all("error" not in s for s in again["steps"])
 
 
 def test_a_network_in_use_or_being_built_is_not_deleted(tmp_path, monkeypatch):

@@ -718,7 +718,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
       {evReq && (
         <div className="tiles">
           <Tile label={t("req.ev.static")} value={res.static.ev.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.ev)} />
-          <Tile label={t("req.ev.unmet")} value={pct1(f, sum.ev_unmet_pct)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
+          <Tile label={t("req.ev.unmet")} value={pct1(f, sum.ev_unmet_pct)} unit="%" note={t(res.per_year.length === 1 ? "req.weatherYears.one" : "req.weatherYears", { n: res.per_year.length })} />
           <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
           <Tile label={t("req.ev.energy")} value={f(res.per_year.reduce((s: number, e: any) => s + (e.ev_requested_kwh ?? 0), 0) / Math.max(1, res.per_year.length))} unit="kWh" note={t("req.ev.energyNote")} />
           {importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
@@ -731,7 +731,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <h3>{t("req.hp.title")}</h3>
           <div className="tiles">
             <Tile label={t("req.hp.static")} value={res.static.hp.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.hp)} />
-            <Tile label={t("req.hp.unmet")} value={pct1(f, sum.hp_unmet_pct)} unit="%" note={t("req.weatherYears", { n: res.per_year.length })} />
+            <Tile label={t("req.hp.unmet")} value={pct1(f, sum.hp_unmet_pct)} unit="%" note={t(res.per_year.length === 1 ? "req.weatherYears.one" : "req.weatherYears", { n: res.per_year.length })} />
             <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
             <Tile label={t("req.hp.energy")} value={f(sum.hp_kwh_mean)} unit="kWh" note={t("req.hp.energyNote", { kw: f(res.static.hp.design_kw, 1) })} />
           </div>

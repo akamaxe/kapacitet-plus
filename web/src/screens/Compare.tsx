@@ -95,7 +95,8 @@ export default function Compare() {
   const valueBasis = OV ? t("cmp.basis.value", { order: OV.order, span: priceSpan(OV.price_years) }) : undefined;
   // Or reinforce prices the deployment the perfect-foresight search sized: it says so
   const reinfBasis = RF ? t(RF.basis ? "cmp.basis.reinfBound" : "cmp.basis.reinf", { order: RF.order, z: f(RF.basis?.z_star_pct ?? zStar) }) : undefined;
-  const sensBasis = H.tornado ? t("cmp.basis.sens", { order: H.tornado.order, n: H.tornado.years?.length ?? years.length }) : undefined;
+  const sensYears: number = H.tornado?.years?.length ?? years.length;
+  const sensBasis = H.tornado ? t(sensYears === 1 ? "cmp.basis.sens.oneYear" : "cmp.basis.sens", { order: H.tornado.order, n: sensYears }) : undefined;
   const sections: Section[] = [
     { id: "capacity", label: t("cmp.sec.capacity") },
     { id: "verify", label: t("cmp.sec.verify") },
@@ -110,7 +111,7 @@ export default function Compare() {
     <div className="page">
       <SectionBar
         sections={sections}
-        basis={<Term id="sample">{t("overview.sample", { n: H.summary.n_orders, years: years.length })}</Term>}
+        basis={<Term id="sample">{t(years.length === 1 ? "overview.sample.oneYear" : "overview.sample", { n: H.summary.n_orders, years: years.length })}</Term>}
       />
       <div className="page-inner">
         {/* ---------------------------------------------------------------- the answer */}

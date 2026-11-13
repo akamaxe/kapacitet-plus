@@ -317,6 +317,10 @@ def run_steps(rec: dict, names: Iterable[str], steps: dict[str, Callable[[], dic
     names = tuple(names)
     lock.parent.mkdir(parents=True, exist_ok=True)
     lock.write_text(str(os.getpid()))
+    # a new run forgets how the last one ended: a build that succeeds after one that failed must
+    # not keep the old error beside its "ready"
+    rec.pop("error", None)
+    rec.pop("finished", None)
     rec.update(status="building", started=now())
     rec["steps"] = [{"name": s, "status": "waiting"} for s in names]
     save(rec)
