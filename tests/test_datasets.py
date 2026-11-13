@@ -530,3 +530,24 @@ def test_the_build_writes_the_two_reports_no_stage_does(tmp_path, monkeypatch):
     monkeypatch.setattr(meter_compliance, "build", refuse_fleet)
     assert ds._real_steps(ds_id, 2, True)["compute"]() == {"not_written": {
         "redispatch": "results/operation/index.json is missing", "meter_compliance": "no envelopes"}}
+
+
+def test_an_imported_network_is_computed_by_its_own_build(api, monkeypatch):
+    """A part that is missing names the command that computes it. `compute` and its stages act on
+    the data folder they are typed in, the reference network's: named for an imported network,
+    they sent its reader to compute another network. Its own build is the command, for every
+    part, and each part says its command whether it is missing or not."""
+    c, ds, main = api
+    monkeypatch.delenv("KAPACITET_DATASET", raising=False)
+    parts = c.get("/api/v1/health").json()["parts"]
+    assert parts["network"]["command"] == "python -m kapacitet build"
+    assert parts["results"]["command"] == "python -m kapacitet compute"
+    assert parts["requests"]["command"].endswith("--stage extra --only requests")
+    assert main.command_for("forecast.json") == "python -m kapacitet forecast"
+
+    ds_id = _dataset(ds)
+    monkeypatch.setenv("KAPACITET_DATASET", ds_id)
+    build = f"python -m kapacitet dataset build {ds_id}"
+    assert {p["command"] for p in c.get("/api/v1/health").json()["parts"].values()} == {build}
+    assert main.command_for("forecast.json") == build and main.command_for("scenarios.json") == build
+    assert main.not_computed("showcase.json").detail["command"] == build

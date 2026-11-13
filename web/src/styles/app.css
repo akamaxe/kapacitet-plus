@@ -1076,71 +1076,120 @@ svg { flex-shrink: 0; }
 .seg button:active,
 .top-tool:active,
 .top-search:active,
-.fl-keys:active,
+.top-project:active,
+.menu-top:active,
+.sb-btn:active,
 .toast-close:active,
 .dt-sort:active {
   transform: scale(0.97);
 }
 
-.app { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--topbar-h) minmax(0, 1fr) var(--statusbar-h); }
+.app { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--menubar-h) minmax(0, 1fr) var(--statusbar-h); }
 
-/* the top bar: SL blue, white type, the screens as text with the current one underlined */
+/* the bar at the top: SL blue, the logo, the menus as words, the open project and the search */
 .topbar {
-  --nav-gap: var(--space-5);
   position: relative;
+  /* its menus open over the screen below and over what sticks or floats there (a section bar,
+     a map's key), and stay under a dialog */
+  z-index: var(--z-menu);
   display: flex;
-  align-items: stretch;
-  gap: var(--space-5);
+  align-items: center;
+  gap: var(--space-4);
   min-width: 0;
-  padding: 0 var(--space-5);
+  padding: 0 var(--space-4);
   background: var(--chrome);
   color: var(--chrome-ink);
 }
-.brand { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--chrome-ink); text-decoration: none; white-space: nowrap; }
-.brand-name { font-size: var(--text-h3); font-weight: 700; letter-spacing: var(--track-h3); }
-.roundel circle { fill: var(--chrome-ink); }
-.roundel path { stroke: var(--chrome); stroke-width: 2.6; stroke-linecap: round; }
-.brand-scope { display: inline-flex; align-items: center; color: var(--chrome-ink-2); font-size: var(--text-small); white-space: nowrap; }
-.topnav { display: flex; align-items: stretch; gap: var(--nav-gap); margin-left: auto; min-width: 0; padding: 0 var(--space-1); }
-/* the screens' labels at their widest weight, out of sight: the bar folds when they no longer fit
-   (Shell.tsx useFold), which depends on the language rather than on a fixed width */
-.topnav-probe-box { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
-.topnav-probe {
-  display: flex;
-  width: max-content;
-  gap: var(--nav-gap);
-  padding: 0 var(--space-1);
-  font-size: var(--text-small);
-  font-weight: 600;
-  white-space: nowrap;
+.brand { display: inline-flex; align-items: center; flex: none; border-radius: var(--radius-sm); color: var(--chrome-ink); text-decoration: none; white-space: nowrap; }
+/* the logo is the brand kit's own drawing (components/Logo.tsx); on the page's ground it is navy
+   by day and the reversed cut at night */
+.logo { display: block; flex: none; user-select: none; }
+.logo-night { display: none; }
+:root[data-theme="dark"] .logo-day { display: none; }
+:root[data-theme="dark"] .logo-night { display: block; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .logo-day { display: none; }
+  :root:not([data-theme]) .logo-night { display: block; }
 }
-.topbar[data-folded] .topnav { display: none; }
-.topbar[data-folded] .menu-btn { display: inline-flex; }
-.topbar[data-folded] .top-tools { margin-left: auto; }
-.topnav a {
+
+/* the menus (components/Menu.tsx): their names in the bar, and the one that is open under its name */
+.menubar { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.menu-slot { position: relative; }
+.menu-top {
   display: inline-flex;
   align-items: center;
-  position: relative;
+  min-height: var(--menu-top-h);
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
   color: var(--chrome-ink-2);
   font-size: var(--text-small);
   font-weight: 500;
-  text-decoration: none;
   white-space: nowrap;
+  cursor: pointer;
 }
-.topnav a[aria-current="page"] { color: var(--chrome-ink); font-weight: 600; }
-.topnav a[aria-current="page"]::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: var(--chrome-ink); }
-/* a ring drawn inside the bar: an ordinary outline would sit in the blue and vanish */
-.topnav a:focus-visible { outline: none; }
-.topnav a:focus-visible::before { content: ""; position: absolute; inset: var(--space-3) calc(-1 * var(--space-1)); border: 2px solid var(--chrome-ink); border-radius: var(--radius-sm); }
-.top-tools { display: flex; align-items: center; gap: var(--space-1); }
+.menu-top[aria-expanded="true"] { color: var(--chrome-ink); background: var(--chrome-hover); }
+.menu-pop {
+  position: absolute;
+  /* just under the bar, whatever the bar's height */
+  top: calc(100% + (var(--menubar-h) - var(--menu-top-h)) / 2 + var(--space-1));
+  left: 0;
+  z-index: var(--z-overlay);
+  min-width: 256px;
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-popover);
+}
+.menu-sec + .menu-sec { margin-top: var(--space-1); padding-top: var(--space-1); border-top: 1px solid var(--border); }
+.menu-group { padding: var(--space-1) var(--space-3) 2px calc(var(--space-2) + var(--menu-gutter)); color: var(--text-muted); font-size: var(--text-caption); }
+.menu-item {
+  --menu-gutter: 22px;
+  display: grid;
+  grid-template-columns: var(--menu-gutter) minmax(0, 1fr) auto;
+  align-items: center;
+  width: 100%;
+  min-height: 32px;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-primary);
+  font-size: var(--text-small);
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: none; /* the lit entry follows the pointer and the arrows at once */
+}
+.menu-pop, .menu-sheet { --menu-gutter: 22px; }
+/* the pointer moves the focus, so one entry is lit at a time; the ring is the keyboard's */
+.menu-item:focus { outline: none; background: var(--accent-quiet); }
+.menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.menu-item[aria-disabled="true"], .menu-item:disabled { color: var(--text-muted); opacity: 0.62; cursor: default; }
+.menu-item[aria-current="page"] .menu-label { color: var(--accent); font-weight: 600; }
+.menu-check { display: inline-flex; color: var(--accent); }
+.menu-label { overflow: hidden; text-overflow: ellipsis; }
+.menu-keys { margin-left: var(--space-5); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* the names of the menus at their weight, out of sight: the bar folds when they no longer fit
+   (Shell.tsx useFold), which depends on the language and on how many there are */
+.menubar-probe-box { position: absolute; top: 0; left: 0; width: 0; height: 0; overflow: hidden; visibility: hidden; pointer-events: none; }
+.menubar-probe { display: flex; width: max-content; gap: 2px; font-size: var(--text-small); font-weight: 500; white-space: nowrap; }
+.menubar-probe span { padding: 0 var(--space-3); }
+.topbar[data-folded] .menubar { display: none; }
+.topbar[data-folded] .menu-btn { display: inline-flex; }
+
+.top-tools { display: flex; align-items: center; gap: var(--space-1); min-width: 0; margin-left: auto; }
 .top-tool,
-.top-search {
+.top-search,
+.top-project {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  min-height: 36px;
-  min-width: 36px;
+  min-height: var(--menu-top-h);
+  min-width: var(--menu-top-h);
   padding: 0 var(--space-2);
   border: 0;
   border-radius: var(--radius-sm);
@@ -1151,45 +1200,49 @@ svg { flex-shrink: 0; }
   cursor: pointer;
 }
 .top-tool[aria-pressed="true"] { color: var(--chrome-ink); background: var(--chrome-hover); }
-.top-search { justify-content: flex-start; min-width: 200px; padding: 0 var(--space-2) 0 var(--space-3); margin-right: var(--space-2); background: var(--chrome-hover); color: var(--chrome-ink-2); }
+/* the project that is open: its name, which opens its properties */
+.top-project { display: block; flex: 0 1 auto; max-width: 36ch; min-width: 0; padding: 0 var(--space-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: var(--menu-top-h); }
+.top-search { flex: none; justify-content: flex-start; min-width: 200px; padding: 0 var(--space-2) 0 var(--space-3); background: var(--chrome-hover); color: var(--chrome-ink-2); }
 .top-search kbd { margin-left: auto; border-color: var(--chrome-rule); color: var(--chrome-ink-2); }
 .topbar :focus-visible { outline-color: var(--chrome-ink); }
-.theme-select.top-tool { appearance: auto; color-scheme: dark; background: none; max-width: 104px; }
-/* the two languages, each named by its code; the pressed one sits on the bar's hover tone */
-.top-lang { display: inline-flex; align-items: center; }
-.top-lang .top-tool { min-width: 32px; padding: 0 var(--space-1); letter-spacing: 0.02em; }
 /* who is signed in (sign-in on only): the name over the roles, set off from the tools by a rule */
 .top-user { display: inline-flex; align-items: center; gap: var(--space-1); margin-left: var(--space-2); padding-left: var(--space-3); border-left: 1px solid var(--chrome-rule); }
 .top-user-who { display: grid; line-height: 1.15; max-width: 180px; }
 .top-user-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chrome-ink); font-size: var(--text-small); font-weight: 600; }
 .top-user-role { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--chrome-ink-2); font-size: var(--text-caption); }
-.menu-user { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--border); }
+.menu-user { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin: 0 var(--space-3) var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .menu-user .top-user-who { max-width: none; }
 .menu-user .top-user-name { color: var(--text-primary); }
 .menu-user .top-user-role { color: var(--text-secondary); }
 /* the sign-in page: the bar and one centred column, nothing else to read until a role is there */
-.signin-app { grid-template-rows: var(--topbar-h) minmax(0, 1fr); }
+.signin-app { grid-template-rows: var(--menubar-h) minmax(0, 1fr); }
 .signin-page { display: grid; place-items: center; padding: var(--space-6) var(--space-4); }
 .signin { display: grid; gap: var(--space-4); width: min(100%, 34rem); padding-bottom: 12vh; }
 .signin > * { margin: 0; }
 .signin-error { color: var(--danger); }
 /* an action a role cannot take */
 .role-note { margin: 0; color: var(--text-secondary); font-size: var(--text-small); }
-.theme-select.top-tool option { color: var(--text-primary); background: var(--bg-elevated); }
-.menu-btn { display: none; align-self: center; margin-left: calc(-1 * var(--space-2)); }
+.menu-btn { display: none; flex: none; margin-left: calc(-1 * var(--space-2)); }
 
-/* the menu sheet: the screens, for a window too narrow to hold them */
-.menu-sheet { display: grid; padding: var(--space-2); }
-.menu-sheet a { display: flex; align-items: center; justify-content: space-between; min-height: 48px; padding: 0 var(--space-3); border-radius: var(--radius-sm); color: var(--text-primary); text-decoration: none; font-weight: 500; }
-.menu-sheet a[aria-current="page"] { background: var(--accent-quiet); color: var(--accent); }
+/* the menus as a sheet, for a window too narrow to hold them in the bar */
+.menu-sheet { display: grid; gap: var(--space-4); max-height: calc(100dvh - 12vh - var(--space-7)); padding: var(--space-4) var(--space-3) var(--space-3); overflow-y: auto; }
+.menu-sheet h2 { margin: 0 0 var(--space-1); padding: 0 var(--space-2); color: var(--text-secondary); font-size: var(--text-small); font-weight: 600; }
+.menu-sheet .menu-item { min-height: 44px; font-size: var(--text-body); }
+.menu-sheet .menu-keys { display: none; }
 
-/* the foot line: what is surveyed and what is assumed, the year, the key sheet */
-.footline { display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 0 var(--space-5); border-top: 1px solid var(--border); background: var(--bg-base); color: var(--text-muted); font-size: var(--text-caption); white-space: nowrap; overflow: hidden; }
-.fl-legend { display: inline-flex; align-items: center; gap: var(--space-4); min-width: 0; }
-.fl-legend > span { display: inline-flex; align-items: center; gap: var(--space-2); }
-.fl-year { margin-left: auto; }
-.fl-year .num { color: var(--text-secondary); font-weight: 500; }
-.fl-keys { display: inline-flex; align-items: center; gap: var(--space-2); min-height: 28px; padding: 0 var(--space-1); border: 0; background: none; color: inherit; font: inherit; cursor: pointer; }
+/* the status bar: the server, the project and its year, what is surveyed and what assumed, the
+   language and the key sheet */
+.statusbar { display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 0 var(--space-4); border-top: 1px solid var(--border); background: var(--bg-base); color: var(--text-muted); font-size: var(--text-caption); white-space: nowrap; overflow: hidden; }
+.sb-conn { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; }
+.sb-project { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); }
+.sb-project > span + span::before { content: "·"; margin-right: var(--space-2); color: var(--text-muted); }
+.sb-name { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
+.sb-project .num { font-weight: 500; }
+.sb-legend { display: inline-flex; align-items: center; gap: var(--space-4); min-width: 0; margin-left: auto; }
+.sb-legend > span { display: inline-flex; align-items: center; gap: var(--space-2); }
+.sb-lang { display: inline-flex; align-items: center; flex: none; }
+.sb-btn { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: 24px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; cursor: pointer; }
+.sb-btn[aria-pressed="true"] { background: var(--bg-inset); color: var(--text-primary); font-weight: 600; }
 
 kbd { font-family: var(--font-sans); font-size: var(--text-caption); font-weight: 500; font-variant-numeric: tabular-nums; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 var(--space-1); color: var(--text-secondary); white-space: nowrap; }
 
@@ -1201,15 +1254,13 @@ main { min-width: 0; min-height: 0; position: relative; }
 main:focus { outline: none; }
 
 @media (hover: hover) and (pointer: fine) {
-  .topnav a:hover { color: var(--chrome-ink); }
-  .top-tool:hover, .top-search:hover { color: var(--chrome-ink); background: var(--chrome-hover); }
-  .fl-keys:hover { color: var(--text-primary); }
+  .menu-top:hover, .top-tool:hover, .top-search:hover, .top-project:hover { color: var(--chrome-ink); background: var(--chrome-hover); }
+  .sb-btn:hover { color: var(--text-primary); }
   .icon-btn:hover:not(:disabled) { color: var(--text-primary); border-color: var(--border-strong); }
   .btn:hover:not(:disabled) { background: var(--accent-hover); }
   .btn.ghost:hover:not(:disabled) { background: var(--bg-inset); color: var(--text-primary); border-color: var(--border-strong); }
   .btn.ghost.danger:hover:not(:disabled) { color: var(--danger); border-color: var(--danger); }
   .seg button:hover { color: var(--text-primary); }
-  .menu-sheet a:hover { background: var(--bg-inset); }
 }
 
 /* ---------------------------------------------------------------- the opening answer */
@@ -1282,12 +1333,13 @@ main:focus { outline: none; }
 @media (max-width: 900px) {
   .overview-hero { gap: var(--space-4); }
   .grid-2, .grid-2.wide-first { grid-template-columns: minmax(0, 1fr); }
-  .topbar { gap: var(--space-3); padding: 0 var(--space-4); }
-  .fl-legend > span + span { display: none; }
-  .footline { padding: 0 var(--space-4); }
+  .topbar { gap: var(--space-3); padding: 0 var(--space-3); }
+  .sb-legend > span + span, .sb-version { display: none; }
+  .statusbar { gap: var(--space-4); padding: 0 var(--space-3); }
 }
 @media (max-width: 700px) {
-  .fullscreen-btn, .theme-select.top-tool, .top-lang, .top-user { display: none; }
+  .top-user, .sb-project, .sb-legend { display: none; }
+  .sb-lang { margin-left: auto; }
   .page-inner { padding: var(--space-4) var(--space-4) var(--space-6); gap: var(--space-4); --gutter: var(--space-4); }
   .overview-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
   .overview-copy { padding: 0; }
@@ -1301,12 +1353,12 @@ main:focus { outline: none; }
   .map-legend { left: var(--space-2); bottom: var(--space-6); width: 180px; padding: var(--space-2); font-size: var(--text-caption); }
   .map-legend .scale { font-size: var(--text-caption); }
   .map-legend .caption-muted, .map-legend .legend-key { display: none; }
-  .fl-year { display: none; }
-  .fl-keys { margin-left: auto; }
 }
 /* a finger needs a bigger target than the eye does */
 @media (pointer: coarse) {
-  .seg button, .table-toggle, .top-tool, .top-search, .fl-keys { min-height: 44px; }
+  /* the frame's bands grow with their targets */
+  :root { --menubar-h: 52px; --menu-top-h: 44px; --statusbar-h: 44px; }
+  .seg button, .table-toggle, .sb-btn, .menu-item { min-height: 44px; }
   .icon-btn, .btn { min-height: 44px; min-width: 44px; }
 }
 
@@ -2109,9 +2161,7 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   .print-record section { break-inside: avoid; }
   .print-record .pr-break { break-before: auto; }
   .pr-brand { display: flex; align-items: center; gap: 2mm; margin: 0 0 1mm; font-weight: 700; letter-spacing: 0.01em; }
-  .pr-brand .roundel { width: 5mm; height: 5mm; }
-  .pr-brand .roundel circle { fill: var(--print-ink); }
-  .pr-brand .roundel path { stroke: var(--print-paper); }
+  .pr-brand .logo { height: 6mm; width: auto; }
   .pr-logo { height: 8mm; width: auto; max-width: 40mm; object-fit: contain; }
   .pr-head { padding-bottom: 3mm; border-bottom: 1.5pt solid var(--print-ink); }
   .pr-meta, .pr-kv { display: grid; grid-template-columns: max-content 1fr; gap: 1mm 6mm; margin: 0; }
@@ -2183,6 +2233,10 @@ table.data tbody tr[tabindex] { cursor: pointer; }
   --chrome-hover: var(--bg-inset);
   background: var(--chrome); color: var(--chrome-ink); border-bottom: 3px solid var(--accent);
 }
+/* the DSO's name beside its logo, and the two languages, each named by its code */
+.brand-name { font-size: var(--text-h3); font-weight: 700; letter-spacing: var(--track-h3); }
+.top-lang { display: inline-flex; align-items: center; }
+.top-lang .top-tool { min-width: 32px; min-height: 36px; padding: 0 var(--space-1); letter-spacing: 0.02em; }
 .portal-bar .brand.is-dso { gap: var(--space-3); min-width: 0; }
 .portal-bar .brand.is-dso .brand-name { overflow: hidden; text-overflow: ellipsis; }
 .brand-logo { display: block; height: 36px; width: auto; max-width: 160px; object-fit: contain; }
@@ -2317,11 +2371,10 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .report-worst .caption { margin: 0; }
 @media (max-width: 1100px) { .report-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-5); } }
 
-/* eight screens: the scope gives way first, then the gaps between the screens tighten, then the
-   search keeps only its icon, before the bar folds (measured, Shell.tsx useFold) */
-@media (max-width: 1600px) { .brand-scope { display: none; } }
-@media (max-width: 1680px) { .topbar { --nav-gap: var(--space-4); } }
-@media (max-width: 1440px) { .top-search { min-width: 0; } .top-search-label, .top-search kbd { display: none; } }
+/* the bar gives way in steps: the search keeps only its icon, then the project's name goes (the
+   status bar still says it), before the menus fold (measured, Shell.tsx useFold) */
+@media (max-width: 1280px) { .top-search { min-width: 0; } .top-search-label, .top-search kbd { display: none; } }
+@media (max-width: 1100px) { .top-project { display: none; } }
 
 /* ---------------------------------------------------------------- live strip (Sweden) */
 .live-strip { display: grid; gap: var(--space-2); padding-top: var(--space-3); border-top: 1px solid var(--border); }
@@ -2398,7 +2451,7 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 @media (max-width: 700px) { .tour { right: var(--space-4); left: var(--space-4); width: auto; } }
 /* beside a map the card takes the map's far corner, off the panel the step explains */
 @media (min-width: 1101px) {
-  .tour[data-place] { top: calc(var(--topbar-h) + var(--space-4)); bottom: auto; }
+  .tour[data-place] { top: calc(var(--menubar-h) + var(--space-4)); bottom: auto; }
   .tour[data-place="map"] { right: calc(var(--panel-w) + var(--space-4)); }
   .tour[data-place="map-wide"] { right: calc(var(--panel-w-wide) + var(--space-4)); }
 }
@@ -2407,7 +2460,14 @@ label.btn:focus-within { outline: 2px solid var(--focus); outline-offset: 2px; }
 .keys-toggle { display: flex; align-items: flex-start; gap: var(--space-3); margin-top: var(--space-5); padding-top: var(--space-4); border-top: 1px solid var(--border); font-size: var(--text-small); cursor: pointer; }
 .keys-toggle input { margin-top: 3px; accent-color: var(--accent); width: 16px; height: 16px; }
 .keys-toggle small { display: block; margin-top: var(--space-1); color: var(--text-muted); font-size: var(--text-caption); }
-.menu-prefs { display: grid; gap: var(--space-2); padding: var(--space-3) var(--space-2) var(--space-2); border-top: 1px solid var(--border); }
+/* the frame's dialogs (components/FrameDialogs.tsx): read, then closed */
+.frame-sheet { display: grid; gap: var(--space-4); max-height: calc(100dvh - 12vh - var(--space-6)); overflow-y: auto; }
+.frame-sheet > *, .frame-sheet > h2 { margin: 0; }
+.frame-sheet .decision-actions { justify-content: flex-end; margin-top: var(--space-2); }
+.frame-sheet .kv dd { overflow-wrap: anywhere; }
+.about-logo { display: flex; }
+.comp-table th[scope="row"] { color: var(--text-primary); font-size: var(--text-small); font-weight: 500; white-space: nowrap; border-bottom: 1px solid var(--border); vertical-align: top; }
+.comp-table .command-line code { font-size: var(--text-caption); }
 .house-search { display: grid; gap: var(--space-1); }
 .house-search input {
   min-height: 40px; padding: 0 var(--space-3); border: 1px solid var(--border-strong); border-radius: var(--radius-sm);

@@ -1,6 +1,6 @@
 import { createPortal } from "react-dom";
 import { PRODUCT, isBranded, useBrand } from "../apply/Brand";
-import { Roundel } from "./Shell";
+import { Logo } from "./Logo";
 import { dateTime, pct1, useFmt, monthNames } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
@@ -43,7 +43,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         <p className="pr-brand">
           {isBranded(brand)
             ? <>{brand.logo_url && <img className="pr-logo" src={brand.logo_url} alt="" />}{brand.name}</>
-            : <><Roundel />{PRODUCT}</>}
+            : <Logo tone="color" height={20} />}
         </p>
         <h1>{t("rec.title")}</h1>
         <dl className="pr-meta">

@@ -283,8 +283,19 @@ def queue_refusal(status: int, exc) -> HTTPException:
     return HTTPException(status, {"code": exc.code, "message": str(exc), "params": exc.params})
 
 
+def dataset_build_command() -> str | None:
+    """The command that computes the network in use when it is an imported one: its own build,
+    which runs in the network's own folder. The stage commands (`compute`, `forecast`, ...) act
+    on the data folder they are typed in, which is the reference network's, so they are never
+    the answer for another network. None on the reference network."""
+    from .. import datasets as ds
+
+    current = ds.current()
+    return None if current == ds.REFERENCE else f"python -m kapacitet dataset build {current}"
+
+
 def command_for(name: str) -> str:
-    return f"python -m kapacitet {_WRITTEN_BY.get(name, 'compute')}"
+    return dataset_build_command() or f"python -m kapacitet {_WRITTEN_BY.get(name, 'compute')}"
 
 
 def not_computed(name: str) -> HTTPException:
@@ -466,17 +477,19 @@ def results_ready() -> bool:
 
 @app.get(f"{API}/health", tags=["system"])
 def health() -> dict:
-    """Liveness, the version, and which parts have their data (with the command for what is missing)."""
+    """Liveness, the version, and which parts have their data, each with the command that
+    computes it (the setup page shows it for what is missing, the computation status for all)."""
     parts = {}
     for part, files in _NEEDS.items():
         missing = ["/".join(f) for f in files if not processed(*f).exists()]
         parts[part] = {"ready": not missing, "missing": missing}
-    commands = {"network": "python -m kapacitet build", "results": "python -m kapacitet compute",
-                "extra": "python -m kapacitet compute --stage extra",
-                "requests": "python -m kapacitet compute --stage extra --only requests"}
+    build = dataset_build_command()
+    commands = dict.fromkeys(_NEEDS, build) if build else {
+        "network": "python -m kapacitet build", "results": "python -m kapacitet compute",
+        "extra": "python -m kapacitet compute --stage extra",
+        "requests": "python -m kapacitet compute --stage extra --only requests"}
     for part, info in parts.items():
-        if not info["ready"]:
-            info["command"] = commands[part]
+        info["command"] = commands[part]
     from .. import datasets as ds
 
     return {"status": "ok", "version": __version__, "time": datetime.now(timezone.utc).isoformat(),

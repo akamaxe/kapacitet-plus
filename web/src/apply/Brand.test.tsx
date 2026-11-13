@@ -44,9 +44,11 @@ describe("the portal's header", () => {
     const el = await render(product);
     const bar = el.querySelector("header.portal-bar")!;
     expect(bar.classList.contains("is-branded")).toBe(false);
-    expect(bar.querySelector(".brand-name")?.textContent).toBe("Kapacitet+");
-    expect(bar.querySelector(".roundel")).not.toBeNull();
-    expect(bar.querySelector("img")).toBeNull();
+    // the product's own logo, which is its name: drawn, never typed
+    const logo = bar.querySelector("img.logo")!;
+    expect(logo.getAttribute("alt")).toBe("Kapacitet+");
+    expect(logo.getAttribute("src")).toBe("/brand/kapacitet-logo-reversed.svg");
+    expect(bar.querySelector(".brand-name")).toBeNull();
     expect(el.querySelector(".portal-foot")).toBeNull();
     expect(el.querySelector(".portal-contact")).toBeNull();
     expect(el.querySelector(".portal")?.hasAttribute("data-accent")).toBe(false);

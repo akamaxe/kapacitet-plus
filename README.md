@@ -1317,9 +1317,11 @@ taken from one adoption order of the sensitivity run.
 
 ## Licence
 
-MIT — see [LICENSE](LICENSE). Two things the licence does not cover: the household profile generator
-(`richardsonpy`) is GPL-3.0 and is used only offline to produce the profiles; and the data, derived
-from OpenStreetMap, are subject to ODbL share-alike. That is why `data/` is never committed here:
+MIT — see [LICENSE](LICENSE). Three things the licence does not cover: the household profile generator
+(`richardsonpy`) is GPL-3.0 and is used only offline to produce the profiles; the data, derived
+from OpenStreetMap, are subject to ODbL share-alike; and the name Kapacitet+ and its logo
+(`web/public/brand/`) identify this project, and the licence gives no right to use them for
+anything else. The data are why `data/` is never committed here:
 the computed data are published separately, as the asset of the
 [data release](https://github.com/akamaxe/kapacitet-plus/releases/tag/data), under ODbL
 ([DATA-LICENSE.md](DATA-LICENSE.md)).

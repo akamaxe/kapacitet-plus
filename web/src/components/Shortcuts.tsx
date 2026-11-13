@@ -9,6 +9,7 @@ import { SCREENS, useStore } from "../lib/store";
 
 /** key hint, i18n key. The handler in App.tsx walks the same list. */
 export const KEYS: [string, string][] = [
+  ["0", "keys.start"],
   [`1 – ${SCREENS.length}`, "keys.screens"],
   ["Ctrl + ← →", "keys.step"],
   ["PageUp / PageDown", "keys.page"],

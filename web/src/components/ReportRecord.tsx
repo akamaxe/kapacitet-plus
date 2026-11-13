@@ -1,5 +1,5 @@
 import { createPortal } from "react-dom";
-import { Roundel } from "./Shell";
+import { Logo } from "./Logo";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
@@ -24,7 +24,7 @@ export function ReportRecord({ R, rows }: {
   return createPortal(
     <article className="print-record filing" lang={lang} aria-hidden="true">
       <header className="pr-head">
-        <p className="pr-brand"><Roundel />Kapacitet+</p>
+        <p className="pr-brand"><Logo tone="color" height={20} /></p>
         <h1>{t("rec.reportTitle", { year: R.year })}</h1>
         <dl className="pr-meta">
           <dt>{t("rep.basisLabel")}</dt><dd>{t(`rep.basis.${R.basis ?? "foresight"}`)} · {R.reporting_basis_code ?? ""}</dd>

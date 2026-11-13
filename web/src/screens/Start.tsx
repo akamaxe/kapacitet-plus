@@ -6,10 +6,11 @@
  */
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Chip, Missing, Status, Tile } from "../components/bits";
+import { Chip, Missing, Status } from "../components/bits";
 import { DataTable, type Col } from "../components/DataTable";
 import { Dialog } from "../components/Dialog";
 import { Icon } from "../components/Icon";
+import { ProjectFacts, isSynthetic, useKind } from "../components/ProjectFacts";
 import { RoleNote } from "../components/RoleNote";
 import { PageSkeleton } from "../components/Skeleton";
 import { toast } from "../components/Toast";
@@ -17,6 +18,7 @@ import { useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, useFmt } from "../lib/format";
+import { MANUAL } from "../lib/links";
 import { useT } from "../lib/i18n";
 import {
   buildProgress, enterWhenBack, forgetRecent, lastScreen, projectFileUrl, projectWrite, projectsOf, readRecents,
@@ -26,27 +28,8 @@ import { useStore } from "../lib/store";
 
 const NewProject = lazy(() => import("../components/NewProject"));
 
-/** The manual is a document of the repository, in Swedish; the interface links to it. */
-const MANUAL = "https://github.com/akamaxe/kapacitet-plus/blob/main/docs/manual_sv.md";
-
 /** A list this long gets a search field; a shorter one is read at a glance. */
 const SEARCH_FROM = 6;
-
-/** A network is synthetic when it was made from an example network, or its project file says so. */
-export function isSynthetic(p: Project): boolean {
-  return p.origin.kind === "template" || p.origin.synthetic === true;
-}
-
-/** What the project is, in one sentence under its name. */
-function useKind() {
-  const t = useT();
-  return (p: Project): string => {
-    if (p.reference) return t("proj.kind.reference");
-    if (p.origin.kind === "template") return t("proj.kind.template", { name: p.origin.name ?? p.origin.template ?? "" });
-    if (p.origin.kind === "project_file") return t(p.origin.synthetic ? "proj.kind.fileSynthetic" : "proj.kind.file");
-    return t("proj.kind.csv");
-  };
-}
 
 /** How the build stands, in words: the step running, or where and why it stopped. */
 function useBuildLine() {
@@ -99,6 +82,13 @@ export default function Start({ onKeys }: {
   const [error, setError] = useState<string | null>(null);
   // the list, or the steps that make a project (opened on a project file when one was chosen)
   const [making, setMaking] = useState<{ file: File | null } | null>(null);
+  // the File menu asked for a new project, or for one from a file its reader chose: begin it once
+  const intent = useStore((st) => st.startIntent);
+  useEffect(() => {
+    if (!intent) return;
+    useStore.setState({ startIntent: null });
+    if (role.ok) setMaking({ file: intent.file });
+  }, [intent, role.ok]);
 
   const projects = useMemo(() => (list.data ? sortProjects(projectsOf(list.data), readRecents()) : []), [list.data]);
   const picked = projects.find((p) => p.id === selected) ?? projects.find((p) => p.current) ?? projects[0] ?? null;
@@ -191,8 +181,6 @@ export default function Start({ onKeys }: {
 
   const ready = picked?.state === "ready";
   const canSwitch = supervised && role.ok && !switching;
-  const years = picked?.summary.years;
-  const yearsText = years ? (years[0] === years[1] ? String(years[0]) : `${years[0]}–${years[1]}`) : "–";
 
   return (
     <div className="start">
@@ -269,40 +257,7 @@ export default function Start({ onKeys }: {
                   {!picked.reference && (picked.state === "building" || picked.state === "failed") && (
                     <BuildLog id={picked.id} live={picked.state === "building"} />
                   )}
-                  <div className="tiles">
-                    <Tile
-                      label={t("proj.d.network")}
-                      value={picked.customers === null ? "–" : <span className="t-word">{
-                        picked.summary.feeders === null
-                          ? t("proj.d.customers", { n: f(picked.customers) })
-                          : t("proj.d.networkValue", { n: f(picked.customers), feeders: f(picked.summary.feeders) })
-                      }</span>}
-                    />
-                    <Tile label={t("proj.d.trafo")} value={<span className="t-word">{picked.summary.trafo_type ?? "–"}</span>} />
-                    <Tile
-                      label={t("proj.d.static")}
-                      value={picked.summary.static_kw === null ? "–" : f(picked.summary.static_kw)}
-                      unit={picked.summary.static_kw === null ? undefined : "kW"}
-                    />
-                    <Tile
-                      label={t("proj.d.hourly")}
-                      value={picked.summary.hourly_kw === null ? "–" : f(picked.summary.hourly_kw)}
-                      unit={picked.summary.hourly_kw === null ? undefined : "kW"}
-                    />
-                    <Tile
-                      label={t("proj.d.years")}
-                      mark={years ? "real" : undefined}
-                      value={<span className="t-word">{yearsText}</span>}
-                      note={picked.quick ? t("proj.d.quickNote") : undefined}
-                    />
-                    <Tile
-                      label={t("proj.d.computed")}
-                      value={<span className="t-word">{picked.summary.computed_at ? dateTime(lang, picked.summary.computed_at) : "–"}</span>}
-                    />
-                  </div>
-                  {(picked.summary.static_kw !== null || picked.summary.hourly_kw !== null) && (
-                    <p className="source-line">{t("proj.d.capacityNote")}</p>
-                  )}
+                  <ProjectFacts p={picked} />
 
                   <div className="answer-actions proj-actions">
                     <button

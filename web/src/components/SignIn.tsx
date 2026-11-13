@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useT } from "../lib/i18n";
 import { signIn, takeSignInError, useSignOut, type Me } from "../lib/auth";
-import { Roundel } from "./Shell";
+import { Logo } from "./Logo";
 
 /**
  * The page in front of everything when the installation asks for sign-in (KAPACITET_AUTH=oidc)
@@ -18,10 +18,7 @@ export function SignIn({ me }: { me: Me }) {
   return (
     <div className="app signin-app">
       <header className="topbar">
-        <span className="brand">
-          <Roundel />
-          <span className="brand-name">Kapacitet+</span>
-        </span>
+        <span className="brand"><Logo tone="reversed" /></span>
       </header>
       <main className="page signin-page" id="main" tabIndex={-1}>
         {me.misconfigured ? (

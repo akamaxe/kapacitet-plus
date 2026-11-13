@@ -1,6 +1,12 @@
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { FootLine, MenuSheet, TopBar } from "./components/Shell";
+import { lazy, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { AppBar, MenuSheet, StatusBar, toggleFullscreen } from "./components/Shell";
+import { menuOpen } from "./components/Menu";
+import type { FrameDialog } from "./components/FrameDialogs";
 import { useT } from "./lib/i18n";
+import { MANUAL } from "./lib/links";
+import { buildMenus } from "./lib/menus";
+import { lastScreen, projectFileUrl } from "./lib/projects";
+import { settleOn, whenThere } from "./lib/scroll";
 import { PageSkeleton, SplitSkeleton } from "./components/Skeleton";
 import { modalOpen } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
@@ -9,7 +15,7 @@ import { Shortcuts } from "./components/Shortcuts";
 import { Toasts, toast } from "./components/Toast";
 import { Setup } from "./components/Setup";
 import { SignIn } from "./components/SignIn";
-import { useMe } from "./lib/auth";
+import { useCan, useMe } from "./lib/auth";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { useApi } from "./lib/api";
 import { SCREENS, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
@@ -25,6 +31,7 @@ const Report = lazy(() => import("./screens/Report"));
 const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
 const Start = lazy(() => import("./screens/Start"));
+const FrameDialogs = lazy(() => import("./components/FrameDialogs"));
 
 /**
  * What a screen looks like while its code arrives: the same skeleton the screen shows while
@@ -132,6 +139,78 @@ function Main() {
   const [keys, setKeys] = useState(false);
   const [menu, setMenu] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  // the frame's own dialogs (the project's properties, the computation's status, about); the
+  // file loads when the first one opens, and stays
+  const [dialog, setDialog] = useState<FrameDialog | null>(null);
+  const [dialogsWanted, setDialogsWanted] = useState(false);
+  const openDialog = (d: FrameDialog) => {
+    setDialogsWanted(true);
+    setDialog(d);
+  };
+
+  // The menus: one list for the bar, for the sheet a narrow window shows instead, and for the
+  // actions the search finds (lib/menus.ts).
+  const lang = useStore((s) => s.lang);
+  const theme = useStore((s) => s.theme);
+  const canProjects = useCan("datasets").ok;
+  const ready = !!health.data && !setupNeeded;
+  const menus = useMemo(() => {
+    const st = () => useStore.getState();
+    // a screen's section: the screen is lazy and its sections come with its data, so the place is
+    // looked for until it is there, and held while what is above it arrives (lib/scroll.ts)
+    const toSection = (to: Screen, id: string) => {
+      scrollPositions.delete(to);
+      st().setScreen(to);
+      whenThere(id, (el) => settleOn(el, 72));
+    };
+    return buildMenus(t, { view, screen, ready, canProjects, theme, lang }, {
+      screen: (s) => st().setScreen(s),
+      start: () => { if (st().view !== "start") st().setView("start"); },
+      newProject: () => {
+        useStore.setState({ startIntent: { file: null } });
+        if (st().view !== "start") st().setView("start");
+      },
+      // The picker opens in the click itself: a browser shows it only from a press of the
+      // reader's. Its input is made for the occasion and never joins the page, where it would be
+      // one more file field for a reader of the page to find. The start window makes the project
+      // from the file chosen.
+      importFile: () => {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.accept = ".zip,application/zip";
+        input.addEventListener("change", () => {
+          const file = input.files?.[0];
+          if (!file) return;
+          useStore.setState({ startIntent: { file } });
+          if (st().view !== "start") st().setView("start");
+        });
+        input.click();
+      },
+      exportProject: () => {
+        const a = document.createElement("a");
+        a.href = projectFileUrl(st().dataset ?? "reference");
+        a.download = "";
+        a.click();
+      },
+      properties: () => openDialog("properties"),
+      print: () => window.print(),
+      fullscreen: toggleFullscreen,
+      theme: (th) => st().setTheme(th),
+      lang: (l) => void st().setLang(l),
+      computation: () => openDialog("computation"),
+      search: () => setPalette(true),
+      networkCheck: () => toSection("method", "import"),
+      settings: () => toSection("operation", "settings"),
+      keys: () => setKeys(true),
+      tour: () => {
+        if (st().view !== "work") st().setScreen(lastScreen());
+        // from a menu, so the card appears at once rather than rising in
+        st().setTour(0, true);
+      },
+      manual: () => window.open(MANUAL, "_blank", "noopener,noreferrer"),
+      about: () => openDialog("about"),
+    });
+  }, [t, view, screen, ready, canProjects, theme, lang]);
 
   // Keys: 0 is the start window, 1–8 jump to a screen, Ctrl+→/← step, ⌘K or / opens the
   // palette, ? the key sheet, F fullscreen. The sheet in Shortcuts.tsx lists the same set.
@@ -143,8 +222,9 @@ function Main() {
       const typing = !!target?.closest?.("input, select, textarea, canvas, [contenteditable='true']");
       if (e.altKey) return;
       // under a dialog the keys belong to the dialog: a digit typed under the key sheet
-      // must not change the screen behind it
-      if (modalOpen()) return;
+      // must not change the screen behind it. An open menu keeps them too: a letter there
+      // jumps to the entry that starts with it.
+      if (modalOpen() || menuOpen()) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         setPalette(true);
         e.preventDefault();
@@ -176,8 +256,7 @@ function Main() {
         st.setScreen(SCREENS[Math.max(0, i - 1)]);
         e.preventDefault();
       } else if (e.key.toLowerCase() === "f" && !e.ctrlKey && !e.metaKey) {
-        if (!document.fullscreenElement) document.documentElement.requestFullscreen?.().catch(() => undefined);
-        else document.exitFullscreen?.().catch(() => undefined);
+        toggleFullscreen();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -224,7 +303,7 @@ function Main() {
   return (
     <div className="app">
       <a className="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById("main")?.focus(); }}>{t("shell.skip")}</a>
-      <TopBar onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} />
+      <AppBar menus={menus} onSearch={() => setPalette(true)} onMenu={() => setMenu(true)} onProject={() => openDialog("properties")} />
       <main id="main" tabIndex={-1} aria-label={place}>
         {setupNeeded ? <Setup health={health.data} /> : view === "start" ? (
         <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`start-${attempt}`}>
@@ -247,13 +326,18 @@ function Main() {
         </ErrorBoundary>
         )}
       </main>
-      {/* with nothing computed there is nothing to tour: no offer and no link until the data is in */}
-      <FootLine onKeys={() => setKeys(true)} onTour={setupNeeded || view === "start" ? undefined : () => useStore.getState().setTour(0)} />
+      <StatusBar onKeys={() => setKeys(true)} />
+      {/* with nothing computed there is nothing to tour: no card and no offer until the data is in */}
       {!setupNeeded && view === "work" && <Tour />}
       {!setupNeeded && view === "work" && <TourOffer />}
-      <Palette open={palette} onClose={() => setPalette(false)} />
+      <Palette open={palette} onClose={() => setPalette(false)} menus={menus} />
       <Shortcuts open={keys} onClose={() => setKeys(false)} />
-      <MenuSheet open={menu} onClose={() => setMenu(false)} />
+      <MenuSheet open={menu} onClose={() => setMenu(false)} menus={menus} />
+      {dialogsWanted && (
+        <Suspense fallback={null}>
+          <FrameDialogs which={dialog} onClose={() => setDialog(null)} onStart={() => useStore.getState().setView("start")} />
+        </Suspense>
+      )}
       <Toasts />
     </div>
   );

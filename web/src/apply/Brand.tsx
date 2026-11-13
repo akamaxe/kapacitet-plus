@@ -8,6 +8,7 @@
  * against white, which says nothing about a night ground.
  */
 import type { CSSProperties, ReactNode } from "react";
+import { Logo } from "../components/Logo";
 import { useApi } from "../lib/api";
 import { useT } from "../lib/i18n";
 
@@ -36,21 +37,14 @@ export function accentProps(b: Brand | null | undefined): { style?: CSSPropertie
   return b?.accent ? { style: { "--brand-accent": b.accent } as CSSProperties, "data-accent": "" } : {};
 }
 
-function Roundel() {
-  return (
-    <svg className="roundel" width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-      <circle cx="13" cy="13" r="13" /><path d="M13 7v12M7 13h12" />
-    </svg>
-  );
-}
-
-/** The mark in the header: the DSO's logo and name, or the product's roundel and name (null: the
- * brand could not be read). The logo is decorative next to the name, so it carries no text of its own. */
+/** The mark in the header: the DSO's logo and name, or the product's own logo, which is its name
+ * (null: the brand could not be read). The DSO's logo is decorative next to its name, so it
+ * carries no text of its own. */
 export function BrandMark({ brand, className = "brand" }: { brand: Brand | null | undefined; className?: string }) {
   // still loading: nothing yet, so a DSO's portal never opens under the product's name
   if (brand === undefined) return <span className={className} aria-hidden="true" />;
   if (!isBranded(brand)) {
-    return <span className={className}><Roundel /><span className="brand-name">{PRODUCT}</span></span>;
+    return <span className={className}><Logo tone="reversed" height={24} /></span>;
   }
   return (
     <span className={`${className} is-dso`}>

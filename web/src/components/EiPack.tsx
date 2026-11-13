@@ -8,7 +8,7 @@ import { createPortal } from "react-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "./Icon";
 import { SealReceipt, useSealedDownload } from "./SealedDownload";
-import { Roundel } from "./Shell";
+import { Logo } from "./Logo";
 import { Status } from "./bits";
 import { toast } from "./Toast";
 import { apiWrite, useApi } from "../lib/api";
@@ -160,7 +160,7 @@ function EiMethodRecord({ P, S }: { P: any; S: any }) {
   return createPortal(
     <article className="print-record ei-method" lang={lang} aria-hidden="true">
       <header className="pr-head">
-        <p className="pr-brand"><Roundel />Kapacitet+</p>
+        <p className="pr-brand"><Logo tone="color" height={20} /></p>
         <h1>{t("ei.rec.title")}</h1>
         <dl className="pr-meta">
           <dt>{t("rep.basisLabel")}</dt><dd>{t(`rep.basis.${P.basis}`)}</dd>

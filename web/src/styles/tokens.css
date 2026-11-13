@@ -51,6 +51,10 @@
   --dur-panel: 200ms;
 
   /* chrome bands: a sticky region has to know what the frame already takes */
+  /* the workbench's bar with the menus, and the height of a menu's name in it; the applicant's
+     page and its DSO's logo keep the taller bar */
+  --menubar-h: 44px;
+  --menu-top-h: 30px;
   --topbar-h: 56px;
   --toolbar-h: 44px;
   --statusbar-h: 30px;
@@ -63,6 +67,7 @@
   /* stacking */
   --z-sticky: 3;
   --z-overlay: 40;
+  --z-menu: 45;
   --z-dialog: 50;
   --z-toast: 60;
 

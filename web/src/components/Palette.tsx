@@ -14,6 +14,7 @@ import { useApi } from "../lib/api";
 import { copyText } from "../lib/clipboard";
 import { useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
+import { menuActions, type Menu } from "../lib/menus";
 import { SCREENS, applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
 
@@ -31,7 +32,11 @@ type Item = {
 /** Fold the Swedish diacritics so "slatten" finds "Smedslättsvägen". */
 const fold = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 
-export function Palette({ open, onClose }: { open: boolean; onClose: () => void }) {
+export function Palette({ open, onClose, menus }: {
+  open: boolean; onClose: () => void;
+  /** the frame's menus: what they do is found here by name (lib/menus.ts) */
+  menus: Menu[];
+}) {
   const t = useT();
   const f = useFmt();
   const [q, setQ] = useState("");
@@ -109,17 +114,19 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
           onClose();
         },
       })),
-      {
-        id: "act:tour",
+      // what the menus do, under the menu's name: "File · New project…"
+      ...menuActions(menus).map((m): Item => ({
+        id: `menu:${m.id}`,
         group: t("pal.actions"),
-        label: t("tour.start"),
+        label: m.label.replace(/…$/, ""),
+        hint: m.keys,
+        cols: [m.menu],
         icon: "next",
         run: () => {
           onClose();
-          // from the keyboard, so the card appears at once rather than rising in
-          useStore.getState().setTour(0, true);
+          m.run();
         },
-      },
+      })),
       {
         id: "act:link",
         group: t("pal.actions"),
@@ -134,7 +141,7 @@ export function Palette({ open, onClose }: { open: boolean; onClose: () => void 
       },
     ];
     return [...screens, ...houses, ...actions];
-  }, [net.data, t, f, lang, setScreen, select, setLang, setTheme, onClose]);
+  }, [net.data, t, f, lang, setScreen, select, setLang, setTheme, onClose, menus]);
 
   const shown = useMemo(() => {
     const needle = fold(q.trim());

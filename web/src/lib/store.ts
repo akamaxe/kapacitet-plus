@@ -203,6 +203,8 @@ interface State {
   tourOffered: boolean;
   /** a link named a screen that does not exist; App says so once */
   notFound: string | null;
+  /** what the start window was asked to begin on arriving: a new project, from the file given or from nothing */
+  startIntent: { file: File | null } | null;
   /** the shortcuts that are one character (the screen numbers, F, /, ?), which a speech-input user may need off */
   singleKeys: boolean;
   setSingleKeys: (on: boolean) => void;
@@ -257,6 +259,7 @@ export const useStore = create<State>((set) => ({
   tourInstant: false,
   tourOffered: false,
   notFound: initial.notFound ?? null,
+  startIntent: null,
   singleKeys: readLS("kap.keys", "on") !== "off",
   setSingleKeys: (on) => {
     writeLS("kap.keys", on ? "on" : "off");
