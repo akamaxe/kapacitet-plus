@@ -4,6 +4,7 @@ import { menuOpen } from "./components/Menu";
 import type { FrameDialog } from "./components/FrameDialogs";
 import { useT } from "./lib/i18n";
 import { MANUAL } from "./lib/links";
+import { log, useLog } from "./lib/log";
 import { TREE_BESIDE, TREE_RAIL, useMedia } from "./lib/media";
 import { buildMenus } from "./lib/menus";
 import { lastScreen, projectFileUrl } from "./lib/projects";
@@ -13,6 +14,7 @@ import { Dialog, modalOpen } from "./components/Dialog";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Palette } from "./components/Palette";
 import { ProjectTree, TreeRail } from "./components/ProjectTree";
+import { OutputPanel } from "./components/OutputPanel";
 import { Shortcuts } from "./components/Shortcuts";
 import { Toasts, toast } from "./components/Toast";
 import { Setup } from "./components/Setup";
@@ -79,6 +81,21 @@ function Main() {
     }
     syncUrl();
   }, [serverDataset, t]);
+  // the output window's first line of a project: which one is open. Once per project and session,
+  // so it is also the line that follows the reload a change of project makes.
+  const site: string | undefined = useApi<any>(health.data && !setupNeeded ? "/meta" : null).data?.site;
+  useEffect(() => {
+    if (!serverDataset || !site) return;
+    let said: string | null = null;
+    try {
+      said = sessionStorage.getItem("kap.log.project");
+      sessionStorage.setItem("kap.log.project", serverDataset);
+    } catch {
+      /* private mode: the line is written once per page instead */
+    }
+    if (said !== serverDataset) log.ok(t("log.project", { name: site }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverDataset, site]);
   // only once /health has said there is something to draw: before it answers, asking would be a
   // guaranteed failure on a fresh clone
   const net = useApi<any>(health.data && !setupNeeded ? "/network" : null);
@@ -176,6 +193,9 @@ function Main() {
     else setDrawer((was) => !was);
   };
   const treeShown = hasTree && (beside ? treeOpen : drawer);
+  // the output window: closed until asked for, on any view
+  const outputOpen = useLog((s) => s.open);
+  const toggleOutput = () => useLog.getState().setOpen(!useLog.getState().open);
   const menus = useMemo(() => {
     const st = () => useStore.getState();
     // a screen's section: the screen is lazy and its sections come with its data, so the place is
@@ -185,7 +205,7 @@ function Main() {
       st().setScreen(to);
       whenThere(id, (el) => settleOn(el, 72));
     };
-    return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown }, {
+    return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown, outputOpen }, {
       screen: (s) => st().setScreen(s),
       start: () => { if (st().view !== "start") st().setView("start"); },
       newProject: () => {
@@ -217,6 +237,7 @@ function Main() {
       properties: () => openDialog("properties"),
       print: () => window.print(),
       toggleTree,
+      toggleOutput,
       fullscreen: toggleFullscreen,
       theme: (th) => st().setTheme(th),
       lang: (l) => void st().setLang(l),
@@ -233,7 +254,7 @@ function Main() {
       manual: () => window.open(MANUAL, "_blank", "noopener,noreferrer"),
       about: () => openDialog("about"),
     });
-  }, [t, view, screen, ready, canProjects, theme, lang, treeShown]);
+  }, [t, view, screen, ready, canProjects, theme, lang, treeShown, outputOpen]);
   const toggleTreeRef = useRef(toggleTree);
   toggleTreeRef.current = toggleTree;
 
@@ -284,6 +305,9 @@ function Main() {
         toggleFullscreen();
       } else if (e.key.toLowerCase() === "t" && !e.ctrlKey && !e.metaKey && st.view === "work") {
         toggleTreeRef.current();
+        e.preventDefault();
+      } else if (e.key.toLowerCase() === "o" && !e.ctrlKey && !e.metaKey) {
+        useLog.getState().setOpen(!useLog.getState().open);
         e.preventDefault();
       }
     };
@@ -361,6 +385,7 @@ function Main() {
         </ErrorBoundary>
         )}
       </main>
+      {outputOpen && <OutputPanel />}
       <StatusBar onKeys={() => setKeys(true)} />
       {/* with nothing computed there is nothing to tour: no card and no offer until the data is in */}
       {!setupNeeded && view === "work" && <Tour />}

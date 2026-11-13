@@ -4,7 +4,7 @@
  * open it. A project is a network with what was computed for it (lib/projects.ts); the one the
  * server is on opens at once, another one restarts the server on its folder and so asks first.
  */
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Chip, Missing, Status } from "../components/bits";
 import { DataTable, type Col } from "../components/DataTable";
@@ -20,6 +20,7 @@ import { responseRefusal } from "../lib/errors";
 import { dateTime, useFmt } from "../lib/format";
 import { MANUAL } from "../lib/links";
 import { useT } from "../lib/i18n";
+import { log } from "../lib/log";
 import {
   buildProgress, enterWhenBack, forgetRecent, lastScreen, projectFileUrl, projectWrite, projectsOf, readRecents,
   sortProjects, touchRecent, useProjects, type Project,
@@ -102,6 +103,18 @@ export default function Start({ onKeys }: {
 
   const refresh = () => client.invalidateQueries({ queryKey: ["/datasets"] });
 
+  // a build that ends while the list is on show says how it ended in the output window
+  const states = useRef(new Map<string, string>());
+  useEffect(() => {
+    for (const p of projects) {
+      const was = states.current.get(p.id);
+      if (was === "building" && p.state === "ready") log.ok(t("log.build.ready", { name: p.name }));
+      if (was === "building" && p.state === "failed") log.error(buildLine(p) ? t("log.build.failed", { name: p.name, why: buildLine(p) }) : t("log.build.failedPlain", { name: p.name }));
+      states.current.set(p.id, p.state);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projects]);
+
   const open = (p: Project) => {
     if (p.state !== "ready") return;
     if (p.current) {
@@ -120,12 +133,14 @@ export default function Start({ onKeys }: {
     const r = await projectWrite(switchTo.id, "activate");
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
+    log.info(t("log.switching", { name: switchTo.name }));
     setSwitching(true);
   };
 
   const act = async (p: Project, action: "build" | "cancel") => {
     const r = await projectWrite(p.id, action);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
+    log.info(t(action === "build" ? "log.build.start" : "log.build.stop", { name: p.name }));
     await refresh();
   };
 
@@ -215,7 +230,7 @@ export default function Start({ onKeys }: {
               key={making.file ? `file:${making.file.name}:${making.file.size}` : "new"}
               initialFile={making.file}
               onCancel={() => setMaking(null)}
-              onDone={(rec) => { setMaking(null); setSelected(rec.id); void refresh(); }}
+              onDone={(rec) => { setMaking(null); setSelected(rec.id); log.info(t("log.created", { name: rec.name })); void refresh(); }}
             />
           </Suspense>
         ) : (

@@ -11,6 +11,7 @@ import { apiWrite } from "../lib/api";
 import { refusalOf, responseRefusal } from "../lib/errors";
 import { clock } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { log } from "../lib/log";
 import { useStore } from "../lib/store";
 
 export interface Receipt {
@@ -67,8 +68,11 @@ export function useSealedDownload(): { receipt: Receipt | null; busy: boolean; r
     setBusy(false);
     const digest = r.headers.get("X-Seal-Digest");
     const flags = (r.headers.get("X-Issue-Flags") ?? "").split(",").filter(Boolean);
-    if (digest) setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString(), flags,
-      reason: (body as { override_reason?: string }).override_reason?.trim() || undefined });
+    if (digest) {
+      setReceipt({ file, digest, seq: Number(r.headers.get("X-Seal-Seq")), at: r.headers.get("X-Seal-At") ?? new Date().toISOString(), flags,
+        reason: (body as { override_reason?: string }).override_reason?.trim() || undefined });
+      log.ok(t("log.sealed", { file, digest: digest.slice(0, 12), seq: Number(r.headers.get("X-Seal-Seq")) }));
+    }
   };
   return { receipt, busy, refusalCode, download };
 }

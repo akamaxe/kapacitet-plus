@@ -10,6 +10,7 @@ import { Dialog } from "./Dialog";
 import { Icon } from "./Icon";
 import { Logo } from "./Logo";
 import { MenuBar, sections } from "./Menu";
+import { OutputLast } from "./OutputPanel";
 
 /**
  * Who is signed in and the roles they act under, with sign-in on; nothing with it off. The name
@@ -160,8 +161,8 @@ export function MenuSheet({ open, onClose, menus }: { open: boolean; onClose: ()
 
 /**
  * The status bar: whether the server answers and its version, the project and the year its
- * figures are for, which data are surveyed and which assumed, the language and the key sheet.
- * Quiet, and the same on every screen.
+ * figures are for, the output window's last line (which opens it), which data are surveyed and
+ * which assumed, the language and the key sheet. Quiet, and the same on every screen.
  */
 export function StatusBar({ onKeys }: { onKeys: () => void }) {
   const t = useT();
@@ -185,6 +186,7 @@ export function StatusBar({ onKeys }: { onKeys: () => void }) {
           <span>{t("tb.year")} <span className="num">{meta.data.reference_year}</span></span>
         </span>
       )}
+      <OutputLast />
       <span className="sb-legend">
         <span><Mark kind="real" />{pt("tb.real")}</span>
         <span><Mark kind="synthetic" />{pt("tb.synthetic")}</span>

@@ -9,6 +9,7 @@ import { useEffect } from "react";
 import { create } from "zustand";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
+import { log } from "../lib/log";
 
 export type ToastKind = "info" | "error";
 type Toast = { id: number; kind: ToastKind; text: string };
@@ -28,10 +29,17 @@ export const useToasts = create<ToastState>((set) => ({
   dismiss: (id) => set((s) => ({ toasts: s.toasts.filter((t) => t.id !== id) })),
 }));
 
-/** Say it from anywhere, including outside React. */
+/** Say it from anywhere, including outside React. A notice is gone in a moment, so each one is
+ *  also a line of the output window (lib/log.ts), where it can be read afterwards. */
 export const toast = {
-  info: (text: string) => useToasts.getState().push("info", text),
-  error: (text: string) => useToasts.getState().push("error", text),
+  info: (text: string) => {
+    log.info(text);
+    useToasts.getState().push("info", text);
+  },
+  error: (text: string) => {
+    log.error(text);
+    useToasts.getState().push("error", text);
+  },
 };
 
 function Item({ t }: { t: Toast }) {

@@ -16,6 +16,7 @@ export const KEYS: [string, string][] = [
   ["⌘ / Ctrl + K", "keys.palette"],
   ["/", "keys.search"],
   ["T", "keys.tree"],
+  ["O", "keys.output"],
   ["F", "keys.fullscreen"],
   ["?", "keys.help"],
   ["Esc", "keys.close"],

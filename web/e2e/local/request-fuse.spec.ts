@@ -24,6 +24,6 @@ test("a charger request shows the main fuse verdict and the static study's numbe
   const seal = page.getByRole("main").locator(".seal-line");
   await expect(seal).toContainText("Sealed");
   await seal.getByRole("button", { name: "Verify" }).click();
-  await expect(page.getByText(/Intact: the kept record still hashes to its seal/)).toBeVisible();
+  await expect(page.locator(".toasts").getByText(/Intact: the kept record still hashes to its seal/)).toBeVisible();
   expect(errors).toEqual([]);
 });

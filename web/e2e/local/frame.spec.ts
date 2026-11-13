@@ -91,3 +91,49 @@ test("the status bar names the project and its year", async ({ page }) => {
   await expect(dialog.getByRole("heading", { name: site })).toBeVisible();
   await expect(dialog.getByText("Identifier")).toBeVisible();
 });
+
+test("an evaluation leaves its stages and its answer in the output window", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("kap.tour", "1"));
+  const meta = await (await page.request.get("/api/v1/meta")).json();
+  const cid = Number(meta.grid.customers) - 1;
+  await page.goto(`/#/request?cid=${cid}`);
+  await expect(page.getByRole("button", { name: "Evaluate connection" })).toBeVisible({ timeout: 60_000 });
+  // the window is closed until asked for, and the status bar carries its last line
+  const output = page.locator("section.output");
+  await expect(output).toHaveCount(0);
+  const last = page.locator("footer.statusbar .sb-output");
+  await expect(last).toContainText(`Project ${meta.site} is open.`);
+
+  await page.getByRole("group", { name: "EV charger" }).getByRole("button", { name: "11 kW" }).click();
+  await page.getByRole("button", { name: "Evaluate connection" }).click();
+  await expect(page.getByRole("main").locator(".verdict").first()).toBeVisible({ timeout: 90_000 });
+  await expect(last).toContainText(/Request [0-9a-f]{12} evaluated in/);
+  // an evaluation never opens the window by itself
+  await expect(output).toHaveCount(0);
+
+  await last.click();
+  await expect(output).toBeVisible();
+  const lines = output.locator(".out-line");
+  await expect(lines.filter({ hasText: "11 kW" }).filter({ hasText: "Evaluating" })).toHaveCount(1);
+  // each stage is a part of the request's line, with the time it took
+  const stages = output.locator(".out-line.step");
+  for (const stage of ["Static study", "Nonlinear power-flow check", "Curtailment risk"]) {
+    await expect(stages.filter({ hasText: stage })).toHaveCount(1);
+    await expect(stages.filter({ hasText: stage })).toContainText(/: \d+[.,]\d s$/);
+  }
+  await expect(lines.last()).toContainText(/evaluated in .* s: the static study/);
+
+  // the lines outlast a reload, as they must when another project is opened; the O key closes
+  await page.reload();
+  await expect(output).toBeVisible({ timeout: 60_000 });
+  await expect(output.locator(".out-line").filter({ hasText: "Evaluating" })).toHaveCount(1);
+  await page.locator("main h1").first().click();
+  await page.keyboard.press("o");
+  await expect(output).toHaveCount(0);
+  await page.keyboard.press("o");
+  await output.getByRole("button", { name: "Clear" }).click();
+  await expect(output.locator(".out-line")).toHaveCount(0);
+  await expect(output).toContainText("Nothing yet.");
+  await output.getByRole("button", { name: "Close the output window" }).click();
+  await expect(output).toHaveCount(0);
+});

@@ -64,6 +64,8 @@
   /* the project tree beside the screen, and its rail of icons when it is folded */
   --tree-w: 272px;
   --rail-w: 48px;
+  /* the output window, when it is open */
+  --output-h: 208px;
   /* the start window's column of things to start with */
   --start-col-w: 280px;
 

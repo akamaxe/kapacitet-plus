@@ -57,7 +57,9 @@ test("the DSO's rule can be changed from the report, and is sealed", async ({ pa
   const before = (await (await request.get("/api/v1/settings")).json()).settings.allocation_policy;
   await page.goto("/#/report?policy=prorata");
   await page.getByRole("button", { name: "Make this the DSO's rule" }).click();
-  await expect(page.getByText(/The DSO's sharing rule is now/)).toBeVisible();
+  // said in a notice, which the output window keeps as its last line
+  await expect(page.locator(".toasts").getByText(/The DSO's sharing rule is now/)).toBeVisible();
+  await expect(page.locator("footer.statusbar .sb-output")).toContainText("The DSO's sharing rule is now");
   expect((await (await request.get("/api/v1/settings")).json()).settings.allocation_policy).toBe("prorata");
   const chain = await (await request.get("/api/v1/seals")).json();
   expect(chain.ok).toBe(true);

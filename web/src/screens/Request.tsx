@@ -22,6 +22,7 @@ import { follow, type Following } from "../lib/evaluate";
 import { tokens, type Tokens } from "../lib/colors";
 import { dateTime, hourLabel, monthNames, pct1, round, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
+import { log } from "../lib/log";
 import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
@@ -299,9 +300,17 @@ export default function Request() {
     }
     const { id } = await r.json();
     const current = () => run === runRef.current;
+    // the output window keeps what the stages said, which the panel shows for a moment only
+    const asked = { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 };
+    const where = houses.find((h: any) => h.properties.cid === cid)?.properties.address || t("dt.unnamed", { id: cid });
+    log.info(t("log.req.start", { house: where, what: describeRequest(t, f, asked) }));
+    let spent = 0;
     watchRef.current = follow(`${API}/requests/${id}/events`, `${API}/requests/${id}`, STAGES, {
       stage: (stage, p) => {
-        if (current()) setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p?.ms ?? 0 } } : j));
+        if (!current()) return;
+        setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p?.ms ?? 0 } } : j));
+        spent += p?.ms ?? 0;
+        log.step(t("log.req.stage", { stage: t(`req.stage.${stage}`, { n: meta.data?.weather_years?.length ?? "–" }), s: f((p?.ms ?? 0) / 1000, 1) }));
       },
       queued: (n) => current() && setJob((j) => (j ? { ...j, id, queued: n } : j)),
       started: () => current() && setJob((j) => (j ? { ...j, queued: null } : j)),
@@ -312,6 +321,10 @@ export default function Request() {
         jobRef.current = { id, stages: {}, result: res, error: null };
         setUrlJob(id);
         void queryClient.invalidateQueries({ queryKey: ["/requests?limit=12"] });
+        const approved = Object.values(res.static ?? {}).every((v: any) => v?.approved);
+        // the check is for a request the static study approves; one it does not is said plainly,
+        // without a mark that could read as an approval
+        log[approved ? "ok" : "info"](t(approved ? "log.req.firm" : "log.req.beyond", { id, s: f(spent / 1000, 1) }));
       },
       fail: (why, detail) => {
         if (!current()) return;

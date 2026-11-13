@@ -1085,13 +1085,16 @@ svg { flex-shrink: 0; }
   transform: scale(0.97);
 }
 
-.app { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--menubar-h) minmax(0, 1fr) var(--statusbar-h); }
+/* the frame's rows: the bar, the screen (with the tree's dock beside it), the output window when
+   it is open, and the status bar */
+.app { height: 100dvh; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--menubar-h) minmax(0, 1fr) auto var(--statusbar-h); }
 /* the project tree's dock takes a column of its own beside the screen: the tree, or its rail */
 .app[data-dock="tree"] { grid-template-columns: var(--tree-w) minmax(0, 1fr); }
 .app[data-dock="rail"] { grid-template-columns: var(--rail-w) minmax(0, 1fr); }
 .app > .topbar { grid-row: 1; grid-column: 1 / -1; }
 .app > main { grid-row: 2; grid-column: -2 / -1; }
-.app > .statusbar { grid-row: 3; grid-column: 1 / -1; }
+.app > .output { grid-row: 3; grid-column: 1 / -1; }
+.app > .statusbar { grid-row: 4; grid-column: 1 / -1; }
 
 /* the bar at the top: SL blue, the logo, the menus as words, the open project and the search */
 .topbar {
@@ -1277,15 +1280,43 @@ svg { flex-shrink: 0; }
 .scrim.scrim-left { justify-items: start; align-items: stretch; padding: 0; }
 .dialog.drawer { display: flex; flex-direction: column; height: 100dvh; border-radius: 0; }
 
-/* the status bar: the server, the project and its year, what is surveyed and what assumed, the
-   language and the key sheet */
+/* the output window (components/OutputPanel.tsx): the lines of lib/log.ts, each with its time */
+.output { display: flex; flex-direction: column; height: var(--output-h); min-height: 0; border-top: 1px solid var(--border-strong); background: var(--bg-base); }
+.output-head { display: flex; align-items: center; gap: var(--space-2); flex: none; min-height: 36px; padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--border); }
+.output-head h2 { margin: 0; font-size: var(--text-small); font-weight: 600; }
+.output-count { margin-right: auto; color: var(--text-muted); font-size: var(--text-caption); }
+.output-head .icon-btn { min-width: 28px; min-height: 28px; padding: 0; border-color: transparent; background: none; }
+.output-head .btn.small { min-height: 28px; }
+.output-lines { flex: 1; min-height: 0; padding: var(--space-2) var(--space-4); overflow-y: auto; font-size: var(--text-small); line-height: 1.5; }
+.output-lines:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.output-empty { max-width: 70ch; margin: 0; color: var(--text-muted); }
+.out-line { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; color: var(--text-primary); }
+.out-line time { flex: none; color: var(--text-muted); font-size: var(--text-caption); }
+.out-line svg { align-self: center; flex: none; }
+.out-line.ok svg { color: var(--good); }
+.out-line.error { color: var(--danger); font-weight: 500; }
+/* a step is a part of the line above it */
+.out-line.step { padding-left: var(--space-4); color: var(--text-secondary); }
+.out-line > span { min-width: 0; overflow-wrap: anywhere; }
+
+/* the status bar: the server, the project and its year, the output window's last line, what is
+   surveyed and what assumed, the language and the key sheet */
 .statusbar { display: flex; align-items: center; gap: var(--space-5); min-width: 0; padding: 0 var(--space-4); border-top: 1px solid var(--border); background: var(--bg-base); color: var(--text-muted); font-size: var(--text-caption); white-space: nowrap; overflow: hidden; }
 .sb-conn { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; }
-.sb-project { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); }
+/* the name gives way (to an ellipsis) only when the bar's fixed parts leave it no room: the
+   output's last line takes what is left over and asks for none */
+.sb-project { display: inline-flex; align-items: center; flex: 0 1 auto; gap: var(--space-2); min-width: 0; color: var(--text-secondary); }
+.sb-project > span { flex: none; }
+.sb-project > .sb-name { flex: 0 1 auto; min-width: 0; }
 .sb-project > span + span::before { content: "·"; margin-right: var(--space-2); color: var(--text-muted); }
 .sb-name { overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .sb-project .num { font-weight: 500; }
-.sb-legend { display: inline-flex; align-items: center; gap: var(--space-4); min-width: 0; margin-left: auto; }
+.sb-btn.sb-output { flex: 1 1 0; justify-content: flex-start; min-width: 8ch; overflow: hidden; }
+.sb-output-name { flex: none; color: var(--text-secondary); font-weight: 500; }
+.sb-output-last { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sb-output-last.error { color: var(--danger); }
+.sb-output[aria-expanded="true"] { background: var(--bg-inset); }
+.sb-legend { display: inline-flex; align-items: center; flex: none; gap: var(--space-4); min-width: 0; }
 .sb-legend > span { display: inline-flex; align-items: center; gap: var(--space-2); }
 .sb-lang { display: inline-flex; align-items: center; flex: none; }
 .sb-btn { display: inline-flex; align-items: center; gap: var(--space-2); flex: none; min-height: 24px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; cursor: pointer; }
@@ -1389,8 +1420,7 @@ main:focus { outline: none; }
   .statusbar { gap: var(--space-4); padding: 0 var(--space-3); }
 }
 @media (max-width: 700px) {
-  .top-user, .sb-project, .sb-legend { display: none; }
-  .sb-lang { margin-left: auto; }
+  .top-user, .sb-project, .sb-legend, .sb-output-last { display: none; }
   .page-inner { padding: var(--space-4) var(--space-4) var(--space-6); gap: var(--space-4); --gutter: var(--space-4); }
   .overview-hero { grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
   .overview-copy { padding: 0; }
