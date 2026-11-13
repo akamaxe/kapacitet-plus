@@ -92,14 +92,18 @@ function Computation({ onClose, onStart }: { onClose: () => void; onStart: () =>
             <dt>{t("comp.lastRun")}</dt>
             <dd>
               {run?.computed_at
-                ? t("comp.lastRunValue", {
-                    when: dateTime(lang, run.computed_at),
-                    mode: t(run.quick ? "comp.mode.quick" : "comp.mode.full"),
-                    years: f(years.length),
-                    took: duration(lang, run.seconds),
-                  })
+                ? t("comp.lastRunValue", { when: dateTime(lang, run.computed_at), mode: t(run.quick ? "comp.mode.quick" : "comp.mode.full") })
                 : t("comp.never")}
             </dd>
+            {run?.computed_at && years.length > 0 && (
+              <>
+                <dt>{t("comp.years")}</dt>
+                <dd className="num">{years.length === 1 ? years[0] : t("comp.yearsValue", { n: f(years.length), from: years[0], to: years[years.length - 1] })}</dd>
+              </>
+            )}
+            {run?.computed_at && run.seconds != null && (
+              <><dt>{t("comp.took")}</dt><dd>{duration(lang, run.seconds)}</dd></>
+            )}
             {meta.data.results_updated_at && (
               <><dt>{t("comp.updated")}</dt><dd>{dateTime(lang, meta.data.results_updated_at)}</dd></>
             )}

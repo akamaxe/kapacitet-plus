@@ -378,7 +378,7 @@ function Main() {
         {setupNeeded ? <Setup health={health.data} /> : view === "start" ? (
         <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`start-${attempt}`}>
           <Suspense fallback={<PageSkeleton blocks={2} />}>
-            <Start onKeys={() => setKeys(true)} />
+            <Start onKeys={() => setKeys(true)} onAbout={() => openDialog("about")} />
           </Suspense>
         </ErrorBoundary>
         ) : (

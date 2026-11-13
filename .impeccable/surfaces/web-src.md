@@ -130,8 +130,20 @@ DESIGN.md, and every shipping raster carrying its provenance
 Opening the project: from a table of projects to the real Smedslätten network in 3D, every house coloured
 by whether its solar is firm or rides on an envelope, with the project's tree beside it.
 
+## Built
+
+**2026-11-13.** The workbench shipped as the contract says, with these measures: the bar 44 px, the
+project tree 272 px beside the screen from 1280 px, its rail of icons 48 px from 1100 px and a drawer
+below; the output window 208 px, closed until asked for; the status bar 30 px. The menus are data
+(`web/src/lib/menus.ts`), so the bar, the narrow window's sheet and the search list the same things. The
+finish was checked in line, not by an independent reviewer: the inspector at 0 FAIL on the start window,
+the eight screens and the applicant's page, an empty detector list, and the frame driven by pointer and
+keyboard in both languages and both themes at 1536, 1200, 900, 800, 600 and 390 px.
+
 ## Unresolved
 
+- **An independent finish review.** The build was reviewed by the one who built it; a reviewer who did not
+  has not looked at it against this contract.
 - **The Swedish copy.** The interface is also in Swedish, which has not yet been reviewed by a native
   speaker; a Swedish-speaking DSO engineer should check it before it is shown to one (`docs/glossary.md`).
 - **One primary per view on a long screen.** Operation carries one primary per section ("Issue the file",

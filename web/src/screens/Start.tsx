@@ -64,9 +64,11 @@ function BuildLog({ id, live }: { id: string; live: boolean }) {
   );
 }
 
-export default function Start({ onKeys }: {
+export default function Start({ onKeys, onAbout }: {
   /** opens the key sheet, which belongs to the frame */
   onKeys: () => void;
+  /** opens what the program is, which belongs to the frame too */
+  onAbout: () => void;
 }) {
   const t = useT();
   const f = useFmt();
@@ -227,6 +229,7 @@ export default function Start({ onKeys }: {
             )}
             <li><button onClick={onKeys} aria-haspopup="dialog">{t("keys.title")}<kbd>?</kbd></button></li>
             <li><a href={MANUAL} target="_blank" rel="noopener noreferrer">{t("start.manual")}</a></li>
+            <li><button onClick={onAbout} aria-haspopup="dialog">{t("menu.help.about")}</button></li>
           </ul>
         </nav>
       </aside>
@@ -238,7 +241,7 @@ export default function Start({ onKeys }: {
               key={making.file ? `file:${making.file.name}:${making.file.size}` : "new"}
               initialFile={making.file}
               onCancel={() => setMaking(null)}
-              onDone={(rec) => { setMaking(null); setSelected(rec.id); log.info(t("log.created", { name: rec.name })); void refresh(); }}
+              onDone={(rec) => { setMaking(null); setSelected(rec.id); void refresh(); }}
             />
           </Suspense>
         ) : (
