@@ -205,6 +205,8 @@ interface State {
   notFound: string | null;
   /** what the start window was asked to begin on arriving: a new project, from the file given or from nothing */
   startIntent: { file: File | null } | null;
+  /** the project the start window was asked to show on arriving (the search found it) */
+  startPick: string | null;
   /** the project tree is open beside the screen (a wide window), not folded to its rail */
   treeOpen: boolean;
   setTreeOpen: (open: boolean) => void;
@@ -263,6 +265,7 @@ export const useStore = create<State>((set) => ({
   tourOffered: false,
   notFound: initial.notFound ?? null,
   startIntent: null,
+  startPick: null,
   treeOpen: readLS("kap.tree", "open") !== "rail",
   setTreeOpen: (treeOpen) => {
     writeLS("kap.tree", treeOpen ? "open" : "rail");

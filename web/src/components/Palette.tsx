@@ -1,6 +1,6 @@
 /**
- * Find anything from the keyboard: the screens, the houses by address, and the
- * handful of actions the chrome offers.
+ * Find anything from the keyboard: the screens, the projects, the houses by address, and
+ * what the menus do.
  *
  * The houses are the reason this exists. Until now the only way to reach one was to spot
  * its roof among 120 on a pitched map; an operator handed an address had nowhere to type
@@ -15,6 +15,7 @@ import { copyText } from "../lib/clipboard";
 import { useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { menuActions, type Menu } from "../lib/menus";
+import { lastScreen, projectsOf, type Listing } from "../lib/projects";
 import { SCREENS, applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
 
@@ -43,6 +44,7 @@ export function Palette({ open, onClose, menus }: {
   const [active, setActive] = useState(0);
   const listRef = useRef<HTMLUListElement>(null);
   const net = useApi<any>(open ? "/network" : null);
+  const projects = useApi<Listing>(open ? "/datasets" : null);
   const setScreen = useStore((s) => s.setScreen);
   const select = useStore((s) => s.select);
   const setLang = useStore((s) => s.setLang);
@@ -68,6 +70,28 @@ export function Palette({ open, onClose, menus }: {
       hint: String(i + 1),
       icon: s,
       run: go(s),
+    }));
+
+    // the project in use opens where it was left; another one is picked on the start window,
+    // where opening it asks first (the server restarts on its folder)
+    const found: Item[] = (projects.data ? projectsOf(projects.data) : []).map((p) => ({
+      id: `project:${p.id}`,
+      group: t("start.projects"),
+      label: p.name,
+      cols: [
+        ...(p.customers === null ? [] : [t("proj.d.customers", { n: f(p.customers) })]),
+        p.current ? t("proj.inUse") : t(`proj.state.${p.state}`),
+      ],
+      icon: "folder" as const,
+      run: () => {
+        onClose();
+        const st = useStore.getState();
+        if (p.current && p.state === "ready") st.setScreen(lastScreen());
+        else {
+          useStore.setState({ startPick: p.id });
+          if (st.view !== "start") st.setView("start");
+        }
+      },
     }));
 
     const houses: Item[] = (net.data?.features ?? [])
@@ -140,8 +164,8 @@ export function Palette({ open, onClose, menus }: {
         },
       },
     ];
-    return [...screens, ...houses, ...actions];
-  }, [net.data, t, f, lang, setScreen, select, setLang, setTheme, onClose, menus]);
+    return [...screens, ...found, ...houses, ...actions];
+  }, [net.data, projects.data, t, f, lang, setScreen, select, setLang, setTheme, onClose, menus]);
 
   const shown = useMemo(() => {
     const needle = fold(q.trim());

@@ -83,6 +83,14 @@ export default function Start({ onKeys }: {
   const [error, setError] = useState<string | null>(null);
   // the list, or the steps that make a project (opened on a project file when one was chosen)
   const [making, setMaking] = useState<{ file: File | null } | null>(null);
+  // the search found a project: it is the one picked on arriving
+  const pick = useStore((st) => st.startPick);
+  useEffect(() => {
+    if (!pick) return;
+    useStore.setState({ startPick: null });
+    setMaking(null);
+    setSelected(pick);
+  }, [pick]);
   // the File menu asked for a new project, or for one from a file its reader chose: begin it once
   const intent = useStore((st) => st.startIntent);
   useEffect(() => {

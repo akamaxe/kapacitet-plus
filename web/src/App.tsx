@@ -194,7 +194,11 @@ function Main() {
   }, [hasTree, beside]);
   const besideRef = useRef(beside);
   besideRef.current = beside;
+  const hasTreeRef = useRef(hasTree);
+  hasTreeRef.current = hasTree;
   const toggleTree = () => {
+    // with no project on show there is no tree to fold: the key must not change what is kept
+    if (!hasTreeRef.current) return;
     const st = useStore.getState();
     if (besideRef.current) st.setTreeOpen(!st.treeOpen);
     else setDrawer((was) => !was);
