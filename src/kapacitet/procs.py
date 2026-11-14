@@ -307,12 +307,13 @@ def set_step(rec: dict, name: str, status: str, **extra) -> None:
 
 def run_steps(rec: dict, names: Iterable[str], steps: dict[str, Callable[[], dict | None]],
               save: Callable[[dict], object], lock: Path, *, logger: str = "kapacitet.procs",
-              what: str = "build") -> dict:
+              what: str = "build", keep: bool = False) -> dict:
     """Run `steps` in the order of `names` under `lock`, saving the record after every change.
 
     The record ends "ready", or "failed" with the step that raised marked failed and its error
     kept (the log keeps the traceback); the steps after it stay "waiting". The caller checks
-    that no other build holds the lock before calling.
+    that no other build holds the lock before calling. `keep` keeps the record's earlier steps
+    of other names before these (a second part of a build after the first).
     """
     names = tuple(names)
     lock.parent.mkdir(parents=True, exist_ok=True)
@@ -322,7 +323,8 @@ def run_steps(rec: dict, names: Iterable[str], steps: dict[str, Callable[[], dic
     rec.pop("error", None)
     rec.pop("finished", None)
     rec.update(status="building", started=now())
-    rec["steps"] = [{"name": s, "status": "waiting"} for s in names]
+    kept = [s for s in rec.get("steps") or [] if s.get("name") not in names] if keep else []
+    rec["steps"] = kept + [{"name": s, "status": "waiting"} for s in names]
     save(rec)
     try:
         for name in names:

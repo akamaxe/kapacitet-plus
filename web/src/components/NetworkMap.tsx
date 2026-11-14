@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { useApi } from "../lib/api";
 import { tokens } from "../lib/colors";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 import { houseStatus, useHourly } from "../lib/houses";
 import { useT } from "../lib/i18n";
 import { useProjectKind, useProjectT } from "../lib/project";
@@ -30,7 +30,7 @@ export function NetworkMap() {
   const meta = useApi<any>("/meta");
   // a house's colour is how it is connected: by the envelopes' deployment where they are on, by the
   // hourly study's where they are off (lib/houses.ts)
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   useHourly();
   const mapRef = useRef<MLMap | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);

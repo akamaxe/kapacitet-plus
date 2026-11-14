@@ -88,6 +88,29 @@ def test_hosting_forecast_and_curtailment_run_on_the_synthetic_profiles(tiny):
     assert z["potential_kwh"] > 0 and 0 < z["z_pct"] < 100
 
 
+def test_the_capacity_part_measures_the_static_and_the_hourly_study_alone(tiny, monkeypatch):
+    """The first part of a build (task 1.7 of the technical review of 14-11-2026): every order's static
+    and hourly capacity, with no curtailment search, and a summary that holds only what it measured."""
+    from kapacitet.engine import hosting, run
+    from kapacitet.engine.scenario import adoption_order
+
+    alone = run.analyze_order((0, (2025,), 3.0, False))
+    assert set(alone) == {"order", "static", "timeseries", "seconds"}
+    model = run.model()
+    hp, ev = run.background_masks(model.C)
+    order = adoption_order(0, model.C)
+    ms = hosting.static_adopters(model, order, hp, ev)
+    assert alone["static"]["adopters"] == ms
+    assert alone["timeseries"]["adopters"] == hosting.ts_adopters(model, order, hp, ev, (2025,), lo=ms)
+
+    written: dict = {}
+    monkeypatch.setattr(run, "_write", lambda name, obj: written.__setitem__(name, obj))
+    _, summary = run.capacity((2025,), 2, 3.0, workers=1, envelopes=False)
+    assert set(summary["measures"]) == {"static", "timeseries"} and summary["parts"] == ["capacity"]
+    assert "budget_basis" not in summary and written["hosting_summary.json"] is summary
+    assert set(written) == {"nodal.json", "hosting_summary.json"}
+
+
 def test_at_the_top_of_the_mv_band_the_long_feeder_binds_the_voltage(tiny):
     """The stress of test_doe_safety.py with 1.06 pu on the MV side: voltage-bound in every critical hour."""
     from kapacitet.engine import doe

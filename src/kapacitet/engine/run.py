@@ -192,8 +192,9 @@ def within_pct(c: dict, z_star: float) -> float:
     return float(100.0 * np.mean(share <= z_star + 1e-9)) if len(share) else 100.0
 
 
-def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
-    """The capacity of one adoption order by every method.
+def analyze_order(args: tuple) -> dict:
+    """The capacity of one adoption order by every method: `(order, years, z_star)`, and a fourth
+    item False for the capacity part alone (the static and the hourly study, no curtailment search).
 
     The envelope capacity is searched on both bases of the budget, on one memo of the runs:
     `doe` holds the aggregate share to `z_star` (the headline), `doe_installation` every
@@ -201,7 +202,8 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     between the time-series capacity and the first. `z_doe_*` and `customers_within_pct`
     describe the `doe` point; `z_doe_installation` the other one, verified in full the same way.
     """
-    o, years, z_star = args
+    o, years, z_star = args[:3]
+    envelopes = bool(args[3]) if len(args) > 3 else True
     m = model()
     C = m.C
     hp, ev = background_masks(C)
@@ -211,6 +213,12 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     t0 = time.perf_counter()
     ms = hosting.static_adopters(m, order, hp, ev)
     mts = hosting.ts_adopters(m, order, hp, ev, years, lo=ms)
+
+    def kw(k):
+        return {"adopters": int(k), "kw_ac": float(cap[order[:k]].sum()), "kwp": float(kwp[order[:k]].sum())}
+
+    if not envelopes:
+        return {"order": o, "static": kw(ms), "timeseries": kw(mts), "seconds": time.perf_counter() - t0}
     yf = largest_true(lambda k: curtailment(order, ms, k, years, hp, ev, method="fixed")["z_pct"] <= z_star, ms, C)
     runs: dict[int, dict] = {}
 
@@ -226,9 +234,6 @@ def analyze_order(args: tuple[int, tuple[int, ...], float]) -> dict:
     z_at_yf = curtailment(order, ms, yf, years, hp, ev, method="fixed")
     doe.require_verified(z_at_yd["full_year_violations"], f"order {o}, {yd} adopters (aggregate budget)")
     doe.require_verified(z_at_ydi["full_year_violations"], f"order {o}, {yd_i} adopters (per-installation budget)")
-
-    def kw(k):
-        return {"adopters": int(k), "kw_ac": float(cap[order[:k]].sum()), "kwp": float(kwp[order[:k]].sum())}
 
     return {"order": o, "static": kw(ms), "timeseries": kw(mts), "fixed_cap": kw(yf), "doe": kw(yd),
             "doe_installation": kw(yd_i),
@@ -284,9 +289,38 @@ def _versions() -> dict[str, str]:
     """Library versions behind the numbers, for reproducibility (engine/stamp.py)."""
     return versions()
 
-def compute_all(quick: bool = False, workers: int = 6) -> None:
-    """The whole computation. `workers` processes run the parallel stages: six for the reference
-    network on a 16 GB machine, two for a network built while the server is running."""
+# The two parts of a computation (task 1.7 of the technical review of 14-11-2026). What is sold, the
+# hourly capacity and the requests, is the first; the envelopes, an experimental module, the second.
+PARTS = ("capacity", "envelopes")
+# the extra stages of each part. "requests" and "tornado" are in both: the capacity part writes the
+# static baseline and the sensitivity of the static and the hourly study, and the envelopes part the
+# envelope baseline too and the sensitivity with envelopes.
+CAPACITY_STAGES = ("requests", "hourly", "tornado", "consumption", "phases", "validation", "protection")
+ENVELOPE_STAGES = ("national", "requests", "scenarios", "tornado", "mvband", "foresight", "intraday",
+                   "overinstallation", "operation")
+
+
+def parts_on_disk() -> list[str]:
+    """The parts whose results are in this data folder: the capacity's capacity per order, hourly
+    deployment and consumption capacity; the envelopes' showcase."""
+    have = []
+    if all(processed("results", n).exists() for n in ("hosting_summary.json", "hourly.json", "consumption.json")):
+        have.append("capacity")
+    if processed("results", "showcase.json").exists():
+        have.append("envelopes")
+    return have
+
+
+def compute_all(quick: bool = False, workers: int = 6, parts=PARTS) -> None:
+    """The whole computation, or the parts of it named in `parts` (PARTS). `workers` processes run the
+    parallel stages: six for the reference network on a 16 GB machine, two for a network built while
+    the server is running. The envelopes part searches every order's envelope capacity again (it
+    needs the static and the hourly study of each, which come back the same), so it runs as well
+    after the capacity part as with it."""
+    parts = tuple(p for p in PARTS if p in set(parts))
+    if not parts:
+        raise ValueError(f"no part to compute: name one of {', '.join(PARTS)}")
+    envelopes = "envelopes" in parts
     warnings.filterwarnings("ignore")
     cfg = settings()
     years = cfg.weather_years if not quick else (cfg.reference_year,)
@@ -296,7 +330,14 @@ def compute_all(quick: bool = False, workers: int = 6) -> None:
     t0 = time.perf_counter()
 
     # 1) nodal hosting capacity maps, 2) hosting capacity per adoption order (parallel)
-    per_order, _summary = capacity(years, n_orders, z_star, workers, t0=t0)
+    per_order, _summary = capacity(years, n_orders, z_star, workers, t0=t0, envelopes=envelopes)
+    if "capacity" in parts:
+        write_series(cfg.reference_year)
+    stages = set(CAPACITY_STAGES if "capacity" in parts else ()) | set(ENVELOPE_STAGES if envelopes else ())
+    if not envelopes:
+        compute_extra(quick, t0=t0, only=stages, workers=min(workers, 4), envelopes=False)
+        write_meta(quick, years, t0)
+        return
 
     # 3) showcase: the order whose DOE capacity is the median
     yd = np.array([r["doe"]["kw_ac"] for r in per_order])
@@ -324,17 +365,27 @@ def compute_all(quick: bool = False, workers: int = 6) -> None:
     write_risk(risk, o, ms, k)
     log.info("risk done (%.0f s)", time.perf_counter() - t0)
 
-    write_series(cfg.reference_year)
+    compute_extra(quick, t0=t0, only=stages, workers=min(workers, 4), envelopes=True)
+    write_meta(quick, years, t0)
 
-    compute_extra(quick, t0=t0, workers=min(workers, 4))
+
+def write_meta(quick: bool, years, t0: float) -> None:
+    """results/meta.json, the end of a computation: when, how, and the parts now on disk."""
+    cfg = settings()
+    _write("meta.json", {"computed_at": pd.Timestamp.now(tz="UTC").isoformat(), "quick": quick,
+                         "seconds": time.perf_counter() - t0, "site": cfg.site.name,
+                         "reference_year": cfg.reference_year, "policy": REF_POLICY,
+                         "years": list(years), "parts": parts_on_disk(), "versions": _versions()})
+    log.info("compute finished in %.0f s", time.perf_counter() - t0)
 
 
 def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | None = None,
-             extra: dict | None = None) -> tuple[list[dict], dict]:
+             extra: dict | None = None, envelopes: bool = True) -> tuple[list[dict], dict]:
     """The first two stages of the computation, written to results/: the nodal maps (nodal.json)
     and the capacity of every adoption order with their spread (hosting_summary.json, with the
     fields of `extra` added). `workers` > 1 runs the orders in that many processes; with one,
-    they run in this process (a study's station). Returns the orders and the summary."""
+    they run in this process (a study's station). `envelopes` False measures the static and the
+    hourly study alone, and the summary holds only those. Returns the orders and the summary."""
     t0 = t0 if t0 is not None else time.perf_counter()
     m = model()
     C = m.C
@@ -351,7 +402,7 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
     })
     log.info("nodal HC done (%.0f s)", time.perf_counter() - t0)
 
-    jobs = [(o, tuple(years), z_star) for o in range(n_orders)]
+    jobs = [(o, tuple(years), z_star, envelopes) for o in range(n_orders)]
     if workers > 1:
         with ProcessPoolExecutor(max_workers=min(workers, n_orders), initializer=_init_worker) as ex:
             per_order = list(ex.map(analyze_order, jobs))
@@ -362,30 +413,35 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
     def stats(key: str, field: str) -> dict:
         return spread([r[key][field] for r in per_order])
 
+    # only the measures computed: the envelope ones only with the envelopes
+    keys = ("static", "timeseries") + (("fixed_cap", "doe", "doe_installation") if envelopes else ())
     summary = {
         **(extra or {}),
         "z_star_pct": z_star, "years": list(years), "n_orders": n_orders, "customers": C,
         "total_cap_kw": float(doe.customer_caps().sum()), "total_kwp": float(cust["kwp"].sum()),
         "static_definition": hosting.static_definition(m),
-        # the headline holds the aggregate share to the budget; doe_installation each installation's
-        "budget_basis": {"doe": "aggregate", "doe_installation": "installation"},
+        "parts": ["capacity", "envelopes"] if envelopes else ["capacity"],
+        **({"budget_basis": {"doe": "aggregate", "doe_installation": "installation"}} if envelopes else {}),
         "measures": {k: {"kw_ac": stats(k, "kw_ac"), "kwp": stats(k, "kwp"), "adopters": stats(k, "adopters")}
-                     for k in ("static", "timeseries", "fixed_cap", "doe", "doe_installation")},
+                     for k in keys},
         "per_order": per_order,
     }
     _write("hosting_summary.json", summary)
     return per_order, summary
 
 
-EXTRA_STAGES = ("national", "requests", "hourly", "scenarios", "tornado", "mvband", "foresight", "intraday",
+EXTRA_STAGES = ("national", "hourly", "requests", "scenarios", "tornado", "mvband", "foresight", "intraday",
                 "overinstallation", "consumption", "phases", "validation", "protection", "operation")
 
 
 def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] | None = None,
-                  workers: int = 4) -> None:
-    """Stages that build on the showcase: request baselines, 2030 scenarios, tornado, MV band,
-    foresight, the intraday replica, over-installation, consumption capacity, validation. `only` runs a subset of
-    EXTRA_STAGES and leaves meta.json alone.
+                  workers: int = 4, envelopes: bool | None = None) -> None:
+    """Stages that build on the capacity per order: request baselines, the hourly deployment, 2030
+    scenarios, tornado, MV band, foresight, the intraday replica, over-installation, consumption
+    capacity, validation. `only` runs a subset of EXTRA_STAGES and leaves meta.json alone.
+    `envelopes` says whether the sensitivity searches the envelopes too and the requests get the
+    envelope baseline; by default, whether the showcase is on disk. The stages that build on the
+    showcase (scenarios, mvband, ...) need it.
 
     Heavy stages use `workers` processes (4 fits next to a desktop session in 16 GB).
     """
@@ -396,27 +452,50 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
     t0 = t0 if t0 is not None else time.perf_counter()
     years = cfg.weather_years if not quick else (cfg.reference_year,)
     z_star = A("z_star_pct")
-    sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
-    o, ms = sc["order"], sc["firm"]
+    if envelopes is None:
+        envelopes = processed("results", "showcase.json").exists()
+    whole = only is None
+    if whole and not envelopes:
+        # a data folder with the capacity alone: the stages that build on the showcase have nothing to
+        # build on, so the capacity part's are the run
+        log.info("no showcase.json: the capacity part's stages only (the envelope ones need compute --part envelopes)")
+        only = set(CAPACITY_STAGES)
     want = (lambda name: True) if only is None else (lambda name: name in only)
+
+    def showcase_order() -> tuple[dict, int, int]:
+        sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
+        return sc, sc["order"], sc["firm"]
+
+    def sensitivity_order() -> int:
+        """The showcase's order with the envelopes; without them, the hourly study's median order."""
+        if envelopes:
+            return showcase_order()[1]
+        from . import hourly
+        chosen = hourly.pick(json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8")))
+        if chosen is None:
+            raise RuntimeError("hosting_summary.json has no adoption order: compute the capacity first")
+        return chosen["order"]
     if want("national"):
         national.build()
-    if want("requests"):
-        run_extra.request_baselines(years)
-        log.info("request baselines done (%.0f s)", time.perf_counter() - t0)
     if want("hourly"):
+        # first: without a showcase, the request's static baseline is this deployment's static houses
         # the hourly study's deployment of the median order, verified, and what the next house breaks
         from . import hourly
         doc, state = hourly.compute(json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8")))
         hourly.write(doc, state)
         log.info("hourly deployment done (%.0f s)", time.perf_counter() - t0)
+    if want("requests"):
+        run_extra.request_baselines(years, envelopes=envelopes)
+        log.info("request baselines done (%.0f s)", time.perf_counter() - t0)
     if want("scenarios"):
+        _, o, ms = showcase_order()
         run_extra.scenarios_2030(o, ms, cfg.reference_year, quick, workers=workers)
         log.info("2030 scenarios done (%.0f s)", time.perf_counter() - t0)
     if want("tornado"):
-        run_extra.tornado(o, years, z_star, workers=workers)
+        run_extra.tornado(sensitivity_order(), years, z_star, workers=workers, envelopes=envelopes)
         log.info("tornado done (%.0f s)", time.perf_counter() - t0)
     if want("mvband"):
+        sc, o, ms = showcase_order()
         run_extra.mv_band(o, ms, sc["adopters"], years, z_star, workers=workers)
         log.info("MV band done (%.0f s)", time.perf_counter() - t0)
     if want("foresight"):
@@ -443,14 +522,10 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
         from . import operation
         operation.build()
         log.info("operation done (%.0f s)", time.perf_counter() - t0)
-    if only is not None:
+    if not whole:
         log.info("stages %s finished in %.0f s", ",".join(sorted(only)), time.perf_counter() - t0)
         return
-    _write("meta.json", {"computed_at": pd.Timestamp.now(tz="UTC").isoformat(), "quick": quick,
-                         "seconds": time.perf_counter() - t0, "site": cfg.site.name,
-                         "reference_year": cfg.reference_year, "policy": REF_POLICY,
-                         "years": list(years), "versions": _versions()})
-    log.info("compute finished in %.0f s", time.perf_counter() - t0)
+    write_meta(quick, years, t0)
 
 
 def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:

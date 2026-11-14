@@ -22,7 +22,8 @@ def calls(monkeypatch):
     monkeypatch.setattr(pipeline, "cmd_fetch", lambda a: seen.append(("fetch", a.only)))
     monkeypatch.setattr(pipeline, "cmd_build", lambda a: seen.append(("build",)))
     monkeypatch.setattr(pipeline, "cmd_profiles", lambda a: seen.append(("profiles", a.quick)))
-    monkeypatch.setattr(run, "compute_all", lambda quick=False, workers=6: seen.append(("all", quick, workers)))
+    monkeypatch.setattr(run, "compute_all", lambda quick=False, workers=6, parts=None:
+                        seen.append(("all", quick, workers) if parts is None else ("all", quick, workers, parts)))
     monkeypatch.setattr(run, "compute_extra",
                         lambda quick=False, t0=None, only=None, workers=4: seen.append(("extra", quick, only, workers)))
     return seen
@@ -381,3 +382,13 @@ def test_the_supervisor_passes_the_refusal_on(monkeypatch):
 
     assert pipeline.supervise(argparse.Namespace(host="0.0.0.0", port=0, site=None), command=command) == 2
     assert runs == [1]
+
+
+def test_compute_takes_one_part_of_the_whole_computation(calls, capsys):
+    """The capacity first, then the envelopes (task 1.7 of the technical review of 14-11-2026)."""
+    pipeline.main(["compute", "--part", "capacity"])
+    pipeline.main(["compute", "--part", "envelopes", "--workers", "2"])
+    pipeline.main(["compute", "--part", "all"])
+    assert calls == [("all", False, 6, ("capacity",)), ("all", False, 2, ("envelopes",)), ("all", False, 6)]
+    assert _exit_code(["compute", "--stage", "extra", "--part", "capacity"]) == 2
+    assert "--part" in capsys.readouterr().out

@@ -53,6 +53,12 @@ exempelnät är syntetiskt och märks så i projektlistan, i statusraden och på
 *Exportera (.zip)* skriver ett projekt som en projektfil: dess tabeller och vad det är, utan
 resultat, som beräknas på nytt där filen öppnas.
 
+Bygget beräknar först projektets kapacitet: acceptansgränsen med den statiska studien och med
+timstudien, förbrukningskapaciteten, utgångsläget för en ansökan och kontrollerna. Projektet går att
+öppna så snart den delen är klar. Är de dynamiska gränserna påslagna erbjuder startfönstret sedan
+*Beräkna studierna med dynamiska gränser*, ett andra bygge av samma projekt. Det startar bara för ett
+projekt som inte används, och om det misslyckas går projektet fortfarande att öppna.
+
 Inne i ett projekt ramas vyn in av fyra delar:
 
 - **Menyraden** överst: Arkiv, Visa, Studie, Resultat, Verktyg och Hjälp. Varje vy finns i en meny

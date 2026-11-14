@@ -218,6 +218,14 @@ API = "/api/v1"
 
 # Which command writes each results file, so a missing one can say exactly what to run.
 _WRITTEN_BY = {
+    # the two parts of the whole computation (engine/run.py PARTS)
+    "hosting_summary.json": "compute --part capacity",
+    "request/static.json": "compute --stage extra --only requests",
+    "nodal.json": "compute --part capacity",
+    "showcase.json": "compute --part envelopes",
+    "heatmaps.json": "compute --part envelopes",
+    "risk.json": "compute --part envelopes",
+    "zcurve.json": "compute --part envelopes",
     "national.json": "compute --stage extra --only national",
     "hourly.json": "compute --stage extra --only hourly",
     "scenarios.json": "compute --stage extra --only scenarios",
@@ -290,19 +298,30 @@ def queue_refusal(status: int, exc) -> HTTPException:
     return HTTPException(status, {"code": exc.code, "message": str(exc), "params": exc.params})
 
 
-def dataset_build_command() -> str | None:
+def dataset_build_command(part: str = "capacity") -> str | None:
     """The command that computes the network in use when it is an imported one: its own build,
-    which runs in the network's own folder. The stage commands (`compute`, `forecast`, ...) act
-    on the data folder they are typed in, which is the reference network's, so they are never
-    the answer for another network. None on the reference network."""
+    which runs in the network's own folder (`part` "envelopes" for the envelope studies). The stage
+    commands (`compute`, `forecast`, ...) act on the data folder they are typed in, which is the
+    reference network's, so they are never the answer for another network. None on the reference
+    network."""
     from .. import datasets as ds
 
     current = ds.current()
-    return None if current == ds.REFERENCE else f"python -m kapacitet dataset build {current}"
+    if current == ds.REFERENCE:
+        return None
+    return f"python -m kapacitet dataset build {current}" + (" --part envelopes" if part == "envelopes" else "")
+
+
+# the results only the envelopes part of a computation writes: on an imported network, its second build
+_ENVELOPE_RESULTS = frozenset({
+    "showcase.json", "heatmaps.json", "risk.json", "zcurve.json", "scenarios.json", "mv_band.json", "foresight.json",
+    "intraday.json", "overinstallation.json", "operation/index.json", "operation/dayahead/import.json",
+    "forecast.json", "redispatch.json", "redispatch_sv.txt", "meter_compliance.json", "meter_compliance_sv.txt"})
 
 
 def command_for(name: str) -> str:
-    return dataset_build_command() or f"python -m kapacitet {_WRITTEN_BY.get(name, 'compute')}"
+    built = dataset_build_command("envelopes" if name in _ENVELOPE_RESULTS else "capacity")
+    return built or f"python -m kapacitet {_WRITTEN_BY.get(name, 'compute')}"
 
 
 def not_computed(name: str) -> HTTPException:
@@ -467,13 +486,17 @@ def _newest_under(folder: Path) -> float | None:
 
 # ------------------------------------------------------------------------------ basics
 
-# What each part of the interface needs on disk; /health reports which parts are ready.
+# What each part of the interface needs on disk; /health reports which parts are ready. `results`
+# is the capacity part of a computation (what the screens of every installation read), `extra` the
+# capacity part's checks, and `envelopes` the envelopes part. The Sweden screen and the 2030 scenarios
+# say what they miss themselves (a 404 with the command).
 _NEEDS = {
     "network": [("grid", "customers.parquet"), ("grid", "lines.parquet"), ("grid", "substation.json")],
-    "results": [("results", "meta.json"), ("results", "showcase.json"), ("results", "hosting_summary.json"),
-                ("results", "risk.json"), ("ui", "state_doe.json")],
-    "extra": [("results", "scenarios.json"), ("results", "validation.json"), ("results", "national.json")],
-    "requests": [("request", "static.json"), ("request", "doe.json")],
+    "results": [("results", "meta.json"), ("results", "hosting_summary.json"), ("results", "nodal.json")],
+    "extra": [("results", "validation.json"), ("results", "consumption.json"), ("results", "protection.json")],
+    "requests": [("request", "static.json")],
+    "envelopes": [("results", "showcase.json"), ("results", "risk.json"), ("results", "zcurve.json"),
+                  ("ui", "state_doe.json"), ("request", "doe.json")],
 }
 
 
@@ -491,10 +514,11 @@ def health() -> dict:
         missing = ["/".join(f) for f in files if not processed(*f).exists()]
         parts[part] = {"ready": not missing, "missing": missing}
     build = dataset_build_command()
-    commands = dict.fromkeys(_NEEDS, build) if build else {
-        "network": "python -m kapacitet build", "results": "python -m kapacitet compute",
+    commands = {**dict.fromkeys(_NEEDS, build), "envelopes": dataset_build_command("envelopes")} if build else {
+        "network": "python -m kapacitet build", "results": "python -m kapacitet compute --part capacity",
         "extra": "python -m kapacitet compute --stage extra",
-        "requests": "python -m kapacitet compute --stage extra --only requests"}
+        "requests": "python -m kapacitet compute --stage extra --only requests",
+        "envelopes": "python -m kapacitet compute --part envelopes"}
     for part, info in parts.items():
         info["command"] = commands[part]
     from .. import datasets as ds
@@ -507,14 +531,25 @@ def health() -> dict:
             "features": features.enabled()}
 
 
-@memo(maxsize=2)
-def _showcase_hour(stamp: float) -> int | None:
-    """Hour of the reference year with the highest transformer loading without control (the demo's opening hour)."""
-    p = processed("ui", "state_uncontrolled.json")
+@memo(maxsize=4)
+def _showcase_hour(path: str, stamp: float) -> int | None:
+    """Hour of the reference year with the highest transformer loading in the map state at `path`
+    (the demo's opening hour)."""
+    p = Path(path)
     if not p.exists():
         return None
     loading = json.loads(p.read_text(encoding="utf-8"))["aggregates"]["trafo_loading"]
     return int(max(range(len(loading)), key=loading.__getitem__))
+
+
+def _opening_state() -> Path | None:
+    """The map state the neighbourhood opens on the busiest hour of: the envelope deployment without
+    control where the envelopes are on, else the hourly study's deployment (built, or in the server's
+    cache once computed). None until one exists; nothing is computed for it."""
+    hourly = [processed("ui", "state_hourly.json"), records.folder() / "cache" / "hourly" / "state_hourly.json"]
+    chain = ([processed("ui", "state_uncontrolled.json")] + hourly if features.on("envelopes")
+             else hourly + [processed("ui", "state_uncontrolled.json")])
+    return next((p for p in chain if p.exists()), None)
 
 
 @app.get(f"{API}/meta", tags=["system"])
@@ -536,8 +571,8 @@ def meta() -> dict:
     s = processed("grid", "substation.json")
     if s.exists():
         out["substation"] = json.loads(s.read_text(encoding="utf-8"))
-    u = processed("ui", "state_uncontrolled.json")
-    out["showcase_hour"] = _showcase_hour(u.stat().st_mtime if u.exists() else 0.0)
+    u = _opening_state()
+    out["showcase_hour"] = _showcase_hour(str(u), u.stat().st_mtime) if u is not None else None
     # an imported network: its own grid, and the reference network's weather, prices and households
     from .. import datasets as ds
 
@@ -951,6 +986,23 @@ def hourly_files() -> dict[str, Path]:
     return mine
 
 
+@app.get(f"{API}/baselines", tags=["requests"])
+def request_baselines() -> dict:
+    """Who is connected in each grid situation a request can meet (engine/request.py): today's, and
+    the envelope scenario's where it is computed. The request screen paints its map from these, so
+    the houses it shows are the ones the evaluation meets."""
+    out = {}
+    for name in ("static", "doe"):
+        p = processed("request", f"{name}.json")
+        if p.exists() and (name != "doe" or features.on("envelopes")):
+            b = json.loads(p.read_text(encoding="utf-8"))
+            out[name] = {k: b.get(k, []) for k in ("pv_cids", "firm_cids", "nonfirm_cids")}
+    if not out:
+        raise not_computed("request/static.json")
+    return with_prov(out, "synthetic_grid", files=[p for p in (processed("request", "static.json"), processed("request", "doe.json"))
+                                                    if p.exists()])
+
+
 @app.get(f"{API}/hourly", tags=["hosting"])
 def hourly_deployment() -> dict:
     """The hourly study's deployment for the order whose hourly capacity is the median: the houses
@@ -1013,9 +1065,13 @@ def state_bin(name: str, request: Request, basis: str | None = Query(None, patte
 
 @app.get(f"{API}/hosting", tags=["hosting"])
 def hosting_summary() -> dict:
-    names = ["hosting_summary.json", "zcurve.json", "nodal.json"]
-    out = {"summary": result("hosting_summary.json"), "curve": result("zcurve.json"), "nodal": result("nodal.json")}
-    # each optional part is left out until its stage has run, and the screens say which one to run
+    names = ["hosting_summary.json", "nodal.json"]
+    out = {"summary": result("hosting_summary.json"), "nodal": result("nodal.json")}
+    # the curve of curtailment is the envelopes part's (engine/run.py PARTS), and each optional part
+    # is left out until its stage has run: the screens say which one to run
+    if processed("results", "zcurve.json").exists():
+        out["curve"] = result("zcurve.json")
+        names.append("zcurve.json")
     for name in ("tornado.json", "foresight.json", "intraday.json", "mv_band.json", "consumption.json"):
         if processed("results", name).exists():
             out[name.split(".")[0]] = result(name)
@@ -1332,7 +1388,7 @@ def _warm() -> None:
     """Load the model and the request baselines in the background at startup. It stops as soon as
     the caches are emptied under it (`cache.generation`), so what it reads is never kept for a data
     folder that is no longer the one in use."""
-    if not warm_up_enabled() or not processed("results", "showcase.json").exists():
+    if not warm_up_enabled() or not results_ready():
         return   # nothing computed yet: /health and the setup screen say what to run
     started = generation()
 
@@ -1486,7 +1542,8 @@ _REQUEST_SOURCES = ("smhi_strang", "smhi_metobs", "elprisetjustnu", "osm", "synt
 def _request_files(baseline: str | None = None) -> list[Path]:
     """What a live assessment is computed against: the request baselines and the showcase, and,
     against the queue, the queue's decisions and the grid states its approvals left."""
-    files = [processed("request", "static.json"), processed("request", "doe.json"), result_path("showcase.json")]
+    files = [p for p in (processed("request", "static.json"), processed("request", "doe.json"),
+                         result_path("showcase.json"), result_path("hourly.json")) if p.exists()]
     if baseline == "queue":
         from ..engine import queue as qu
 

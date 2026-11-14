@@ -11,7 +11,7 @@ import { useT } from "../lib/i18n";
 import { responseRefusal } from "../lib/errors";
 import { fuseText } from "../lib/reasons";
 import { useStore } from "../lib/store";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 import { hourlyVerdict } from "../lib/verdicts";
 import type { TFn } from "../lib/i18n";
 
@@ -58,7 +58,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   const esRef = useRef<EventSource | null>(null);
   // with sign-in on, deciding takes the approver role: anyone else sees the buttons, disabled, and why
   const role = useCan("decide");
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
 
   const decided = queue.items.find((it) => it.assessment === res.id);
   if (decided) {
@@ -192,7 +192,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
 export function QueueList({ queue }: { queue: QueueState }) {
   const t = useT();
   const f = useFmt();
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
   const [confirm, setConfirm] = useState(false);

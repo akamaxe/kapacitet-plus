@@ -27,7 +27,7 @@ import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
 import { hourlyVerdict, staticNoteKey } from "../lib/verdicts";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView, useFeatures } from "../lib/features";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
 const STAGES: Stage[] = ["static", "envelope", "verify", "risk", "economics"];
@@ -49,7 +49,8 @@ export default function Request() {
   // the envelope scenario is a baseline only where the envelopes are on (lib/features.ts), and
   // applying for a connection belongs to the applicant's portal
   const feats = useFeatures();
-  const envelopes = feats.envelopes;
+  // the envelope view: the switch on and the envelopes part computed for this project
+  const envelopes = useEnvelopeView();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const theme = useStore((s) => s.theme);
@@ -63,7 +64,10 @@ export default function Request() {
   // the network's protection check, when it has been computed: one fact per house
   const prot = useApi<any>("/protection");
   const net = useApi<any>("/network");
-  const show = useApi<any>("/showcase?heatmaps=false");
+  // the envelope deployment's figures, for the example house; only where the envelopes are on
+  const show = useApi<any>(envelopes ? "/showcase?heatmaps=false" : null);
+  // who is connected in each grid situation a request meets: the map paints these (GET /baselines)
+  const bases = useApi<any>("/baselines");
   // the request form's limits and choices are model inputs, read like every other figure
   const asm = useApi<any>("/assumptions");
   const A = useMemo(() => {
@@ -112,13 +116,15 @@ export default function Request() {
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
   const S = show.data?.data?.showcase;
+  const B = bases.data?.data as Record<string, { firm_cids: number[]; nonfirm_cids: number[] }> | undefined;
   const status = useMemo(() => {
     const m = new Map<number, string>();
-    if (!S) return m;
     // the grid the request meets: a published situation, or the queue built on one
     const base = baseline === "queue" ? queue?.baseline ?? "static" : baseline;
-    const firm = new Set<number>(S.firm_cids);
-    const nonfirm = new Set<number>(base === "doe" ? S.nonfirm_cids : []);
+    const b = B?.[base] ?? B?.static;
+    if (!b) return m;
+    const firm = new Set<number>(b.firm_cids);
+    const nonfirm = new Set<number>(b.nonfirm_cids ?? []);
     if (baseline === "queue") {
       (queue?.items ?? []).forEach((it: any) => {
         if (it.decision === "firm") firm.add(it.cid);
@@ -130,7 +136,7 @@ export default function Request() {
       m.set(c, firm.has(c) ? "firm" : nonfirm.has(c) ? "nonfirm" : "none");
     });
     return m;
-  }, [S, houses, baseline, queue]);
+  }, [B, houses, baseline, queue]);
   // the key names what the map paints, whichever grid the request meets
   const shown = useMemo(() => new Set(status.values()), [status]);
 
@@ -202,12 +208,17 @@ export default function Request() {
   // the house the published year curtails most under the DSO's rule: the one worth seeing first
   const rules = useApi<any>("/settings");
   const exampleCid = useMemo(() => {
+    // where the envelopes are off, the first house the hourly study adds: one the static study turns away
+    if (!envelopes) {
+      const firm = new Set<number>(B?.static?.firm_cids ?? []);
+      return houses.map((h: any) => h.properties.cid as number).find((c: number) => !firm.has(c)) ?? null;
+    }
     const pc = S?.policies?.[rules.data?.settings?.allocation_policy ?? meta.data?.run?.policy ?? ""]?.per_customer;
     if (!pc?.cid?.length) return null;
     let best = 0;
     pc.curtailed_kwh.forEach((v: number, i: number) => { if (v > pc.curtailed_kwh[best]) best = i; });
     return pc.cid[best] as number;
-  }, [S, meta.data, rules.data]);
+  }, [S, B, houses, envelopes, meta.data, rules.data]);
 
   // the answer arrives below the fold: bring it into view inside whichever box scrolls (the
   // panel on a laptop, the main column on a phone) and hand it the focus
@@ -492,12 +503,12 @@ export default function Request() {
                   </button>
                 )}
               </div>
-              {S && (
+              {B?.static && (
                 <p className="caption-muted">
                   {baseline === "static"
-                    ? t(staticNoteKey(S.firm_cids.length, meta.data?.grid?.customers), { n: f(S.firm_cids.length) })
-                    : baseline === "doe"
-                      ? t("req.base.doeNote", { n: f(S.firm_cids.length), m: f(S.nonfirm_cids.length) })
+                    ? t(staticNoteKey(B.static.firm_cids.length, meta.data?.grid?.customers), { n: f(B.static.firm_cids.length) })
+                    : baseline === "doe" && B.doe
+                      ? t("req.base.doeNote", { n: f(B.doe.firm_cids.length), m: f(B.doe.nonfirm_cids.length) })
                       : t("req.base.queueNote", { n: f(queue?.approved ?? 0), base: queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}
                 </p>
               )}

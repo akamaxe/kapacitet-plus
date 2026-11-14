@@ -66,7 +66,8 @@ function Properties({ onClose }: { onClose: () => void }) {
   );
 }
 
-const PARTS = ["network", "results", "extra", "requests"] as const;
+// the envelopes part is listed where the envelopes are on (lib/features.ts)
+const PARTS = ["network", "results", "extra", "requests", "envelopes"] as const;
 
 /**
  * What is computed for the project in use, when, and the command that computes each part again.
@@ -115,7 +116,7 @@ function Computation({ onClose, onStart }: { onClose: () => void; onStart: () =>
             <tbody>
               {PARTS.map((part) => {
                 const info = health.data.parts?.[part];
-                if (!info) return null;
+                if (!info || (part === "envelopes" && !health.data.features?.envelopes)) return null;
                 return (
                   <tr key={part}>
                     <th scope="row">{t(`setup.part.${part}`)}</th>

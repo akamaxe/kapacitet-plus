@@ -70,7 +70,9 @@ def test_a_missing_result_names_the_command_that_makes_it():
     assert main.command_for("consumption.json").endswith("--stage extra --only consumption")
     err = main.not_computed("risk.json")
     assert err.status_code == 404 and err.detail["code"] == "not_computed"
-    assert err.detail["command"] == "python -m kapacitet compute"
+    # the risk is the envelopes part of the computation (task 1.7 of the technical review)
+    assert err.detail["command"] == "python -m kapacitet compute --part envelopes"
+    assert main.command_for("hosting_summary.json") == "python -m kapacitet compute --part capacity"
 
 
 def test_the_network_says_it_is_not_built_rather_than_failing(tmp_path, monkeypatch):

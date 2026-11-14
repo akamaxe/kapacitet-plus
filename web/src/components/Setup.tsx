@@ -53,7 +53,9 @@ export function Setup({ health }: { health: any }) {
 function SetupSteps({ health, primary }: { health: any; primary: boolean }) {
   const t = useT();
   const client = useQueryClient();
-  const parts = Object.entries(health.parts ?? {}) as [string, any][];
+  // the envelope studies are a part only where the envelopes are on (lib/features.ts)
+  const parts = (Object.entries(health.parts ?? {}) as [string, any][])
+    .filter(([part]) => part !== "envelopes" || health.features?.envelopes);
   const missing = parts.filter(([, p]) => !p.ready);
   return (
     <>

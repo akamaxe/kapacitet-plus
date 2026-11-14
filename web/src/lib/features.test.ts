@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { tFor } from "./i18n";
-import { NONE, featuresOf, screenLabel, visibleScreens } from "./features";
+import { NONE, envelopeView, featuresOf, screenLabel, visibleScreens } from "./features";
 
 // The envelopes, the Sweden screen, the 2030 scenarios and the portal are switched on per
 // installation (src/kapacitet/features.py); a screen of a part that is off is shown nowhere.
@@ -25,9 +25,20 @@ describe("the parts an installation shows", () => {
     expect(screenLabel(t, "operation", { ...NONE, envelopes: true, portal: true })).toBe("Operation");
   });
 
+  it("show the envelopes only where they are on and computed for the open project", () => {
+    const on = { ...NONE, envelopes: true };
+    expect(envelopeView(on, ["capacity", "envelopes"])).toBe(true);
+    expect(envelopeView(on, ["capacity"])).toBe(false);
+    // results from before the build had parts: the reference network's, which has both
+    expect(envelopeView(on, undefined)).toBe(true);
+    expect(envelopeView(NONE, ["capacity", "envelopes"])).toBe(false);
+  });
+
   it("call the capacity screen by its envelopes only where they are on", () => {
     expect(screenLabel(t, "compare", NONE)).toBe("Capacity");
     expect(screenLabel(t, "compare", { ...NONE, envelopes: true })).toBe("Static vs envelopes");
     expect(screenLabel(t, "twin", NONE)).toBe("Neighbourhood");
+    // switched on, for a project computed for its capacity alone
+    expect(screenLabel(t, "compare", { ...NONE, envelopes: true }, false)).toBe("Capacity");
   });
 });

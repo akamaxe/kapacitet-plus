@@ -16,7 +16,7 @@ import { useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { menuActions, type Menu } from "../lib/menus";
 import { lastScreen, projectsOf, type Listing } from "../lib/projects";
-import { screenLabel, useFeatures, visibleScreens } from "../lib/features";
+import { screenLabel, useEnvelopeView, useFeatures, visibleScreens } from "../lib/features";
 import { houseStatus } from "../lib/houses";
 import { applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
@@ -61,6 +61,7 @@ export function Palette({ open, onClose, menus }: {
   }, [open]);
 
   const features = useFeatures();
+  const envView = useEnvelopeView();
   const items = useMemo<Item[]>(() => {
     const go = (s: Screen) => () => {
       setScreen(s);
@@ -69,7 +70,7 @@ export function Palette({ open, onClose, menus }: {
     const screens: Item[] = visibleScreens(features).map((s, i) => ({
       id: `screen:${s}`,
       group: t("pal.screens"),
-      label: screenLabel(t, s, features),
+      label: screenLabel(t, s, features, envView),
       hint: String(i + 1),
       icon: s,
       run: go(s),
@@ -101,7 +102,7 @@ export function Palette({ open, onClose, menus }: {
       .filter((ft: any) => ft.properties?.layer === "house")
       .map((ft: any) => {
         const p = ft.properties;
-        const s = houseStatus(p, features.envelopes);
+        const s = houseStatus(p, envView);
         const status = s === "none" ? t("pal.noPv") : t(`twin.status.${s}`);
         return {
           id: `house:${p.cid}`,
@@ -168,7 +169,7 @@ export function Palette({ open, onClose, menus }: {
       },
     ];
     return [...screens, ...found, ...houses, ...actions];
-  }, [net.data, projects.data, t, f, lang, setScreen, select, setLang, setTheme, onClose, menus]);
+  }, [net.data, projects.data, t, f, lang, setScreen, select, setLang, setTheme, onClose, menus, envView]);
 
   const shown = useMemo(() => {
     const needle = fold(q.trim());

@@ -29,7 +29,8 @@ def _make(root: Path, monkeypatch, results: bool = True) -> Instance:
     inst = Instance(data=root / "data", requests=root / "data" / "requests", keys=root / "keys")
     inst.data.mkdir(parents=True)
     if results:
-        for rel in ("grid/net.json", "results/showcase.json", "results/operation/index.json"):
+        for rel in ("grid/net.json", "results/hosting_summary.json", "results/showcase.json",
+                    "results/operation/index.json"):
             path = inst.data / "processed" / rel
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("{}", encoding="utf-8")
@@ -97,6 +98,17 @@ def test_sign_in_on_is_reported_by_its_provider_host_and_no_secret_is_printed(he
         assert secret not in text
 
 
+def test_the_envelope_studies_are_asked_for_only_where_the_envelopes_are_on(healthy, monkeypatch):
+    """The capacity part is what every installation shows; a missing showcase is a warning only where
+    the envelopes are on (task 1.7 of the technical review of 14-11-2026)."""
+    (healthy.data / "processed" / "results" / "showcase.json").unlink()
+    monkeypatch.setenv("KAPACITET_FEATURES", "")
+    assert _levels(instance.check(healthy), "results") == ["ok"]
+    monkeypatch.setenv("KAPACITET_FEATURES", "envelopes")
+    found = [f for f in instance.check(healthy) if f.area == "results"]
+    assert [f.level for f in found] == ["ok", "warn"] and "--part envelopes" in found[1].message
+
+
 def test_the_parts_switched_on_are_reported_and_a_name_that_is_no_part_warns(healthy, monkeypatch):
     monkeypatch.setenv("KAPACITET_FEATURES", "envelopes,portl")
     found = instance.check(healthy)
@@ -122,7 +134,7 @@ def test_each_broken_piece_is_an_error_of_its_own(healthy, monkeypatch, piece):
     if piece == "no_data_folder":
         inst = Instance(data=inst.data.parent / "nowhere", requests=inst.requests, keys=inst.keys)
     elif piece == "no_results":
-        (inst.data / "processed" / "results" / "showcase.json").unlink()
+        (inst.data / "processed" / "results" / "hosting_summary.json").unlink()
     elif piece == "auth_unset":
         monkeypatch.delenv("KAPACITET_AUTH")
     elif piece == "auth_incomplete":

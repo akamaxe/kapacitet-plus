@@ -37,11 +37,27 @@ export function visibleScreens(f: Features): Screen[] {
   });
 }
 
-/** A screen's name where this installation shows it. Pure. */
-export function screenLabel(t: TFn, s: Screen, f: Features): string {
-  if (s === "compare" && !f.envelopes) return t("tab.capacity");
+/** A screen's name where this installation shows it; `view` is the open project's envelope view
+ * (envelopeView), the switch alone by default. Pure. */
+export function screenLabel(t: TFn, s: Screen, f: Features, view: boolean = f.envelopes): string {
+  if (s === "compare" && !view) return t("tab.capacity");
   if (s === "operation" && !f.envelopes) return t("tab.applications");
   return t(`tab.${s}`);
+}
+
+/**
+ * Whether the screens show the envelopes: the switch on and the envelopes part of the computation on
+ * disk for the open project (meta.json's `parts`). Results from before the parts, the reference
+ * network's, have both. Pure; `useEnvelopeView` reads both answers.
+ */
+export function envelopeView(f: Features, parts: string[] | null | undefined): boolean {
+  return f.envelopes && (!parts || parts.includes("envelopes"));
+}
+
+/** The envelope view of the open project (envelopeView): a project computed for its capacity alone
+ * shows the capacity view, and the capacity screen says what to compute. */
+export function useEnvelopeView(): boolean {
+  return envelopeView(useFeatures(), useApi<any>("/meta").data?.run?.parts);
 }
 
 /** The parts the server in use shows, from its /health (asked once, shared with the frame). */

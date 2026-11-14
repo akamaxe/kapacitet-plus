@@ -33,6 +33,22 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **A computation has two parts, and a project is built for its capacity first.** `compute --part
+  capacity` computes what the four screens of an installation read: the capacity per adoption order
+  by the static and the hourly study, the hourly study's deployment, the consumption capacity, the
+  request's static baseline, the sensitivity of the two studies, the single-phase check, the
+  validation and the protection. `compute --part envelopes` adds the envelopes per order and
+  everything built on them; `compute` alone does both, as before. A project made in the app is
+  ready to open once its capacity is computed (under a minute for the 12-house example network,
+  quick), and where the envelopes are on the start window offers *Compute envelope studies*, a
+  second build (`dataset build <id> --part envelopes`, `POST /datasets/{id}/build?part=envelopes`).
+  `hosting_summary.json` holds only the measures computed and says which parts (`parts`), as
+  `meta.json` does; `/health` has an `envelopes` part, and `results` is now the capacity part
+  (`showcase.json` and `risk.json` moved to `envelopes`), so a project computed for its capacity is ready.
+  `extra` is the capacity part's checks (validation, consumption, protection). Where the envelopes
+  are on and a project lacks them, the screens show its capacity and the capacity screen says what
+  to compute. The request's map is painted from the grid situations a request meets
+  (`GET /baselines`).
 - **Four parts are off unless an installation switches them on.** The dynamic operating envelopes,
   the Sweden screen, the 2030 scenarios and the applicant's portal stay in the code, tested, and are
   named in `KAPACITET_FEATURES` (`envelopes`, `national`, `scenarios`, `portal`, or `all`);

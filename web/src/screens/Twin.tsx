@@ -15,7 +15,7 @@ import { useProjectT } from "../lib/project";
 import { faultText } from "../lib/reasons";
 import { CAPACITY_SCENARIOS, ENVELOPE_SCENARIOS, useStore } from "../lib/store";
 import { houseStatus, useHourly, type HouseStatus } from "../lib/houses";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
 type ColorBy = "voltage" | "power";
@@ -59,7 +59,7 @@ export default function Twin() {
   const setScenario = useStore((s) => s.setScenario);
   // the scenarios of the envelopes (their houses without control, and with their limits) only where
   // they are on; a link or a tour step that asks for one opens the static one (lib/features.ts)
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   // the scenarios of this installation: the envelopes' where they are on, the hourly study's where not
   const scenarios = envelopes ? ENVELOPE_SCENARIOS : CAPACITY_SCENARIOS;
   const scenario = scenarios.includes(wanted) ? wanted : "static";
@@ -77,7 +77,8 @@ export default function Twin() {
   // the screen renders nothing that needs the year before /meta has answered (see below)
   const year: number = meta.data?.reference_year;
   const series = useApi<any>(meta.data ? `/series/${year}` : null);
-  const show = useApi<any>("/showcase?heatmaps=false");
+  // the envelope deployment's figures (the curtailed energy per house): only where the envelopes are on
+  const show = useApi<any>(envelopes ? "/showcase?heatmaps=false" : null);
   // where the envelopes are off the static scenario is the static study's houses of the same order
   // as the hourly study's (engine/hourly.py), so the two scenarios are one order seen two ways
   const st = useGridState(!envelopes && scenario === "static" ? "hourly_static" : scenario);
@@ -532,7 +533,7 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
   const p = st.data ? st.data.power(house.cid, hour) : null;
   // a house on an envelope: its own published limit, read for the hour on screen
   // a house on an envelope only where the envelopes are on: its limit is theirs (lib/features.ts)
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const nonfirm = envelopes && house.pv_status === "nonfirm";
   const env = useApi<any>(nonfirm ? `/envelopes/${house.cid}` : null);
   const limit: number | null = env.data?.envelope_kw?.[hour] ?? null;
@@ -653,7 +654,7 @@ function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: 
   selectedCid: number | null; select: (cid: number | null) => void; year: number;
 }) {
   const t = useT();
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const hour = useStore((s) => s.hour);
@@ -821,7 +822,7 @@ function Tooltip({ tip, housesById, cablesById, rows, st }: {
   tip: Tip; housesById: Map<number, any>; cablesById: Map<number, any>; rows: Rows; st: GridState;
 }) {
   const t = useT();
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const f = useFmt();
   const hour = useStore((s) => s.hour);
   if (!st.data) return null;

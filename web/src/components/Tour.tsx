@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 import { useApi } from "../lib/api";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 import { useT } from "../lib/i18n";
 import { useStore, type Scenario, type Screen } from "../lib/store";
 
@@ -63,7 +63,7 @@ export function Tour() {
   const t = useT();
   const step = useStore((s) => s.tour);
   const instant = useStore((s) => s.tourInstant);
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const steps = envelopes ? STEPS : CAPACITY_STEPS;
   const meta = useApi<any>(step !== null ? "/meta" : null);
   // the house the published year curtails most: an envelope's figure, asked only where they are on

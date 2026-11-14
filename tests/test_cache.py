@@ -37,7 +37,9 @@ def test_the_warm_up_stops_once_the_caches_are_emptied_under_it(monkeypatch, tmp
 
     monkeypatch.setenv("KAPACITET_WARM", "1")
     (tmp_path / "results").mkdir()
-    (tmp_path / "results" / "showcase.json").write_text("{}", encoding="utf-8")
+    # the results the screens need: the capacity part of a computation (api/main.py results_ready)
+    for name in ("meta.json", "hosting_summary.json", "nodal.json"):
+        (tmp_path / "results" / name).write_text("{}", encoding="utf-8")
     monkeypatch.setattr(main, "processed", lambda *parts: tmp_path.joinpath(*parts))
     steps: list[str] = []
 

@@ -324,7 +324,7 @@ again.
 | `kapacitet fetch` | Download and cache every external dataset, with a `manifest.json` recording URL, parameters, licence, timestamp, row count and SHA-256 |
 | `kapacitet build` | Build the synthetic LV network on the real OSM neighbourhood (feeders, cabinets, service cables, transformer) |
 | `kapacitet profiles` | Hourly weather, PV, household, heat-pump and EV profiles for every year |
-| `kapacitet compute` | Hosting capacity, envelopes, risk, 2030 scenarios, validation and the UI payloads |
+| `kapacitet compute [--part capacity\|envelopes]` | The whole computation, or one of its two parts: `capacity` (the capacity per adoption order, the hourly study's deployment, the consumption capacity, the request's static baseline, the sensitivity of the static and the hourly study, the single-phase check, the validation and the protection) or `envelopes` (the envelopes per order and everything built on them: the showcase, the curve, the risk, the envelope baseline, the 2030 scenarios, the MV band, the forecast, the intraday replica, over-installation and operation) |
 | `kapacitet compliance` | The audit trail and the annual filing a conditional agreement leaves behind |
 | `kapacitet forecast` | What the published envelopes owe to perfect foresight, against a forecast-free alternative (also written to `results/forecast.json`) |
 | `kapacitet redispatch-report [--year Y]` | The annual report on non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4), on the day-ahead basis that is issued: `results/redispatch.json` and `redispatch_sv.txt` |
@@ -339,7 +339,8 @@ again.
 | `kapacitet all` | The four build steps in order |
 
 Useful flags: `--site <key>` picks another neighbourhood from `config/site.toml`,
-`--quick` shortens a compute run, `compute --stage extra` recomputes only the stages that build
+`--quick` shortens a compute run, `compute --part capacity` computes what an installation's four
+screens read and nothing of the envelopes (`compute --part envelopes` adds them later), `compute --stage extra` recomputes only the stages that build
 on the showcase (`compute --help` lists them), `--only foresight,phases` narrows that to a comma
 list (it needs `--stage extra`), and `--workers 2` runs the parallel stages on fewer
 processes when memory is short (six by default, four with `--stage extra`; `all` takes it too).
@@ -667,9 +668,14 @@ from, and a separate process builds the network in its own folder,
 `python -m kapacitet dataset build <id> --workers 2` with `KAPACITET_DATA_DIR` on that folder and
 `KAPACITET_RAW_DIR` on the reference network's downloads. It reads the export, copies the
 reference network's household profiles, builds the profiles for every weather year and computes
-everything the screens read, the redispatch report and the fleet's compliance check included;
-`dataset.json` records each step, and `build.log` keeps the output.
-A *quick* build (one weather year and fewer adoption orders in the computation) takes minutes.
+the capacity part (`compute --part capacity`): the project is ready to open when it ends. A *quick*
+build (one weather year and fewer adoption orders in the computation) of the 12-house example
+network takes under a minute. Where the envelopes are on, the start window then offers *Compute
+envelope studies*, a second build (`dataset build <id> --part envelopes`,
+`POST /api/v1/datasets/{id}/build?part=envelopes`) that adds the envelopes part, the redispatch
+report and the fleet's compliance check included, and keeps the record of the first; rebuilding a
+project that had them computes both parts again. `dataset.json` records each step and the parts
+computed (`parts`), and `build.log` keeps the output.
 One build runs at a time (`KAPACITET_MAX_BUILDS`), the network in use is never rebuilt under the
 server that reads it (`in_use`), `POST /api/v1/datasets/{id}/cancel` stops a build and every
 process it started, and one that runs past `KAPACITET_BUILD_TIMEOUT_S` (4 h) is stopped the next

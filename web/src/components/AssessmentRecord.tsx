@@ -6,7 +6,7 @@ import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { useStore } from "../lib/store";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 import { hourlyVerdict } from "../lib/verdicts";
 
 /**
@@ -39,7 +39,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
   const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
   const grid: number[][] | undefined = prof.envelope_min_month_hour;
   const months = monthNames(lang);
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const hv = hourlyVerdict(res.per_year);
   const overYears = (k: string) => ((res.per_year ?? []) as any[]).reduce((s, e) => s + (e[k] ?? 0), 0);
 

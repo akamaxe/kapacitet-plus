@@ -11,7 +11,7 @@ import { clock, dateTime, listJoin, monthLong, round, useFmt } from "../lib/form
 import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView } from "../lib/features";
 
 /** One entry of config/assumptions.toml, as /assumptions serves it. */
 interface Input {
@@ -59,7 +59,7 @@ export default function Method() {
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   // text that comes with the data: the interface's words when it has them, the data's otherwise
-  const envelopesOn = useFeatures().envelopes;
+  const envelopesOn = useEnvelopeView();
   const tr = (key: string, fallback: string) => {
     // where the envelopes are off, a sentence that names them has its own words (`<key>.capacity`)
     const own = envelopesOn ? null : t(`${key}.capacity`);
@@ -74,7 +74,7 @@ export default function Method() {
   const meta = useApi<any>("/meta");
   const host = useApi<any>("/hosting");
   // the forecast ladder and the intraday replica are the envelopes': asked only where they are on
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const fc = useApi<any>(envelopes ? "/forecast" : null);
   const prot = useApi<any>("/protection");
   const P = prot.data?.data;
@@ -481,7 +481,7 @@ export default function Method() {
 function HowItWorks({ houses, pool, years }: { houses: number | string; pool: number | string; years: number | string }) {
   const pt = useProjectT();
   // the fourth step names the engine's methods, the envelopes among them only where they are on
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   // the second step is how the network came to be, which depends on the project
   const steps = [1, 2, 3, 4, 5].map((i) => pt(!envelopes && i === 4 ? "met.step.4.capacity" : `met.step.${i}`, { houses, pool, years }));
   return (

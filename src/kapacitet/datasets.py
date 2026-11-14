@@ -47,6 +47,9 @@ RESTART = 75                       # the exit code that asks the supervisor for 
 PROJECT_SCHEMA = "kapacitet.project/1"
 ORIGIN_KINDS = ("csv", "template", "project_file")
 STEPS = ("import", "households", "profiles", "compute")
+# the envelope studies of a network already built: a second build, offered where the envelopes are on
+ENVELOPE_STEPS = ("envelopes",)
+PARTS = ("capacity", "envelopes")
 _ID = re.compile(r"^[a-z0-9][a-z0-9-]{2,40}\Z")      # \Z: `$` would let a final newline through
 MAX_BUILDS = int(os.environ.get("KAPACITET_MAX_BUILDS", "1"))
 BUILD_TIMEOUT_S = float(os.environ.get("KAPACITET_BUILD_TIMEOUT_S", str(4 * 3600)))
@@ -198,6 +201,9 @@ def summary(root: Path | None = None) -> dict:
             "reference_year": meta.get("reference_year"),
             "years": [min(years), max(years)] if years else None, "n_years": len(years) or None,
             "static_kw": median_kw("static"), "hourly_kw": median_kw("timeseries"),
+            # whether the envelope studies are computed (the showcase is on disk): nothing to say
+            # before the capacity is
+            "envelopes": (base / "results" / "showcase.json").exists() if measures else None,
             # new EV chargers by the hourly study, and by the static convention (a constant load)
             "ev_chargers": chargers("ev"), "ev_chargers_static": chargers("flat"),
             "assumptions": assumptions(grid)}
@@ -412,18 +418,26 @@ def can_launch(ds_id: str | None = None) -> None:
         raise DatasetError("too_many_builds", n=len(running))
 
 
-def launch(ds_id: str, workers: int = 2) -> int:
-    """Start the build in its own process, detached from the server, and return its PID."""
+def launch(ds_id: str, workers: int = 2, part: str = "capacity") -> int:
+    """Start the build (`part`, as `build` takes it) in its own process, detached from the server,
+    and return its PID."""
+    if part not in PARTS:
+        raise ValueError(f"no part {part!r}: one of {', '.join(PARTS)}")
     with _LAUNCH_LOCK:
         rec = record(ds_id)
         reap()
         can_launch(ds_id)
+        # the envelope studies need the capacity part, however the last build ended (a failed attempt
+        # at the envelopes leaves the capacity as it was)
+        if part == "envelopes" and "capacity" not in built_parts(rec):
+            raise DatasetError("not_ready", id=ds_id)
         root = folder(ds_id)
         env = {**os.environ, **child_env(ds_id), "PYTHONUNBUFFERED": "1"}
         env.pop("KAPACITET_SUPERVISED", None)
         # the id of the record read from disk, not the caller's text: what is launched is a network
         # that exists, by the name its own record gives it
-        cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", str(rec["id"]), "--workers", str(int(workers))]
+        cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", str(rec["id"]), "--workers", str(int(workers)),
+               "--part", part]
         if rec.get("quick"):
             cmd.append("--quick")
         kwargs: dict = {}
@@ -509,15 +523,49 @@ def _annual_check(year: int) -> dict | None:
             "median_model_kwh": float(np.median(model[ok])), "median_ratio": float(np.median(ratio))}
 
 
-def build(ds_id: str, workers: int = 2, quick: bool = True, steps: dict | None = None) -> dict:
+def built_parts(rec: dict) -> list[str]:
+    """The parts of a computation a network's last good build left (PARTS). A record from before
+    the build had parts says nothing: then its folder does, by the files each part writes."""
+    if "parts" in rec:
+        return [p for p in PARTS if p in rec["parts"]]
+    results = folder(str(rec["id"])) / "processed" / "results"
+    return [p for p, f in (("capacity", "hosting_summary.json"), ("envelopes", "showcase.json")) if (results / f).exists()]
+
+
+def build(ds_id: str, workers: int = 2, quick: bool = True, steps: dict | None = None,
+          part: str = "capacity") -> dict:
     """Run every step of a network's build in this process, recording each one. `steps` replaces
-    the real steps (a test's fakes); the order and the record are the same."""
+    the real steps (a test's fakes); the order and the record are the same.
+
+    `part` "capacity" is the network, its profiles and its capacity: the network is ready to open
+    when it ends (the envelope studies too, when an earlier build had them, so a rebuild leaves no
+    stale part behind). "envelopes" adds the envelope studies to a network that is ready, and keeps
+    the record of the first part's steps."""
+    if part not in PARTS:
+        raise ValueError(f"no part {part!r}: one of {', '.join(PARTS)}")
     rec = record(ds_id)
     if building(ds_id):
         raise DatasetError("building", id=ds_id)
+    had = built_parts(rec)
+    # the record says "building" by now when the server launched this process (launch): what counts
+    # is that the capacity part is computed
+    if part == "envelopes" and "capacity" not in had:
+        raise DatasetError("not_ready", id=ds_id)
     rec.update(workers=workers, quick=quick)
-    steps = steps or _real_steps(ds_id, workers, quick)
-    return procs.run_steps(rec, STEPS, steps, _save, _lock(ds_id), logger="kapacitet.datasets")
+    with_envelopes = part == "envelopes" or "envelopes" in had
+    names = ENVELOPE_STEPS if part == "envelopes" else STEPS
+    steps = steps or _real_steps(ds_id, workers, quick, envelopes=with_envelopes and part == "capacity")
+    out = procs.run_steps(rec, names, steps, _save, _lock(ds_id), logger="kapacitet.datasets",
+                          keep=part == "envelopes")
+    if out.get("status") == "ready":
+        out["parts"] = [p for p in PARTS if p == "capacity" or (p == "envelopes" and with_envelopes)]
+        _save(out)
+    elif part == "envelopes":
+        # the capacity part is untouched: the network stays ready to open, its record says which step
+        # failed and why, and the envelope studies can be asked for again
+        out["status"] = "ready"
+        _save(out)
+    return out
 
 
 def own_folder(ds_id: str) -> bool:
@@ -529,9 +577,10 @@ def own_folder(ds_id: str) -> bool:
     return Path(DATA).resolve() == folder(ds_id).resolve()
 
 
-def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
+def _real_steps(ds_id: str, workers: int, quick: bool, envelopes: bool = False) -> dict:
     """The build as the CLI runs it, in a process whose KAPACITET_DATA_DIR is the network's folder
-    (and in no other: `own_folder`)."""
+    (and in no other: `own_folder`). `compute` is the capacity part, and the envelopes part too
+    when `envelopes` (a rebuild of a network that had it); `envelopes` is that part alone."""
     from .paths import DATA, PROCESSED
 
     if not own_folder(ds_id):
@@ -560,11 +609,24 @@ def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
         return {"annual_kwh": check} if check else {}
 
     def do_compute():
-        # everything the screens read: capacity, envelopes, risk, the extra stages (operation and
-        # protection included) and meta.json
-        from .engine import forecast, meter_compliance, redispatch, run
+        # what the four screens of an installation read: the capacity per order, the hourly
+        # deployment, the consumption capacity, the request's static baseline, the sensitivity, the
+        # validation, the protection and meta.json
+        from .engine import run
 
-        run.compute_all(quick=quick, workers=workers)
+        run.compute_all(quick=quick, workers=workers, parts=run.PARTS if envelopes else ("capacity",))
+        return do_envelope_reports() if envelopes else {}
+
+    def do_envelopes():
+        # the envelopes per order and everything built on them, beside the capacity already there
+        from .engine import run
+
+        run.compute_all(quick=quick, workers=workers, parts=("envelopes",))
+        return do_envelope_reports()
+
+    def do_envelope_reports():
+        from .engine import forecast, meter_compliance, redispatch
+
         forecast.write()          # the forecast ladder the Method screen reads (its own CLI command)
         # The two reports Operation reads that no stage writes. Each has its own CLI command, which
         # acts on the data folder it is typed in, so a note telling the reader to run it would send
@@ -583,7 +645,8 @@ def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
             notes["meter_compliance"] = str(err)
         return {"not_written": notes} if notes else {}
 
-    return {"import": do_import, "households": do_households, "profiles": do_profiles, "compute": do_compute}
+    return {"import": do_import, "households": do_households, "profiles": do_profiles, "compute": do_compute,
+            "envelopes": do_envelopes}
 
 
 def log_tail(ds_id: str, lines: int = 40) -> list[str]:

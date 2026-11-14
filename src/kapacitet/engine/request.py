@@ -103,7 +103,13 @@ def baseline_definition(name: str) -> dict:
         return {"name": name, "pv_cids": pv, "firm_cids": pv, "nonfirm_cids": []}
     if name not in BASELINES:
         raise ValueError(f"no baseline {name!r}: one of {sorted(BASELINES)}")
-    sc = json.loads(processed("results", "showcase.json").read_text(encoding="utf-8"))
+    shown = processed("results", "showcase.json")
+    if name == "static" and not shown.exists():
+        # a build of the capacity alone: the static study's houses of the hourly study's median order,
+        # the map's "Static limit" (engine/hourly.py)
+        firm = json.loads(processed("results", "hourly.json").read_text(encoding="utf-8"))["static_cids"]
+        return {"name": name, "pv_cids": firm, "firm_cids": firm, "nonfirm_cids": []}
+    sc = json.loads(shown.read_text(encoding="utf-8"))
     if name == "static":
         firm = sc["firm_cids"]
         return {"name": name, "pv_cids": firm, "firm_cids": firm, "nonfirm_cids": []}

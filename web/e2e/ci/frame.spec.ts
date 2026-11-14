@@ -100,7 +100,9 @@ test("inside a project with nothing computed, the studies are listed and cannot 
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByRole("heading", { name: "Computation status" })).toBeVisible();
   await expect(dialog.getByText("Nothing has been computed for this project yet.")).toBeVisible();
-  await expect(dialog.getByText("python -m kapacitet compute", { exact: true })).toBeVisible();
+  // the capacity first, then the envelope studies (task 1.7 of the technical review)
+  await expect(dialog.getByText("python -m kapacitet compute --part capacity", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("python -m kapacitet compute --part envelopes", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect(names.nth(2)).toBeFocused();

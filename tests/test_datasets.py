@@ -119,6 +119,39 @@ def test_the_build_records_each_step_and_where_it_stopped(tmp_path, monkeypatch)
     assert all("error" not in s for s in again["steps"])
 
 
+def test_the_envelope_studies_are_a_second_build_that_keeps_the_first(tmp_path, monkeypatch):
+    """A network is built for its capacity, ready to open; the envelope studies are a second build
+    that keeps the first one's steps, and a failure of theirs leaves the network ready (task 1.7 of
+    the technical review of 14-11-2026)."""
+    from kapacitet import datasets as ds
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    ds_id = _dataset(ds)
+    with pytest.raises(ds.DatasetError) as early:
+        ds.build(ds_id, steps={"envelopes": lambda: {}}, part="envelopes")
+    assert early.value.code == "not_ready"
+    first = ds.build(ds_id, steps={s: (lambda: {}) for s in ds.STEPS})
+    assert first["status"] == "ready" and first["parts"] == ["capacity"]
+
+    def broke():
+        raise RuntimeError("the envelopes broke")
+
+    failed = ds.build(ds_id, steps={"envelopes": broke}, part="envelopes")
+    assert failed["status"] == "ready" and failed["parts"] == ["capacity"]
+    assert [s["name"] for s in failed["steps"]] == [*ds.STEPS, "envelopes"]
+    assert failed["steps"][-1]["status"] == "failed" and "the envelopes broke" in failed["steps"][-1]["error"]
+
+    both = ds.build(ds_id, steps={"envelopes": lambda: {"note": "done"}}, part="envelopes")
+    assert both["status"] == "ready" and both["parts"] == ["capacity", "envelopes"]
+    assert [s["status"] for s in both["steps"]] == ["done"] * (len(ds.STEPS) + 1)
+    # a rebuild of a network that had them computes both parts again
+    seen = {}
+    monkeypatch.setattr(ds, "_real_steps", lambda i, w, q, envelopes=False: seen.setdefault("envelopes", envelopes) and {}
+                        or {s: (lambda: {}) for s in ds.STEPS})
+    again = ds.build(ds_id)
+    assert seen["envelopes"] is True and again["parts"] == ["capacity", "envelopes"]
+
+
 def test_a_network_in_use_or_being_built_is_not_deleted(tmp_path, monkeypatch):
     import os
 
@@ -395,7 +428,7 @@ def test_a_build_never_writes_into_another_networks_folder(tmp_path, monkeypatch
         pipeline.cmd_dataset(Namespace(id=ds_id, workers=2, quick=True))
     assert left.value.code == 7 and len(calls) == 1                 # the child's own exit code
     cmd, kw = calls[0]
-    assert cmd[1:] == ["-m", "kapacitet", "dataset", "build", ds_id, "--workers", "2", "--quick"]
+    assert cmd[1:] == ["-m", "kapacitet", "dataset", "build", ds_id, "--workers", "2", "--part", "capacity", "--quick"]
     assert kw["env"]["KAPACITET_DATA_DIR"] == str(ds.folder(ds_id)) and kw["env"]["KAPACITET_HOME"] == str(tmp_path)
     assert "KAPACITET_SUPERVISED" not in kw["env"]
     # a network that does not exist is said, and nothing is started
@@ -404,7 +437,7 @@ def test_a_build_never_writes_into_another_networks_folder(tmp_path, monkeypatch
     assert unknown.value.code == 2 and len(calls) == 1
     # in its own folder the build runs in this process (its real steps are not refused)
     monkeypatch.setattr(paths, "DATA", ds.folder(ds_id))
-    assert ds.own_folder(ds_id) and set(ds._real_steps(ds_id, 2, True)) == set(ds.STEPS)
+    assert ds.own_folder(ds_id) and set(ds._real_steps(ds_id, 2, True)) == set(ds.STEPS + ds.ENVELOPE_STEPS)
 
 
 def test_a_house_without_an_outline_and_a_cable_without_a_route_can_be_drawn():
@@ -494,8 +527,9 @@ def test_an_example_network_says_it_is_made_up(api, tmp_path, monkeypatch):
 def test_the_build_writes_the_two_reports_no_stage_does(tmp_path, monkeypatch):
     """Operation reads the redispatch report and the fleet's compliance, which no stage of the
     computation writes: each has its own command, and the screen named it. Typed for an imported
-    network, that command acts on the reference network's folder. The build writes both; the fleet
-    check uses the network's meter readings when it has any, and a labelled synthetic fleet when not."""
+    network, that command acts on the reference network's folder. The envelope studies' build writes
+    both (the capacity part has nothing for them to read); the fleet check uses the network's meter
+    readings when it has any, and a labelled synthetic fleet when not."""
     from kapacitet import datasets as ds
     from kapacitet import paths
     from kapacitet.engine import forecast, meter_compliance, redispatch, run
@@ -517,14 +551,22 @@ def test_the_build_writes_the_two_reports_no_stage_does(tmp_path, monkeypatch):
     monkeypatch.setattr(meter_compliance, "build", fleet)
     monkeypatch.setattr(meter_compliance, "write", lambda report, root: calls.append(("written", report["readings"], str(root))))
     processed = str(ds.folder(ds_id) / "processed")
+    # the first build computes the capacity alone
     assert ds._real_steps(ds_id, 2, True)["compute"]() == {}
-    assert calls == [("compute", {"quick": True, "workers": 2}), ("forecast",), ("redispatch",),
+    assert calls == [("compute", {"quick": True, "workers": 2, "parts": ("capacity",)})]
+    calls.clear()
+    assert ds._real_steps(ds_id, 2, True)["envelopes"]() == {}
+    assert calls == [("compute", {"quick": True, "workers": 2, "parts": ("envelopes",)}), ("forecast",), ("redispatch",),
                      ("fleet", processed, False), ("fleet", processed, True), ("written", "synthetic", processed)]
+    # a rebuild of a network that had the envelope studies computes both parts again
+    calls.clear()
+    assert ds._real_steps(ds_id, 2, True, envelopes=True)["compute"]() == {}
+    assert calls[0] == ("compute", {"quick": True, "workers": 2, "parts": run.PARTS}) and calls[1] == ("forecast",)
 
     # readings that came with the network are the ones checked
     calls.clear()
     monkeypatch.setattr(meter_compliance, "build", lambda root, synthetic=False: {"readings": "metered"})
-    assert ds._real_steps(ds_id, 2, True)["compute"]() == {}
+    assert ds._real_steps(ds_id, 2, True)["envelopes"]() == {}
     assert calls[-1] == ("written", "metered", processed)
 
     # a report that cannot be made is said in the step's record, and the build goes on
@@ -536,7 +578,7 @@ def test_the_build_writes_the_two_reports_no_stage_does(tmp_path, monkeypatch):
 
     monkeypatch.setattr(redispatch, "write", refuse)
     monkeypatch.setattr(meter_compliance, "build", refuse_fleet)
-    assert ds._real_steps(ds_id, 2, True)["compute"]() == {"not_written": {
+    assert ds._real_steps(ds_id, 2, True)["envelopes"]() == {"not_written": {
         "redispatch": "results/operation/index.json is missing", "meter_compliance": "no envelopes"}}
 
 
@@ -549,13 +591,18 @@ def test_an_imported_network_is_computed_by_its_own_build(api, monkeypatch):
     monkeypatch.delenv("KAPACITET_DATASET", raising=False)
     parts = c.get("/api/v1/health").json()["parts"]
     assert parts["network"]["command"] == "python -m kapacitet build"
-    assert parts["results"]["command"] == "python -m kapacitet compute"
+    assert parts["results"]["command"] == "python -m kapacitet compute --part capacity"
+    assert parts["envelopes"]["command"] == "python -m kapacitet compute --part envelopes"
     assert parts["requests"]["command"].endswith("--stage extra --only requests")
     assert main.command_for("forecast.json") == "python -m kapacitet forecast"
 
     ds_id = _dataset(ds)
     monkeypatch.setenv("KAPACITET_DATASET", ds_id)
     build = f"python -m kapacitet dataset build {ds_id}"
-    assert {p["command"] for p in c.get("/api/v1/health").json()["parts"].values()} == {build}
-    assert main.command_for("forecast.json") == build and main.command_for("scenarios.json") == build
-    assert main.not_computed("showcase.json").detail["command"] == build
+    commands = {k: p["command"] for k, p in c.get("/api/v1/health").json()["parts"].items()}
+    # its capacity is its build; its envelope studies, the second part of it
+    assert commands.pop("envelopes") == f"{build} --part envelopes" and set(commands.values()) == {build}
+    assert main.command_for("consumption.json") == build and main.command_for("hourly.json") == build
+    assert main.command_for("forecast.json") == f"{build} --part envelopes"
+    assert main.command_for("scenarios.json") == f"{build} --part envelopes"
+    assert main.not_computed("showcase.json").detail["command"] == f"{build} --part envelopes"

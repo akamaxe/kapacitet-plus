@@ -7,7 +7,7 @@
 import { useEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useApi } from "./api";
-import { useFeatures, useFeaturesKnown } from "./features";
+import { useEnvelopeView, useFeaturesKnown } from "./features";
 
 export type HouseStatus = "firm" | "nonfirm" | "static" | "hourly" | "none";
 
@@ -29,7 +29,7 @@ export function houseStatus(p: HouseProps, envelopes: boolean): HouseStatus {
  */
 export function useHourly() {
   const known = useFeaturesKnown();
-  const envelopes = useFeatures().envelopes;
+  const envelopes = useEnvelopeView();
   const q = useApi<any>(known && !envelopes ? "/hourly" : null);
   const client = useQueryClient();
   const asked = useRef(false);

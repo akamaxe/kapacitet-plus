@@ -195,11 +195,17 @@ def cmd_compute(args: argparse.Namespace) -> None:
         print(f"--only takes: {', '.join(run.EXTRA_STAGES)}")
         sys.exit(2)
     workers = getattr(args, "workers", None)
+    part = getattr(args, "part", "all")
+    if extra and part != "all":
+        print("--part names a part of the whole computation; --stage extra runs extra stages: use one of them")
+        sys.exit(2)
     with step("Engine"):
         if extra:
             run.compute_extra(quick=args.quick, only=only, workers=4 if workers is None else workers)
-        else:
+        elif part == "all":
             run.compute_all(quick=args.quick, workers=6 if workers is None else workers)
+        else:
+            run.compute_all(quick=args.quick, workers=6 if workers is None else workers, parts=(part,))
 
 
 def cmd_bundle(args: argparse.Namespace) -> None:
@@ -438,12 +444,13 @@ def cmd_dataset(args: argparse.Namespace) -> None:
             ds.record(args.id)                      # an unknown network says so, before anything starts
             env = {**os.environ, **ds.child_env(args.id), "PYTHONUNBUFFERED": "1"}
             env.pop("KAPACITET_SUPERVISED", None)
-            cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", args.id, "--workers", str(args.workers)]
+            cmd = [sys.executable, "-m", "kapacitet", "dataset", "build", args.id, "--workers", str(args.workers),
+                   "--part", getattr(args, "part", "capacity")]
             if args.quick:
                 cmd.append("--quick")
             log.info("network %s builds in its own folder, %s", args.id, ds.folder(args.id))
             sys.exit(subprocess.run(cmd, env=env, cwd=str(ds.ROOT)).returncode)
-        rec = build(args.id, workers=args.workers, quick=args.quick)
+        rec = build(args.id, workers=args.workers, quick=args.quick, part=getattr(args, "part", "capacity"))
     except DatasetError as err:
         print(err)
         sys.exit(2)
@@ -891,6 +898,9 @@ def main(argv: list[str] | None = None) -> None:
             p.add_argument("--only", default="", help=f"with --stage extra: comma list of {_STAGES}")
             p.add_argument("--workers", type=_workers, default=None,
                            help="worker processes for the parallel stages (default 6, or 4 with --stage extra)")
+            p.add_argument("--part", choices=["all", "capacity", "envelopes"], default="all",
+                           help="capacity: the hourly capacity and what the requests need, first; "
+                                "envelopes: the envelopes and everything built on them")
         p.set_defaults(func=func)
 
     p = sub.add_parser("import", help="build the engine's tables from a network export")
@@ -1007,6 +1017,9 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("id", help="the network's id (data/datasets/<id>)")
     p.add_argument("--workers", type=_workers, default=2, help="worker processes for the parallel stages")
     p.add_argument("--quick", action="store_true", help="one weather year and fewer adoption orders")
+    p.add_argument("--part", choices=["capacity", "envelopes"], default="capacity",
+                   help="capacity: the network, its profiles and its capacity (ready to open); "
+                        "envelopes: the envelope studies of a network already built")
     p.set_defaults(func=cmd_dataset)
 
     p = sub.add_parser("bundle", help="pack the computed data to run it elsewhere")

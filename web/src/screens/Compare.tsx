@@ -7,7 +7,7 @@ import { Chart } from "../components/LazyChart";
 import { axisStyle } from "../lib/chartStyle";
 import { ChartSkeleton, PageSkeleton } from "../components/Skeleton";
 import { SectionBar, type Section } from "../components/SectionBar";
-import { SectionMissing, ChartOrTable, Legend, Missing, Protocol, Tile } from "../components/bits";
+import { ChartOrTable, Legend, Missing, PartMissing, Protocol, SectionMissing, Tile } from "../components/bits";
 // the map library is the heaviest thing on this screen: it loads beside the words, not before them
 const NetworkMap = lazy(() => import("../components/NetworkMap").then((m) => ({ default: m.NetworkMap })));
 import { Term } from "../components/Term";
@@ -17,7 +17,7 @@ import { hourLabel, hoursInYear, median, monthNames, monthStarts, useFmt } from 
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { bindingLimit, curveMarks, uncontrolledPasses } from "../lib/verdicts";
-import { useFeatures } from "../lib/features";
+import { useEnvelopeView, useFeatures } from "../lib/features";
 import { useHourly } from "../lib/houses";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
@@ -26,18 +26,21 @@ export default function Compare() {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
-  const envelopes = useFeatures().envelopes;
+  // the envelopes switched on (lib/features.ts); the envelope view also needs the envelopes part of
+  // the project's computation, so `envelopes` below is the two together
+  const envOn = useFeatures().envelopes;
+  const envView = useEnvelopeView();
   const hosting = useApi<any>("/hosting");
   // the hourly study's deployment, the capacity view's own (engine/hourly.py): asked where the
   // envelopes are off, and computed by the server the first time
   const hourly = useHourly();
   const HR = hourly.data?.data;
   // the heatmaps are a third of the showcase and drawn far down: they load as their section nears
-  const show = useApi<any>("/showcase?heatmaps=false");
+  const show = useApi<any>(envView ? "/showcase?heatmaps=false" : null);
   const whenRef = useRef<HTMLElement | null>(null);
   const [whenNear, setWhenNear] = useState(false);
   const heatmaps = useApi<any>(whenNear ? "/showcase/heatmaps" : null);
-  const risk = useApi<any>("/risk");
+  const risk = useApi<any>(envView ? "/risk" : null);
   const val = useApi<any>("/validation");
   // the criteria the protocol holds the results against are model inputs, not constants here
   const assumptions = useApi<any>("/assumptions");
@@ -45,8 +48,8 @@ export default function Compare() {
   const meta = useApi<any>("/meta");
   const net = useApi<any>("/network");
   // what the extra solar is worth, the reinforcement it avoids, and the phase-by-phase check
-  const over = useApi<any>("/overinstallation");
-  const reinf = useApi<any>("/reinforcement");
+  const over = useApi<any>(envView ? "/overinstallation" : null);
+  const reinf = useApi<any>(envView ? "/reinforcement" : null);
   const phases = useApi<any>("/phases");
   const trafoMva: number | null =
     net.data?.features?.find((x: any) => x.properties?.layer === "substation")?.properties?.trafo_sn_mva ?? null;
@@ -72,25 +75,28 @@ export default function Compare() {
   });
 
   const zDoeMedian = useMemo(() => {
-    if (!H) return null;
+    if (!H?.summary?.measures?.doe) return null;
     return median(H.summary.per_order.map((o: any) => o.z_doe_pct));
   }, [H]);
 
   // the protocol's rows come from three answers: wait for all of them, so the table does not
   // grow under the reader
   if (hosting.isLoading || show.isLoading || assumptions.isLoading || val.isLoading) return <PageSkeleton bar hero blocks={2} />;
-  if (!H || !S) return <Missing of={[hosting, show, risk, val]} />;
+  if (!H) return <Missing of={[hosting, val]} />;
 
   const m = H.summary.measures;
+  // the envelope view where they are on and computed for this project; on and not computed, the
+  // capacity view and a note with the command that computes them (SectionMissing)
+  const envelopes = envView && !!S && !!m.doe;
   // the houses the issuable range connects: the hourly study's and, when published, the day-ahead envelopes'
   const stops = heroStops(H);
   const [hLo, hHi] = stops?.issuableHouses ?? [m.timeseries.adopters.median, m.timeseries.adopters.median];
   const issuableHouses = hLo === hHi ? f(hLo) : `${f(hLo)}–${f(hHi)}`;
   const zStar = H.summary.z_star_pct;
   const years = H.summary.years;
-  const pol = S.policies;
-  const ver = S.verification;
-  const fixedZ = (H.curve.points as any[]).map((p) => p.z_fixed_pct).filter((v: number) => v > 0);
+  const pol = S?.policies;
+  const ver = S?.verification;
+  const fixedZ = ((H.curve?.points ?? []) as any[]).map((p) => p.z_fixed_pct).filter((v: number) => v > 0);
   const limit = (key: string): number | null =>
     (assumptions.data?.assumptions as any[] | undefined)?.find((a) => a.key === key)?.value ?? null;
   const vMax = limit("v_max_pu");
@@ -189,6 +195,13 @@ export default function Compare() {
           </div>
         </section>
 
+        {/* the envelopes switched on for a project computed for its capacity alone: what to compute */}
+        {envOn && !envelopes && (
+          <section className="region">
+            <PartMissing title={t("cmp.envMissing")} part="envelopes" />
+          </section>
+        )}
+
         {/* ---------------------------------------------------------------- capacity */}
         <section className="region" id="capacity">
           <div className="region-head">
@@ -249,7 +262,7 @@ export default function Compare() {
                 { ok: HR.verification.violation_hours === 0, label: t("cmp.verify.hourly"), value: f(HR.verification.violation_hours), unit: "h", criterion: t("cmp.verify.hourlyNote", { h: f(HR.verification.hours), year: HR.year }) },
                 ...(vMax != null ? [{ ok: HR.verification.max_voltage_pu <= vMax, label: t("cmp.verify.vmaxHourly"), value: f(HR.verification.max_voltage_pu, 3), unit: "pu", criterion: t("cmp.verify.limit", { v: `${f(vMax, 2)} pu` }) }] : []),
                 ...(thermal != null ? [{ ok: HR.verification.max_trafo_loading_pct <= thermal, label: t("cmp.verify.trafoHourly"), value: f(HR.verification.max_trafo_loading_pct, 1), unit: "%", criterion: t("cmp.verify.limit", { v: `${f(thermal)} %` }) }] : []),
-                { ok: ver.static_violation_hours === 0, label: t("cmp.verify.static"), value: f(ver.static_violation_hours), unit: "h", criterion: t("cmp.verify.staticNote", { year: S.year }) },
+                { ok: HR.static_violation_hours === 0, label: t("cmp.verify.static"), value: f(HR.static_violation_hours), unit: "h", criterion: t("cmp.verify.staticNote", { year: HR.year }) },
                 ...(PF ? [{ ok: null, label: t("cmp.verify.zbus"), value: PF.max_abs_dv_pu.toExponential(0), unit: "pu", criterion: t("cmp.verify.zbusNote", { n: PF.cases }) }] : []),
               ]}
             />

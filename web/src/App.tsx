@@ -23,7 +23,7 @@ import { useCan, useMe } from "./lib/auth";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { useApi } from "./lib/api";
 import { OPENING, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
-import { featuresOf, screenLabel, visibleScreens } from "./lib/features";
+import { featuresOf, screenLabel, useEnvelopeView, visibleScreens } from "./lib/features";
 
 initUrlSync();
 
@@ -73,6 +73,8 @@ function Main() {
   // the parts this installation shows: a screen of a part that is off is nowhere, and a link to it
   // opens the capacity screen (lib/features.ts)
   const features = featuresOf(health.data);
+  // the open project's envelope view, for the capacity screen's name (lib/features.ts)
+  const envView = useEnvelopeView();
   const shown = visibleScreens(features);
   const shownRef = useRef(shown);
   shownRef.current = shown;
@@ -141,7 +143,7 @@ function Main() {
   // heading, so a screen reader announces where it has arrived (not on the first load, and not
   // while the tour holds the focus on its own card)
   const firstScreen = useRef(true);
-  const place = view === "start" ? t("start.title") : screenLabel(t, screen, features);
+  const place = view === "start" ? t("start.title") : screenLabel(t, screen, features, envView);
   // The document is named for the screen and, inside a project, for the project. Installed with a
   // window of its own, that window already carries the program's name before the title.
   const titled = [place, view === "work" ? site : undefined, window.matchMedia?.("(display-mode: standalone)").matches ? undefined : "Kapacitet+"]
@@ -233,7 +235,7 @@ function Main() {
       whenThere(id, (el) => settleOn(el, 72));
     };
     return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown, outputOpen,
-      screens: shown, label: (s) => screenLabel(t, s, features), envelopes: features.envelopes }, {
+      screens: shown, label: (s) => screenLabel(t, s, features, envView), envelopes: features.envelopes }, {
       screen: (s) => st().setScreen(s),
       start: () => { if (st().view !== "start") st().setView("start"); },
       newProject: () => {
@@ -282,7 +284,7 @@ function Main() {
       manual: () => window.open(MANUAL, "_blank", "noopener,noreferrer"),
       about: () => openDialog("about"),
     });
-  }, [t, view, screen, ready, canProjects, theme, lang, treeShown, outputOpen, shown.join(), features.envelopes]);
+  }, [t, view, screen, ready, canProjects, theme, lang, treeShown, outputOpen, shown.join(), features.envelopes, envView]);
   const toggleTreeRef = useRef(toggleTree);
   toggleTreeRef.current = toggleTree;
 
@@ -400,7 +402,7 @@ function Main() {
           </Suspense>
         </ErrorBoundary>
         ) : (
-        <ErrorBoundary where={screenLabel(t, showing, features)} onReset={() => setAttempt((a) => a + 1)} key={`${showing}-${attempt}`}>
+        <ErrorBoundary where={screenLabel(t, showing, features, envView)} onReset={() => setAttempt((a) => a + 1)} key={`${showing}-${attempt}`}>
           <Suspense fallback={<ScreenSkeleton screen={showing} />}>
             {showing === "national" && <National />}
             {showing === "twin" && <Twin />}

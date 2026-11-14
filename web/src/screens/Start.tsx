@@ -26,6 +26,7 @@ import {
   projectsOf, readRecents, sortProjects, touchRecent, useProjects, type Project,
 } from "../lib/projects";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
 
 const NewProject = lazy(() => import("../components/NewProject"));
 
@@ -76,6 +77,8 @@ export default function Start({ onKeys, onAbout }: {
   const client = useQueryClient();
   const list = useProjects();
   const role = useCan("datasets");
+  // the envelope studies are offered where the envelopes are on (lib/features.ts)
+  const envelopesOn = useFeatures().envelopes;
   const kind = useKind();
   const buildLine = useBuildLine();
   const [selected, setSelected] = useState<string | null>(null);
@@ -150,10 +153,10 @@ export default function Start({ onKeys, onAbout }: {
     setSwitching(true);
   };
 
-  const act = async (p: Project, action: "build" | "cancel") => {
+  const act = async (p: Project, action: "build" | "cancel" | "envelopes") => {
     const r = await projectWrite(p.id, action);
     if (!r?.ok) return toast.error(r ? await responseRefusal(t, r) : t("ui.offline"));
-    log.info(t(action === "build" ? "log.build.start" : "log.build.stop", { name: p.name }));
+    log.info(t(action === "build" ? "log.build.start" : action === "envelopes" ? "log.build.envelopes" : "log.build.stop", { name: p.name }));
     await refresh();
   };
 
@@ -309,6 +312,15 @@ export default function Start({ onKeys, onAbout }: {
                         {t("proj.rebuild")}
                       </button>
                     )}
+                    {/* the second part of a build, where the envelopes are on: never the project in use,
+                        whose folder the server reads */}
+                    {envelopesOn && !picked.reference && picked.state === "ready" && picked.summary.envelopes === false && (
+                      <button className="btn ghost" disabled={switching || picked.current || !role.ok}
+                        title={picked.current ? t("proj.envelopesInUse") : role.reason}
+                        aria-describedby={picked.current ? "envelopes-why" : undefined} onClick={() => void act(picked, "envelopes")}>
+                        {t("proj.envelopes")}
+                      </button>
+                    )}
                     {picked.state === "building" && (
                       <button className="btn ghost" disabled={!role.ok} title={role.reason} onClick={() => void act(picked, "cancel")}>
                         {t("proj.stop")}
@@ -326,6 +338,9 @@ export default function Start({ onKeys, onAbout }: {
                     )}
                   </div>
                   <RoleNote action="datasets" />
+                  {envelopesOn && !picked.reference && picked.state === "ready" && picked.summary.envelopes === false && picked.current && (
+                    <p className="caption-muted" id="envelopes-why">{t("proj.envelopesInUse")}</p>
+                  )}
                   {!ready && picked.state !== "empty" && <p className="caption-muted">{t("proj.notReady")}</p>}
                   {ready && !picked.current && !supervised && <p className="caption-muted">{t("proj.unsupervised")}</p>}
                   {picked.current && !picked.reference && <p className="caption-muted">{t("proj.shared")}</p>}

@@ -1,6 +1,6 @@
 import { Fragment, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { ApiError } from "../lib/api";
+import { ApiError, useApi } from "../lib/api";
 import { Icon } from "./Icon";
 import { useT } from "../lib/i18n";
 import { useFmt } from "../lib/format";
@@ -203,6 +203,20 @@ export function SectionMissing({ title, q }: { title: string; q: { isError?: boo
     <div className="section-missing" role="note">
       <p className="caption"><strong>{title}</strong> · {e?.info?.code === "not_computed" ? t("ui.notComputedHow", { file: e.info.file ?? "" }) : e?.status === 0 ? t("ui.offline") : named ?? t("ui.missing")}</p>
       {e?.info?.command && <CommandLine command={e.info.command} />}
+    </div>
+  );
+}
+
+/** A part of the computation the open project lacks (/health `parts`): what is missing and the
+ * command that computes it, in SectionMissing's words. Nothing once the part is on disk. */
+export function PartMissing({ title, part }: { title: string; part: string }) {
+  const t = useT();
+  const info = useApi<any>("/health").data?.parts?.[part];
+  if (!info || info.ready) return null;
+  return (
+    <div className="section-missing" role="note">
+      <p className="caption"><strong>{title}</strong> · {t("ui.notComputedHow", { file: info.missing?.[0] ?? "" })}</p>
+      {info.command && <CommandLine command={info.command} />}
     </div>
   );
 }

@@ -15,7 +15,7 @@ import os
 
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 
 from .. import datasets as ds
@@ -172,10 +172,18 @@ def get_template(template_id: str) -> dict:
 
 
 @router.post("/datasets/{ds_id}/build")
-def rebuild(ds_id: str) -> dict:
-    """Build a network again, after a build that failed or to bring it up to date."""
+def rebuild(ds_id: str, part: str = Query("capacity", pattern="^(capacity|envelopes)$")) -> dict:
+    """Build a network again, after a build that failed or to bring it up to date (`part`
+    "capacity"), or add the envelope studies to a network that is ready ("envelopes", where the
+    envelopes are on)."""
+    from .. import features
+
+    if part == "envelopes" and not features.on("envelopes"):
+        from .main import api_error
+
+        raise api_error(404, "feature_off", feature="envelopes")
     try:
-        ds.launch(ds_id, workers=2)
+        ds.launch(ds_id, workers=2, part=part)
     except ds.DatasetError as err:
         raise refusal(err, 404 if err.code == "unknown_dataset" else 409) from err
     return ds.record(ds_id)

@@ -80,8 +80,11 @@ _CASES_AFTER_TRAFO = [
 
 
 def _tornado_case(args) -> dict:
+    """One case of the sensitivity: `(case, order, years, z_star)` and, fifth, False to search the
+    static and the hourly study alone (the capacity part of a build, no envelope search)."""
     warnings.filterwarnings("ignore")
-    case, o, years, z_star = args
+    case, o, years, z_star = args[:4]
+    envelopes = bool(args[4]) if len(args) > 4 else True
     key, label, level, model_kw, overrides = case
     set_overrides(overrides)
     try:
@@ -92,10 +95,12 @@ def _tornado_case(args) -> dict:
         cap = doe.customer_caps()
         ms = hosting.static_adopters(m, order, hp, ev)
         mts = hosting.ts_adopters(m, order, hp, ev, years, lo=ms)
-        yd = _largest_true(lambda k: _z_doe(m, order, ms, k, years, hp, ev) <= z_star, mts, m.C)
-        return {"key": key, "label": label, "level": level, "static_kw": float(cap[order[:ms]].sum()),
-                "timeseries_kw": float(cap[order[:mts]].sum()), "doe_kw": float(cap[order[:yd]].sum()),
-                "static_adopters": ms, "timeseries_adopters": mts, "doe_adopters": yd}
+        row = {"key": key, "label": label, "level": level, "static_kw": float(cap[order[:ms]].sum()),
+               "timeseries_kw": float(cap[order[:mts]].sum()), "static_adopters": ms, "timeseries_adopters": mts}
+        if envelopes:
+            yd = _largest_true(lambda k: _z_doe(m, order, ms, k, years, hp, ev) <= z_star, mts, m.C)
+            row.update(doe_kw=float(cap[order[:yd]].sum()), doe_adopters=yd)
+        return row
     finally:
         set_overrides(None)
 
@@ -125,16 +130,19 @@ def tornado_cases(net=None) -> list[tuple]:
             + _CASES_AFTER_TRAFO)
 
 
-def tornado(o: int, years, z_star: float, workers: int = 8) -> None:
+def tornado(o: int, years, z_star: float, workers: int = 8, envelopes: bool = True) -> None:
+    """The sensitivity of the capacity to each input, on adoption order `o`. Without `envelopes`,
+    the static and the hourly study alone, and the file says so (`measures`)."""
     from concurrent.futures import ProcessPoolExecutor
 
     from .run import _init_worker
     base_case = ("base", "Base case", "base", {}, {})
     cases = [base_case] + tornado_cases()
     with ProcessPoolExecutor(max_workers=workers, initializer=_init_worker) as ex:
-        rows = list(ex.map(_tornado_case, [(c, o, tuple(years), z_star) for c in cases]))
-    _write("tornado.json", {"order": o, "years": list(years), "z_star_pct": z_star, "base": rows[0],
-                            "cases": rows[1:]})
+        rows = list(ex.map(_tornado_case, [(c, o, tuple(years), z_star, envelopes) for c in cases]))
+    measures = ["static", "timeseries"] + (["doe"] if envelopes else [])
+    _write("tornado.json", {"order": o, "years": list(years), "z_star_pct": z_star, "measures": measures,
+                            "base": rows[0], "cases": rows[1:]})
 
 
 # ------------------------------------------------------------------------------ the MV band
@@ -926,12 +934,14 @@ def scenarios_2030(o: int, ms_static: int, year: int, quick: bool, workers: int 
 
 # ------------------------------------------------------------------------------ request baselines
 
-def request_baselines(years) -> None:
+def request_baselines(years, envelopes: bool = True) -> None:
+    """The grid states a request meets, for every weather year: today's (the static study's houses)
+    and, with the envelopes, the envelope scenario's."""
     from . import request
     from .run import background_masks, model
     m = model()
     hp, ev = background_masks(m.C)
-    for name in request.PUBLISHED:
+    for name in request.PUBLISHED if envelopes else ("static",):
         t0 = time.perf_counter()
         request.precompute(m, name, years, hp, ev)
         log.info("request baseline %s (%.0f s)", name, time.perf_counter() - t0)

@@ -46,13 +46,15 @@ export interface Summary {
   /** new EV chargers it takes, median over the orders: by the hourly study, and by the static convention */
   ev_chargers: number | null;
   ev_chargers_static: number | null;
+  /** whether the envelope studies are computed (the second part of a build) */
+  envelopes: boolean | null;
   assumptions: Assumption[];
 }
 
 export const NO_SUMMARY: Summary = {
   customers: null, feeders: null, buses: null, lines: null, trafo_type: null, computed_at: null, quick: null,
   reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null, ev_chargers: null,
-  ev_chargers_static: null, assumptions: [],
+  ev_chargers_static: null, envelopes: null, assumptions: [],
 };
 
 /** An assumption as one sentence, with its counts. Pure. */
@@ -244,8 +246,9 @@ export function useProjects() {
 }
 
 /** A write about one project (activate, build, cancel, delete); null when the server never answered. */
-export function projectWrite(id: string, action: "activate" | "build" | "cancel" | "delete"): Promise<Response | null> {
-  const path = action === "delete" ? `/datasets/${id}` : `/datasets/${id}/${action}`;
+export function projectWrite(id: string, action: "activate" | "build" | "cancel" | "delete" | "envelopes"): Promise<Response | null> {
+  // "envelopes": the second part of a build, the envelope studies of a project that is ready
+  const path = action === "delete" ? `/datasets/${id}` : action === "envelopes" ? `/datasets/${id}/build?part=envelopes` : `/datasets/${id}/${action}`;
   const method: WriteMethod = action === "delete" ? "DELETE" : "POST";
   return apiWrite(path, {}, method).catch(() => null);
 }

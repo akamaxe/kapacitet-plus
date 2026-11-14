@@ -218,14 +218,22 @@ def _check_data(inst: Instance, out: list[Finding]) -> None:
     if git_working_tree(inst.data) is not None:
         out.append(Finding("data", "warn", f"{inst.data} is inside a git working tree: keep a DSO's data outside "
                                            "any checkout (KAPACITET_DATA_DIR, KAPACITET_HOME)"))
+    from . import features
+
     processed = inst.data / "processed"
-    missing = [p for p in ("grid/net.json", "results/showcase.json") if not (processed / p).is_file()]
+    # the capacity part of the computation is what every installation shows; the envelopes part only
+    # where the envelopes are on (engine/run.py PARTS)
+    missing = [p for p in ("grid/net.json", "results/hosting_summary.json") if not (processed / p).is_file()]
+    envelopes = features.on("envelopes")
     if missing:
         out.append(Finding("results", "error", f"missing {', '.join(missing)} under {processed}: run "
                                                "`kapacitet all`, or `kapacitet unbundle` the data release"))
     else:
         out.append(Finding("results", "ok", "the network and the published results are there"))
-        if not (processed / "results" / "operation" / "index.json").is_file():
+        if envelopes and not (processed / "results" / "showcase.json").is_file():
+            out.append(Finding("results", "warn", "the envelopes are on and their studies are not computed: run "
+                                                  "`kapacitet compute --part envelopes`"))
+        elif envelopes and not (processed / "results" / "operation" / "index.json").is_file():
             out.append(Finding("results", "warn", "no operation results: run "
                                                   "`kapacitet compute --stage extra --only operation`"))
         if _env("KAPACITET_SETUP_UPLOAD") == "1":
