@@ -50,10 +50,14 @@ store at deploy time. The seal key lives on its own volume.
 5. **The seal key.** Point `KAPACITET_SEAL_KEY_DIR` at a volume of its own, owned by uid 10001.
    The first seal makes the key. Back it up once it exists (below). The check prints its key id,
    which every chain line names.
-6. **Timestamps and telemetry**, if the DSO wants them: set `KAPACITET_TSA_URL`, download the
+6. **The parts it shows.** By default an installation shows the hourly capacity, the connection
+   requests and the method. Name the other parts the DSO uses in `KAPACITET_FEATURES`
+   (`envelopes`, `national`, `scenarios`, `portal`, or `all`); the README's "What is switched on"
+   says what each adds. The applicant's portal needs `portal`.
+7. **Timestamps and telemetry**, if the DSO wants them: set `KAPACITET_TSA_URL`, download the
    TSA's certificate once and set `KAPACITET_TSA_CERT`. For telemetry, set
    `OTEL_EXPORTER_OTLP_ENDPOINT`.
-7. **Check it, then run it:**
+8. **Check it, then run it:**
 
    ```bash
    docker run --rm --env-file /etc/kapacitet/instance.env \
@@ -82,6 +86,7 @@ password, the identity provider by the host of its issuer, and the key by its id
 | seal chain | the chain does not verify with this installation's keys | legacy unsigned lines; a line cut short by a crash |
 | timestamps | the TSA URL is not http(s), rfc3161ng is missing, or the certificate cannot be read | no certificate is set; it has expired; some lines still wait for their timestamp |
 | telemetry | it is on but the endpoint is not a URL, or the exporter is missing | spans go to the console |
+| features | | `KAPACITET_FEATURES` names something that is no part (it switches nothing on); the parts that are on are always listed |
 | disk | less than 1 GiB is free under the data folder | less than 5 GiB is free |
 
 ## Upgrade

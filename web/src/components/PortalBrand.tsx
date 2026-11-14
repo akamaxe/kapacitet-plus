@@ -9,7 +9,7 @@
  */
 import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { BrandMark, PRODUCT, useBrand, type Brand } from "../apply/Brand";
+import { BrandMark, PRODUCT, isBranded, useBrand, type Brand } from "../apply/Brand";
 import { Icon } from "./Icon";
 import { RoleNote } from "./RoleNote";
 import { toast } from "./Toast";
@@ -84,7 +84,9 @@ export function PortalBrand() {
     <section className="block stack" aria-labelledby="portal-brand">
       <div className="block-head"><h3 id="portal-brand">{t("brand.title")}</h3></div>
       <p className="caption">{t("brand.lead", { product: PRODUCT })}</p>
-      <div className="portal-bar is-branded brand-preview" aria-label={t("brand.preview")} role="img"
+      {/* the bar the portal will show: the DSO's light bar once it has a name or a logo, the product's
+          own dark one (and its reversed logo) until then */}
+      <div className={`portal-bar${isBranded(preview) ? " is-branded" : ""} brand-preview`} aria-label={t("brand.preview")} role="img"
         style={preview.accent ? { borderBottomColor: preview.accent } : undefined}>
         <BrandMark brand={preview} />
       </div>

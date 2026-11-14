@@ -1,4 +1,5 @@
 import type { TFn } from "./i18n";
+import { houseStatus, type HouseStatus } from "./houses";
 import type { Screen } from "./store";
 
 /**
@@ -16,7 +17,7 @@ export interface TreeNode {
   screen?: Screen;
   /** a house this entry selects, and how its solar is connected */
   cid?: number;
-  status?: "firm" | "nonfirm" | "none";
+  status?: HouseStatus;
   /** how many houses a feeder has, said after its name */
   count?: number;
   children?: TreeNode[];
@@ -28,6 +29,8 @@ export interface TreeHouse {
   address: string | null;
   feeder: number;
   pv_status?: string;
+  /** how it is connected where this installation shows it (lib/houses.ts) */
+  status?: HouseStatus;
 }
 
 export interface TreeInput {
@@ -41,13 +44,15 @@ export interface TreeInput {
   label?: (s: Screen) => string;
 }
 
-/** The houses of a network answer, as the tree needs them. */
-export function treeHouses(features: any[] | undefined): TreeHouse[] {
+/** The houses of a network answer, as the tree needs them; `envelopes` says whose deployment
+    gives their status (lib/houses.ts). */
+export function treeHouses(features: any[] | undefined, envelopes = true): TreeHouse[] {
   const out: TreeHouse[] = [];
   for (const ft of features ?? []) {
     const p = ft?.properties;
     if (p?.layer === "house" && Number.isInteger(p.cid)) {
-      out.push({ cid: p.cid, address: p.address || null, feeder: Number.isInteger(p.feeder) ? p.feeder : -1, pv_status: p.pv_status });
+      out.push({ cid: p.cid, address: p.address || null, feeder: Number.isInteger(p.feeder) ? p.feeder : -1, pv_status: p.pv_status,
+        status: houseStatus(p, envelopes) });
     }
   }
   return out;
@@ -80,7 +85,7 @@ export function buildTree(t: TFn, input: TreeInput): TreeNode {
         kind: "house",
         label: named(h),
         cid: h.cid,
-        status: h.pv_status === "firm" || h.pv_status === "nonfirm" ? h.pv_status : "none",
+        status: h.status ?? (h.pv_status === "firm" || h.pv_status === "nonfirm" ? h.pv_status : "none"),
       })),
     };
   });

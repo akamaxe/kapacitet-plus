@@ -13,7 +13,8 @@ import { hoursInYear, hourLabel, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { faultText } from "../lib/reasons";
-import { SCENARIOS, useStore } from "../lib/store";
+import { CAPACITY_SCENARIOS, ENVELOPE_SCENARIOS, useStore } from "../lib/store";
+import { houseStatus, useHourly, type HouseStatus } from "../lib/houses";
 import { useFeatures } from "../lib/features";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
@@ -31,7 +32,7 @@ interface HouseRow {
   cid: number;
   address: string;
   feeder: number;
-  status: "firm" | "nonfirm" | "none";
+  status: HouseStatus;
   kwp: number;
   fuse: number;
   dist: number;
@@ -59,7 +60,10 @@ export default function Twin() {
   // the scenarios of the envelopes (their houses without control, and with their limits) only where
   // they are on; a link or a tour step that asks for one opens the static one (lib/features.ts)
   const envelopes = useFeatures().envelopes;
-  const scenario = envelopes || wanted === "static" ? wanted : "static";
+  // the scenarios of this installation: the envelopes' where they are on, the hourly study's where not
+  const scenarios = envelopes ? ENVELOPE_SCENARIOS : CAPACITY_SCENARIOS;
+  const scenario = scenarios.includes(wanted) ? wanted : "static";
+  const hourly = useHourly();
   useEffect(() => {
     if (scenario !== wanted) setScenario(scenario);
   }, [scenario, wanted, setScenario]);
@@ -74,7 +78,9 @@ export default function Twin() {
   const year: number = meta.data?.reference_year;
   const series = useApi<any>(meta.data ? `/series/${year}` : null);
   const show = useApi<any>("/showcase?heatmaps=false");
-  const st = useGridState(scenario);
+  // where the envelopes are off the static scenario is the static study's houses of the same order
+  // as the hourly study's (engine/hourly.py), so the two scenarios are one order seen two ways
+  const st = useGridState(!envelopes && scenario === "static" ? "hourly_static" : scenario);
   const mapRef = useRef<MLMap | null>(null);
   const tipRef = useRef<(tip: Tip | null) => void>(() => {});
   const lastColor = useRef(new Map<string, string>());
@@ -302,13 +308,18 @@ export default function Twin() {
   const center: [number, number] = meta.data.center;
   const ser = series.data?.data;
   const nNonfirm = sc ? sc.nonfirm_cids.length : 0;
-  const scnText = sc
-    ? scenario === "static"
-      ? t("scn.static.d", { n: sc.firm })
-      : scenario === "uncontrolled"
-        ? t("scn.uncontrolled.d", { n: sc.adopters, h: sc.verification.uncontrolled_violation_hours, year })
-        : t("scn.doe.d", { n: sc.adopters, k: nNonfirm })
-    : "";
+  const HR = hourly.data?.data;
+  const scnText = !envelopes
+    ? (HR ? (scenario === "hourly"
+      ? t("scn.hourly.d", { n: HR.timeseries_adopters, m: HR.static_adopters, year: HR.year })
+      : t("scn.static.d", { n: HR.static_adopters })) : "")
+    : sc
+      ? scenario === "static"
+        ? t("scn.static.d", { n: sc.firm })
+        : scenario === "uncontrolled"
+          ? t("scn.uncontrolled.d", { n: sc.adopters, h: sc.verification.uncontrolled_violation_hours, year })
+          : t("scn.doe.d", { n: sc.adopters, k: nNonfirm })
+      : "";
 
   return (
     <div className="split">
@@ -335,7 +346,7 @@ export default function Twin() {
           <button className="region-toggle" aria-expanded={openTable} onClick={() => setOpenTable(!openTable)}>
             <Icon name={openTable ? "sort" : "next"} size={15} />
             <span>{t("dt.houses", { n: houses.length })}</span>
-            <span className="caption-muted">{t("dt.hint")}</span>
+            <span className="caption-muted">{t(envelopes ? "dt.hint" : "dt.hintCapacity")}</span>
           </button>
           {openTable && (
             <HouseTable houses={houses} rows={rows} st={st} curtailed={curtailed} selectedCid={selectedCid} select={select} year={year} />
@@ -359,7 +370,7 @@ export default function Twin() {
 
         <div className="stack">
           <div className="seg" role="group" aria-label={t("twin.scenario")}>
-            {SCENARIOS.filter((s) => envelopes || s === "static").map((s) => (
+            {scenarios.map((s) => (
               <button key={s} aria-pressed={scenario === s} onClick={() => setScenario(s)}>
                 {t(`scn.${s}`)}
               </button>
@@ -520,7 +531,9 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
   const v = st.data && r !== undefined ? st.data.voltage(r, hour) : null;
   const p = st.data ? st.data.power(house.cid, hour) : null;
   // a house on an envelope: its own published limit, read for the hour on screen
-  const nonfirm = house.pv_status === "nonfirm";
+  // a house on an envelope only where the envelopes are on: its limit is theirs (lib/features.ts)
+  const envelopes = useFeatures().envelopes;
+  const nonfirm = envelopes && house.pv_status === "nonfirm";
   const env = useApi<any>(nonfirm ? `/envelopes/${house.cid}` : null);
   const limit: number | null = env.data?.envelope_kw?.[hour] ?? null;
   const loads = [house.has_hp ? t("dt.hp") : null, house.has_ev ? t("dt.ev") : null].filter(Boolean).join(", ");
@@ -537,7 +550,7 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
       <div className="tiles cols-2">
         <Tile label={t("dt.voltage")} value={v == null ? "–" : f(v, 3)} unit="pu" />
         <Tile label={t("dt.net")} value={p == null ? "–" : f(p, 1)} unit="kW" />
-        <Tile label={t("dt.status")} value={<span className="t-word"><HouseStatus status={house.pv_status} /></span>} />
+        <Tile label={t("dt.status")} value={<span className="t-word"><HouseStatus status={houseStatus(house, envelopes)} /></span>} />
         <Tile label={t("dt.kwp")} value={f(house.kwp, 1)} unit="kWp" />
         <Tile label={t("dt.feeder")} value={house.feeder + 1} />
         <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
@@ -640,6 +653,7 @@ function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: 
   selectedCid: number | null; select: (cid: number | null) => void; year: number;
 }) {
   const t = useT();
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const hour = useStore((s) => s.hour);
@@ -653,14 +667,14 @@ function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: 
         bus: p.bus as number,
         address: (p.address as string) || t("dt.unnamed", { id: p.cid }),
         feeder: p.feeder as number,
-        status: p.pv_status as "firm" | "nonfirm" | "none",
+        status: houseStatus(p, envelopes),
         kwp: p.kwp as number,
         fuse: p.fuse_a as number,
         dist: p.dist_m as number,
         curtailed: curtailed.get(p.cid) ?? null,
       };
     }),
-    [houses, curtailed, t],
+    [houses, curtailed, t, envelopes],
   );
 
   const tableRows: HouseRow[] = useMemo(
@@ -699,16 +713,17 @@ function HouseTable({ houses, rows, st, curtailed, selectedCid, select, year }: 
         numeric: true,
       },
       { key: "p", label: t("dt.net"), unit: "kW", value: (r) => r.p, cell: (r) => (r.p == null ? "–" : f(r.p, 1)), numeric: true },
-      {
+      // what each house's envelope curtails over the year: a column only where the envelopes are on
+      ...(envelopes ? [{
         key: "curtailed",
         label: t("dt.curtailed"),
         unit: "kWh",
-        value: (r) => r.curtailed,
-        cell: (r) => (r.curtailed == null ? "–" : f(r.curtailed, 0)),
+        value: (r: HouseRow) => r.curtailed,
+        cell: (r: HouseRow) => (r.curtailed == null ? "–" : f(r.curtailed, 0)),
         numeric: true,
-      },
+      }] : []),
     ],
-    [t, f],
+    [t, f, envelopes],
   );
 
   const onSelect = useCallback((r: HouseRow) => select(r.cid), [select]);
@@ -806,6 +821,7 @@ function Tooltip({ tip, housesById, cablesById, rows, st }: {
   tip: Tip; housesById: Map<number, any>; cablesById: Map<number, any>; rows: Rows; st: GridState;
 }) {
   const t = useT();
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const hour = useStore((s) => s.hour);
   if (!st.data) return null;
@@ -821,7 +837,7 @@ function Tooltip({ tip, housesById, cablesById, rows, st }: {
         <div className="tt-title">{h.address || t("dt.unnamed", { id: h.cid })}</div>
         <div className="tt-row"><span>{t("dt.net")}</span><b>{f(Math.abs(p), 1)} kW {p >= 0 ? t("twin.tt.export") : t("twin.tt.import")}</b></div>
         <div className="tt-row"><span>{t("dt.voltage")}</span><b>{f(v, 3)} pu</b></div>
-        <div className="tt-row"><span>{t("dt.status")}</span><b>{t(`twin.status.${h.pv_status}`)}</b></div>
+        <div className="tt-row"><span>{t("dt.status")}</span><b>{t(`twin.status.${houseStatus(h, envelopes)}`)}</b></div>
         <div className="tt-row"><span>{t("dt.kwp")}</span><b>{f(h.kwp, 1)} kWp</b></div>
         <div className="tt-row"><span>{t("dt.fuse")}</span><b>{h.fuse_a} A</b></div>
       </div>

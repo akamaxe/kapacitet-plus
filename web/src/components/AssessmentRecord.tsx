@@ -6,6 +6,8 @@ import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { fuseText, phaseText, phaseVerdict, reasonText, staticNumbers } from "../lib/reasons";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
+import { hourlyVerdict } from "../lib/verdicts";
 
 /**
  * The printable record of one assessment: what a DSO files and what an applicant keeps.
@@ -14,7 +16,8 @@ import { useStore } from "../lib/store";
  * "Print or save as PDF" on the request screen produces this sheet instead of the map and the
  * panel. Every figure is read from the saved answer; the sheet adds only labels and units. It is
  * headed with the DSO's name and logo when the DSO set them for its portal (GET /apply/brand), and
- * then names the product only in its footer.
+ * then names the product only in its footer. Where the envelopes are off it carries the hourly
+ * study's verdict and no envelope, risk or money.
  */
 export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLabel: string }) {
   const t = useT();
@@ -36,6 +39,9 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
   const weatherYears: number[] = (res.risk?.by_year ?? []).map((e: any) => e.year);
   const grid: number[][] | undefined = prof.envelope_min_month_hour;
   const months = monthNames(lang);
+  const envelopes = useFeatures().envelopes;
+  const hv = hourlyVerdict(res.per_year);
+  const overYears = (k: string) => ((res.per_year ?? []) as any[]).reduce((s, e) => s + (e[k] ?? 0), 0);
 
   return createPortal(
     <article className="print-record" lang={lang} aria-hidden="true">
@@ -77,7 +83,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
           <dt>{t("req.pv")}</dt><dd>{rq.pv_kwp > 0 ? `${f(rq.pv_kwp, 1)} kWp` : t("req.none")}</dd>
           <dt>{t("req.ev")}</dt><dd>{rq.ev_kw > 0 ? `${f(rq.ev_kw, 1)} kW` : t("req.none")}</dd>
           {rq.hp !== undefined && <><dt>{t("req.hp")}</dt><dd>{rq.hp ? t("rec.yes") : t("req.none")}</dd></>}
-          {rq.bat_kwh !== undefined && <><dt>{t("req.bat")}</dt><dd>{rq.bat_kwh > 0 ? `${f(rq.bat_kwh, 1)} kWh` : t("req.none")}</dd></>}
+          {rq.bat_kwh !== undefined && (envelopes || rq.bat_kwh > 0) && <><dt>{t("req.bat")}</dt><dd>{rq.bat_kwh > 0 ? `${f(rq.bat_kwh, 1)} kWh` : t("req.none")}</dd></>}
           <dt>{t("req.baseline")}</dt><dd>{baselineLabel}</dd>
         </dl>
       </section>
@@ -89,7 +95,14 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
             {res.static?.pv && (
               <tr><th>{t("rec.pvStatic")}</th><td>{yesNo(res.static.pv.approved)}</td><td>{reasonText(t, f, res.static.pv)}<br />{staticNumbers(t, f, res.static.pv)}</td></tr>
             )}
-            {rq.pv_kwp > 0 && (
+            {!envelopes && (
+              <tr>
+                <th>{t("rec.hourly")}</th>
+                <td>{hv.fits ? t("req.hourly.firm") : t("req.hourly.notFirm")}</td>
+                <td>{t("rec.hourlyDetail", { h: f(hv.hours), n: hv.years })}</td>
+              </tr>
+            )}
+            {envelopes && rq.pv_kwp > 0 && (
               <tr>
                 <th>{t("rec.pvDoe")}</th>
                 <td>{sum.pv_curtailment_ref_pct > 0.005 ? t("req.approvedLimits") : t("req.approved")}</td>
@@ -101,23 +114,23 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
                 <th>{t("rec.verified")}</th>
                 <td>{f(res.verification.violations_after)} {t("rec.violations")}</td>
                 <td>{res.verification.hours_checked > 0
-                  ? t("rec.verifiedDetail", { n: f(res.verification.hours_checked), year: res.verification.year })
+                  ? t(envelopes ? "rec.verifiedDetail" : "rec.verifiedDetailCapacity", { n: f(res.verification.hours_checked), year: res.verification.year })
                   : t("req.verifiedNone")}</td>
               </tr>
             )}
             {res.static?.ev && (
               <tr><th>{t("rec.evStatic")}</th><td>{yesNo(res.static.ev.approved)}</td><td>{reasonText(t, f, res.static.ev)}<br />{staticNumbers(t, f, res.static.ev)}</td></tr>
             )}
-            {rq.ev_kw > 0 && (
-              <tr><th>{t("rec.evDoe")}</th><td>{pct1(f, sum.ev_unmet_pct)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
-            )}
+            {rq.ev_kw > 0 && (envelopes
+              ? <tr><th>{t("rec.evDoe")}</th><td>{pct1(f, sum.ev_unmet_pct)} %</td><td>{t("rec.evDoeDetail", { h: f(sum.ev_hours_limited_ref), year })}</td></tr>
+              : <tr><th>{t("rec.evHourly")}</th><td>{f(overYears("ev_hours_limited"))} h</td><td>{t("rec.overYears", { n: hv.years })}</td></tr>)}
             {res.static?.hp && (
               <tr><th>{t("rec.hpStatic")}</th><td>{yesNo(res.static.hp.approved)}</td><td>{reasonText(t, f, res.static.hp)}<br />{staticNumbers(t, f, res.static.hp)}</td></tr>
             )}
-            {res.static?.hp && (
-              <tr><th>{t("rec.hpDoe")}</th><td>{pct1(f, sum.hp_unmet_pct)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
-            )}
-            {sum.bat_charged_ref_kwh !== undefined && (
+            {res.static?.hp && (envelopes
+              ? <tr><th>{t("rec.hpDoe")}</th><td>{pct1(f, sum.hp_unmet_pct)} %</td><td>{t("rec.hpDoeDetail", { h: f(sum.hp_hours_limited_ref), year, kwh: f(sum.hp_kwh_mean) })}</td></tr>
+              : <tr><th>{t("rec.hpHourly")}</th><td>{f(overYears("hp_hours_limited"))} h</td><td>{t("rec.hpHourlyDetail", { n: hv.years, kwh: f(sum.hp_kwh_mean) })}</td></tr>)}
+            {envelopes && sum.bat_charged_ref_kwh !== undefined && (
               <tr><th>{t("rec.bat")}</th><td>{sum.bat_captured_ref_pct == null ? "–" : `${pct1(f, sum.bat_captured_ref_pct)} %`}</td><td>{t("rec.batDetail", { kwh: f(sum.bat_discharged_ref_kwh), year, z: f(sum.curtailment_after_battery_ref_pct, 1) })}</td></tr>
             )}
             {(res.phases?.devices as any[] | undefined)?.map((d) => (
@@ -127,13 +140,13 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
               <tr><th>{t("req.fuse.title")}</th><td>{res.fuse.ok ? t("req.fuse.ok") : t("req.fuse.over")}</td><td>{fuseText(t, f, res.fuse)}</td></tr>
             )}
             {res.verification?.import && (
-              <tr><th>{t("rec.importVerified")}</th><td>{f(res.verification.import.violations_after)} {t("rec.violations")}</td><td>{t("rec.importVerifiedDetail", { n: f(res.verification.import.hours_checked) })}</td></tr>
+              <tr><th>{t(envelopes ? "rec.importVerified" : "rec.importVerifiedCapacity")}</th><td>{f(res.verification.import.violations_after)} {t("rec.violations")}</td><td>{t(envelopes ? "rec.importVerifiedDetail" : "rec.importVerifiedDetailCapacity", { n: f(res.verification.import.hours_checked) })}</td></tr>
             )}
           </tbody>
         </table>
       </section>
 
-      {grid && (
+      {envelopes && grid && (
         <section className="pr-break">
           <h2>{t("rec.envTable", { year })}</h2>
           <p className="pr-note">{t("rec.envTableNote", { cap: f(prof.cap_kw, 1) })}</p>
@@ -150,7 +163,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         </section>
       )}
 
-      {res.risk?.mean_pct !== undefined && (
+      {envelopes && res.risk?.mean_pct !== undefined && (
         <section>
           <h2>{t("req.risk")}</h2>
           <dl className="pr-kv">
@@ -163,7 +176,7 @@ export function AssessmentRecord({ res, baselineLabel }: { res: any; baselineLab
         </section>
       )}
 
-      {res.economics?.by_year && (
+      {envelopes && res.economics?.by_year && (
         <section>
           <h2>{t("req.money")}</h2>
           <dl className="pr-kv">

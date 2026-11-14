@@ -38,6 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .. import __version__, actor, features, geo, telemetry
+from ..atomic import write_text_atomic
 from ..cache import generation, memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
@@ -218,6 +219,7 @@ API = "/api/v1"
 # Which command writes each results file, so a missing one can say exactly what to run.
 _WRITTEN_BY = {
     "national.json": "compute --stage extra --only national",
+    "hourly.json": "compute --stage extra --only hourly",
     "scenarios.json": "compute --stage extra --only scenarios",
     "tornado.json": "compute --stage extra --only tornado",
     "mv_band.json": "compute --stage extra --only mvband",
@@ -263,7 +265,7 @@ API_ERRORS = {
     "too_large": "larger than {mb} MB: {tables}",
     "unreadable_csv": "{table}.csv could not be read: {detail}",
     "queue_busy": "the queue is being updated; try again when it finishes",
-    "queue_empty": "the queue is empty: choose today's grid or the envelope scenario",
+    "queue_empty": "the queue is empty: choose another grid situation",
     "nothing_requested": "nothing requested: ask for solar, an EV charger or a heat pump",
     "battery_needs_solar": "a battery here stores curtailed solar, so it needs a solar request",
     "has_heat_pump": "this house already has a heat pump",
@@ -598,7 +600,10 @@ async def sources_status() -> dict:
 
 @app.get(f"{API}/assumptions", tags=["provenance"])
 def get_assumptions() -> dict:
-    return {"assumptions": [a.__dict__ for a in assumptions().values()]}
+    """The model's inputs with their provenance; those of a part of the product that is off
+    (an `feature` of assumptions.toml, kapacitet/features.py) are left out."""
+    on = features.enabled()
+    return {"assumptions": [a.__dict__ for a in assumptions().values() if not a.feature or on.get(a.feature, False)]}
 
 
 # ---------------------------------------------------------------- network export check
@@ -768,7 +773,8 @@ def network() -> dict:
         raise not_computed("grid/customers.parquet")
     stamp = tuple(p.stat().st_mtime if p.exists() else 0.0
                   for p in (processed("grid", "customers.parquet"), processed("results", "showcase.json"),
-                            processed("results", "nodal.json"), processed("results", "consumption.json")))
+                            processed("results", "nodal.json"), processed("results", "consumption.json"),
+                            processed("results", "hourly.json"), records.folder() / "cache" / "hourly" / "hourly.json"))
     # the provenance is dated afresh on every call: it reads files the cache's stamp does not cover
     return {**_network(stamp), "provenance": provenance("osm", "synthetic_grid", files=[
         *(processed("grid", n) for n in ("customers.parquet", "lines.parquet", "buses.parquet", "substation.json")),
@@ -795,6 +801,12 @@ def _network(stamp: tuple) -> dict:
     showcase = result("showcase.json") if processed("results", "showcase.json").exists() else {}
     firm = set(showcase.get("firm_cids", []))
     nonfirm = set(showcase.get("nonfirm_cids", []))
+    # the hourly study's deployment, once it is computed (the build's, or the server's own): which
+    # houses the static study connects and which the hourly study adds (engine/hourly.py)
+    hourly_doc = next((json.loads(p.read_text(encoding="utf-8")) for p in (
+        processed("results", "hourly.json"), records.folder() / "cache" / "hourly" / "hourly.json") if p.exists()), None)
+    by_static = set(hourly_doc["static_cids"]) if hourly_doc else set()
+    by_hourly = set(hourly_doc["hourly_cids"]) if hourly_doc else set()
     nodal = result("nodal.json") if processed("results", "nodal.json").exists() else None
     # the import side of each house checked over every hour of every weather year, beside the
     # static one of nodal.json (consumption.json, with its own customer order)
@@ -836,6 +848,8 @@ def _network(stamp: tuple) -> dict:
                           "tilt": _num(c.tilt), "east_west": bool(c.east_west), "feeder": int(c.feeder),
                           "dist_m": _num(c.dist_m), "lon": _num(c.lon), "lat": _num(c.lat),
                           "pv_status": "firm" if c.cid in firm else ("nonfirm" if c.cid in nonfirm else "none"),
+                          "hourly_status": ("static" if c.cid in by_static else "hourly" if c.cid in by_hourly else "none")
+                          if hourly_doc else None,
                           "nodal_pv_kw": float(nodal["pv_kw"][int(c.cid)]) if nodal else None,
                           "nodal_import_kw": float(nodal["import_kw"][int(c.cid)]) if nodal else None,
                           "nodal_import_kw_ts": _num(import_ts.get(int(c.cid))),
@@ -906,7 +920,45 @@ def series(year: int) -> dict:
                      files=[result_path(f"series_{year}.json")])
 
 
-STATES = ("static", "uncontrolled", "doe")
+STATES = ("static", "uncontrolled", "doe", "hourly", "hourly_static")
+_HOURLY_LOCK = threading.Lock()
+
+
+def hourly_files() -> dict[str, Path]:
+    """The hourly study's deployment (engine/hourly.py): the build's files when it wrote them, else
+    the server's own, computed the first time they are asked for and kept in requests/cache/hourly/
+    until hosting_summary.json changes. Computing takes a year of power flows, seconds."""
+    names = [f"{name}.{suffix}" for name in ("hourly", "hourly_static") for suffix in ("json", "bin")]
+    built = {"doc": processed("results", "hourly.json"), **{n: processed("ui", f"state_{n}") for n in names}}
+    if all(p.exists() for p in built.values()):
+        return built
+    summary = processed("results", "hosting_summary.json")
+    if not summary.exists():
+        raise not_computed("hosting_summary.json")
+    from ..engine import hourly
+
+    cache = records.folder() / "cache" / "hourly"
+    stamp = cache / "from.txt"
+    mine = {"doc": cache / "hourly.json", **{n: cache / f"state_{n}" for n in names}}
+    made_from = f"{summary.stat().st_mtime_ns}"
+    with _HOURLY_LOCK:
+        fresh = stamp.exists() and stamp.read_text(encoding="utf-8").strip() == made_from
+        if not (fresh and all(p.exists() for p in mine.values())):
+            _engine()               # the model and the masks, built once under the engine's own lock
+            doc, state = hourly.compute(json.loads(summary.read_text(encoding="utf-8")))
+            hourly.write(doc, state, cache)
+            write_text_atomic(stamp, made_from)
+    return mine
+
+
+@app.get(f"{API}/hourly", tags=["hosting"])
+def hourly_deployment() -> dict:
+    """The hourly study's deployment for the order whose hourly capacity is the median: the houses
+    the static study connects and those the hourly study adds, its year verified without control,
+    and what the next house would break (engine/hourly.py)."""
+    files = hourly_files()
+    return with_prov(json.loads(files["doc"].read_text(encoding="utf-8")), "smhi_strang", "smhi_metobs",
+                     "synthetic_grid", files=[files["doc"], result_path("hosting_summary.json")])
 
 
 def _state_name(name: str) -> str:
@@ -921,6 +973,8 @@ def _state_path(name: str, suffix: str, basis: str | None, policy: str | None):
     name = _state_name(name)
     if name == "doe" and not features.on("envelopes"):
         raise api_error(404, "feature_off", feature="envelopes")
+    if name in ("hourly", "hourly_static"):
+        return hourly_files()[f"{name}.{suffix}"]
     if name == "doe":
         return resolve(basis, policy).state(suffix)
     return processed("ui", f"state_{name}.{suffix}")
@@ -1406,6 +1460,10 @@ def _context_for(body: RequestIn):
 
 def _check_request(body: RequestIn) -> None:
     """Refuse what the engine cannot answer honestly, before any work."""
+    # the envelope scenario, and a battery that stores the solar an envelope curtails, exist only where
+    # the envelopes are on (kapacitet/features.py)
+    if (body.baseline == "doe" or body.bat_kwh > 0) and not features.on("envelopes"):
+        raise api_error(404, "feature_off", feature="envelopes")
     _check_cid(body.cid)
     if body.pv_kwp <= 0 and body.ev_kw <= 0 and not body.hp:
         raise api_error(422, "nothing_requested")
@@ -1594,7 +1652,7 @@ def request_result(job_id: str, download: bool = Query(False)) -> JSONResponse:
     return JSONResponse(body)
 
 
-@app.get(f"{API}/requests/{{job_id}}/owner-case", tags=["requests"])
+@app.get(f"{API}/requests/{{job_id}}/owner-case", tags=["requests"], dependencies=[Depends(features.require("envelopes"))])
 def request_owner_case(job_id: str, years: int | None = Query(None, ge=1, le=40)) -> dict:
     """Connect now with the envelope, or wait for the reinforcement: what the house's solar is worth
     during the wait at retail prices, from the saved answer (economics.owner_case)."""
@@ -1621,6 +1679,9 @@ _HOURLY = (("pv_kw", "pv_kw"), ("desired_kw", "desired_export_kw"), ("envelope_k
            ("hp_kw", "heat_pump_kw"), ("hp_unmet_kw", "heat_pump_above_envelope_kw"),
            ("battery_charge_kw", "battery_charge_kw"), ("battery_discharge_kw", "battery_discharge_kw"),
            ("battery_soc_kwh", "battery_stored_kwh"))
+# the same columns where the envelopes are off (kapacitet/features.py)
+_HEADROOM = {"export_envelope_kw": "export_headroom_kw", "curtailed_kw": "export_above_headroom_kw",
+             "import_envelope_kw": "import_headroom_kw", "heat_pump_above_envelope_kw": "heat_pump_above_headroom_kw"}
 
 
 @app.get(f"{API}/requests/{{job_id}}/hourly.csv", tags=["requests"])
@@ -1634,6 +1695,10 @@ def request_hourly(job_id: str) -> Response:
         raise
     prof = rec["result"].get("profiles") or {}
     cols = [(k, name) for k, name in _HOURLY if isinstance(prof.get(k), list)]
+    if not features.on("envelopes"):
+        # the same hours where nothing is held back: the headroom the house meets, and what of its full
+        # request would go above it (no battery: it stores curtailed solar)
+        cols = [(k, _HEADROOM.get(name, name)) for k, name in cols if not name.startswith("battery_")]
     if not cols:
         raise HTTPException(404, "this assessment has no hourly profile")
     year = int(prof["year"])
@@ -1673,9 +1738,11 @@ def evaluate_sync(body: RequestIn) -> JSONResponse:
 
 class DecisionIn(BaseModel):
     assessment: str = Field(..., pattern="^[0-9a-f]{12}$", description="a saved assessment's id")
-    decision: str = Field(..., pattern="^(firm|nonfirm|declined)$",
+    decision: str = Field(..., pattern="^(firm|nonfirm|declined|hourly)$",
                           description="firm: connect without an envelope (only if the static study approves); "
-                                      "nonfirm: connect with the verified envelope; declined: record a refusal")
+                                      "hourly: connect firm by the hourly study (only if no hour of any weather "
+                                      "year would hold it back); nonfirm: connect with the verified envelope "
+                                      "(only where the envelopes are on); declined: record a refusal")
     note: str = Field("", max_length=500, description="the planner's reason, kept with the decision")
     decided_by: str = Field("", max_length=120, description="who decided, as free text (a name, a role), kept "
                                                          "with the decision")
@@ -1743,6 +1810,9 @@ def post_decision(body: DecisionIn) -> dict:
 
     if _queue_busy():
         raise api_error(409, "queue_busy")
+    # a connection on an envelope only where the envelopes are on (kapacitet/features.py)
+    if body.decision == "nonfirm" and not features.on("envelopes"):
+        raise api_error(404, "feature_off", feature="envelopes")
     rec = records.load(body.assessment)
     if rec is None:
         raise HTTPException(404, "unknown assessment")

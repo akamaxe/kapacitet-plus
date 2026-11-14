@@ -1357,6 +1357,10 @@ main:focus { outline: none; }
 .house-key { display: inline-block; flex: none; width: 10px; height: 10px; border-radius: 2px; border: 2px solid var(--border-strong); background: var(--bg-surface); }
 .house-key.firm { border-color: var(--good-fill); background: var(--good-fill); }
 .house-key.nonfirm { border-color: var(--warning-fill); background: var(--warning-fill); }
+/* where the envelopes are off: the houses the static study connects, in pencil, and those the hourly
+   study adds, in the green of the hourly figure (lib/houses.ts) */
+.house-key.static { border-color: var(--neutral-series); background: var(--neutral-series); }
+.house-key.hourly { border-color: var(--good-fill); background: var(--good-fill); }
 .house-status { display: inline-flex; align-items: center; gap: var(--space-2); }
 .house-status.none { color: var(--text-muted); }
 /* a reading with the colour the map gives it: the colour sits beside the figure, the

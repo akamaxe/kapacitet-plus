@@ -45,25 +45,29 @@ let root: Root | null = null;
 let host: HTMLElement | null = null;
 let calls: [string, RequestInit][] = [];
 
-/** Render the section with a fetch that answers GET /auth/me with `me` and a write with `write`. */
-async function render(opts: { me?: object; write?: () => Response } = {}): Promise<HTMLElement> {
+/** Render the section with a fetch that answers GET /auth/me with `me`, GET /health with the parts
+ * that are on (`envelopes`, on by default) and a write with `write`. */
+async function render(opts: { me?: object; write?: () => Response; envelopes?: boolean; only?: ("rule" | "portal")[] } = {}): Promise<HTMLElement> {
   calls = [];
   const me = opts.me ?? { enabled: false, user: null, can: {}, needs: {} };
+  const health = { features: { envelopes: opts.envelopes ?? true, national: false, scenarios: false, portal: true } };
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method) {
       calls.push([url, init]);
       return opts.write ? opts.write() : new Response(JSON.stringify(reply), { status: 200, headers: { "Content-Type": "application/json" } });
     }
-    return new Response(JSON.stringify(url.endsWith("/auth/me") ? me : {}), { status: 200, headers: { "Content-Type": "application/json" } });
+    const body = url.endsWith("/auth/me") ? me : url.endsWith("/health") ? health : {};
+    return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
   }));
   host = document.createElement("div");
   document.body.appendChild(host);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   await act(async () => {
     root = createRoot(host as HTMLElement);
-    root.render(<QueryClientProvider client={client}><SettingsView reply={reply} /></QueryClientProvider>);
+    root.render(<QueryClientProvider client={client}><SettingsView reply={reply} only={opts.only} /></QueryClientProvider>);
   });
-  await settle();
+  // the rows an envelope connection reads appear once /health has said the envelopes are on
+  await settle(() => (opts.envelopes ?? true) ? !!document.getElementById("set-f-auto_curtailment_p90_pct") : false);
   return host;
 }
 
@@ -157,6 +161,18 @@ describe("the DSO's settings", () => {
     await act(async () => button(rule, "Save").click());
     await settle(() => calls.length > 0);
     expect(JSON.parse(String(calls[0][1].body))).toEqual({ auto_curtailment_p90_pct: null });
+  });
+
+  it("shows only the rule and the portal where only the portal is on, without the envelope thresholds", async () => {
+    const el = await render({ envelopes: false, only: ["rule", "portal"] });
+    expect(group("rule")).toBeTruthy();
+    expect(group("portal")).toBeTruthy();
+    expect(group("envelopes")).toBeNull();
+    expect(group("market")).toBeNull();
+    for (const key of ["inbox_baseline", "auto_curtailment_mean_pct", "auto_curtailment_p90_pct", "auto_ev_unserved_pct"]) {
+      expect(field(key)).toBeNull();
+    }
+    expect(text(el)).not.toMatch(/envelope|curtail/i);
   });
 
   it("shows a refusal in its own words", async () => {

@@ -74,6 +74,28 @@ def test_the_rule_never_declines():
         qu.decide(None, None, None, {}, "declined", by="rule")
 
 
+def test_without_the_envelopes_the_rule_connects_firm_by_the_hourly_study_or_asks_a_person():
+    """Where the envelopes are off (kapacitet/features.py) the rule never connects on an envelope: firm by
+    the static study, firm by the hourly study when no hour of any weather year would be held back, or
+    a person (task 1.4 of the technical review of 14-11-2026)."""
+    from kapacitet.engine.rules import held_hours, verdict
+
+    quiet = {**_result(), "per_year": [{"year": 2015, "hours_limited": 0}, {"year": 2016, "hours_limited": 0}]}
+    assert verdict(quiet, _th(), envelopes=False) == {"outcome": "hourly", "reasons": []}
+    assert verdict({**quiet, "static": {"pv": {"approved": True}}}, _th(), envelopes=False)["outcome"] == "firm"
+    held = {**quiet, "per_year": [{"year": 2015, "hours_limited": 4, "ev_hours_limited": 1}, {"year": 2016}]}
+    assert held_hours(held["per_year"]) == 5
+    v = verdict(held, _th(), envelopes=False)
+    assert v["outcome"] == "review"
+    assert [(r["code"], r["params"]) for r in v["reasons"]] == [("hourly_limits", {"hours": 5})]
+    # however little an envelope would curtail, there is none to connect it on
+    assert verdict(held, _th(mean=50, p90=50))["outcome"] == "nonfirm"
+    assert verdict(held, _th(mean=50, p90=50), envelopes=False)["outcome"] == "review"
+    # the year it was checked on must hold too, and the house's own fuse still comes first
+    assert verdict({**quiet, "verification": {"violations_after": 2}}, _th(), envelopes=False)["reasons"][0]["code"] == "violations"
+    assert verdict({**quiet, "fuse": {"ok": False}}, _th(), envelopes=False)["reasons"][0]["code"] == "fuse"
+
+
 # ---------------------------------------------------------------- the indicators (no data)
 
 def _ev(seq, at, app, event, **kw):

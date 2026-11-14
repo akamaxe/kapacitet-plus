@@ -22,6 +22,7 @@ import { hourLabel, monthLong, monthNames, studyDate, useFmt } from "../lib/form
 import { useT, type TFn } from "../lib/i18n";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
+import { useFeatures, useFeaturesKnown } from "../lib/features";
 
 type F = (v: number | null | undefined, d?: number) => string;
 const DAY_MS = 86_400_000;
@@ -66,6 +67,52 @@ function useText(path: string | null) {
  * be sent; perfect foresight appears only as the comparison it is.
  */
 export default function Operation() {
+  const envelopes = useFeatures().envelopes;
+  const known = useFeaturesKnown();
+  if (!known) return <PageSkeleton bar hero blocks={2} />;
+  // with the portal on and the envelopes off there is nothing issued: the screen is the applications
+  return envelopes ? <Issued /> : <Applications />;
+}
+
+/**
+ * Operation where only the portal is on: the applications, decided by a person or by the signed rule
+ * (firm by the static or the hourly study), and the settings of the rule and the portal.
+ */
+function Applications() {
+  const t = useT();
+  const sections: Section[] = [
+    { id: "inbox", label: t("op.sec.inbox") },
+    { id: "settings", label: t("op.sec.settings") },
+  ];
+  return (
+    <div className="page">
+      <SectionBar sections={sections} />
+      <div className="page-inner">
+        <section className="region" id="inbox">
+          <div className="region-head">
+            <div className="region-title">
+              <h1 className="headline">{t("inbox.title")}</h1>
+              <p className="caption">{t("inbox.caption")}</p>
+            </div>
+          </div>
+          <InboxSection />
+        </section>
+        <section className="region" id="settings">
+          <div className="region-head">
+            <div className="region-title">
+              <h2>{t("op.settings")}</h2>
+              <p className="caption">{t("op.settings.captionPortal")}</p>
+            </div>
+          </div>
+          <SettingsSection only={["rule", "portal"]} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+/** Operation where the envelopes are on: what the DSO issues, delivers and keeps. */
+function Issued() {
   const t = useT();
   const f = useFmt();
   const cid = useStore((s) => s.selectedCid);

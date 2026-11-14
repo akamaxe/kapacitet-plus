@@ -7,7 +7,7 @@ export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "ope
 export type View = "start" | "work";
 /** The screen a project opens on the first time; afterwards it opens where it was left. */
 export const OPENING: Screen = "compare";
-export type Scenario = "static" | "uncontrolled" | "doe";
+export type Scenario = "static" | "uncontrolled" | "doe" | "hourly";
 /** The envelope a screen reads: perfect foresight (the planning bound) or issued the day before. */
 export type Basis = "foresight" | "dayahead";
 export const BASES: Basis[] = ["foresight", "dayahead"];
@@ -42,7 +42,10 @@ function writeLS(key: string, value: string) {
  * autoplays, or that pre-fills a request form with an answer nobody computed, would be worse
  * than no link at all; a `job` is an answer the engine did compute, kept on disk.
  */
-export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
+export const SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe", "hourly"];
+/** The map's scenarios where the envelopes are on, and where they are off (lib/features.ts). */
+export const ENVELOPE_SCENARIOS: Scenario[] = ["static", "uncontrolled", "doe"];
+export const CAPACITY_SCENARIOS: Scenario[] = ["static", "hourly"];
 
 export interface UrlView {
   screen: Screen;

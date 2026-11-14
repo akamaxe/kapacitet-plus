@@ -11,6 +11,9 @@ import { useT } from "../lib/i18n";
 import { responseRefusal } from "../lib/errors";
 import { fuseText } from "../lib/reasons";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
+import { hourlyVerdict } from "../lib/verdicts";
+import type { TFn } from "../lib/i18n";
 
 export interface QueueState {
   version: number;
@@ -20,7 +23,12 @@ export interface QueueState {
   updating: boolean;
 }
 
-type Decision = "firm" | "nonfirm" | "declined";
+type Decision = "firm" | "nonfirm" | "declined" | "hourly";
+
+/** A decision as the queue lists it: a firm connection the hourly study gave says so. */
+export function itemLabel(t: TFn, it: { decision: string; basis?: string }): string {
+  return it.decision === "firm" && it.basis === "hourly" ? t("queue.item.firmHourly") : t(`queue.item.${it.decision}`);
+}
 
 /** Why an answer can or cannot be decided on in the queue as it stands. */
 function decidable(res: any, q: QueueState): { ok: boolean; why?: string } {
@@ -33,7 +41,9 @@ function decidable(res: any, q: QueueState): { ok: boolean; why?: string } {
 
 /**
  * The planner's decision on the answer on screen: connect it firm (only when the static study
- * agrees), connect it with its envelope, or decline it, with a reason kept beside it. Approving
+ * agrees), connect it with its envelope, or decline it, with a reason kept beside it. Where the
+ * envelopes are off there is no envelope to connect on: firm by the static study, firm by the hourly
+ * study (no hour of any weather year over a limit with all it asks for), or decline. Approving
  * re-verifies every weather year and puts the house into the grid the next request meets.
  */
 export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
@@ -48,6 +58,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   const esRef = useRef<EventSource | null>(null);
   // with sign-in on, deciding takes the approver role: anyone else sees the buttons, disabled, and why
   const role = useCan("decide");
+  const envelopes = useFeatures().envelopes;
 
   const decided = queue.items.find((it) => it.assessment === res.id);
   if (decided) {
@@ -55,7 +66,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
     return (
       <section className="decision" aria-labelledby="decision-title">
         <h3 id="decision-title">{t("req.decide.title")}</h3>
-        <p className="decision-done"><Icon name="check" size={16} />{t(`queue.item.${decided.decision}`)} · {when}</p>
+        <p className="decision-done"><Icon name="check" size={16} />{itemLabel(t, decided)} · {when}</p>
         {decided.actor && (
           <p className="caption-muted">{t("req.decide.byActor", { name: decided.actor.name, role: t(`auth.role.${decided.actor.role}`) })}</p>
         )}
@@ -69,6 +80,9 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
   // a limit on what the house exchanges with the grid cannot protect the house's own main fuse: when
   // the fuse cannot carry the request, neither connection is offered and declining comes first
   const fuseShort = res.fuse?.ok === false;
+  // where the envelopes are off, firm is the static study's or, failing it, the hourly study's
+  const hv = hourlyVerdict(res.per_year);
+  const firmBy: Decision | null = firmOk ? "firm" : !envelopes && hv.fits ? "hourly" : null;
   const running = busy !== null;
   const locked = running || !role.ok;
 
@@ -136,14 +150,23 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
                 {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
               </button>
             )}
-            <button className={fuseShort ? "btn ghost" : "btn"} disabled={locked || fuseShort} title={role.reason}
-              aria-describedby={fuseShort ? "fuse-why" : undefined} onClick={() => decide("nonfirm")}>
-              {busy === "nonfirm" ? t("req.decide.working") : t("req.decide.nonfirm")}
-            </button>
-            <button className="btn ghost" disabled={locked || !firmOk || fuseShort} title={role.reason}
-              aria-describedby={fuseShort ? "fuse-why" : firmOk ? undefined : "firm-why"} onClick={() => decide("firm")}>
-              {busy === "firm" ? t("req.decide.working") : t("req.decide.firm")}
-            </button>
+            {envelopes ? (
+              <>
+                <button className={fuseShort ? "btn ghost" : "btn"} disabled={locked || fuseShort} title={role.reason}
+                  aria-describedby={fuseShort ? "fuse-why" : undefined} onClick={() => decide("nonfirm")}>
+                  {busy === "nonfirm" ? t("req.decide.working") : t("req.decide.nonfirm")}
+                </button>
+                <button className="btn ghost" disabled={locked || !firmOk || fuseShort} title={role.reason}
+                  aria-describedby={fuseShort ? "fuse-why" : firmOk ? undefined : "firm-why"} onClick={() => decide("firm")}>
+                  {busy === "firm" ? t("req.decide.working") : t("req.decide.firm")}
+                </button>
+              </>
+            ) : (
+              <button className={fuseShort || !firmBy ? "btn ghost" : "btn"} disabled={locked || !firmBy || fuseShort} title={role.reason}
+                aria-describedby={fuseShort ? "fuse-why" : firmBy === "firm" ? undefined : "firm-why"} onClick={() => firmBy && decide(firmBy)}>
+                {busy === "firm" || busy === "hourly" ? t("req.decide.working") : t(firmBy === "hourly" ? "req.decide.hourly" : "req.decide.firm")}
+              </button>
+            )}
             {!fuseShort && (
               <button className="btn ghost" disabled={locked} title={role.reason} onClick={() => decide("declined")}>
                 {busy === "declined" ? t("req.decide.working") : t("req.decide.declined")}
@@ -151,8 +174,12 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
             )}
           </div>
           <RoleNote action="decide" />
-          {fuseShort && <p className="caption-muted" id="fuse-why">{fuseText(t, f, res.fuse)} {t("req.decide.fuseNo")}</p>}
-          {!firmOk && !fuseShort && <p className="caption-muted" id="firm-why">{t("req.decide.firmNo")}</p>}
+          {fuseShort && <p className="caption-muted" id="fuse-why">{fuseText(t, f, res.fuse)} {t(envelopes ? "req.decide.fuseNo" : "req.decide.fuseNoCapacity")}</p>}
+          {!firmOk && !fuseShort && (envelopes
+            ? <p className="caption-muted" id="firm-why">{t("req.decide.firmNo")}</p>
+            : firmBy === "hourly"
+              ? <p className="caption-muted" id="firm-why">{t("req.decide.hourlyNote", { n: hv.years })}</p>
+              : <p className="caption-muted" id="firm-why">{t("req.decide.firmNoCapacity", { h: f(hv.hours), n: hv.years })}</p>)}
           {progress && <p className="caption-muted" role="status">{progress}</p>}
         </>
       )}
@@ -165,6 +192,7 @@ export function DecisionBlock({ res, queue }: { res: any; queue: QueueState }) {
 export function QueueList({ queue }: { queue: QueueState }) {
   const t = useT();
   const f = useFmt();
+  const envelopes = useFeatures().envelopes;
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
   const [confirm, setConfirm] = useState(false);
@@ -191,14 +219,14 @@ export function QueueList({ queue }: { queue: QueueState }) {
               {it.address || t("dt.unnamed", { id: it.cid })}
             </a>
             <span className={`queue-decision ${it.decision}`}>
-              {t(`queue.item.${it.decision}`)}{it.by === "rule" ? ` · ${t("inbox.by.rule")}` : ""}
+              {itemLabel(t, it)}{it.by === "rule" ? ` · ${t("inbox.by.rule")}` : ""}
             </span>
             <span className="queue-when">{dateTime(lang, it.decided)}</span>
             {it.note && <span className="queue-note">{it.note}</span>}
           </li>
         ))}
       </ol>
-      <p className="caption-muted">{t("queue.basis", { base: queue.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}</p>
+      <p className="caption-muted">{t(envelopes ? "queue.basis" : "queue.basisCapacity", { base: queue.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}</p>
       <p className="caption-muted">{t("queue.sealed")}</p>
       <div className="row">
         <a className="btn ghost small" href={`${API}/queue/log.csv`} download>

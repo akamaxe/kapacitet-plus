@@ -17,6 +17,7 @@ import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { menuActions, type Menu } from "../lib/menus";
 import { lastScreen, projectsOf, type Listing } from "../lib/projects";
 import { screenLabel, useFeatures, visibleScreens } from "../lib/features";
+import { houseStatus } from "../lib/houses";
 import { applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
 
@@ -100,8 +101,8 @@ export function Palette({ open, onClose, menus }: {
       .filter((ft: any) => ft.properties?.layer === "house")
       .map((ft: any) => {
         const p = ft.properties;
-        const status =
-          p.pv_status === "firm" ? t("pal.firm") : p.pv_status === "nonfirm" ? t("pal.nonfirm") : t("pal.noPv");
+        const s = houseStatus(p, features.envelopes);
+        const status = s === "none" ? t("pal.noPv") : t(`twin.status.${s}`);
         return {
           id: `house:${p.cid}`,
           group: t("pal.houses"),

@@ -19,6 +19,12 @@ describe("the parts an installation shows", () => {
     expect(visibleScreens({ ...NONE, envelopes: true })).toEqual(["twin", "compare", "request", "operation", "report", "method"]);
   });
 
+  it("keep Operation for the portal's applications, named for them, where only the portal is on", () => {
+    expect(visibleScreens({ ...NONE, portal: true })).toEqual(["twin", "compare", "request", "operation", "method"]);
+    expect(screenLabel(t, "operation", { ...NONE, portal: true })).toBe("Applications");
+    expect(screenLabel(t, "operation", { ...NONE, envelopes: true, portal: true })).toBe("Operation");
+  });
+
   it("call the capacity screen by its envelopes only where they are on", () => {
     expect(screenLabel(t, "compare", NONE)).toBe("Capacity");
     expect(screenLabel(t, "compare", { ...NONE, envelopes: true })).toBe("Static vs envelopes");

@@ -59,6 +59,40 @@ export function heroStops(H: any): Stops | null {
   };
 }
 
+/**
+ * The opening answer where the envelopes are off: the static study and the hourly study, each a
+ * published median, and how many times the one is the other. The hourly figure is the headline, as
+ * what can be issued is where the envelopes are on.
+ */
+export function CapacityStops() {
+  const t = useT();
+  const f = useFmt();
+  const hosting = useApi<any>("/hosting");
+  const m = hosting.data?.data?.summary?.measures;
+  if (!m?.static || !m?.timeseries) return null;
+  const s: number = m.static.kw_ac.median;
+  const h: number = m.timeseries.kw_ac.median;
+  const top = Math.max(s, h) || 1;
+  return (
+    <>
+      <ol className="answer-stops" aria-label={t("cmp.stopsHourly")}>
+        <li className="as-stop as-static">
+          <span className="as-value" data-stop="static">{f(s)}<small>kW</small></span>
+          <i aria-hidden="true" className="as-bar" style={{ width: `${(s / top) * 100}%` }} />
+          <span className="as-label"><Term id="static">{t("cmp.fig.static")}</Term></span>
+        </li>
+        <li className="as-stop as-issuable">
+          <span className="as-value" data-stop="hourly">{f(h)}<small>kW</small></span>
+          <i aria-hidden="true" className="as-bar" style={{ width: `${(h / top) * 100}%`, ["--lo" as string]: "100%" }} />
+          <span className="as-label">{t("cmp.stop.hourly")}</span>
+          <span className="as-note">{t("cmp.stop.hourlyNote")}</span>
+        </li>
+      </ol>
+      {s > 0 && <p className="answer-ratio" data-stop="ratio">{t("cmp.ratioHourly", { r: f(h / s, 1) })}</p>}
+    </>
+  );
+}
+
 export function AnswerStops() {
   const t = useT();
   const f = useFmt();

@@ -529,6 +529,19 @@ def _check_disk(inst: Instance, out: list[Finding]) -> None:
         out.append(Finding("disk", "ok", text))
 
 
+def _check_features(out: list[Finding]) -> None:
+    """The parts this installation shows (features.py), and a name in KAPACITET_FEATURES that is no
+    part: it switches nothing on, so it is most likely a typo."""
+    from . import features
+
+    unknown = features.unknown()
+    if unknown:
+        out.append(Finding("features", "warn", f"KAPACITET_FEATURES names {', '.join(unknown)}, which is no part "
+                           f"(the parts are {', '.join(features.FEATURES)}): it switches nothing on"))
+    on = [name for name, value in features.enabled().items() if value]
+    out.append(Finding("features", "ok", "on: " + (", ".join(on) if on else "none (capacity, requests and method only)")))
+
+
 def check(inst: Instance | None = None) -> list[Finding]:
     """Every finding about this instance, in the order of the report."""
     inst = inst or Instance.current()
@@ -541,6 +554,7 @@ def check(inst: Instance | None = None) -> list[Finding]:
     _check_seals(inst, out, readable)
     _check_tsa(inst, out)
     _check_telemetry(out)
+    _check_features(out)
     _check_disk(inst, out)
     return out
 

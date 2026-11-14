@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { bindingLimit, curveMarks, staticNoteKey, uncontrolledPasses, type Verification } from "./verdicts";
+import { bindingLimit, curveMarks, hourlyVerdict, staticNoteKey, uncontrolledPasses, type Verification } from "./verdicts";
 
 // The reference network: without control the envelope deployment overloads the transformer 148 h
 // while the voltage stays below its limit (results/showcase.json, 6 Nov 2026).
@@ -52,5 +52,28 @@ describe("the marks of the curtailment curve", () => {
     expect(marks.map((m) => [m.name, m.position])).toEqual([
       ["Static", "insideEndTop"], ["Hourly", "insideEndTop"], ["Envelopes", "insideStartTop"],
     ]);
+  });
+});
+
+describe("the hourly study's verdict on a request", () => {
+  it("connects firm only when no hour of any weather year is held back, for any device", () => {
+    const quiet = [{ year: 2015, hours_limited: 0 }, { year: 2016, hours_limited: 0, ev_hours_limited: 0 }];
+    expect(hourlyVerdict(quiet)).toEqual({ fits: true, hours: 0, years: 2, worst: null });
+    const charger = [{ year: 2015, hours_limited: 0, ev_hours_limited: 3 }, { year: 2016, hours_limited: 0 }];
+    expect(hourlyVerdict(charger)).toEqual({ fits: false, hours: 3, years: 2, worst: { year: 2015, hours: 3 } });
+  });
+
+  it("sums the devices and the years, and names the worst year", () => {
+    const rows = [
+      { year: 2015, hours_limited: 10, hp_hours_limited: 2 },
+      { year: 2016, hours_limited: 30 },
+      { year: 2017, hours_limited: 0 },
+    ];
+    expect(hourlyVerdict(rows)).toEqual({ fits: false, hours: 42, years: 3, worst: { year: 2016, hours: 30 } });
+  });
+
+  it("never connects an answer without years", () => {
+    expect(hourlyVerdict(undefined).fits).toBe(false);
+    expect(hourlyVerdict([]).fits).toBe(false);
   });
 });

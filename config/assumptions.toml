@@ -37,8 +37,8 @@ label = "Planning margin on voltage limits"
 label_sv = "Planeringsmarginal på spänningsgränserna"
 source = "Covers the gap between hourly simulation and the 10-minute means of EIFS 2023:3"
 url = ""
-note = "Same margin for every method (static, time series, DOE). Varied in the tornado chart."
-note_sv = "Samma marginal för alla metoder (statisk, tidsserie, dynamiska exportgränser). Varieras i tornadodiagrammet."
+note = "Same margin for every method. Varied in the tornado chart."
+note_sv = "Samma marginal för alla metoder. Varieras i tornadodiagrammet."
 
 [thermal_limit_pct]
 value = 100.0
@@ -59,8 +59,8 @@ label = "MV (10 kV) voltage at the secondary substation"
 label_sv = "Mellanspänning (10 kV) vid nätstationen"
 source = "No measurement available; planning value, identical for every method"
 url = ""
-note = "The published envelopes use this value. The tornado chart takes it to both ends of mv_voltage_band_pu, and mv_band.json computes the same adoption order across that band."
-note_sv = "De publicerade exportgränserna använder detta värde. Tornadodiagrammet sätter det till båda ändarna av mv_voltage_band_pu, och mv_band.json beräknar samma anslutningsordning över hela bandet."
+note = "The published figures use this value. The tornado chart takes it to both ends of mv_voltage_band_pu, and mv_band.json computes the same adoption order across that band."
+note_sv = "De publicerade siffrorna använder detta värde. Tornadodiagrammet sätter det till båda ändarna av mv_voltage_band_pu, och mv_band.json beräknar samma anslutningsordning över hela bandet."
 
 [mv_voltage_band_pu]
 value = [0.98, 1.06]
@@ -70,8 +70,8 @@ label = "Planning band of the MV (10 kV) voltage at the secondary substation (lo
 label_sv = "Planeringsband för mellanspänningen (10 kV) vid nätstationen (lägsta, högsta)"
 source = "Planning band until the MV voltage at the substation is measured (no measurement available)"
 url = ""
-note = "A sensitivity only: the tornado chart and mv_band.json use it, while the published envelopes stay at mv_voltage_pu."
-note_sv = "Endast en känslighetsanalys: tornadodiagrammet och mv_band.json använder det, medan de publicerade exportgränserna stannar vid mv_voltage_pu."
+note = "A sensitivity only: the tornado chart and mv_band.json use it, while the published figures stay at mv_voltage_pu."
+note_sv = "Endast en känslighetsanalys: tornadodiagrammet och mv_band.json använder det, medan de publicerade siffrorna stannar vid mv_voltage_pu."
 
 [trafo_tap_pos]
 value = 0
@@ -316,6 +316,7 @@ url = "https://assets.vde-verlag.de/iec-normen/preview-pdf/info_iec60364-4-43%7B
 note = ""
 
 [meter_breach_tolerance_w]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 250
 unit = "W"
 tag = "sourced"
@@ -327,6 +328,7 @@ note = "The same trial found its limits kept in more than 99.97 % of 5-minute in
 note_sv = "Samma försök fann att gränserna hölls i mer än 99,97 % av femminutersintervallen."
 
 [compliance_tolerance_kw]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.25
 unit = "kW"
 tag = "team-assumption"
@@ -338,6 +340,7 @@ note = "The trial counted 5-minute readings; an hour's mean hides a short excurs
 note_sv = "Försöket räknade femminutersvärden; en timmes medelvärde döljer en kort avvikelse som jämnas ut inom timmen, vilket kontrollen av en enskild mätare ändå ser."
 
 [schedule_resolution_min]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 15
 unit = "min"
 tag = "regulation"
@@ -349,6 +352,7 @@ note = "15 or 60. A quarter-hour schedule covers the delivery day on Stockholm's
 note_sv = "15 eller 60. Ett kvartsschema täcker leveransdygnet enligt svensk tid (92 kvartar när klockan ställs fram, 100 när den ställs tillbaka) och för varje timmes verifierade gräns i dess fyra kvartar; kapaciteten och gränserna verifieras fortfarande timme för timme."
 
 [ev_unserved_limit_pct]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 1.0
 unit = "% of requested charging energy"
 tag = "team-assumption"
@@ -359,6 +363,7 @@ url = ""
 note = ""
 
 [shadow_season_months]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = [5, 8]
 unit = "month"
 tag = "team-assumption"
@@ -369,6 +374,7 @@ url = ""
 note = ""
 
 [dayahead_market_result_local]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = "13:00"
 unit = "Europe/Stockholm wall clock, on the day before delivery"
 tag = "sourced"
@@ -868,6 +874,7 @@ note_sv = "Bakgrundslast i solcellsanalyserna; varieras i scenarierna för 2030.
 # the default growth of a study's scenarios (study.toml [scenarios]), used only for a rate the DSO
 # leaves out; every output says which rates are these defaults
 [scenario_pv_growth_per_year]
+feature = "scenarios"      # shown only where that part is on (kapacitet/features.py)
 value = 0.02
 unit = "share of customers per year"
 tag = "team-assumption"
@@ -879,6 +886,7 @@ note = "Replace it with the DSO's own forecast in study.toml [scenarios] pv_per_
 note_sv = "Ersätt den med nätföretagets egen prognos i study.toml [scenarios] pv_per_year."
 
 [scenario_ev_growth_per_year]
+feature = "scenarios"      # shown only where that part is on (kapacitet/features.py)
 value = 0.03
 unit = "share of customers per year"
 tag = "team-assumption"
@@ -890,6 +898,7 @@ note = "Replace it with the DSO's own forecast in study.toml [scenarios] ev_per_
 note_sv = "Ersätt den med nätföretagets egen prognos i study.toml [scenarios] ev_per_year."
 
 [scenario_hp_growth_per_year]
+feature = "scenarios"      # shown only where that part is on (kapacitet/features.py)
 value = 0.01
 unit = "share of customers per year"
 tag = "team-assumption"
@@ -922,6 +931,7 @@ url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
 
 [z_star_pct]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 3.0
 unit = "% of annual PV energy"
 tag = "regulation"
@@ -934,6 +944,7 @@ note_sv = "Hela kurvan för acceptansgräns mot nedreglering visas; 3 % är bara
 
 # ---------------------------------------------------------------- envelopes issued the day before
 [dayahead_pv_margin_pct]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 3.0
 unit = "% of the climatological PV bound"
 tag = "team-assumption"
@@ -945,6 +956,7 @@ note = "Applied before the inverter cap, in the published and the issued day-ahe
 note_sv = "Läggs på före växelriktarens tak, både i de publicerade och i de utfärdade siffrorna för dagen före. Gränsen förblir empirisk: varje utfärdande räknar de timmar då året ändå slog den."
 
 [dayahead_load_margin_pct]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 3.0
 unit = "% of the climatological load floor"
 tag = "team-assumption"
@@ -957,6 +969,7 @@ note_sv = "Används både i de publicerade och i de utfärdade siffrorna för da
 
 # ---------------------------------------------------------------- envelopes re-issued during the day
 [intraday_gates_h]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = [6, 9, 12, 15, 18]
 unit = "h, local standard time (UTC+1)"
 tag = "team-assumption"
@@ -968,6 +981,7 @@ note = "Used by the intraday replica (intraday.json) only; a gate at hour g sets
 note_sv = "Används bara av efterhandsrepliken under dygnet (intraday.json); en tidpunkt g sätter exportgränserna från timme g till dygnets slut, och före den första gäller gränsen från dagen före. De publicerade exportgränserna bygger fortfarande på perfekt framförhållning och de utfärdade på dagen före."
 
 [intraday_measurement_lag_h]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 1
 unit = "h"
 tag = "team-assumption"
@@ -979,6 +993,7 @@ note = "At a gate at hour g the last measured hour is g − 1 − this delay; th
 note_sv = "Vid tidpunkten g är den senast mätta timmen g − 1 − denna fördröjning; uppspelningen läser aldrig en senare timme av det uppspelade dygnet."
 
 [nowcast_pv_quantile]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.995
 unit = "quantile (fraction)"
 tag = "team-assumption"
@@ -990,6 +1005,7 @@ note = "Used by the forecast variant of the intraday replica (intraday.json) onl
 note_sv = "Används bara av prognosvarianten i efterhandsrepliken under dygnet (intraday.json). Tränas med ett år i taget utelämnat på det som är känt vid tidpunkten: senaste mätvärdet och dess trend, timmen, dagen på året, takets solel vid klar himmel och senaste temperaturen. Empirisk, aldrig en garanti: repliken redovisar den faktiska överskridandeandelen bredvid 1 minus denna kvantil."
 
 [nowcast_load_quantile]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.005
 unit = "quantile (fraction)"
 tag = "team-assumption"
@@ -1009,8 +1025,8 @@ label = "Solar output in the static summer snapshot, as a share of each inverter
 label_sv = "Solcellernas effekt i den statiska ögonblicksbilden för sommaren, som andel av växelriktarens AC-märkeffekt"
 source = "Base case 1.0: every system at its rating at the same time, the conservative convention of a static connection study; varied to 0.8 and 0.9 in the tornado chart"
 url = ""
-note = "Below 1 the static study allows for the systems not all peaking together (orientation, shading, clipping), as some DSOs do. It moves the static reference only (the static capacity, the fixed-cap rung and a request's static and phase checks), never the envelopes."
-note_sv = "Under 1 tar den statiska studien hänsyn till att alla anläggningar inte når sin topp samtidigt (riktning, skuggning, begränsning i växelriktaren), som vissa nätbolag gör. Det flyttar bara den statiska referensen (den statiska kapaciteten, steget med fast tak och en ansökans statiska kontroll och faskontroll), aldrig exportgränserna."
+note = "Below 1 the static study allows for the systems not all peaking together (orientation, shading, clipping), as some DSOs do. It moves the static reference only (the static capacity, the fixed-cap rung and a request's static and phase checks)."
+note_sv = "Under 1 tar den statiska studien hänsyn till att alla anläggningar inte når sin topp samtidigt (riktning, skuggning, begränsning i växelriktaren), som vissa nätbolag gör. Det flyttar bara den statiska referensen (den statiska kapaciteten, steget med fast tak och en ansökans statiska kontroll och faskontroll)."
 
 [static_load_rule]
 value = "min_daytime_summer"
@@ -1046,6 +1062,7 @@ note = ""
 
 # ---------------------------------------------------------------- home batteries (connection requests)
 [battery_ac2bat_eff]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.943
 unit = ""
 tag = "sourced"
@@ -1057,6 +1074,7 @@ note = "A retrofitted battery sits next to the existing inverter, so it is AC-co
 note_sv = "Ett eftermonterat batteri sitter bredvid den befintliga växelriktaren och är därför AC-kopplat."
 
 [battery_bat2ac_eff]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.945
 unit = ""
 tag = "sourced"
@@ -1067,6 +1085,7 @@ url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
 
 [battery_dc_eff]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.96
 unit = ""
 tag = "sourced"
@@ -1078,6 +1097,7 @@ note = "Split evenly between charging and discharging; standby consumption is no
 note_sv = "Delas lika mellan laddning och urladdning; förbrukning i viloläge modelleras inte."
 
 [battery_kw_per_kwh]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 0.5
 unit = "kW/kWh"
 tag = "team-assumption"
@@ -1088,6 +1108,7 @@ url = "https://doi.org/10.1016/j.est.2023.107299"
 note = ""
 
 [battery_max_kwh]
+feature = "envelopes"      # shown only where that part is on (kapacitet/features.py)
 value = 15
 unit = "kWh"
 tag = "team-assumption"

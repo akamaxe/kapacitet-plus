@@ -42,7 +42,7 @@ import numpy as np
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
-from .. import dso, seals, store
+from .. import dso, features, seals, store
 from ..engine import rules
 from ..paths import DATA
 from . import records
@@ -352,13 +352,16 @@ def process(app: dict, engine=None, make_record=None, evaluate=None) -> dict:
                            "reasons": [rules._reason("queue", detail="already_approved")]})
         if why is not None:                 # the queue moved, or started elsewhere: evaluate again
             baseline = "queue" if qu.approved(q) else (q["baseline"] or settings.inbox_baseline)
+            # the envelope scenario is a grid situation only where the envelopes are on
+            if baseline == "doe" and not features.on("envelopes"):
+                baseline = "static"
             request = {**rec["request"], "baseline": baseline}
             rec = make_record(uuid.uuid4().hex[:12], time.time(), request, evaluate(request))
             records.save(rec)
             append({"app": app["id"], "event": "reevaluated", "assessment": rec["id"], "because": why,
                     "baseline": baseline})
         th = dso.thresholds(settings)
-        v = rules.verdict(rec["result"], th)
+        v = rules.verdict(rec["result"], th, envelopes=features.on("envelopes"))
         sig = settings.rule_signature.model_dump(mode="json") if settings.rule_signature else None
         outside = "auto_off" if not settings.auto_decisions else rules.scope(
             sig, rec["request"], th, datetime.now(timezone.utc).date())
@@ -375,7 +378,8 @@ def process(app: dict, engine=None, make_record=None, evaluate=None) -> dict:
         except qu.QueueError as exc:
             return append({"app": app["id"], "event": "review", "assessment": rec["id"],
                            "reasons": [rules._reason("queue", detail=exc.code)]})
-        return append({"app": app["id"], "event": "decided", "outcome": v["outcome"], "by": "rule",
+        # the queue's own decision: firm by the hourly study is a firm connection
+        return append({"app": app["id"], "event": "decided", "outcome": item.get("decision", v["outcome"]), "by": "rule",
                        "assessment": rec["id"], "pv_kw": item.get("pv_kw", 0.0)})
 
 

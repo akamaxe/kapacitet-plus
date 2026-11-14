@@ -105,7 +105,9 @@ export default function Apply() {
     setQueued(null);
     setBusy(true);
     key.current = newKey();
-    const r = await apiWrite("/apply/evaluate", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 }).catch(() => null);
+    // the form offers a battery only where the server does (none where the envelopes are off)
+    const batSent = pv > 0 && (houses.data?.form.battery_max_kwh ?? 0) > 0 ? bat : 0;
+    const r = await apiWrite("/apply/evaluate", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: batSent }).catch(() => null);
     if (!r) {
       setBusy(false);
       return setError(t("ui.offline"));
@@ -225,12 +227,14 @@ export default function Apply() {
                   <input type="checkbox" checked={hp} onChange={(e) => setHp(e.target.checked)} />
                   <span>{t("apply.hp")}</span>
                 </label>
-                <label className="field-inline">
-                  <span>{t("apply.battery")}</span>
-                  <input type="number" min={0} max={H?.form.battery_max_kwh ?? 0} step={1} value={bat} disabled={pv <= 0}
-                    onChange={(e) => setBat(Math.max(0, Math.min(H?.form.battery_max_kwh ?? 0, Number(e.target.value) || 0)))} />
-                  <span>kWh</span>
-                </label>
+                {(H?.form.battery_max_kwh ?? 0) > 0 && (
+                  <label className="field-inline">
+                    <span>{t("apply.battery")}</span>
+                    <input type="number" min={0} max={H?.form.battery_max_kwh ?? 0} step={1} value={bat} disabled={pv <= 0}
+                      onChange={(e) => setBat(Math.max(0, Math.min(H?.form.battery_max_kwh ?? 0, Number(e.target.value) || 0)))} />
+                    <span>kWh</span>
+                  </label>
+                )}
               </div>
               {H && pv > 0 && pv < H.form.pv_min_kwp && <p className="caption-muted">{t("apply.pvMin", { kwp: f(H.form.pv_min_kwp, 1) })}</p>}
             </section>
@@ -282,6 +286,8 @@ export default function Apply() {
 function Answer({ a }: { a: any }) {
   const t = useT();
   const f = useFmt();
+  // where the envelopes are off the answer carries no envelope: firm, firm by the hourly study, or not
+  if (!a.envelope) return <HourlyAnswer a={a} />;
   const e = a.envelope ?? {};
   // a limit that never acted (no curtailment in any weather year, no limited hour) is said as such,
   // and one that rounds to nothing is said as "less than", never as "about 0.0 %"
@@ -305,6 +311,28 @@ function Answer({ a }: { a: any }) {
         <li>{t(`apply.rule.${a.rule.auto ? a.rule.outcome : "manual"}`)}</li>
       </ul>
       {a.owner && !a.firm && <OwnerFigures O={a.owner} headingId="apply-owner" />}
+      <p className="caption-muted">{t(`apply.base.${a.baseline === "queue" ? "queue" : "published"}`)}</p>
+    </div>
+  );
+}
+
+/** The answer where the envelopes are off: the static study's yes, the hourly study's, or neither. */
+function HourlyAnswer({ a }: { a: any }) {
+  const t = useT();
+  const f = useFmt();
+  const h = a.hourly ?? { fits: false, hours: 0, years: 0 };
+  return (
+    <div className="portal-answer stack" aria-live="polite">
+      <p className="lead-answer">
+        {a.firm ? t("apply.ans.firm")
+          : h.fits ? t("apply.ans.hourly", { n: h.years })
+          : t("apply.ans.notFirm", { h: f(h.hours), n: h.years })}
+      </p>
+      <ul className="portal-points">
+        {!a.firm && h.fits && <li>{t("apply.ans.staticHourly")}</li>}
+        {a.fuse && <li>{fuseText(t, f, a.fuse)}</li>}
+        <li>{t(`apply.rule.${a.rule.auto ? a.rule.outcome : "manual"}`)}</li>
+      </ul>
       <p className="caption-muted">{t(`apply.base.${a.baseline === "queue" ? "queue" : "published"}`)}</p>
     </div>
   );

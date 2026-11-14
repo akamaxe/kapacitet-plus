@@ -29,7 +29,7 @@ function useTree(): TreeNode | null {
   return useMemo(() => {
     if (!net.data || !meta.data) return null;
     const f = featuresOf(meta.data);
-    return buildTree(t, { site: meta.data.site, trafo: meta.data.grid?.trafo_type ?? null, houses: treeHouses(net.data.features),
+    return buildTree(t, { site: meta.data.site, trafo: meta.data.grid?.trafo_type ?? null, houses: treeHouses(net.data.features, f.envelopes),
       screens: visibleScreens(f), label: (s) => screenLabel(t, s, f) });
   }, [t, net.data, meta.data]);
 }

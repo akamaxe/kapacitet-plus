@@ -1,18 +1,68 @@
 # Kapacitet+
 
-A digital twin of one Swedish low-voltage neighbourhood that puts two connection studies side
-by side: the conservative worst-case **hosting capacity** used today, and the capacity unlocked
-by **Dynamic Operating Envelopes** (DOE) — time-varying export limits that are verified hour by
-hour with a full nonlinear power flow.
+How much new solar and new load a low-voltage network takes, hour by hour, and a quick answer to
+each connection request against it. Kapacitet+ runs every hour of eleven weather years through the
+network's own model, checks the hours that come close to a limit with a full nonlinear power flow,
+and sets what it finds beside the worst-case static study a DSO uses today.
 
-The demo neighbourhood is **Smedslätten, Bromma (Stockholm, SE3)**: 120 real villas around a
+The reference network is **Smedslätten, Bromma (Stockholm, SE3)**: 120 real villas around a
 substation that OpenStreetMap maps at Smedslättsvägen 71A. Buildings, streets, weather, prices
 and national volumes are real data; the cables, the transformer and household behaviour are
-modelled, and the interface labels which is which on every screen.
+modelled, and the interface labels which is which on every screen. A DSO's own network comes in
+as four CSV tables or as CGMES ([Running it on someone else's network](#running-it-on-someone-elses-network)).
 
-## What it shows
+## What it does with a DSO's network
+
+- **Hosting capacity, hour by hour.** Houses add solar one after another, in 20 seeded orders,
+  until an hour of the weather record breaks a limit: a voltage, a cable or the transformer. What
+  the hourly study connects needs no control at all, so it is connected firm.
+- **Consumption capacity.** The same search on the import side, for home chargers, heat pumps and
+  constant loads, set against the static convention of counting each new device as a constant load
+  of its rating.
+- **A connection request in seconds.** Solar, an EV charger or a heat pump at one address is run
+  through the static study and the hourly study: every weather year with all it asks for. A request
+  either study connects firm is approved in a queue that checks every weather year again with the
+  full power flow, and the next request meets the grid with it in place.
+- **Many substations.** `kapacitet study` builds a DSO's stations, each in its own process, then
+  collects, reviews, signs and publishes a quarter's run ([A study of many stations](#a-study-of-many-stations)).
+
+The dynamic operating envelopes, the Sweden screen, the 2030 scenarios and the applicant's portal
+stay in the code and are off unless an installation switches them on
+([What is switched on](#what-is-switched-on)). The envelopes are an
+[experimental module](#experimental-module-dynamic-operating-envelopes).
+
+## The reference figures
 
 Median over 20 seeded adoption orders and 11 weather years (2015–2025), transformer 0.4 MVA.
+
+| Method | Solar connected | Houses |
+|---|---|---|
+| Static study, worst case | **413 kW AC** (P10–P90 405–415) | 50 |
+| Static study + fixed export cap at 3 % curtailment | 416 kW | 51 |
+| Real hours, no control (every hour of 11 years within limits) | 609 kW | 74 |
+
+| Load | Fits before an hour breaks a limit | Counted as a constant load of its rating |
+|---|---|---|
+| New 11 kW home chargers | 24.5 (P10–P90 19.8–30.3) | 3 |
+| New heat pumps | 8 (P10–P90 7–9) | – |
+
+The hourly study connects about half as much solar again as the static study, firm and without
+any control, because it checks the hours the network really has instead of one worst case built
+from the strongest sun and the lowest load. On the import side the gap is wider: home charging does not run
+at full power in every hour, so the network takes eight times the chargers the static convention
+admits (`consumption.json`; the heat pumps are each house's own, sized to its heat demand).
+
+Every number above is computed by this repository — nothing in the interface is typed in by hand.
+
+## Experimental module: dynamic operating envelopes
+
+Off by default (`KAPACITET_ENVELOPES=1` switches it on). A dynamic operating envelope is an export
+limit for each house that changes hour by hour, verified with the full power flow. The module was
+built to connect more solar than the hourly study; on this network and on three benchmark
+networks, nothing that can be issued in advance does so (below, and
+[docs/envelopes-by-network.md](docs/envelopes-by-network.md)), so the envelopes left the product's
+pitch and the code stays, tested.
+
 Each envelope row says on which basis it was computed: with **perfect foresight** (each hour's
 limit knows that hour: the planning bound) or **issued the day before** (what an operator can
 issue the day before), and whether the 3 % curtailment budget holds for the installations
@@ -20,9 +70,6 @@ beyond the static limit together (**aggregate**) or for each one (**per installa
 
 | Method | Solar connected | Houses |
 |---|---|---|
-| Static study, worst case | **413 kW AC** (P10–P90 405–415) | 50 |
-| Static study + fixed export cap at 3 % curtailment | 416 kW | 51 |
-| Real hours, no control (every hour of 11 years within limits) | 609 kW | 74 |
 | Envelopes issued the day before, no forecast, 3 % aggregate | 588 kW (577–598) | 71 |
 | Envelopes with perfect foresight, 3 % per installation | 724 kW (713–737) | 88 |
 | **Envelopes with perfect foresight, 3 % aggregate** | **787 kW** (782–800) | 96 |
@@ -61,8 +108,6 @@ Three findings worth a sentence each:
 - **Fairness is free in this network.** Max-min, pro-rata, proportional-fair and max-total all
   curtail the same total energy (1.98 % in the showcase year) because one shared constraint
   binds; they only differ in *who* is curtailed (Jain index 0.59 → 0.92).
-
-Every number above is computed by this repository — nothing in the interface is typed in by hand.
 
 ## Run it in the browser (GitHub Codespaces)
 
@@ -331,6 +376,33 @@ years are skipped with a log line. The business case's central figure is the mea
 weather year with prices; each response's `prices` block says which years and which source each
 came from. ENTSO-E's raw XML never goes into a data bundle (`bundle.EXCLUDED`) until its licence
 is decided, and the token never reaches a log line, the manifest or a bundle.
+
+### What is switched on
+
+An installation shows the hourly capacity, the connection requests and the method. Four parts stay
+in the code, tested, and are off unless the server is started with them, so a DSO sees only what
+it uses:
+
+| Part | Switch | What it adds |
+|---|---|---|
+| Envelopes | `KAPACITET_FEATURES=envelopes`, or `KAPACITET_ENVELOPES=1` | the [experimental module](#experimental-module-dynamic-operating-envelopes): envelopes per house, the Operation screen, the annual report, the envelope scenario and the battery of a request, connecting on an envelope, the forecast and intraday sections of the method |
+| Sweden | `KAPACITET_FEATURES=national` | the national screen |
+| 2030 | `KAPACITET_FEATURES=scenarios` | the 2030 scenarios and their growth rates (the team's assumptions, without a source) |
+| Portal | `KAPACITET_FEATURES=portal` | the [applicant's portal](#the-applicants-portal) (`#/apply`), its applications and the DSO's rule, on the Operation screen, which is called Applications where the envelopes are off |
+
+`KAPACITET_FEATURES=envelopes,portal` names several and `KAPACITET_FEATURES=all` switches every
+part on. `/api/v1/health` and `/meta` say which are on, `kapacitet instance check` reports them and
+warns about a name that is no part, and a route of a part that is off answers 404 with the code
+`feature_off`. Menus, the project tree, the search, the keys and the tour are built from the
+screens that are on, and a link to a screen that is off opens the capacity screen.
+
+Where the envelopes are off, the second answer to a request is the hourly study's: firm when no
+hour of any weather year breaks a limit with all it asks for. The queue approves it on that basis
+(`POST /api/v1/queue` with `decision: "hourly"`), checking every weather year again with the full
+power flow, and keeps it as a firm connection with `basis: "hourly"`. A request cannot ask for the
+envelope scenario or a battery then (the battery stores what an envelope curtails), and the map's
+second scenario is the hourly study's deployment of the median order: computed the first time it is
+asked for and kept in `requests/cache/hourly/`, so no data bundle has to change.
 
 ### Getting around
 
@@ -1098,6 +1170,13 @@ DSO has switched the rule on and signed it (below):
   agreed level, 3 % of its solar energy), leaves at most 1 % of its EV charging unserved
   (`ev_unserved_limit_pct`), no heat unserved, and no hour above a grid limit;
 - **to a person** otherwise, with the reasons. The rule never declines.
+
+Where the envelopes are off ([What is switched on](#what-is-switched-on)) there is no envelope to
+connect on: the rule connects firm by the static study, firm by the hourly study when no hour of any
+weather year breaks a limit with all the request asks for (`hourly`, kept in the queue as a firm
+connection with `basis: "hourly"`), or sends the application to a person with the hours it would
+break (`hourly_limits`). The portal and the inbox meet today's grid even if the inbox's baseline
+still says the envelope scenario.
 
 Advisor mode is the default: automatic decisions are off (`auto_decisions`), so the rule only
 proposes, and the inbox shows each application's `proposal` beside the reasons a person decides

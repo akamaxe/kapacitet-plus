@@ -75,6 +75,9 @@ class Assumption:
     note: str
     label_sv: str = ""
     note_sv: str = ""
+    # the part of the product only it serves (kapacitet/features.py): the inputs table leaves it out
+    # while that part is off; empty for the inputs every part uses
+    feature: str = ""
 
 
 def _read_toml(name: str) -> dict[str, Any]:
@@ -194,6 +197,7 @@ def assumptions() -> dict[str, Assumption]:
             note=entry.get("note", ""),
             label_sv=entry.get("label_sv", ""),
             note_sv=entry.get("note_sv", ""),
+            feature=entry.get("feature", ""),
         )
     return out
 

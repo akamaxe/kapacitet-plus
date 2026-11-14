@@ -377,7 +377,7 @@ def capacity(years, n_orders: int, z_star: float, workers: int = 1, t0: float | 
     return per_order, summary
 
 
-EXTRA_STAGES = ("national", "requests", "scenarios", "tornado", "mvband", "foresight", "intraday",
+EXTRA_STAGES = ("national", "requests", "hourly", "scenarios", "tornado", "mvband", "foresight", "intraday",
                 "overinstallation", "consumption", "phases", "validation", "protection", "operation")
 
 
@@ -404,6 +404,12 @@ def compute_extra(quick: bool = False, t0: float | None = None, only: set[str] |
     if want("requests"):
         run_extra.request_baselines(years)
         log.info("request baselines done (%.0f s)", time.perf_counter() - t0)
+    if want("hourly"):
+        # the hourly study's deployment of the median order, verified, and what the next house breaks
+        from . import hourly
+        doc, state = hourly.compute(json.loads(processed("results", "hosting_summary.json").read_text(encoding="utf-8")))
+        hourly.write(doc, state)
+        log.info("hourly deployment done (%.0f s)", time.perf_counter() - t0)
     if want("scenarios"):
         run_extra.scenarios_2030(o, ms, cfg.reference_year, quick, workers=workers)
         log.info("2030 scenarios done (%.0f s)", time.perf_counter() - t0)
@@ -588,6 +594,13 @@ def showcase(o: int, ms: int, mts: int, k: int, years, quick: bool) -> None:
 
 def write_state(name: str, res, viol, p_net, pv, load, curtailed_total, folder: tuple[str, ...] = ("ui",)) -> None:
     """One scenario's year for the map (the contract is engine/stateblob.py)."""
+    header, blob = state_blob(name, res, viol, p_net, pv, load, curtailed_total)
+    write_bytes_atomic(processed(*folder, f"state_{name}.bin"), blob)
+    write_json_atomic(processed(*folder, f"state_{name}.json"), header, indent=None, default=_default)
+
+
+def state_blob(name: str, res, viol, p_net, pv, load, curtailed_total) -> tuple[dict, bytes]:
+    """One scenario's year for the map as its header and its blob, wherever they are written."""
     m = model()
     agg = {
         "trafo_loading": np.round(res.trafo_loading, 2), "trafo_p_kw": np.round(res.trafo_p_mw * 1000, 2),
@@ -597,10 +610,8 @@ def write_state(name: str, res, viol, p_net, pv, load, curtailed_total, folder: 
         "pv_kw": np.round(np.asarray(pv).sum(axis=0), 2), "load_kw": np.round(np.asarray(load).sum(axis=0), 2),
         "curtailed_kw": np.round(curtailed_total, 2) if curtailed_total is not None else None,
     }
-    header, blob = encode_state(name, np.abs(res.v), res.line_loading, np.asarray(p_net),
-                                m.net.bus.index.tolist(), m.net.line.index.tolist(), agg)
-    write_bytes_atomic(processed(*folder, f"state_{name}.bin"), blob)
-    write_json_atomic(processed(*folder, f"state_{name}.json"), header, indent=None, default=_default)
+    return encode_state(name, np.abs(res.v), res.line_loading, np.asarray(p_net),
+                        m.net.bus.index.tolist(), m.net.line.index.tolist(), agg)
 
 
 def write_risk(risk: list[dict], o: int, ms: int, k: int) -> None:

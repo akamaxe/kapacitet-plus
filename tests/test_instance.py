@@ -97,6 +97,17 @@ def test_sign_in_on_is_reported_by_its_provider_host_and_no_secret_is_printed(he
         assert secret not in text
 
 
+def test_the_parts_switched_on_are_reported_and_a_name_that_is_no_part_warns(healthy, monkeypatch):
+    monkeypatch.setenv("KAPACITET_FEATURES", "envelopes,portl")
+    found = instance.check(healthy)
+    msgs = {f.level: f.message for f in found if f.area == "features"}
+    assert msgs["ok"] == "on: envelopes" and "portl" in msgs["warn"]
+    monkeypatch.delenv("KAPACITET_FEATURES")
+    found = instance.check(healthy)
+    assert [f.level for f in found if f.area == "features"] == ["ok"]
+    assert "none" in next(f.message for f in found if f.area == "features")
+
+
 @pytest.mark.parametrize("piece", ["no_data_folder", "no_results", "auth_unset", "auth_incomplete", "hosts_star",
                                    "public_without_signin", "key_unreadable", "key_missing", "chain_broken",
                                    "tsa_url", "tsa_cert", "telemetry_endpoint", "disk_full", "db_unreachable",

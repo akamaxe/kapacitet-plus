@@ -17,7 +17,7 @@ from fastapi import APIRouter, Header, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import brand, dso
+from .. import brand, dso, features
 from ..config import A
 from ..engine import rules
 from . import inbox
@@ -46,7 +46,9 @@ def _baseline() -> str:
     from ..engine import queue as qu
 
     q = qu.load()
-    return "queue" if qu.approved(q) else (q["baseline"] or dso.load().inbox_baseline)
+    base = "queue" if qu.approved(q) else (q["baseline"] or dso.load().inbox_baseline)
+    # the envelope scenario is a grid situation only where the envelopes are on
+    return "static" if base == "doe" and not features.on("envelopes") else base
 
 
 @router.get("/brand")
@@ -86,7 +88,9 @@ def houses() -> dict:
              for r in cust[["cid", "address"]].itertuples()]
     items.sort(key=lambda h: (h["address"] is None, h["address"] or "", h["cid"]))
     return {"items": items,
-            "form": {"pv_min_kwp": A("pv_min_kwp"), "battery_max_kwh": A("battery_max_kwh"),
+            # no battery where the envelopes are off: it stores the solar an envelope curtails
+            "form": {"pv_min_kwp": A("pv_min_kwp"),
+                     "battery_max_kwh": A("battery_max_kwh") if features.on("envelopes") else 0,
                      "ev_kw": [A("ev_charger_single_phase_kw"), A("ev_charger_kw")]}}
 
 
@@ -136,22 +140,30 @@ def answer(job_id: str) -> dict:
     summary = res.get("summary") or {}
     s = dso.load()
     years = s.deferral_years
-    return {
+    envelopes = features.on("envelopes")
+    held = rules.held_hours(res.get("per_year"))
+    out = {
         "id": rec["id"], "address": (res.get("customer") or {}).get("address"),
         "request": {k: rec["request"].get(k) for k in ("cid", "pv_kwp", "ev_kw", "hp", "bat_kwh", "ev_phases")},
         "baseline": rec["request"].get("baseline"),
         "firm": bool(static) and all(p.get("approved") for p in static.values()),
         "static": {k: {"approved": bool(v.get("approved")), "reason_code": v.get("reason_code"),
                        "reason_value": v.get("reason_value")} for k, v in static.items()},
-        "envelope": {"curtailment_mean_pct": risk.get("mean_pct"), "curtailment_p90_pct": risk.get("p90_pct"),
-                     "hours_limited_ref": summary.get("pv_hours_limited_ref"),
-                     "ev_unmet_pct": summary.get("ev_unmet_pct"), "hp_unmet_pct": summary.get("hp_unmet_pct")},
+        # the hourly study: every weather year with all it asks for, firm only with no hour over a limit
+        "hourly": {"fits": bool(res.get("per_year")) and held == 0, "hours": held,
+                   "years": len(res.get("per_year") or [])},
         "fuse": res.get("fuse"), "phases_ok": (res.get("phases") or {}).get("ok", True),
         # "auto": the rule would decide it on its own, switched on and signed for this request
-        "rule": {**rules.verdict(res, dso.thresholds(s)), "auto": _decides_alone(s, rec["request"])},
-        "owner": owner_case(res, years, A("household_discount_rate_pct"), datetime.now(timezone.utc).year),
+        "rule": {**rules.verdict(res, dso.thresholds(s), envelopes=envelopes), "auto": _decides_alone(s, rec["request"])},
         "provenance": rec.get("provenance"),
     }
+    # the limit and what it costs, and connecting now against waiting, only where there are envelopes
+    if envelopes:
+        out["envelope"] = {"curtailment_mean_pct": risk.get("mean_pct"), "curtailment_p90_pct": risk.get("p90_pct"),
+                           "hours_limited_ref": summary.get("pv_hours_limited_ref"),
+                           "ev_unmet_pct": summary.get("ev_unmet_pct"), "hp_unmet_pct": summary.get("hp_unmet_pct")}
+        out["owner"] = owner_case(res, years, A("household_discount_rate_pct"), datetime.now(timezone.utc).year)
+    return out
 
 
 def _decides_alone(s, request: dict) -> bool:

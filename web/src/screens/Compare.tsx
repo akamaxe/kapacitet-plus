@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { AnswerStops, heroStops } from "../components/AnswerStops";
+import { AnswerStops, CapacityStops, heroStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
 import { ConsumptionRegion } from "../components/Consumption";
 import { PriceBasis, rangeParams } from "../components/PriceBasis";
@@ -18,6 +18,7 @@ import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { bindingLimit, curveMarks, uncontrolledPasses } from "../lib/verdicts";
 import { useFeatures } from "../lib/features";
+import { useHourly } from "../lib/houses";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -27,6 +28,10 @@ export default function Compare() {
   const lang = useStore((s) => s.lang);
   const envelopes = useFeatures().envelopes;
   const hosting = useApi<any>("/hosting");
+  // the hourly study's deployment, the capacity view's own (engine/hourly.py): asked where the
+  // envelopes are off, and computed by the server the first time
+  const hourly = useHourly();
+  const HR = hourly.data?.data;
   // the heatmaps are a third of the showcase and drawn far down: they load as their section nears
   const show = useApi<any>("/showcase?heatmaps=false");
   const whenRef = useRef<HTMLElement | null>(null);
@@ -105,12 +110,22 @@ export default function Compare() {
     { id: "capacity", label: t("cmp.sec.capacity") },
     { id: "consumption", label: t("cmp.sec.consumption") },
     { id: "verify", label: t("cmp.sec.verify") },
-    ...(S ? [{ id: "when", label: t("cmp.sec.when") }] : []),
-    { id: "fair", label: t("cmp.sec.fair") },
-    ...(OV ? [{ id: "value", label: t("cmp.sec.value"), basis: valueBasis }] : []),
-    ...(RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce"), basis: reinfBasis }] : []),
+    ...(envelopes && S ? [{ id: "when", label: t("cmp.sec.when") }] : []),
+    ...(envelopes ? [{ id: "fair", label: t("cmp.sec.fair") }] : []),
+    ...(envelopes && OV ? [{ id: "value", label: t("cmp.sec.value"), basis: valueBasis }] : []),
+    ...(envelopes && RF ? [{ id: "reinforce", label: t("cmp.sec.reinforce"), basis: reinfBasis }] : []),
     ...(H.tornado ? [{ id: "sensitivity", label: t("cmp.sec.sensitivity"), basis: sensBasis }] : []),
   ];
+  // the measures the bars show: the static study and the hourly study, and the envelopes' where on
+  const measures: readonly string[] = envelopes ? MEASURES : ["static", "timeseries"];
+  const nx = HR?.next;
+  const nextLine = !HR ? null
+    : nx?.fits_all ? t("cmp.next.fitsAll")
+    : nx?.binding ? t(`cmp.next.${nx.binding}`, { n: f(nx.adopters), h: f(nx.hours), year: nx.year })
+    : t("cmp.next.unknown", { n: f(nx?.adopters ?? 0) });
+  // the same on the answer sheet: the limit as the row's value, what the next house does as its note
+  const nextKey = !HR ? null : nx?.fits_all ? "fitsAll" : nx?.binding ?? "unknown";
+  const nextVars = { n: f(nx?.adopters ?? 0), h: f(nx?.hours ?? 0), year: nx?.year ?? "–" };
 
   return (
     <div className="page">
@@ -123,18 +138,36 @@ export default function Compare() {
         <section className="region">
           <div className="overview-hero">
             <div className="overview-copy">
-              <h1 className="headline">{t("overview.title")}</h1>
+              <h1 className="headline">{t(envelopes ? "overview.title" : "overview.title.capacity")}</h1>
               <p className="headline-sub">{t("cmp.leadShort", { mva: trafoMva != null ? f(trafoMva, 1) : "–" })}</p>
               {/* the screen's one answer: static, what can be issued today, the perfect-foresight
                   bound; each figure is said here and nowhere else in the view */}
-              <AnswerStops />
+              {envelopes ? <AnswerStops /> : <CapacityStops />}
               {/* the one action follows the answer, so it is in the first viewport at 1536×730; the
                   data sheet under it is the answer's evidence */}
               <div className="hero-actions">
                 <a className="btn" href="#/request">{t("overview.request")}</a>
                 <a className="btn ghost" href="#/twin">{t("overview.explore")}</a>
               </div>
-              <div className="tiles cols-1 answer-sheet">
+              {!envelopes && (
+                <div className="tiles cols-1 answer-sheet">
+                  <Tile label={t("cmp.sheet.housesHourly")} value={`${f(m.static.adopters.median)} → ${f(m.timeseries.adopters.median)}`} />
+                  {H.consumption && (
+                    <Tile label={t("cmp.sheet.chargers")}
+                      value={`${f(H.consumption.devices.flat.adopters.median, 1)} → ${f(H.consumption.devices.ev.adopters.median, 1)}`}
+                      note={t("cmp.sheet.chargersNote")} />
+                  )}
+                  {nextKey && (
+                    <Tile label={t("cmp.sheet.next")} value={<span className="t-word">{t(`cmp.nextWord.${nextKey}`)}</span>}
+                      note={t(`cmp.nextNote.${nextKey}`, nextVars)} />
+                  )}
+                  {HR && (
+                    <Tile label={t("cmp.sheet.peakHourly", { year: HR.year })} value={f(HR.verification.max_trafo_loading_pct)}
+                      unit={t("cmp.sheet.peakUnit")} />
+                  )}
+                </div>
+              )}
+              {envelopes && <div className="tiles cols-1 answer-sheet">
                 <Tile label={t("cmp.sheet.houses")} value={`${f(m.static.adopters.median)} → ${issuableHouses}`}
                   note={t("cmp.sheet.housesNote", { n: f(m.doe.adopters.median) })} />
                 <Tile label={<Term id="curtailment">{t("cmp.sheet.cost")}</Term>} value={f(zDoeMedian, 1)} unit={t("cmp.sheet.costUnit")} />
@@ -148,7 +181,7 @@ export default function Compare() {
                     ? <a href={`#/twin?hour=${meta.data.showcase_hour}&scenario=uncontrolled`}>{hourLabel(lang, S.year, meta.data.showcase_hour)}</a>
                     : undefined}
                 />
-              </div>
+              </div>}
             </div>
             <Suspense fallback={<div className="net-figure" aria-hidden="true"><span /><div className="net-map" /></div>}>
               <NetworkMap />
@@ -165,12 +198,12 @@ export default function Compare() {
             </div>
           </div>
           <ChartOrTable
-            chart={<Chart ariaLabel={t("cmp.bars")} height={250} deps={[H]} build={(tk, width) => barsOption(tk, m, (k) => measureLabel(t, k, zStar), width)} />}
+            chart={<Chart ariaLabel={t("cmp.bars")} height={envelopes ? 250 : 150} deps={[H, envelopes]} build={(tk, width) => barsOption(tk, m, (k) => measureLabel(t, k, zStar), width, measures)} />}
             table={
               <table className="data">
                 <thead><tr><th>{t("tbl.method")}</th><th className="r">{t("tbl.kwMedian")}</th><th className="r">P10</th><th className="r">P90</th><th className="r">{t("tbl.houses")}</th></tr></thead>
                 <tbody>
-                  {MEASURES.map((k) => (
+                  {measures.map((k) => (
                     <tr key={k}><td>{measureLabel(t, k, zStar)}</td><td className="r">{f(m[k].kw_ac.median)}</td><td className="r">{f(m[k].kw_ac.p10)}</td><td className="r">{f(m[k].kw_ac.p90)}</td><td className="r">{f(m[k].adopters.median)}</td></tr>
                   ))}
                 </tbody>
@@ -178,7 +211,7 @@ export default function Compare() {
             }
           />
           {/* the cost of the last kilowatt is a figure in its own right, so it gets a panel */}
-          <section className="block">
+          {envelopes && <section className="block">
             <div className="block-head"><h3>{t("cmp.curve")}</h3></div>
             <p className="caption">{t("cmp.curve.caption", { from: years[0], to: years[years.length - 1] })}</p>
             <ChartOrTable
@@ -199,7 +232,7 @@ export default function Compare() {
                 {t("cmp.curve.fixedNote", { a: f(Math.min(...fixedZ)), b: f(Math.max(...fixedZ)) })}
               </p>
             )}
-          </section>
+          </section>}
         </section>
 
         {/* ---------------------------------------------------------------- consumption */}
@@ -210,7 +243,20 @@ export default function Compare() {
           <div className="region-head">
             <div className="region-title"><h2>{t("cmp.verify")}</h2></div>
           </div>
-          <Protocol
+          {!envelopes && HR && (
+            <Protocol
+              rows={[
+                { ok: HR.verification.violation_hours === 0, label: t("cmp.verify.hourly"), value: f(HR.verification.violation_hours), unit: "h", criterion: t("cmp.verify.hourlyNote", { h: f(HR.verification.hours), year: HR.year }) },
+                ...(vMax != null ? [{ ok: HR.verification.max_voltage_pu <= vMax, label: t("cmp.verify.vmaxHourly"), value: f(HR.verification.max_voltage_pu, 3), unit: "pu", criterion: t("cmp.verify.limit", { v: `${f(vMax, 2)} pu` }) }] : []),
+                ...(thermal != null ? [{ ok: HR.verification.max_trafo_loading_pct <= thermal, label: t("cmp.verify.trafoHourly"), value: f(HR.verification.max_trafo_loading_pct, 1), unit: "%", criterion: t("cmp.verify.limit", { v: `${f(thermal)} %` }) }] : []),
+                { ok: ver.static_violation_hours === 0, label: t("cmp.verify.static"), value: f(ver.static_violation_hours), unit: "h", criterion: t("cmp.verify.staticNote", { year: S.year }) },
+                ...(PF ? [{ ok: null, label: t("cmp.verify.zbus"), value: PF.max_abs_dv_pu.toExponential(0), unit: "pu", criterion: t("cmp.verify.zbusNote", { n: PF.cases }) }] : []),
+              ]}
+            />
+          )}
+          {!envelopes && !HR && <SectionMissing title={t("cmp.verify")} q={hourly} />}
+          {!envelopes && nextLine && <p className="caption">{nextLine}</p>}
+          {envelopes && <Protocol
             rows={[
               { ok: ver.doe_full_year_violations === 0, label: t("cmp.verify.doe"), value: f(ver.doe_full_year_violations), unit: "h", criterion: t("cmp.verify.of", { h: f(hoursInYear(S.year)), year: S.year }) },
               ...(vMax != null ? [{ ok: ver.doe_max_voltage_pu <= vMax, label: t("cmp.verify.vmax"), value: f(ver.doe_max_voltage_pu, 3), unit: "pu", criterion: t("cmp.verify.limit", { v: `${f(vMax, 2)} pu` }) }] : []),
@@ -219,15 +265,15 @@ export default function Compare() {
               ...(PF ? [{ ok: null, label: t("cmp.verify.zbus"), value: PF.max_abs_dv_pu.toExponential(0), unit: "pu", criterion: t("cmp.verify.zbusNote", { n: PF.cases }) }] : []),
               { ok: uncontrolledPasses(ver), label: t("cmp.verify.unc"), value: f(ver.uncontrolled_violation_hours), unit: "h", criterion: t("cmp.verify.uncNote", { year: S.year }) },
             ]}
-          />
-          <p className="caption">{(() => {
+          />}
+          {envelopes && <p className="caption">{(() => {
             const b = bindingLimit(ver);
             return t(b.key, { h: f(b.vars.h ?? null), v: f(b.vars.v ?? null, 3), load: f(b.vars.load ?? null, 1) });
-          })()}</p>
+          })()}</p>}
         </section>
 
         {/* ---------------------------------------------------------------- when it binds */}
-        {S && (
+        {envelopes && S && (
           <section className="region" id="when" ref={whenRef}>
             <div className="region-head">
               <div className="region-title">
@@ -252,7 +298,7 @@ export default function Compare() {
         )}
 
         {/* ---------------------------------------------------------------- fairness */}
-        <section className="region" id="fair">
+        {envelopes && <section className="region" id="fair">
           <div className="region-head">
             <div className="region-title">
               <h2>{t("cmp.fair")}</h2>
@@ -300,12 +346,12 @@ export default function Compare() {
               />
             </section>
           )}
-        </section>
+        </section>}
 
         {/* ---------------------------------------------------------------- value */}
-        {!OV && <SectionMissing title={t("cmp.value")} q={over} />}
-        {!RF && <SectionMissing title={t("cmp.reinf")} q={reinf} />}
-        {OV && (
+        {envelopes && !OV && <SectionMissing title={t("cmp.value")} q={over} />}
+        {envelopes && !RF && <SectionMissing title={t("cmp.reinf")} q={reinf} />}
+        {envelopes && OV && (
           <section className="region" id="value">
             <div className="region-head">
               <div className="region-title">
@@ -343,7 +389,7 @@ export default function Compare() {
         )}
 
         {/* ---------------------------------------------------------------- reinforcement */}
-        {RF && (
+        {envelopes && RF && (
           <section className="region" id="reinforce">
             <div className="region-head">
               <div className="region-title">
@@ -381,7 +427,7 @@ export default function Compare() {
             {curtRange && <p className="caption">{t("cmp.reinf.curtRange", curtRange)}</p>}
             <PriceBasis P={RF.prices} />
             <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
-            {envelopes && <Deferral />}
+            <Deferral />
           </section>
         )}
 
@@ -395,19 +441,20 @@ export default function Compare() {
                 <p className="region-basis">{sensBasis}</p>
               </div>
               <Legend items={[
-                { color: "var(--series-dynamic)", label: t("cmp.fig.doe") },
+                { color: "var(--series-dynamic)", label: envelopes ? t("cmp.fig.doe") : t("m.timeseries") },
                 { color: "var(--neutral-series)", label: t("cmp.fig.static") },
               ]} />
             </div>
             <ChartOrTable
-              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado]} build={(tk, width, fm) => tornadoOption(tk, H.tornado, t, width, fm)} />}
+              chart={<Chart ariaLabel={t("cmp.tornado")} height={330} deps={[H.tornado, envelopes]}
+                build={(tk, width, fm) => tornadoOption(tk, H.tornado, t, width, fm, envelopes ? "doe_kw" : "timeseries_kw")} />}
               table={
                 <table className="data">
-                  <thead><tr><th>{t("tbl.input")}</th><th>{t("tbl.value")}</th><th className="r">{t("tbl.staticKw")}</th><th className="r">{t("tbl.tsKw")}</th><th className="r">{t("tbl.doeKw")}</th></tr></thead>
+                  <thead><tr><th>{t("tbl.input")}</th><th>{t("tbl.value")}</th><th className="r">{t("tbl.staticKw")}</th><th className="r">{t("tbl.tsKw")}</th>{envelopes && <th className="r">{t("tbl.doeKw")}</th>}</tr></thead>
                   <tbody>
-                    <tr><td>{t("tbl.base")}</td><td>–</td><td className="r">{f(H.tornado.base.static_kw)}</td><td className="r">{f(H.tornado.base.timeseries_kw)}</td><td className="r">{f(H.tornado.base.doe_kw)}</td></tr>
+                    <tr><td>{t("tbl.base")}</td><td>–</td><td className="r">{f(H.tornado.base.static_kw)}</td><td className="r">{f(H.tornado.base.timeseries_kw)}</td>{envelopes && <td className="r">{f(H.tornado.base.doe_kw)}</td>}</tr>
                     {H.tornado.cases.map((c: any) => (
-                      <tr key={c.label + c.level}><td>{tornadoLabel(t, c)}</td><td>{tornadoLevel(t, c.level)}</td><td className="r">{f(c.static_kw)}</td><td className="r">{f(c.timeseries_kw)}</td><td className="r">{f(c.doe_kw)}</td></tr>
+                      <tr key={c.label + c.level}><td>{tornadoLabel(t, c)}</td><td>{tornadoLevel(t, c.level)}</td><td className="r">{f(c.static_kw)}</td><td className="r">{f(c.timeseries_kw)}</td>{envelopes && <td className="r">{f(c.doe_kw)}</td>}</tr>
                     ))}
                   </tbody>
                 </table>
@@ -515,7 +562,8 @@ function measureLabel(t: (k: string, v?: any) => string, k: string, z: number) {
 
 // ------------------------------------------------------------------------------ chart options
 
-function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: number) {
+function barsOption(tk: Tokens, m: any, label: (k: string) => string, width: number, measures: readonly string[] = MEASURES) {
+  const MEASURES = measures;
   const compact = width < 520;
   const cats = MEASURES.map(label);
   const vals = MEASURES.map((k) => m[k].kw_ac.median);
@@ -688,18 +736,21 @@ function riskOption(tk: Tokens, R: any, zStar: number, f: (v: number | null | un
   };
 }
 
-function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number, f: (v: number | null | undefined, d?: number) => string) {
+function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: number, f: (v: number | null | undefined, d?: number) => string,
+  key: "doe_kw" | "timeseries_kw" = "doe_kw") {
+  // the method set against the static study: the envelopes' where they are on, the hourly study's where not
+  const name = key === "doe_kw" ? t("cmp.fig.doe") : t("m.timeseries");
   const compact = width < 520;
   const groups: Record<string, any[]> = {};
   for (const c of T.cases) (groups[tornadoLabel(t, c)] ||= []).push(c);
   const labels = Object.keys(groups);
-  const rng = (key: "doe_kw" | "static_kw") => labels.map((l) => {
-    const vs = groups[l].map((c) => c[key]);
+  const rng = (k: "doe_kw" | "timeseries_kw" | "static_kw") => labels.map((l) => {
+    const vs = groups[l].map((c) => c[k]);
     return [Math.min(...vs), Math.max(...vs)];
   });
-  const d = rng("doe_kw");
+  const d = rng(key);
   const s = rng("static_kw");
-  const levels = (l: string) => groups[l].map((c) => `${tornadoLevel(t, c.level)}: ${t("m.static")} ${f(c.static_kw)} kW, ${t("cmp.fig.doe")} ${f(c.doe_kw)} kW`).join("<br/>");
+  const levels = (l: string) => groups[l].map((c) => `${tornadoLevel(t, c.level)}: ${t("m.static")} ${f(c.static_kw)} kW, ${name} ${f(c[key])} kW`).join("<br/>");
   return {
     grid: { left: compact ? 116 : 250, right: compact ? 20 : 40, top: 10, bottom: 34 },
     xAxis: { type: "value", ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 24, min: 0 },
@@ -710,7 +761,7 @@ function tornadoOption(tk: Tokens, T: any, t: (k: string) => string, width: numb
       { type: "bar", stack: "d", data: d.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.dynamic, borderRadius: tk.size.radius }, barWidth: 10 },
       { type: "bar", stack: "s", data: s.map((x) => x[0]), itemStyle: { color: "transparent" }, barWidth: 10, silent: true },
       { type: "bar", stack: "s", data: s.map((x) => Math.max(x[1] - x[0], 2)), itemStyle: { color: tk.neutralSeries, borderRadius: tk.size.radius }, barWidth: 10 },
-      { type: "scatter", data: labels.map((l) => [T.base.doe_kw, l]), symbolSize: 9, itemStyle: { color: tk.text, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
+      { type: "scatter", data: labels.map((l) => [T.base[key], l]), symbolSize: 9, itemStyle: { color: tk.text, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
       { type: "scatter", data: labels.map((l) => [T.base.static_kw, l]), symbolSize: 9, itemStyle: { color: tk.text2, borderColor: tk.surface, borderWidth: 2 }, z: 5, silent: true },
     ],
   };

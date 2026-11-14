@@ -43,3 +43,16 @@ def test_no_input_carries_a_spanish_label():
         for entry in entries:
             stray = [k for k in entry if k.endswith("_es")]
             assert not stray, f"{name}: {entry.get('key', entry.get('label'))} still has {stray}"
+
+
+def test_an_input_of_one_part_names_a_part_that_exists():
+    """An input that only one part of the product uses says which (`feature`), and the inputs table
+    leaves it out while that part is off (kapacitet/features.py). A misspelt part would hide it
+    everywhere."""
+    from kapacitet.config import assumptions
+    from kapacitet.features import FEATURES
+
+    parts = {key: a.feature for key, a in assumptions().items() if a.feature}
+    assert parts, "no input names a part"
+    assert {p for p in parts.values()} <= set(FEATURES), parts
+    assert parts["z_star_pct"] == "envelopes" and parts["scenario_pv_growth_per_year"] == "scenarios"

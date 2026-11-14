@@ -6,6 +6,9 @@
              within the DSO's thresholds on average and in one year in ten, leaves no more of its EV
              charging unserved than the DSO accepts, leaves no heat unserved, and the year it was
              checked on has no hour above a grid limit left;
+    hourly   where the envelopes are off (kapacitet/features.py), in place of nonfirm: the static
+             study rejects a part, but with everything the request asks for no hour of any weather
+             year breaks a grid limit, so the hourly study connects it firm;
     review   anything else.
 
 The rule never declines: a refusal is a person's decision. It reads only the saved assessment and
@@ -22,12 +25,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date
 
-OUTCOMES = ("firm", "nonfirm", "review")
+OUTCOMES = ("firm", "nonfirm", "hourly", "review")
+
+# the hours a request would be held back in, per kind of device, in one year of an answer's per_year
+LIMITED_HOURS = ("hours_limited", "ev_hours_limited", "hp_hours_limited")
+
+
+def held_hours(per_year: list[dict] | None) -> int:
+    """The hours a limit would be exceeded in with all a request asks for, over its weather years and
+    devices: the hourly study connects it firm only at zero (web/src/lib/verdicts.ts says the same)."""
+    return sum(int(e.get(k, 0) or 0) for e in per_year or [] for k in LIMITED_HOURS)
 
 # Why an application went to a person. The interface says it with `inbox.reason.<code>` in each
 # language (tests/test_messages.py holds both dictionaries to these sentences).
 REASONS = {
     "fuse": "the house's main fuse is too small for what it asks for",
+    "hourly_limits": "with all it asks for, a limit would be exceeded in {hours} hours of the weather record",
     "phases": "the charger would unbalance its phase beyond the limit",
     "curtailment_mean": "curtailment of {value:.1f} % on average, above the threshold of {limit:.1f} %",
     "curtailment_p90": "curtailment of {value:.1f} % in one year in ten, above the threshold of {limit:.1f} %",
@@ -96,8 +109,9 @@ def _violations_left(verification: dict) -> int:
         int((v.get(k) or {}).get("violations_after", 0) or 0) for k in ("import", "battery"))
 
 
-def verdict(result: dict, th: Thresholds) -> dict:
-    """`{"outcome": firm | nonfirm | review, "reasons": [...]}` for one saved answer."""
+def verdict(result: dict, th: Thresholds, envelopes: bool = True) -> dict:
+    """`{"outcome": firm | nonfirm | hourly | review, "reasons": [...]}` for one saved answer.
+    `envelopes` says whether this installation connects on an envelope at all (features.on)."""
     reasons: list[dict] = []
     if "fuse" in result and not result["fuse"].get("ok", True):
         reasons.append(_reason("fuse"))
@@ -109,6 +123,15 @@ def verdict(result: dict, th: Thresholds) -> dict:
     static = result.get("static") or {}
     if static and all(part.get("approved") for part in static.values()):
         return {"outcome": "firm", "reasons": []}
+    if not envelopes:
+        # firm by the hourly study, or a person: the year it was checked on must hold as well
+        held = held_hours(result.get("per_year"))
+        left = _violations_left(result.get("verification") or {})
+        if held:
+            reasons.append(_reason("hourly_limits", hours=held))
+        if left:
+            reasons.append(_reason("violations", value=float(left)))
+        return {"outcome": "review" if reasons else "hourly", "reasons": reasons}
 
     summary = result.get("summary") or {}
     risk = result.get("risk") or {}

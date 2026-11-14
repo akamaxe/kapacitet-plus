@@ -26,7 +26,7 @@ import { log } from "../lib/log";
 import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
-import { staticNoteKey } from "../lib/verdicts";
+import { hourlyVerdict, staticNoteKey } from "../lib/verdicts";
 import { useFeatures } from "../lib/features";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
@@ -46,8 +46,10 @@ interface Job {
 
 export default function Request() {
   const t = useT();
-  // the envelope scenario is a baseline only where the envelopes are on (lib/features.ts)
-  const envelopes = useFeatures().envelopes;
+  // the envelope scenario is a baseline only where the envelopes are on (lib/features.ts), and
+  // applying for a connection belongs to the applicant's portal
+  const feats = useFeatures();
+  const envelopes = feats.envelopes;
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const theme = useStore((s) => s.theme);
@@ -82,7 +84,10 @@ export default function Request() {
   const [ev, setEv] = useState(0);
   const [hp, setHp] = useState(false);
   const [bat, setBat] = useState(0);
+  // a battery stores what an envelope curtails: its inputs are listed only where the envelopes are
+  // on (GET /assumptions), so elsewhere none is offered and none is ever sent
   const batMax = A.get("battery_max_kwh") ?? 0;
+  const batSent = pv > 0 && batMax > 0 ? bat : 0;
   const [job, setJob] = useState<Job | null>(null);
   // with sign-in on, an evaluation takes a planner (or an approver, or an admin); an auditor reads
   const role = useCan("evaluate");
@@ -99,6 +104,11 @@ export default function Request() {
     watchRef.current = null;
   };
   const resultRef = useRef<HTMLDivElement>(null);
+  // the stages as this installation names them: where the envelopes are off the second one is the
+  // hourly study, and the two that spread and price curtailment are not shown
+  const shownStages = envelopes ? STAGES : STAGES.filter((s) => s !== "risk" && s !== "economics");
+  const stageLabel = (s: Stage) => t(!envelopes && s === "envelope" ? "req.stage.envelopeCapacity" : `req.stage.${s}`,
+    { n: meta.data?.weather_years?.length ?? "–" });
 
   const houses = useMemo(() => net.data?.features.filter((x: any) => x.properties.layer === "house") ?? [], [net.data]);
   const S = show.data?.data?.showcase;
@@ -176,7 +186,10 @@ export default function Request() {
         setEv(q.ev_kw ?? 0);
         setHp(!!q.hp);
         setBat(q.bat_kwh ?? 0);
-        if (q.baseline === "static" || q.baseline === "doe" || q.baseline === "queue") setBaseline(q.baseline);
+        // an answer on the envelope scenario, opened where the envelopes are off: the form meets
+        // today's grid, so the answer shows as one to ask again
+        if (q.baseline === "doe" && !envelopes) setBaseline("static");
+        else if (q.baseline === "static" || q.baseline === "doe" || q.baseline === "queue") setBaseline(q.baseline);
         if (typeof q.cid === "number" && q.cid !== useStore.getState().selectedCid) useStore.setState({ selectedCid: q.cid });
       })
       .catch(() => !cancelled && toast.error(t("req.gone")));
@@ -284,7 +297,7 @@ export default function Request() {
     setJob({ id: "", stages: {}, result: null, error: null });
     let r: Response;
     try {
-      r = await apiWrite("/requests", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0, baseline });
+      r = await apiWrite("/requests", { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: batSent, baseline });
     } catch {
       if (run === runRef.current) fail(t("req.dropped"));
       return;
@@ -305,7 +318,7 @@ export default function Request() {
     const { id } = await r.json();
     const current = () => run === runRef.current;
     // the output window keeps what the stages said, which the panel shows for a moment only
-    const asked = { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: pv > 0 ? bat : 0 };
+    const asked = { cid, pv_kwp: pv, ev_kw: ev, hp, bat_kwh: batSent };
     const where = houses.find((h: any) => h.properties.cid === cid)?.properties.address || t("dt.unnamed", { id: cid });
     log.info(t("log.req.start", { house: where, what: describeRequest(t, f, asked) }));
     let spent = 0;
@@ -314,7 +327,7 @@ export default function Request() {
         if (!current()) return;
         setJob((j) => (j ? { ...j, id, stages: { ...j.stages, [stage]: p?.ms ?? 0 } } : j));
         spent += p?.ms ?? 0;
-        log.step(t("log.req.stage", { stage: t(`req.stage.${stage}`, { n: meta.data?.weather_years?.length ?? "–" }), s: f((p?.ms ?? 0) / 1000, 1) }));
+        log.step(t("log.req.stage", { stage: stageLabel(stage as Stage), s: f((p?.ms ?? 0) / 1000, 1) }));
       },
       queued: (n) => current() && setJob((j) => (j ? { ...j, id, queued: n } : j)),
       started: () => current() && setJob((j) => (j ? { ...j, queued: null } : j)),
@@ -354,7 +367,7 @@ export default function Request() {
   // an answer to a request that has since changed is cancelled, not removed
   const asked = res?.request;
   const stale = !!asked && (asked.cid !== cid || asked.baseline !== baseline || asked.pv_kwp !== pv || asked.ev_kw !== ev
-    || !!asked.hp !== hp || (asked.bat_kwh ?? 0) !== (pv > 0 ? bat : 0));
+    || !!asked.hp !== hp || (asked.bat_kwh ?? 0) !== batSent);
   const evLabel = (v: number) => (v === 0 ? t("req.none") : `${f(v, v % 1 ? 1 : 0)} kW`);
   const nothing = pv === 0 && ev === 0 && !hp;
   // a lite data bundle shows every result but cannot evaluate: say so instead of failing
@@ -521,13 +534,13 @@ export default function Request() {
         {job && (
           <div className="steps" aria-live="polite">
             {running && job.queued != null && <p className="caption-muted">{t("req.queued", { n: f(job.queued) })}</p>}
-            {STAGES.map((s, i) => {
+            {shownStages.map((s, i) => {
               const done = job.stages[s] !== undefined;
-              const active = !done && STAGES.slice(0, i).every((p) => job.stages[p] !== undefined) && running;
+              const active = !done && shownStages.slice(0, i).every((p) => job.stages[p] !== undefined) && running;
               return (
                 <div key={s} className={`step ${done ? "done" : active ? "active" : ""}`}>
                   <span className="dot" />
-                  <span>{t(`req.stage.${s}`, { n: meta.data.weather_years?.length ?? "–" })}</span>
+                  <span>{stageLabel(s)}</span>
                   <span className="ms">{done ? `${f(job.stages[s]!, 0)} ms` : ""}</span>
                 </div>
               );
@@ -558,11 +571,12 @@ export default function Request() {
               </div>
             )}
             <AnswerActions id={res.id ?? job?.id ?? ""} seal={res.seal} />
-            <Result res={res} year={year} lang={lang} />
-            {!stale && res.id && res.request?.pv_kwp > 0 && !Object.values(res.static ?? {}).every((v: any) => v?.approved) && <OwnerCase id={res.id} />}
+            <Result res={res} year={year} lang={lang} envelopes={envelopes} />
+            {/* connect now on an envelope or wait for the reinforcement: a case only the envelopes make */}
+            {envelopes && !stale && res.id && res.request?.pv_kwp > 0 && !Object.values(res.static ?? {}).every((v: any) => v?.approved) && <OwnerCase id={res.id} />}
             {!stale && res.id && queue && (
               <>
-                <ApplyBlock res={res} queue={queue} />
+                {feats.portal && <ApplyBlock res={res} queue={queue} />}
                 <DecisionBlock res={res} queue={queue} />
               </>
             )}
@@ -571,7 +585,7 @@ export default function Request() {
                 ? t("req.base.queueRecord", { n: f(res.queue?.approved ?? 0), base: res.queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })
                 : res.request?.baseline === "doe" ? t("req.base.doe") : t("req.base.static")
             } />
-            {res.profiles?.curtailed_kw && (
+            {envelopes && res.profiles?.curtailed_kw && (
               <div className="hero-actions">
                 <button
                   className="btn ghost"
@@ -674,7 +688,7 @@ function History({ current, onOpen }: { current: string | null; onOpen: (item: a
 
 
 // memo: the form above re-renders on every step of the PV slider, the answer does not change
-const Result = memo(function Result({ res, year, lang }: { res: any; year: number; lang: string }) {
+const Result = memo(function Result({ res, year, lang, envelopes }: { res: any; year: number; lang: string; envelopes: boolean }) {
   const t = useT();
   const f = useFmt();
   const sum = res.summary;
@@ -696,10 +710,42 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
   const negRows: any[] = res.economics?.by_year ?? [];
   const negKwh = negRows.length ? negRows.reduce((s, e) => s + (e.negative_price_kwh_curtailed ?? 0), 0) / negRows.length : 0;
   const importMin: number | null = prof?.import_envelope_kw?.length ? Math.min(...prof.import_envelope_kw) : null;
+  // where the envelopes are off the second verdict is the hourly study's, over every weather year and
+  // every device, and the devices' tiles count the hours over the same record
+  const hv = hourlyVerdict(res.per_year);
+  const overYears = (k: string) => (res.per_year as any[]).reduce((s, e) => s + (e[k] ?? 0), 0);
+  const yearsNote = t(res.per_year.length === 1 ? "req.weatherYears.one" : "req.weatherYears", { n: res.per_year.length });
 
   return (
     <div className="stack result">
-      {pvReq && (
+      {!envelopes && (
+        <div className="verdicts">
+          {pvReq && (
+            <div className="verdict">
+              <span className="v-method"><Term id="static">{t("req.static")}</Term></span>
+              {sum.pv_static_approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>}
+              <span className="v-detail">{reasonText(t, f, res.static.pv)}</span>
+              <span className="caption-muted">{staticNumbers(t, f, res.static.pv)}</span>
+            </div>
+          )}
+          <div className="verdict">
+            <span className="v-method"><Term id="hourly">{t("req.hourly")}</Term></span>
+            {hv.fits ? <Status kind="good">{t("req.hourly.firm")}</Status> : <Status kind="warning">{t("req.hourly.notFirm")}</Status>}
+            <span className="v-big">{f(hv.hours)} h</span>
+            <span className="v-basis">{t("req.hourly.basis", { n: hv.years })}</span>
+            <span className="v-detail">
+              {hv.fits ? t("req.hourly.fits", { n: hv.years })
+                : t("req.hourly.over", { h: f(hv.hours), n: hv.years, year: hv.worst?.year ?? "–", hy: f(hv.worst?.hours ?? 0) })}
+            </span>
+            {res.verification?.hours_checked !== undefined && (
+              <span className="caption-muted">
+                {res.verification.hours_checked > 0 ? t("req.hourly.checked", { n: f(res.verification.hours_checked), year }) : t("req.verifiedNone")}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      {envelopes && pvReq && (
         <div className="verdicts">
           <div className="verdict">
             <span className="v-method"><Term id="static">{t("req.static")}</Term></span>
@@ -730,10 +776,16 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
       {evReq && (
         <div className="tiles">
           <Tile label={t("req.ev.static")} value={res.static.ev.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.ev)} />
-          <Tile label={t("req.ev.unmet")} value={pct1(f, sum.ev_unmet_pct)} unit="%" note={t(res.per_year.length === 1 ? "req.weatherYears.one" : "req.weatherYears", { n: res.per_year.length })} />
-          <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
+          {envelopes ? (
+            <>
+              <Tile label={t("req.ev.unmet")} value={pct1(f, sum.ev_unmet_pct)} unit="%" note={yearsNote} />
+              <Tile label={t("req.ev.limited")} value={f(sum.ev_hours_limited_ref)} unit="h" note={`${year}`} />
+            </>
+          ) : (
+            <Tile label={t("req.overLimit")} value={f(overYears("ev_hours_limited"))} unit="h" note={yearsNote} />
+          )}
           <Tile label={t("req.ev.energy")} value={f(res.per_year.reduce((s: number, e: any) => s + (e.ev_requested_kwh ?? 0), 0) / Math.max(1, res.per_year.length))} unit="kWh" note={t("req.ev.energyNote")} />
-          {importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
+          {envelopes && importMin != null && <Tile label={t("req.importMin")} value={f(importMin, 1)} unit="kW" note={t("req.importMinNote", { year })} />}
         </div>
       )}
       {evReq && <p className="caption-muted">{staticNumbers(t, f, res.static.ev)}</p>}
@@ -743,12 +795,18 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
           <h3>{t("req.hp.title")}</h3>
           <div className="tiles">
             <Tile label={t("req.hp.static")} value={res.static.hp.approved ? <Status kind="good">{t("req.approved")}</Status> : <Status kind="critical">{t("req.rejected")}</Status>} note={reasonText(t, f, res.static.hp)} />
-            <Tile label={t("req.hp.unmet")} value={pct1(f, sum.hp_unmet_pct)} unit="%" note={t(res.per_year.length === 1 ? "req.weatherYears.one" : "req.weatherYears", { n: res.per_year.length })} />
-            <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
+            {envelopes ? (
+              <>
+                <Tile label={t("req.hp.unmet")} value={pct1(f, sum.hp_unmet_pct)} unit="%" note={yearsNote} />
+                <Tile label={t("req.hp.limited")} value={f(sum.hp_hours_limited_ref)} unit="h" note={`${year}`} />
+              </>
+            ) : (
+              <Tile label={t("req.overLimit")} value={f(overYears("hp_hours_limited"))} unit="h" note={yearsNote} />
+            )}
             <Tile label={t("req.hp.energy")} value={f(sum.hp_kwh_mean)} unit="kWh" note={t("req.hp.energyNote", { kw: f(res.static.hp.design_kw, 1) })} />
           </div>
           {!evReq && <p className="caption-muted">{staticNumbers(t, f, res.static.hp)}</p>}
-          <p className="caption-muted">{t("req.hp.caption")}</p>
+          <p className="caption-muted">{t(envelopes ? "req.hp.caption" : "req.hp.captionCapacity")}</p>
         </section>
       )}
 
@@ -796,7 +854,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
         </section>
       )}
 
-      {pvReq && prof?.envelope_min_month_hour && (
+      {envelopes && pvReq && prof?.envelope_min_month_hour && (
         <section className="stack">
           <h3>{t("req.envMap")}</h3>
           {everLimited ? (
@@ -822,9 +880,9 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
         </section>
       )}
 
-      {pvReq && prof?.envelope_kw && <WeekChart prof={prof} year={year} lang={lang} />}
+      {envelopes && pvReq && prof?.envelope_kw && <WeekChart prof={prof} year={year} lang={lang} />}
 
-      {pvReq && res.risk?.histogram && (
+      {envelopes && pvReq && res.risk?.histogram && (
         <section className="stack">
           <h3>{t("req.risk")}</h3>
           <p className="caption-muted">{t("req.risk.caption", { n: f(resampled), from: weatherYears[0], to: weatherYears[weatherYears.length - 1] })}</p>
@@ -854,7 +912,7 @@ const Result = memo(function Result({ res, year, lang }: { res: any; year: numbe
         </section>
       )}
 
-      {pvReq && res.economics?.by_year && (
+      {envelopes && pvReq && res.economics?.by_year && (
         <section className="stack">
           <h3>{t("req.money")}</h3>
           <div className="tiles">

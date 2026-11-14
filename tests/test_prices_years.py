@@ -172,8 +172,10 @@ def test_the_dsos_case_has_a_central_figure_and_a_range_over_the_years():
     k = over["budget_spread"]["curtailed_sek"]
     assert over["budget"]["curtailed_sek"] == pytest.approx(k["central"]) == pytest.approx(4.0 * 10)
     assert k["range"]["min"] == pytest.approx(4.0) and k["range"]["max"] == pytest.approx(44.0)
+    # a bigger transformer that adds capacity: one that adds none leaves no reinforcement to defer
+    # (reinforcement_not_binding, task 1.6 of the technical review of 14-11-2026)
     tornado = {"base": {"static_kw": 1, "timeseries_kw": 2, "doe_kw": 3},
-               "cases": [{"key": "trafo", "level": "0.63 MVA", "static_kw": 1, "timeseries_kw": 2, "doe_kw": 3}]}
+               "cases": [{"key": "trafo", "level": "0.63 MVA", "static_kw": 1.6, "timeseries_kw": 2.6, "doe_kw": 3.6}]}
     cost = {"reinforce_trafo_500_sek": 150_000.0, "reinforce_trafo_800_sek": 210_000.0,
             "reinforce_station_800_sek": 300_000.0, "reinforce_urban_supplement_sek": 100_000.0,
             "reinforce_price_level_year": 2022}

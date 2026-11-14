@@ -4,7 +4,9 @@ import { resolve } from "node:path";
 
 // The local project (npm run test:e2e:local): the real API on this machine's computed data, for
 // the flows that need numbers. A server already running on the port is reused, so a check can
-// share the verification server instead of starting a second engine.
+// share the verification server instead of starting a second engine. The server it starts has every
+// part on (KAPACITET_FEATURES=all unless the shell names others), since these flows go through the
+// envelopes and the portal; the parts as shipped are capacity.spec.ts's, against E2E_CAPACITY_URL.
 const HERE = fileURLToPath(new URL(".", import.meta.url));
 const ROOT = resolve(HERE, "..");
 const PY = process.env.KAPACITET_PY
@@ -21,6 +23,7 @@ export default defineConfig({
     command: `"${PY}" -m kapacitet serve --port ${PORT}`,
     cwd: ROOT,
     url: `http://127.0.0.1:${PORT}/api/v1/health`,
+    env: { ...(process.env as Record<string, string>), KAPACITET_FEATURES: process.env.KAPACITET_FEATURES ?? "all" },
     reuseExistingServer: true,
     timeout: 180_000,
   },

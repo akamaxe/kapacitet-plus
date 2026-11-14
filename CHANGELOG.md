@@ -33,6 +33,27 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **Four parts are off unless an installation switches them on.** The dynamic operating envelopes,
+  the Sweden screen, the 2030 scenarios and the applicant's portal stay in the code, tested, and are
+  named in `KAPACITET_FEATURES` (`envelopes`, `national`, `scenarios`, `portal`, or `all`);
+  `KAPACITET_ENVELOPES=1` switches the envelopes on alone. With none on, four screens remain: the
+  neighbourhood, **Capacity** (the front page, called Static vs envelopes where the envelopes are on),
+  the connection request and the method. A route of a part that is off answers 404 `feature_off`,
+  `/health` and `/meta` list the parts, and `kapacitet instance check` reports them. Start the server
+  with `KAPACITET_FEATURES=all` to see everything as before. The envelopes are now an experimental
+  module: by the rule committed before the experiment, nothing that can be issued in advance
+  connected more than the hourly study on any network measured.
+- **Where the envelopes are off, a request is answered by the hourly study.** Its second verdict is
+  firm when no hour of any weather year breaks a limit with all it asks for. The queue approves on
+  that basis (`decision: "hourly"`, kept as a firm connection with `basis: "hourly"`) after checking
+  every weather year again, and the DSO's rule does the same (`hourly`) or sends the application to
+  a person with the hours it would break (`hourly_limits`); it never connects on an envelope then.
+  A request cannot ask for the envelope scenario or a battery, the household's case of connecting
+  now or waiting is not offered, and an assessment's hourly CSV names its columns as headroom.
+- **With the portal on and the envelopes off, Operation is called Applications** and holds the
+  applications and the settings of the rule and the portal; the rule's thresholds for curtailment
+  are not shown, since nothing is curtailed.
+- **The empty queue's message** no longer points to the envelope scenario.
 - **Links to a screen are unchanged; a link to nothing opens the start window.** `#/compare` and
   the other seven open the project on that screen as before. `/` and `#/start` are the start
   window, where `/` used to open Static vs envelopes.
@@ -98,6 +119,8 @@ Changes before 12 November 2026 are only in that history.
   line of the station's log and where the log is. A case's own error is no longer cut at 200
   characters, which lost the file's name.
 - A logo whose image data was not exactly the image its header declares was accepted.
+- The preview of the portal's bar, in the DSO's settings, showed the product's white logo on a white
+  bar until the DSO typed its name; it now shows the dark bar the portal shows then.
 - The RFC 3161 tokens a chain still owes were listed in the folder's own order, not in line order;
   with PostgreSQL, in whatever order the table gave them. Both are now in line order.
 - An identity provider that does not answer gave a server error; it is now `provider_unavailable`.
@@ -145,6 +168,12 @@ Changes before 12 November 2026 are only in that history.
   and a weekly workflow (`data-suite`) runs the whole suite on the published data.
 
 ### Added
+
+- **The hourly study's deployment on the map.** `GET /api/v1/hourly` gives the median order's
+  hourly-study deployment, its verification over every weather year and what the next house would
+  break, and `/state/hourly` and `/state/hourly_static` its two states. A network built from now on
+  writes them (`results/hourly.json`); for one built before, the server computes them the first time
+  and keeps them in `requests/cache/hourly/`, so no data bundle had to change.
 
 - `tools/envelope_networks.py` and `docs/envelopes-by-network.md`: the capacity stages and the
   intraday scorecard on three benchmark networks at two MV voltages, with the decision rule

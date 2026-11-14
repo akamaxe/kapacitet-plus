@@ -11,6 +11,7 @@ import { dateTime, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
 
 /** One setting's control as the model defines it (GET /settings `schema`, dso.schema). */
 export interface FieldSpec {
@@ -84,6 +85,10 @@ export const GROUPS: Group[] = [
   ] },
 ];
 
+// the rule's settings that only an envelope connection reads (lib/features.ts): where the envelopes
+// are off the rule connects firm or asks a person, and the envelope scenario is no baseline
+const ENVELOPE_ROWS = new Set(["inbox_baseline", "auto_curtailment_mean_pct", "auto_curtailment_p90_pct", "auto_ev_unserved_pct"]);
+
 // what a saved change reads again: the settings, the inbox's thresholds, the shadow's verdict against
 // the agreed level, the business case's horizon and the redispatch report's compensation
 const AFFECTED = ["/settings", "/inbox", "/operation/shadow", "/business", "/redispatch"];
@@ -119,13 +124,13 @@ const BOUND_SHOWN = 1e6;
 
 const draftOf = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 
-/** Operation's Settings section, read from GET /settings. */
-export function SettingsSection() {
+/** Operation's Settings section, read from GET /settings; `only` names the groups shown (all by default). */
+export function SettingsSection({ only }: { only?: Group["id"][] } = {}) {
   const t = useT();
   const q = useApi<SettingsReply>("/settings");
   if (q.isLoading) return <p className="caption-muted">{t("set.loading")}</p>;
   if (!q.data?.schema) return <p className="caption-muted">{t("set.unavailable")}</p>;
-  return <SettingsView reply={q.data} />;
+  return <SettingsView reply={q.data} only={only} />;
 }
 
 /**
@@ -133,10 +138,15 @@ export function SettingsSection() {
  * not the default, the default. The six with no other screen are changed here, a group at a time; the
  * rest keep their own control and link to it.
  */
-export function SettingsView({ reply }: { reply: SettingsReply }) {
+export function SettingsView({ reply, only }: { reply: SettingsReply; only?: Group["id"][] }) {
   const t = useT();
   const lang = useStore((s) => s.lang);
+  const envelopes = useFeatures().envelopes;
   const ch = reply.changed;
+  // the groups asked for, each without the rows only an envelope connection reads where they are off
+  const groups = GROUPS.filter((g) => !only || only.includes(g.id))
+    .map((g) => (envelopes ? g : { ...g, rows: g.rows.filter((r) => !ENVELOPE_ROWS.has(r.key)) }))
+    .filter((g) => g.rows.length > 0);
   return (
     <div className="stack settings">
       <p className="caption-muted" data-testid="settings-changed">
@@ -145,7 +155,7 @@ export function SettingsView({ reply }: { reply: SettingsReply }) {
           : t("set.neverChanged")}
       </p>
       <div className="settings-groups">
-        {GROUPS.map((g) => <SettingsGroup key={g.id} group={g} reply={reply} />)}
+        {groups.map((g) => <SettingsGroup key={g.id} group={g} reply={reply} />)}
       </div>
       <RoleNote action="settings" />
     </div>

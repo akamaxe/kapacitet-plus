@@ -58,6 +58,7 @@ from ..cache import on_clear
 from ..config import A, settings
 from ..paths import DATA
 from . import request as rq
+from . import rules
 from .scenario import customers
 
 _LOCK = threading.RLock()
@@ -65,7 +66,9 @@ _LOCK = threading.RLock()
 # row and reads the context, so the context must never wait for _LOCK, which the inbox's worker
 # holds while it waits for that same row.
 _CACHE_LOCK = threading.RLock()
-DECISIONS = ("firm", "nonfirm", "declined")
+# "hourly": connect firm by the hourly study (kept as a firm decision with basis "hourly")
+DECISIONS = ("firm", "nonfirm", "declined", "hourly")
+
 PENDING = "seal_pending.json"
 log = logging.getLogger(__name__)
 _STATE = re.compile(r"^state_(\d{4})(?:\.v(\d+))?\.npz$")
@@ -81,6 +84,8 @@ ERRORS = {
     "other_situation": "the queue started from the other grid situation",
     "static_rejects_firm": "the static study rejects this request, so it cannot be connected firm",
     "still_violates": "the full-year check still finds a violation, so it is not approved",
+    "hourly_limits": ("with all it asks for, a limit would be exceeded in {hours} hours of the weather record, so "
+                      "the hourly study cannot connect it firm"),
 }
 # what `rebuild` flags in a connection the DSO approved, instead of leaving it out
 FLAGS = ("still_violates", "static_rejects_firm")
@@ -480,7 +485,13 @@ def _decide(model, hp: np.ndarray, ev: np.ndarray, record: dict, decision: str, 
                 raise QueueError("static_rejects_firm")
             ctx = context(root) or rq.Context(base)
             r = engine_request(req, base)
-            got = _reserve(model, hp, ev, ctx, r, decision, emit=emit)
+            # firm by the hourly study: its full injection, on every weather year, with no hour held back
+            got = _reserve(model, hp, ev, ctx, r, "firm" if decision == "hourly" else decision, emit=emit)
+            if decision == "hourly":
+                held = rules.held_hours(got["out"].get("per_year"))
+                if held:
+                    raise QueueError("hourly_limits", hours=held)
+                item.update(decision="firm", basis="hourly")
             if not got["verified"]:
                 raise QueueError("still_violates")
 
@@ -531,7 +542,8 @@ def rebuild(model, hp: np.ndarray, ev: np.ndarray, baseline: str, approved_items
             got = _reserve(model, hp, ev, ctx, r, it["decision"], emit=emit)
             flags = [] if got["verified"] else ["still_violates"]
             static = got["out"].get("static", {})
-            if it["decision"] == "firm" and not all(v.get("approved") for v in static.values()):
+            # a connection the hourly study approved firm is not the static study's to reject
+            if it["decision"] == "firm" and it.get("basis") != "hourly" and not all(v.get("approved") for v in static.values()):
                 flags.append("static_rejects_firm")
             nxt.put_npz(f"{it['assessment']}.npz", _injection_arrays(got["inj"]), stable=True)
             item = {**it, "cid": int(r.cid), "by": it.get("by", "sync"), "pv_kw": got["pv_kw"], "ev_kw": got["ev_kw"],

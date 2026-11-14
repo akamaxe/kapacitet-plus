@@ -3,7 +3,8 @@
  * the Sweden screen, the 2030 scenarios and the applicant's portal are off unless the server was
  * started with them (KAPACITET_FEATURES). A screen of a part that is off is in no menu, tree,
  * search or key, and a link to it opens the capacity screen instead. The capacity screen keeps its
- * old name, "Static vs envelopes", only where the envelopes are on.
+ * old name, "Static vs envelopes", only where the envelopes are on, and Operation, which also holds the
+ * portal's applications, is "Applications" where only the portal is on.
  */
 import { useApi } from "./api";
 import type { TFn } from "./i18n";
@@ -19,25 +20,28 @@ export function featuresOf(answer: { features?: Partial<Features> } | null | und
   return { ...NONE, ...(answer?.features ?? {}) };
 }
 
-/** The part each screen belongs to; a screen not named here is always shown. */
-export const SCREEN_FEATURE: Partial<Record<Screen, Feature>> = {
-  national: "national",
-  operation: "envelopes",
-  report: "envelopes",
-  scenarios: "scenarios",
+/** The parts each screen belongs to, shown when any of them is on; a screen not named here is always shown. */
+export const SCREEN_FEATURE: Partial<Record<Screen, Feature[]>> = {
+  national: ["national"],
+  // the applications of the portal are decided in Operation, so it is there with either part
+  operation: ["envelopes", "portal"],
+  report: ["envelopes"],
+  scenarios: ["scenarios"],
 };
 
 /** The screens this installation shows, in their order (the keys 1, 2, … follow it). Pure. */
 export function visibleScreens(f: Features): Screen[] {
   return SCREENS.filter((s) => {
-    const part = SCREEN_FEATURE[s];
-    return !part || f[part];
+    const parts = SCREEN_FEATURE[s];
+    return !parts || parts.some((p) => f[p]);
   });
 }
 
 /** A screen's name where this installation shows it. Pure. */
 export function screenLabel(t: TFn, s: Screen, f: Features): string {
-  return s === "compare" && !f.envelopes ? t("tab.capacity") : t(`tab.${s}`);
+  if (s === "compare" && !f.envelopes) return t("tab.capacity");
+  if (s === "operation" && !f.envelopes) return t("tab.applications");
+  return t(`tab.${s}`);
 }
 
 /** The parts the server in use shows, from its /health (asked once, shared with the frame). */

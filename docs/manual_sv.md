@@ -70,20 +70,27 @@ Inne i ett projekt ramas vyn in av fyra delar:
 
 ## Vyerna
 
-Tangenten 0 går till startfönstret och siffertangenterna 1–8 väljer en vy. Ctrl + K söker vyer,
+Tangenten 0 går till startfönstret och siffertangenterna väljer en vy, i den ordning vyerna visas. Ctrl + K söker vyer,
 adresser och det menyerna gör, och ? visar alla tangenter. Adressfältet
 beskriver det du tittar på, så en länk visar samma sak för den som får den.
 
 | Vy | Till för |
 |---|---|
-| 1 **Sverige** | Bakgrunden: produktion och förbrukning per elområde, och varför nätkapaciteten är flaskhalsen. |
-| 2 **Området** | Nätstationen och husen timme för timme. Årsremsan väljer timme; scenariot väljer statisk gräns, utan styrning eller med dynamiska gränser. Tabellen över husen går att söka och sortera. |
-| 3 **Statisk mot dynamisk** | Acceptansgränsen med den statiska studien och med dynamiska exportgränser, nätet på kartan i 3D, verifieringen timme för timme, när gränserna begränsar, fördelningsreglerna, värdet och jämförelsen med förstärkning. |
-| 4 **Anslutningsansökan** | Bedöm en anslutning för ett hus: solceller, elbilsladdare, värmepump, batteri. Här registrerar ni en ansökan som kommit via er egen kanal, och här beslutar ni om den. |
-| 5 **Drift** | Inkorgen med ansökningar, ett hus schema för en dag, marknaden först, sommaren i skuggdrift och mätarkontrollen. |
-| 6 **Årsrapport** | Det som nätbolaget lämnar in till Ei: nedregleringen som sista utväg, avtalen, underlaget till Ei, icke-marknadsbaserad omdirigering och uppgifterna om ett hus. |
-| 7 **Scenarier 2030** | Hur långt området kan elektrifieras med solceller, elbilar och värmepumpar innan någon metod kräver förstärkning. |
-| 8 **Metod & data** | Datakällorna och deras licenser, modellens indata med källa, valideringen, prognosen, skydden, kontrollen av ert eget nät (Ditt nät) och begränsningarna. |
+| **Sverige** (`national`) | Bakgrunden: produktion och förbrukning per elområde, och varför nätkapaciteten är flaskhalsen. |
+| **Området** | Nätstationen och husen timme för timme. Årsremsan väljer timme; scenariot väljer statisk gräns eller timstudie, och med dynamiska gränser påslagna även utan styrning och med dynamiska gränser. Tabellen över husen går att söka och sortera. |
+| **Kapacitet** | Acceptansgränsen och förbrukningskapaciteten med den statiska studien och med timstudien, nätet på kartan i 3D, verifieringen timme för timme och känsligheten. Med dynamiska gränser påslagna heter vyn *Statisk mot dynamisk* och visar också när gränserna begränsar, fördelningsreglerna, värdet och jämförelsen med förstärkning. |
+| **Anslutningsansökan** | Bedöm en anslutning för ett hus: solceller, elbilsladdare, värmepump, och batteri med dynamiska gränser påslagna. Här registrerar ni en ansökan som kommit via er egen kanal, och här beslutar ni om den. |
+| **Drift** (`envelopes` eller `portal`) | Inkorgen med ansökningar, ett hus schema för en dag, marknaden först, sommaren i skuggdrift och mätarkontrollen. Med bara portalen påslagen heter vyn *Ansökningar* och innehåller inkorgen och inställningarna för regeln och portalen. |
+| **Årsrapport** (`envelopes`) | Det som nätbolaget lämnar in till Ei: nedregleringen som sista utväg, avtalen, underlaget till Ei, icke-marknadsbaserad omdirigering och uppgifterna om ett hus. |
+| **Scenarier 2030** (`scenarios`) | Hur långt området kan elektrifieras med solceller, elbilar och värmepumpar innan någon metod kräver förstärkning. |
+| **Metod & data** | Datakällorna och deras licenser, modellens indata med källa, valideringen, skydden, kontrollen av ert eget nät (Ditt nät), begränsningarna och, med dynamiska gränser påslagna, prognosen. |
+
+**Vilka vyer som visas.** Som standard visar en installation fyra vyer: Området, Kapacitet,
+Anslutningsansökan och Metod & data. Fyra delar finns kvar i programmet och slås på av den som
+driver installationen, med `KAPACITET_FEATURES`: de dynamiska exportgränserna (`envelopes`, en
+experimentell modul), Sverige (`national`), Scenarier 2030 (`scenarios`) och sökandeportalen
+(`portal`). En del som inte är påslagen syns inte i någon meny, i projektträdet eller i sökningen,
+och en länk dit öppnar Kapacitet.
 
 **Sökandeportalen** (`#/apply`) är en egen sida för hushållen, inte för nätbolaget. Hushållet väljer
 sin adress, anger vad det vill ansluta, läser svaret och ansöker. Portalen frågar inte efter namn,
@@ -117,6 +124,10 @@ regel sitt förslag:
   inom nätbolagets trösklar, och ingen gräns i nätet överskrids;
 - **till en handläggare** i alla andra fall, med skälen.
 
+Utan dynamiska gränser finns ingen exportgräns att ansluta med. Då föreslår regeln **fast anslutning
+enligt timstudien** när ingen timme av något väderår bryter en gräns med allt som ansökan begär, och
+annars går ansökan till en handläggare med de timmar då en gräns skulle överskridas.
+
 Regeln avslår aldrig. Ett avslag är alltid en persons beslut.
 
 ### 3. Beslutet: rådgivande läge och den signerade regeln
@@ -133,7 +144,9 @@ sparar signaturens kontrollsumma. För en studie signeras regeln med
 `kapacitet study sign-rule <studie> --by "namn, roll" --kinds pv,ev --max-pv-kwp <kWp> --valid-until <datum>`.
 
 En ansökan som väntar på en handläggare avgörs med *Besluta* i inkorgen. Valen är *Anslut fast*,
-*Anslut med den här exportgränsen* och *Avslå*, med en motivering. *Utvärdera igen* skickar
+*Anslut med den här exportgränsen* och *Avslå*, med en motivering. Utan dynamiska gränser är valen
+*Anslut fast* (när den statiska studien godtar ansökan) eller *Fast anslutning enligt timstudien*,
+och *Avslå*. *Utvärdera igen* skickar
 tillbaka ansökan för en ny bedömning. Adressen i inkorgen öppnar bedömningen i
 **Anslutningsansökan**, där samma beslut finns i blocket *Beslut*.
 

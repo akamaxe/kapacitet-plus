@@ -27,6 +27,7 @@ import { dateTime, duration, listJoin, studyDate, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { describeRequest, reasonLine } from "../lib/reasons";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
 
 export interface Application {
   id: string;
@@ -42,7 +43,7 @@ export interface Application {
   status: "pending" | "review" | "firm" | "nonfirm" | "declined";
   reasons: { code: string; params: Record<string, number | string> }[];
   /** what the rule would decide, kept when a person has to (advisor mode) */
-  proposal?: "firm" | "nonfirm" | "review" | null;
+  proposal?: "firm" | "nonfirm" | "hourly" | "review" | null;
   proposal_reasons?: { code: string; params: Record<string, number | string> }[];
   decided: string | null;
   by: "rule" | "dso" | null;
@@ -158,6 +159,7 @@ export function ApplyBlock({ res, queue }: { res: any; queue: QueueState }) {
 /** The DSO's inbox on the operation screen. */
 export function InboxSection() {
   const t = useT();
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
@@ -223,7 +225,7 @@ export function InboxSection() {
         <Tile label={t("inbox.kpi.wait")} value={duration(lang, K.median_s)}
           note={t("inbox.kpi.waitNote", { p90: duration(lang, K.p90_s) })} />
         <Tile label={t("inbox.kpi.connected")} value={f(K.firm_kw + K.nonfirm_kw, 1)} unit="kW"
-          note={t("inbox.kpi.connectedNote", { firm: f(K.firm_kw, 1), nonfirm: f(K.nonfirm_kw, 1) })} />
+          note={t(envelopes ? "inbox.kpi.connectedNote" : "inbox.kpi.connectedNoteCapacity", { firm: f(K.firm_kw, 1), nonfirm: f(K.nonfirm_kw, 1) })} />
       </div>
       <RuleBlock inbox={I} />
       {I.items.length === 0 ? (
@@ -271,6 +273,8 @@ function DecideOne({ app, queue }: { app: Application; queue: QueueState }) {
  * signature covers today's thresholds, and the form to sign it. */
 export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
   const t = useT();
+  // where the envelopes are off the rule connects firm by the static or the hourly study, or asks a person
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const client = useQueryClient();
@@ -309,7 +313,7 @@ export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
         {sig !== null && I.signature_state === "expired" && t("inbox.sig.expired", { ...who, until: studyDate(lang, sig.valid_until) })}
         {sig !== null && I.signature_state === "thresholds_changed" && t("inbox.sig.changed", who)}
       </p>
-      <p className="caption-muted">{t("inbox.auto.rule", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
+      <p className="caption-muted">{t(envelopes ? "inbox.auto.rule" : "inbox.auto.ruleCapacity", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
       <div className="report-controls">
         <div className="seg" role="group" aria-label={t("inbox.auto.label")}>
           <button aria-pressed={!I.auto_decisions} disabled={saving || !canSet.ok} title={canSet.reason} onClick={() => I.auto_decisions && void setAuto(false)}>{t("inbox.auto.off")}</button>
@@ -329,6 +333,7 @@ export function RuleBlock({ inbox: I }: { inbox: Inbox }) {
  * It signs the thresholds in force; the server dates it and seals it. */
 function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; last: Signature | null; onDone: () => void }) {
   const t = useT();
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const client = useQueryClient();
   const today = new Date().toISOString().slice(0, 10);
@@ -368,7 +373,7 @@ function SignRule({ thresholds: th, last, onDone }: { thresholds: Thresholds; la
   return (
     <form className="sheet stack" onSubmit={sign}>
       <h2 id="inbox-sign-title">{t("inbox.sign.title")}</h2>
-      <p className="caption">{t("inbox.sign.lead", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
+      <p className="caption">{t(envelopes ? "inbox.sign.lead" : "inbox.sign.leadCapacity", { mean: f(th.curtailment_mean_pct, 1), p90: f(th.curtailment_p90_pct, 1), ev: f(th.ev_unserved_pct, 1) })}</p>
       <div className="field decision-note">
         <label htmlFor="sign-by">{t("inbox.sign.by")}</label>
         <input id="sign-by" maxLength={120} required autoComplete="name" value={by} readOnly={session !== null} onChange={(e) => setBy(e.target.value)} />

@@ -265,3 +265,31 @@ def test_an_hour_below_the_linear_import_headroom_is_verified_too(tiny_queue):
         p[17], q[17] = rq._injection(d), rq._reactive(d)
         new = m.violations(m.solve(p, q), p).import_side & ~m.violations(m.solve(p0, q0), p0).import_side
         assert not new.any(), f"{y}: {int(new.sum())} hours below v_min with the charger in"
+
+
+@needs_results
+def test_the_hourly_study_connects_firm_what_the_static_study_rejects(engine, queue_dir):
+    """Where the envelopes are off, the queue approves firm only, by the static study as before or by
+    the hourly study: every weather year run with all the request asks for, and no hour held back,
+    so its full injection is what was verified (task 1.4 of the technical review of 14-11-2026)."""
+    qu = queue_dir
+    m, hp, ev = engine
+    rec = _record(engine, "h00000000001", cid=84, pv_kwp=20.0, baseline="static")
+    assert rec["result"]["static"]["pv"]["approved"] is False
+    item = qu.decide(m, hp, ev, rec, "hourly", "the hourly study holds")
+    assert item["decision"] == "firm" and item["basis"] == "hourly"
+    assert item["verification"]["all_years"]["export_violations_after"] == 0
+    q = qu.load()
+    assert q["version"] == 1 and qu.approved(q)[0]["basis"] == "hourly"
+
+
+@needs_results
+def test_the_hourly_study_does_not_connect_firm_what_it_would_hold_back(engine, queue_dir):
+    qu = queue_dir
+    m, hp, ev = engine
+    rec = _record(engine, "h00000000002", cid=84, pv_kwp=20.0, baseline="doe")
+    assert sum(e["hours_limited"] for e in rec["result"]["per_year"]) > 0
+    with pytest.raises(qu.QueueError) as refused:
+        qu.decide(m, hp, ev, rec, "hourly")
+    assert refused.value.code == "hourly_limits" and refused.value.params["hours"] > 0
+    assert qu.load()["version"] == 0

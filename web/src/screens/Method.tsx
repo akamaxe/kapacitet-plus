@@ -39,17 +39,18 @@ function localized(a: Input, field: "label" | "note", lang: string): string {
 const N_LIMITS = 9;
 
 
-const REFS = [
+/** The method's references: [the reference, its link, whether only the envelopes rest on it]. */
+const REFS: [string, string, boolean?][] = [
   ["Bollen, M. & Hassan, F. (2011). Integration of Distributed Generation in the Power System. Wiley–IEEE Press.", ""],
-  ["Petrou, K. et al. (2020). Operating envelopes for prosumers in LV networks: a weighted proportional fairness approach. IEEE PES ISGT-Europe.", ""],
-  ["Liu, M. Z. et al. (2022). Using OPF-based operating envelopes to facilitate residential DER services. IEEE Trans. Smart Grid.", "https://www.researchgate.net/publication/361412635_Using_OPF-Based_Operating_Envelopes_to_Facilitate_Residential_DER_Services"],
+  ["Petrou, K. et al. (2020). Operating envelopes for prosumers in LV networks: a weighted proportional fairness approach. IEEE PES ISGT-Europe.", "", true],
+  ["Liu, M. Z. et al. (2022). Using OPF-based operating envelopes to facilitate residential DER services. IEEE Trans. Smart Grid.", "https://www.researchgate.net/publication/361412635_Using_OPF-Based_Operating_Envelopes_to_Facilitate_Residential_DER_Services", true],
   ["Thurner, L. et al. (2018). pandapower — an open-source Python tool for convenient modeling, analysis, and optimization of electric power systems. IEEE Trans. Power Systems.", "https://pandapower.readthedocs.io"],
   ["Richardson, I. et al. (2010). Domestic electricity use: a high-resolution energy demand model. Energy and Buildings. (richardsonpy implementation, RWTH Aachen)", "https://github.com/RWTH-EBC/richardsonpy"],
   ["Ruhnau, O., Hirth, L. & Praktiknjo, A. (2019). Time series of heat demand and heat pump efficiency for energy system modeling. Scientific Data 6:189.", "https://github.com/oruhnau/when2heat"],
   ["Dobos, A. P. (2014). PVWatts Version 5 Manual. NREL/TP-6A20-62641.", "https://www.nrel.gov/docs/fy14osti/62641.pdf"],
   ["Persson, E. & Jonsson, P. (2018). Utvärdering av Velanders formel för toppeffektberäkning i eldistributionsnät. MDU / Mälarenergi Elnät.", "https://mdu.diva-portal.org/smash/get/diva2:1223815/FULLTEXT01.pdf"],
   ["Energimarknadsinspektionen, EIFS 2023:3: voltage quality requirements (guidance).", "https://ei.se/bransch/eloverforingens-kvalitet/spanningskvalitet-i-elnatet/spanningskvalitet---vagledning-eifs-20233"],
-  ["Energiwirtschaftsgesetz (EnWG) §11 Abs. 2, Spitzenkappung.", "https://www.gesetze-im-internet.de/enwg_2005/__11.html"],
+  ["Energiwirtschaftsgesetz (EnWG) §11 Abs. 2, Spitzenkappung.", "https://www.gesetze-im-internet.de/enwg_2005/__11.html", true],
   ["IEA (2026). Electricity 2026: Grids.", "https://www.iea.org/reports/electricity-2026/grids"],
 ];
 
@@ -58,7 +59,11 @@ export default function Method() {
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   // text that comes with the data: the interface's words when it has them, the data's otherwise
+  const envelopesOn = useFeatures().envelopes;
   const tr = (key: string, fallback: string) => {
+    // where the envelopes are off, a sentence that names them has its own words (`<key>.capacity`)
+    const own = envelopesOn ? null : t(`${key}.capacity`);
+    if (own && own !== `${key}.capacity`) return own;
     const s = t(key);
     return s === key ? fallback : s;
   };
@@ -387,7 +392,7 @@ export default function Method() {
         )}
 
         {/* ---------------------------------------------------------------- the MV band */}
-        {MV && <MvBand MV={MV} />}
+        {MV && <MvBand MV={MV} envelopes={envelopes} />}
 
         {/* ---------------------------------------------------------------- protection */}
         <SectionMissing title={t("met.prot")} q={prot} />
@@ -454,12 +459,16 @@ export default function Method() {
           </div>
           <div className="grid-2">
             <ul className="list caption">
-              {Array.from({ length: N_LIMITS }, (_, i) => <li key={i}>{t(`met.limit.${i + 1}`)}</li>)}
+              {/* where the envelopes are off a limitation that names them has its own words, and the
+                  one about pricing curtailment does not apply: nothing on these screens is priced */}
+              {Array.from({ length: N_LIMITS }, (_, i) => i + 1).filter((n) => envelopesOn || n !== 7).map((n) => (
+                <li key={n}>{tr(`met.limit.${n}`, t(`met.limit.${n}`))}</li>
+              ))}
             </ul>
             <section className="block">
               <div className="block-head"><h3>{t("met.refs")}</h3></div>
               <ol className="list caption">
-                {REFS.map(([r, u]) => <li key={r}>{u ? <a href={u} target="_blank" rel="noreferrer">{r}</a> : r}</li>)}
+                {REFS.filter(([, , env]) => envelopesOn || !env).map(([r, u]) => <li key={r}>{u ? <a href={u} target="_blank" rel="noreferrer">{r}</a> : r}</li>)}
               </ol>
             </section>
           </div>
@@ -471,8 +480,10 @@ export default function Method() {
 
 function HowItWorks({ houses, pool, years }: { houses: number | string; pool: number | string; years: number | string }) {
   const pt = useProjectT();
+  // the fourth step names the engine's methods, the envelopes among them only where they are on
+  const envelopes = useFeatures().envelopes;
   // the second step is how the network came to be, which depends on the project
-  const steps = [1, 2, 3, 4, 5].map((i) => pt(`met.step.${i}`, { houses, pool, years }));
+  const steps = [1, 2, 3, 4, 5].map((i) => pt(!envelopes && i === 4 ? "met.step.4.capacity" : `met.step.${i}`, { houses, pool, years }));
   return (
     <ol className="list">
       {steps.map((s) => <li key={s}>{s}</li>)}
@@ -523,7 +534,7 @@ function weatherOption(tk: Tokens, w: any[], f: (v: number | null | undefined, d
  * The station's MV voltage across its band (mv_band.json): the capacity search rerun at each level
  * and the published envelopes replayed at it. A sensitivity: the envelopes stay at the base level.
  */
-function MvBand({ MV }: { MV: any }) {
+function MvBand({ MV, envelopes }: { MV: any; envelopes: boolean }) {
   const t = useT();
   const f = useFmt();
   const levels = MV.levels as any[];
@@ -534,26 +545,30 @@ function MvBand({ MV }: { MV: any }) {
         <div className="region-title">
           <h2>{t("met.mv")}</h2>
           <p className="caption">
-            {t("met.mv.caption", { lo: f(MV.band_pu[0], 2), hi: f(MV.band_pu[1], 2), base: f(MV.base_pu, 2), order: MV.order, year: MV.year })}
+            {t(envelopes ? "met.mv.caption" : "met.mv.captionCapacity", { lo: f(MV.band_pu[0], 2), hi: f(MV.band_pu[1], 2), base: f(MV.base_pu, 2), order: MV.order, year: MV.year })}
           </p>
         </div>
       </div>
-      {safe.length > 0 && (
+      {envelopes && safe.length > 0 && (
         <p className="lead-answer">
           {t(safe.length === levels.length ? "met.mv.leadAll" : "met.mv.lead", { from: f(Math.min(...safe), 2), to: f(Math.max(...safe), 2) })}
         </p>
       )}
       <table className="data">
-        <caption className="sr-only">{t("met.mv.table")}</caption>
+        <caption className="sr-only">{t(envelopes ? "met.mv.table" : "met.mv.tableCapacity")}</caption>
         <thead>
           <tr>
             <th>{t("met.mv.col.pu")}</th>
             <th className="r">{t("met.mv.col.static")}</th>
             <th className="r">{t("met.mv.col.ts")}</th>
-            <th className="r">{t("met.mv.col.doe")}</th>
-            <th className="r">{t("met.mv.col.hours")}</th>
-            <th className="r">{t("met.mv.col.trafo")}</th>
-            <th className="r">{t("met.mv.col.vmax")}</th>
+            {envelopes && (
+              <>
+                <th className="r">{t("met.mv.col.doe")}</th>
+                <th className="r">{t("met.mv.col.hours")}</th>
+                <th className="r">{t("met.mv.col.trafo")}</th>
+                <th className="r">{t("met.mv.col.vmax")}</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -563,15 +578,19 @@ function MvBand({ MV }: { MV: any }) {
               <td className="num">{f(l.vm_pu, 2)}{l.vm_pu === MV.base_pu && <span className="row-mark">{t("met.mv.base")}</span>}</td>
               <td className="r">{f(l.static_kw)}</td>
               <td className="r">{f(l.timeseries_kw)}</td>
-              <td className="r">{f(l.doe_kw)}</td>
-              <td className={`r${l.published.violation_hours > 0 ? " danger" : ""}`}>{f(l.published.violation_hours)}</td>
-              <td className="r">{f(l.published.max_trafo_loading_pct, 1)}</td>
-              <td className="r">{f(l.published.max_voltage_pu, 3)}</td>
+              {envelopes && (
+                <>
+                  <td className="r">{f(l.doe_kw)}</td>
+                  <td className={`r${l.published.violation_hours > 0 ? " danger" : ""}`}>{f(l.published.violation_hours)}</td>
+                  <td className="r">{f(l.published.max_trafo_loading_pct, 1)}</td>
+                  <td className="r">{f(l.published.max_voltage_pu, 3)}</td>
+                </>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
-      <p className="caption-muted">{t("met.mv.note")}</p>
+      <p className="caption-muted">{t(envelopes ? "met.mv.note" : "met.mv.noteCapacity")}</p>
     </section>
   );
 }

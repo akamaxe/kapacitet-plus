@@ -2,6 +2,8 @@ import { useCallback, useRef, useState } from "react";
 import type { Map as MLMap, MapMouseEvent } from "maplibre-gl";
 import { useApi } from "../lib/api";
 import { tokens } from "../lib/colors";
+import { useFeatures } from "../lib/features";
+import { houseStatus, useHourly } from "../lib/houses";
 import { useT } from "../lib/i18n";
 import { useProjectKind, useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
@@ -26,6 +28,10 @@ export function NetworkMap() {
   const lang = useStore((s) => s.lang);
   const net = useApi<any>("/network");
   const meta = useApi<any>("/meta");
+  // a house's colour is how it is connected: by the envelopes' deployment where they are on, by the
+  // hourly study's where they are off (lib/houses.ts)
+  const envelopes = useFeatures().envelopes;
+  useHourly();
   const mapRef = useRef<MLMap | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
 
@@ -46,7 +52,8 @@ export function NetworkMap() {
       const tk = tokens();
       const fc = (features: any[]) => ({ type: "FeatureCollection", features });
       const of = (layer: string) => net.data.features.filter((x: any) => x.properties.layer === layer);
-      const raised = of("house").map((h: any) => ({ ...h, properties: { ...h.properties, height: Math.max(1, h.properties.levels) * 3.2 } }));
+      const raised = of("house").map((h: any) => ({ ...h, properties: {
+        ...h.properties, height: Math.max(1, h.properties.levels) * 3.2, status: houseStatus(h.properties, envelopes) } }));
       const add = (id: string, data: any, promoteId?: string) => {
         if (!map.getSource(id)) map.addSource(id, { type: "geojson", data, ...(promoteId ? { promoteId } : {}) } as any);
       };
@@ -71,7 +78,8 @@ export function NetworkMap() {
       map.addLayer({
         id: "net-houses", type: "fill-extrusion", source: "net-houses",
         paint: {
-          "fill-extrusion-color": ["match", ["get", "pv_status"], "firm", tk.goodFill, "nonfirm", tk.warningFill, tk.borderStrong],
+          "fill-extrusion-color": ["match", ["get", "status"], "firm", tk.goodFill, "nonfirm", tk.warningFill,
+            "hourly", tk.goodFill, "static", tk.neutralSeries, tk.borderStrong],
           "fill-extrusion-height": ["get", "height"],
           "fill-extrusion-opacity": 0.92,
         },
@@ -116,7 +124,7 @@ export function NetworkMap() {
         const cid = ft ? Number(ft.properties.cid) : null;
         mark(cid);
         map.getCanvas().style.cursor = ft ? "pointer" : "";
-        setTip(ft && cid !== null ? { x: point.x, y: point.y, cid, address: ft.properties.address ?? "", status: ft.properties.pv_status ?? "none" } : null);
+        setTip(ft && cid !== null ? { x: point.x, y: point.y, cid, address: ft.properties.address ?? "", status: ft.properties.status ?? "none" } : null);
       };
       map.on("mousemove", (e: MapMouseEvent) => {
         point = { x: e.point.x, y: e.point.y };
@@ -129,7 +137,7 @@ export function NetworkMap() {
       });
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [net.data],
+    [net.data, envelopes],
   );
 
   const reset = () => {
@@ -179,8 +187,17 @@ export function NetworkMap() {
         )}
       </div>
       <div className="net-key">
-        <span><i className="house-key firm" /><Term id="firm">{t("net.firm")}</Term></span>
-        <span><i className="house-key nonfirm" /><Term id="nonfirm">{t("net.nonfirm")}</Term></span>
+        {envelopes ? (
+          <>
+            <span><i className="house-key firm" /><Term id="firm">{t("net.firm")}</Term></span>
+            <span><i className="house-key nonfirm" /><Term id="nonfirm">{t("net.nonfirm")}</Term></span>
+          </>
+        ) : (
+          <>
+            <span><i className="house-key static" />{t("net.static")}</span>
+            <span><i className="house-key hourly" />{t("net.hourly")}</span>
+          </>
+        )}
         <span><i className="house-key" />{t("twin.status.none")}</span>
         {kind === "reference" ? (
           <>
