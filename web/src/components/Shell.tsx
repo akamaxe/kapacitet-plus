@@ -1,6 +1,7 @@
 import { useLayoutEffect, useRef, useState } from "react";
 import { useApi } from "../lib/api";
 import { useMe, useSignOut } from "../lib/auth";
+import { useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import type { Menu } from "../lib/menus";
 import { useProjectT } from "../lib/project";
@@ -166,11 +167,18 @@ export function MenuSheet({ open, onClose, menus }: { open: boolean; onClose: ()
  */
 export function StatusBar({ onKeys }: { onKeys: () => void }) {
   const t = useT();
+  const f = useFmt();
   const pt = useProjectT();
   const view = useStore((s) => s.view);
   const lang = useStore((s) => s.lang);
   const setLang = useStore((s) => s.setLang);
   const meta = useApi<any>("/meta");
+  // A project made in the app borrows the reference site's weather and prices (until it has a site
+  // of its own), and its build may have assumed its cables: the legend says both beside what is real.
+  const dataset = meta.data?.dataset;
+  const borrowed = ((dataset?.shared_from_reference ?? []) as string[]).some((x) => x === "weather" || x === "prices");
+  const cables = ((dataset?.assumptions ?? []) as { code: string; count: number }[]).find((a) => a.code === "cable_default");
+  const example = !!dataset?.imported && !!dataset?.synthetic;
   // asked again every half minute, so the bar says when the server has gone
   const health = useApi<any>("/health", { refetchMs: 30_000 });
   return (
@@ -188,8 +196,9 @@ export function StatusBar({ onKeys }: { onKeys: () => void }) {
       )}
       <OutputLast />
       <span className="sb-legend">
-        <span><Mark kind="real" />{pt("tb.real")}</span>
-        <span><Mark kind="synthetic" />{pt("tb.synthetic")}</span>
+        {!(example && borrowed) && <span><Mark kind="real" />{pt("tb.real")}</span>}
+        <span><Mark kind="synthetic" />{cables ? t("tb.synthetic.withCables", { n: f(cables.count) }) : pt("tb.synthetic")}</span>
+        {borrowed && <span><Mark kind="reference" />{t("tb.borrowed")}</span>}
       </span>
       <div className="sb-lang" role="group" aria-label={t("shell.language")}>
         {LANGS.map((l) => (

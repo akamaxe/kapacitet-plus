@@ -15,6 +15,7 @@ import { type Tokens } from "../lib/colors";
 import { hourLabel, hoursInYear, median, monthNames, monthStarts, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
+import { bindingLimit, curveMarks, uncontrolledPasses } from "../lib/verdicts";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -209,10 +210,13 @@ export default function Compare() {
               ...(thermal != null ? [{ ok: ver.doe_max_trafo_loading_pct <= thermal, label: t("cmp.verify.trafo"), value: f(ver.doe_max_trafo_loading_pct, 1), unit: "%", criterion: t("cmp.verify.limit", { v: `${f(thermal)} %` }) }] : []),
               { ok: ver.screen_missed_hours === 0, label: t("cmp.verify.screen"), value: f(ver.screen_missed_hours), unit: "h", criterion: t("cmp.verify.candidates", { n: f(ver.screen_candidate_hours) }) },
               ...(PF ? [{ ok: null, label: t("cmp.verify.zbus"), value: PF.max_abs_dv_pu.toExponential(0), unit: "pu", criterion: t("cmp.verify.zbusNote", { n: PF.cases }) }] : []),
-              { ok: false, label: t("cmp.verify.unc"), value: f(ver.uncontrolled_violation_hours), unit: "h", criterion: t("cmp.verify.uncNote", { year: S.year }) },
+              { ok: uncontrolledPasses(ver), label: t("cmp.verify.unc"), value: f(ver.uncontrolled_violation_hours), unit: "h", criterion: t("cmp.verify.uncNote", { year: S.year }) },
             ]}
           />
-          <p className="caption">{t("cmp.binding", { v: f(ver.uncontrolled_max_voltage_pu, 3) })}</p>
+          <p className="caption">{(() => {
+            const b = bindingLimit(ver);
+            return t(b.key, { h: f(b.vars.h ?? null), v: f(b.vars.v ?? null, 3), load: f(b.vars.load ?? null, 1) });
+          })()}</p>
         </section>
 
         {/* ---------------------------------------------------------------- when it binds */}
@@ -553,11 +557,12 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
   const minY = pts.map((p) => Math.min(...p.z_doe_by_year));
   const maxY = pts.map((p) => Math.max(...p.z_doe_by_year));
   const m = H.summary.measures;
-  const marks = [
+  // equal medians share one label, close ones take turns at the two ends of their lines
+  const marks = curveMarks([
     { x: m.static.kw_ac.median, name: t("m.static") },
     { x: m.timeseries.kw_ac.median, name: t("m.timeseries") },
     { x: m.doe.kw_ac.median, name: t("cmp.fig.doe") },
-  ];
+  ], Math.max(...xs) - Math.min(...xs));
   return {
     grid: { left: 52, right: 24, top: 18, bottom: 44 },
     xAxis: { type: "value", min: Math.floor(Math.min(...xs) / 50) * 50, ...axisStyle(tk), name: "kW AC", nameLocation: "middle", nameGap: 28 },
@@ -582,7 +587,7 @@ function curveOption(tk: Tokens, H: any, t: (k: string, v?: any) => string, zSta
           label: { color: tk.text2, fontFamily: tk.font, fontSize: tk.size.caption },
           data: [
             { yAxis: zStar, label: { formatter: t("cmp.curve.limit", { z: zStar }), position: "insideStartTop" } },
-            ...marks.map((mk) => ({ xAxis: mk.x, label: { formatter: mk.name, position: "insideEndTop", rotate: 90 } })),
+            ...marks.map((mk) => ({ xAxis: mk.x, label: { formatter: mk.name, position: mk.position, rotate: 90 } })),
           ],
         },
       },

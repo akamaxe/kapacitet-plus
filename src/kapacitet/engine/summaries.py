@@ -127,8 +127,33 @@ def audit_totals(rows: list[dict]) -> dict:
 
 
 class NoReinforcementCase(LookupError):
-    """The sensitivity holds no 0.63 MVA transformer case: the network's own unit is not the
-    0.4 MVA one the norm costs on file were chosen for."""
+    """There is no reinforcement for the envelopes to defer, for the reason `code` names:
+
+    - `no_reinforcement_case`: the sensitivity holds no 0.63 MVA transformer case, so the network's
+      own unit is not the 0.4 MVA one the norm costs on file were chosen for;
+    - `reinforcement_no_gain`: the envelopes connect no more than the hourly study without control;
+    - `reinforcement_not_binding`: a bigger transformer adds no capacity, so the transformer is not
+      what limits the network.
+
+    The last two were a deferral worth 25-34 kSEK on a network where every house already fits
+    (H11 of the technical review of 14-11-2026)."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+# below half a kilowatt, a difference is the capacity search's rounding, not capacity
+NO_MORE_KW = 0.5
+
+
+def _no_more(a: dict, a_key: str, b: dict, b_key: str) -> bool:
+    """Whether `a`'s capacity by method `a_key` is no more than `b`'s by `b_key`: by the houses
+    connected when both say them, by the kilowatts otherwise."""
+    na, nb = a.get(f"{a_key}_adopters"), b.get(f"{b_key}_adopters")
+    if isinstance(na, int) and isinstance(nb, int):
+        return na <= nb
+    return float(a[f"{a_key}_kw"]) <= float(b[f"{b_key}_kw"]) + NO_MORE_KW
 
 
 def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
@@ -154,8 +179,14 @@ def reinforcement(tornado: dict, over: dict, cost: dict[str, float]) -> dict:
     """
     big = next((c for c in tornado["cases"] if c["key"] == "trafo" and c["level"].startswith("0.63")), None)
     if big is None:
-        raise NoReinforcementCase("no 0.63 MVA transformer case in the sensitivity")
+        raise NoReinforcementCase("no_reinforcement_case", "no 0.63 MVA transformer case in the sensitivity")
     base = tornado["base"]
+    # a deferral needs something to defer: envelopes that connect more than the hourly study, on a
+    # network whose transformer is what a bigger unit would relieve
+    if _no_more(base, "doe", base, "timeseries"):
+        raise NoReinforcementCase("reinforcement_no_gain", "the envelopes connect no more than the hourly study")
+    if _no_more(big, "timeseries", base, "timeseries") and _no_more(big, "doe", base, "doe"):
+        raise NoReinforcementCase("reinforcement_not_binding", "a bigger transformer adds no capacity")
     t_lo, t_hi = cost["reinforce_trafo_500_sek"], cost["reinforce_trafo_800_sek"]
     station = cost["reinforce_station_800_sek"] + cost["reinforce_urban_supplement_sek"]
     budget = over["budget"]

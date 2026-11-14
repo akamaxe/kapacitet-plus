@@ -254,6 +254,10 @@ _WRITTEN_BY = {
 API_ERRORS = {
     "no_reinforcement_case": "the reinforcement is priced for a 0.63 MVA unit, and this network's sensitivity "
                              "has no such case",
+    "reinforcement_no_gain": "the envelopes connect no more solar than the hourly study without control, so there "
+                             "is no reinforcement for them to defer",
+    "reinforcement_not_binding": "a bigger transformer adds no capacity to this network: its transformer is not what "
+                                 "limits it, so there is no reinforcement to defer",
     "not_in_contract": "not part of the contract: {tables}",
     "too_large": "larger than {mb} MB: {tables}",
     "unreadable_csv": "{table}.csv could not be read: {detail}",
@@ -1039,8 +1043,8 @@ def reinforcement() -> dict:
     over = overinstallation_summary(result("overinstallation.json"))
     try:
         out = reinforce(result("tornado.json"), over, {k: A(k) for k in keys})
-    except NoReinforcementCase:
-        raise api_error(404, "no_reinforcement_case") from None
+    except NoReinforcementCase as err:
+        raise api_error(404, err.code) from None
     return with_prov(out, "smhi_strang", "smhi_metobs", *price_sources(over.get("prices")), "synthetic_grid",
                      files=[result_path("tornado.json"), result_path("overinstallation.json")])
 

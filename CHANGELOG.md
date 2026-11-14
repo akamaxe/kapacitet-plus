@@ -109,6 +109,16 @@ Changes before 12 November 2026 are only in that history.
   required value blank or writes a word where a number goes; each says what to do. A blank fuse no
   longer passes the check to fail later in the build. *New project* offers one way out for unknown
   cable types: build them with the site's default cable, which the check then reports as a warning.
+- **On a network where every house fits, the screens said what is only true of the reference
+  network.** The verification marked "Fail" next to 0 hours above a limit without control, the
+  sentence under it named the transformer as the binding limit, the business case priced deferring
+  a transformer swap nobody needs, the curtailment curve piled its labels on one point, a request
+  called the grid "full for that method", and the status bar called the imported network, weather
+  and prices real. Each is now drawn from the project's own figures: 0 hours passes; the binding
+  limit is the one broken in the most hours, or none; there is no reinforcement case when the
+  envelopes add nothing over the hourly study or a bigger transformer adds no capacity
+  (`reinforcement_no_gain`, `reinforcement_not_binding`); equal marks share one label; and the status
+  bar says that the weather and prices are the reference site's and which cables the build assumed.
 - **A project built on assumptions looked ready like any other.** The build counted each fallback
   (a cable built as the default type, the transformer's impedance from the contract's default) and
   no screen read the count. The project's card now lists what the build assumed, with how many

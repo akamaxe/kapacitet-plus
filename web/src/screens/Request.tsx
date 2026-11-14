@@ -26,6 +26,7 @@ import { log } from "../lib/log";
 import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
+import { staticNoteKey } from "../lib/verdicts";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
 const STAGES: Stage[] = ["static", "envelope", "verify", "risk", "economics"];
@@ -470,7 +471,7 @@ export default function Request() {
               {S && (
                 <p className="caption-muted">
                   {baseline === "static"
-                    ? t("req.base.staticNote", { n: f(S.firm_cids.length) })
+                    ? t(staticNoteKey(S.firm_cids.length, meta.data?.grid?.customers), { n: f(S.firm_cids.length) })
                     : baseline === "doe"
                       ? t("req.base.doeNote", { n: f(S.firm_cids.length), m: f(S.nonfirm_cids.length) })
                       : t("req.base.queueNote", { n: f(queue?.approved ?? 0), base: queue?.baseline === "doe" ? t("req.base.doe") : t("req.base.static") })}
