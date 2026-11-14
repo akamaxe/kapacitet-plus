@@ -11,6 +11,13 @@ fail, it answers about the wrong grid. tests/test_grid_tiny.py fails on a plain
 `memo` is `functools.lru_cache` that also registers itself, and `on_clear` registers the reset
 of a cache that `lru_cache` cannot express (one keyed on arrays, or a module global), so
 `clear_all()` forgets every one of them without the caller having to know the list.
+
+A clear cannot reach work already running in another thread: a read that started before it ends
+after it and stores the old folder's answer in an emptied cache. Each clear therefore starts a new
+`generation()`, and background work that fills caches (the server's warm-up) checks it between its
+steps and stops once it has changed. That race was the suite's order-dependent failure of 13-11:
+a test server's warm-up still loading the reference network while the next module read the tiny
+grid, so the tiny model met 120 customers (tests/test_cache.py).
 """
 
 from __future__ import annotations
@@ -22,6 +29,7 @@ from typing import TypeVar
 F = TypeVar("F", bound=Callable)
 
 _CLEARERS: list[Callable[[], None]] = []
+_GENERATION = [0]
 
 
 def memo(maxsize: int | None = 128) -> Callable[[F], F]:
@@ -41,5 +49,12 @@ def on_clear(reset: Callable[[], None]) -> Callable[[], None]:
 
 def clear_all() -> None:
     """Forget everything read from the data folder, so the next read sees the folder in use."""
+    _GENERATION[0] += 1
     for reset in _CLEARERS:
         reset()
+
+
+def generation() -> int:
+    """How many times the caches have been emptied: work that began under another number reads a
+    folder that may no longer be the one in use, and should stop before it caches anything more."""
+    return _GENERATION[0]

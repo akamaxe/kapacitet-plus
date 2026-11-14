@@ -254,7 +254,8 @@ def test_every_cache_in_the_package_is_in_the_registry():
     """A plain lru_cache on data would survive cache.clear_all() and answer about another grid.
 
     Allowed: cache.py, which implements the registry; config.py, which reads config/ and is
-    reset by processed_at itself; economics.hourly, which reads data/raw (shared by every grid).
+    reset by processed_at itself; economics.hourly, which reads data/raw (shared by every grid) and
+    keys its cache on that folder (tests/test_cache.py).
     """
     import kapacitet
 

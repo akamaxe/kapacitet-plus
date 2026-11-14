@@ -7,21 +7,31 @@ from functools import lru_cache
 import numpy as np
 import pandas as pd
 
+from .. import paths
 from ..config import A, settings
 from ..ingest import prices
 from ..paths import raw
 from ..timeindex import year_index
 
 
-@lru_cache(maxsize=32)
 def hourly(year: int, zone: str | None = None) -> pd.DataFrame | None:
     """Hourly SEK/kWh and EUR/kWh for `year` (None if no price data for that year): elprisetjustnu
-    where it has the year, else ENTSO-E's EUR prices at the ECB's daily rate when they were fetched."""
-    zone = zone or settings().site.bidding_zone
+    where it has the year, else ENTSO-E's EUR prices at the ECB's daily rate when they were fetched.
+
+    Kept per downloads folder and zone, not only per year: the prices come from data/raw, which
+    `cache.clear_all()` does not move, so the key itself is what keeps another folder's prices out."""
+    return _hourly(str(paths.RAW), year, zone or settings().site.bidding_zone)
+
+
+@lru_cache(maxsize=32)
+def _hourly(raw_dir: str, year: int, zone: str) -> pd.DataFrame | None:
     path = raw("prices", f"elpris_{zone}_{year}.jsonl")
     if path.exists():
         return prices.hourly_prices(prices.read_elpris(zone, year), year_index(year))
     return prices.entsoe_hourly(zone, year, year_index(year))
+
+
+hourly.cache_clear = _hourly.cache_clear  # type: ignore[attr-defined]  # what the tests empty by hand
 
 
 def price_years() -> list[int]:

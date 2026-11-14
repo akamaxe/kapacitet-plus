@@ -38,7 +38,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .. import __version__, actor, geo, telemetry
-from ..cache import memo, on_clear
+from ..cache import generation, memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
 from . import jobs, records
@@ -1251,27 +1251,50 @@ def _engine() -> dict:
         return _ENGINE
 
 
+def warm_up_enabled() -> bool:
+    """The warm-up runs unless KAPACITET_WARM=0. The tests turn it off: a test server's warm-up
+    outlives its test and would fill the caches of the next module's network (kapacitet/cache.py)."""
+    return os.environ.get("KAPACITET_WARM", "1") != "0"
+
+
 def _warm() -> None:
-    """Load the model and the request baselines in the background at startup."""
-    if not processed("results", "showcase.json").exists():
+    """Load the model and the request baselines in the background at startup. It stops as soon as
+    the caches are emptied under it (`cache.generation`), so what it reads is never kept for a data
+    folder that is no longer the one in use."""
+    if not warm_up_enabled() or not processed("results", "showcase.json").exists():
         return   # nothing computed yet: /health and the setup screen say what to run
+    started = generation()
+
+    def current() -> bool:
+        return generation() == started
+
     try:
         for name in ("static", "uncontrolled", "doe"):        # compress the map payloads once
             path = processed("ui", f"state_{name}.bin")
             if path.exists():
                 _state_gz(str(path), path.stat().st_mtime)
+        if not current():
+            return
         eng = _engine()
         from ..engine import request as rq
         from ..engine.netmodel3ph import get_model3ph
+        if not current():
+            return
         get_model3ph()          # the unbalanced model the phase check uses, built once
         cfg = settings()
         for name in rq.BASELINES:
             for y in cfg.weather_years:
+                if not current():
+                    return
                 if processed("request", f"{name}_{y}.npz").exists():
                     rq._state(name, y)
         from ..engine.scenario import year_profiles
         for y in cfg.weather_years:
+            if not current():
+                return
             year_profiles(y)
+        if not current():
+            return
         rq.evaluate(eng["model"], rq.Request(cid=0, pv_kwp=5.0, baseline="static"), eng["hp"], eng["ev"])
         log.info("engine warm")
     except Exception as exc:  # pragma: no cover

@@ -103,6 +103,11 @@ Changes before 12 November 2026 are only in that history.
 - The README said the API had no authentication, that re-issuing during the day was outside the
   prototype, that an application was stored with the address, and that 1 146 hours were limited
   on the day-ahead basis (1 240). It now also says that the intraday replica fails its scorecard.
+- The full test run with data failed in `tests/test_mv_band.py` depending on the order of the
+  modules: a test server's warm-up, still loading the reference network, filled the caches while
+  the next module read the tiny grid. The warm-up now stops once the caches are emptied under it
+  (`KAPACITET_WARM=0` turns it off, as the tests do), the spot prices are kept per downloads folder,
+  and a weekly workflow (`data-suite`) runs the whole suite on the published data.
 
 ### Added
 

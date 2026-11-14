@@ -25,6 +25,9 @@ import pytest
 
 # The inbox's worker decides applications in the real queue; tests drive `inbox.process` themselves.
 os.environ["KAPACITET_INBOX_WORKER"] = "0"
+# A test server's warm-up would outlive its test and fill the caches while the next module reads
+# another network (the tiny grid meeting the reference network's customers, 13-11-2026).
+os.environ["KAPACITET_WARM"] = "0"
 # Sign-in stays off whatever a developer's shell or .env says; tests/test_auth.py turns it on itself.
 os.environ["KAPACITET_AUTH"] = "off"
 # Starlette's TestClient sends `Host: testserver`; the guard reads its hosts when the app is built.
@@ -377,17 +380,36 @@ def grid_model(request):
         yield get_model()
 
 
+# The server's threads that read the data folder and fill the engine's caches: one still running
+# when a module ends would fill them for the next module's network.
+ENGINE_THREADS = frozenset({"_warm", "_run_decision"})
+
+
+def engine_threads() -> list:
+    import threading
+
+    return [t for t in threading.enumerate()
+            if getattr(getattr(t, "_target", None), "__name__", None) in ENGINE_THREADS and t.is_alive()]
+
+
 @pytest.fixture(scope="module", autouse=True)
 def _caches_per_module():
-    """Every test module starts and ends with the engine's caches empty. A module that ran part of
-    its work on the tiny grid can leave its model or a table cached under the real paths (seen
-    when test_phase_id ran before test_protection and test_queue in a full run with data), and the
-    next module would then mix the two networks: the real model against the tiny customers."""
+    """Every test module starts and ends with the engine's caches empty, and with no thread of the
+    server still reading the data folder. A module that ran part of its work on the tiny grid can
+    leave its model or a table cached under the real paths, and a test server's warm-up can still be
+    loading the reference network when the next module moves to the tiny grid; the next module
+    would then mix the two networks (the tiny model against the reference network's 120 customers,
+    in the full run with data of 13-11-2026). So the threads are waited for, and one that does not
+    end fails the module that left it, rather than whichever module happens to run next."""
     from kapacitet import cache
 
     cache.clear_all()
     yield
+    for thread in engine_threads():
+        thread.join(timeout=120)
+    left = [t.name for t in engine_threads()]
     cache.clear_all()
+    assert not left, f"engine threads still running after the module: {left}"
 
 
 def on_tiny(request) -> bool:
