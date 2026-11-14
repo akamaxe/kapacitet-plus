@@ -7,7 +7,25 @@
  * shows one at a time; opening another restarts it on that folder, so it always asks first.
  */
 import { API, apiWrite, useApi, type WriteMethod } from "./api";
+import type { TFn } from "./i18n";
 import { OPENING, SCREENS, type Screen } from "./store";
+
+/**
+ * What a build assumed where the export said nothing (datasets.assumptions on the server): a code,
+ * how many elements it touched and out of how many. A weighty one changes the capacity itself (a
+ * cable's or the transformer's impedance), and the project then says so wherever it is listed.
+ */
+export interface Assumption {
+  code: string;
+  count: number;
+  total: number | null;
+  weighty: boolean;
+  /** the default cable and the export's type names it stood in for */
+  cable?: string;
+  names?: Record<string, number>;
+  /** a fallback this version has no words for, by the build's own label */
+  label?: string;
+}
 
 /** What a project list shows of a network, read from the network's own files (null: not there). */
 export interface Summary {
@@ -25,12 +43,33 @@ export interface Summary {
   /** medians over the adoption orders, in kW AC */
   static_kw: number | null;
   hourly_kw: number | null;
+  assumptions: Assumption[];
 }
 
 export const NO_SUMMARY: Summary = {
   customers: null, feeders: null, buses: null, lines: null, trafo_type: null, computed_at: null, quick: null,
-  reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null,
+  reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null, assumptions: [],
 };
+
+/** An assumption as one sentence, with its counts. Pure. */
+export function assumptionText(t: TFn, f: (n: number) => string, a: Assumption): string {
+  const values = { n: f(a.count), total: f(a.total ?? a.count), cable: a.cable ?? "", label: a.label ?? "" };
+  if (a.code === "cable_default") {
+    const names = Object.entries(a.names ?? {})
+      .map(([name, n]) => `${name || t("proj.assume.blankName")} (${f(n)})`)
+      .join(", ");
+    const head = t(a.cable ? "proj.assume.cable_default" : "proj.assume.cable_defaultPlain", values);
+    return names ? `${head} ${t("proj.assume.cableNames", { names })}` : head;
+  }
+  const key = `proj.assume.${a.code}`;
+  const text = t(key, values);
+  return text === key ? t("proj.assume.other", values) : text;
+}
+
+/** Whether a project's capacity rests on an assumption about its cables or its transformer. Pure. */
+export function isAssumed(summary: Summary): boolean {
+  return summary.assumptions.some((a) => a.weighty);
+}
 
 export type OriginKind = "reference" | "csv" | "template" | "project_file";
 

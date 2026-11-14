@@ -22,8 +22,8 @@ import { MANUAL } from "../lib/links";
 import { useT } from "../lib/i18n";
 import { log } from "../lib/log";
 import {
-  buildProgress, enterWhenBack, forgetRecent, lastScreen, projectFileUrl, projectWrite, projectsOf, readRecents,
-  sortProjects, touchRecent, useProjects, type Project,
+  assumptionText, buildProgress, enterWhenBack, forgetRecent, isAssumed, lastScreen, projectFileUrl, projectWrite,
+  projectsOf, readRecents, sortProjects, touchRecent, useProjects, type Project,
 } from "../lib/projects";
 import { useStore } from "../lib/store";
 
@@ -118,7 +118,10 @@ export default function Start({ onKeys, onAbout }: {
   useEffect(() => {
     for (const p of projects) {
       const was = states.current.get(p.id);
-      if (was === "building" && p.state === "ready") log.ok(t("log.build.ready", { name: p.name }));
+      if (was === "building" && p.state === "ready") {
+        log.ok(t(isAssumed(p.summary) ? "log.build.readyAssumed" : "log.build.ready", { name: p.name }));
+        for (const a of p.summary.assumptions.filter((x) => x.weighty)) log.step(assumptionText(t, f, a));
+      }
       if (was === "building" && p.state === "failed") log.error(buildLine(p) ? t("log.build.failed", { name: p.name, why: buildLine(p) }) : t("log.build.failedPlain", { name: p.name }));
       states.current.set(p.id, p.state);
     }
@@ -195,6 +198,7 @@ export default function Start({ onKeys, onAbout }: {
           <span className="num">
             {p.summary.computed_at ? dateTime(lang, p.summary.computed_at, false) : t("proj.state.ready")}
             {p.quick ? <span className="caption-muted"> · {t("proj.quick")}</span> : null}
+            {isAssumed(p.summary) ? <span className="caption-muted"> · {t("proj.assumedShort")}</span> : null}
           </span>
         ) : p.state === "failed" ? (
           <Status kind="critical">{t("proj.state.failed")}</Status>
@@ -270,9 +274,15 @@ export default function Start({ onKeys, onAbout }: {
                 <section className="block proj-detail" aria-labelledby="proj-title">
                   <div className="block-head">
                     <h2 id="proj-title">{picked.name}</h2>
-                    {picked.current ? <Status kind="good">{t("proj.inUse")}</Status>
-                      : picked.state === "failed" ? <Status kind="critical">{t("proj.state.failed")}</Status>
-                      : <span className="status measured">{t(`proj.state.${picked.state}`)}</span>}
+                    <span className="proj-states">
+                      {picked.current ? <Status kind="good">{t("proj.inUse")}</Status>
+                        : picked.state === "failed" ? <Status kind="critical">{t("proj.state.failed")}</Status>
+                        : picked.state === "ready" && isAssumed(picked.summary) ? null
+                        : <span className="status measured">{t(`proj.state.${picked.state}`)}</span>}
+                      {picked.state === "ready" && isAssumed(picked.summary) && (
+                        <Status kind="warning">{t("proj.state.readyAssumed")}</Status>
+                      )}
+                    </span>
                   </div>
                   <p className="caption">{kind(picked)}</p>
                   {(picked.state === "building" || picked.state === "failed") && (

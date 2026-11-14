@@ -2633,6 +2633,16 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .proj-detail h2 { margin: 0; }
 .proj-detail > p { margin: 0; }
 .proj-actions { margin-top: var(--space-2); }
+.proj-states { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+/* what the build assumed: a filet and a short list under the facts; the ones that move the
+   capacity carry the warning mark, the others are plain lines */
+.proj-assume { padding-top: var(--space-3); border-top: 1px solid var(--border); }
+.proj-assume h3 { margin: 0 0 var(--space-2); font-size: var(--text-small); font-weight: 600; color: var(--text-secondary); }
+.proj-assume ul { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; max-width: 78ch; }
+.proj-assume li { display: flex; align-items: flex-start; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
+.proj-assume li[data-weighty] { color: var(--text-primary); }
+.proj-assume li svg { flex: none; margin-top: 2px; color: var(--warning); }
+.proj-assume li:not([data-weighty])::before { content: ""; flex: none; width: 15px; }
 
 /* a project's facts are words as often as figures: they wrap, where a reading would not */
 .proj-detail .tile .t-value { white-space: normal; }

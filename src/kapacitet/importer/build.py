@@ -85,7 +85,8 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         tap_changer_type="Ratio",                  # pandapower 3 applies no tap without one
         tap_pos=int(trafo_in.get("tap_pos") or 0))
 
-    line_rows = _create_lines(net, lines_in, index, note)
+    assumed_cables: dict[str, int] = {}
+    line_rows = _create_lines(net, lines_in, index, note, assumed_cables)
     lines = pd.DataFrame(line_rows).sort_values("line").reset_index(drop=True)
     feeder, depth, parent = _walk(index[lv_id], lines)
 
@@ -123,6 +124,8 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         "imported": True,
         "fallbacks": applied,
     }
+    if assumed_cables:      # which type names became the default cable: the project's card names them
+        summary["assumed_cable"] = {"type": str(A("service_cable_type")), "names": assumed_cables}
     if "existing_pv_kw_ac" in customers:
         summary["existing_pv_kw"] = round(float(customers["existing_pv_kw_ac"].sum()), 1)
     substation = {
@@ -154,7 +157,9 @@ def bus_index(buses_in: pd.DataFrame, lv_bus: str) -> dict[str, int]:
     return {b: i + 1 for i, b in enumerate(ids)}
 
 
-def _create_lines(net, lines_in, index, note) -> list[dict]:
+def _create_lines(net, lines_in, index, note, assumed: dict[str, int] | None = None) -> list[dict]:
+    """The sections as pandapower lines. A section with neither a known type nor its r/x/c data is
+    built as the default cable, counted in `note` and, by the name it had ("" for none), in `assumed`."""
     default_type = A("service_cable_type")
     rows = []
     electrical = ("r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka")
@@ -177,6 +182,9 @@ def _create_lines(net, lines_in, index, note) -> list[dict]:
             used = "from parameters"
         else:
             note("cable type assumed", 1)
+            if assumed is not None:
+                name = std.strip() if isinstance(std, str) else ""
+                assumed[name] = assumed.get(name, 0) + 1
             li = pp.create_line(net, f, t, length_km=km, std_type=default_type, parallel=parallel)
             used = default_type
         rows.append(dict(line=li, from_bus=f, to_bus=t, kind="main", std_type=used,

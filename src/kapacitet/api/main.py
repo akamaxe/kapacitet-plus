@@ -537,7 +537,9 @@ def meta() -> dict:
     out["dataset"] = {"id": current, "imported": current != ds.REFERENCE,
                       # where the network came from, and whether it is a made-up one (an example network)
                       "origin": {k: origin[k] for k in ("kind", "template", "name") if k in origin},
-                      "synthetic": ds.is_synthetic(origin)}
+                      "synthetic": ds.is_synthetic(origin),
+                      # what its build assumed, which the frame says next to what is real
+                      "assumptions": ds.assumptions(out.get("grid") or {})}
     if current != ds.REFERENCE:
         try:
             out["dataset"]["name"] = ds.record(current)["name"]

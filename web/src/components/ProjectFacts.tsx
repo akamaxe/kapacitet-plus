@@ -4,9 +4,10 @@
  * project picked in the list, the project's properties for the one that is open.
  */
 import { Tile } from "./bits";
+import { Icon } from "./Icon";
 import { dateTime, useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
-import type { Project } from "../lib/projects";
+import { assumptionText, type Project } from "../lib/projects";
 import { useStore } from "../lib/store";
 
 /** A network is synthetic when it was made from an example network, or its project file says so. */
@@ -66,6 +67,19 @@ export function ProjectFacts({ p }: { p: Project }) {
       </div>
       {(p.summary.static_kw !== null || p.summary.hourly_kw !== null) && (
         <p className="source-line">{t("proj.d.capacityNote")}</p>
+      )}
+      {p.summary.assumptions.length > 0 && (
+        <div className="proj-assume">
+          <h3>{t("proj.assume.title")}</h3>
+          <ul>
+            {p.summary.assumptions.map((a) => (
+              <li key={`${a.code}${a.label ?? ""}`} data-weighty={a.weighty || undefined}>
+                {a.weighty && <Icon name="alert" size={15} />}
+                <span>{assumptionText(t, f, a)}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
     </>
   );

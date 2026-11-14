@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { tFor } from "./i18n";
 import {
-  NO_SUMMARY, buildProgress, forgetRecent, lastScreen, projectFileUrl, projectsOf, readRecents, sortProjects, touchRecent,
-  type Listing, type Project,
+  NO_SUMMARY, assumptionText, buildProgress, forgetRecent, isAssumed, lastScreen, projectFileUrl, projectsOf, readRecents,
+  sortProjects, touchRecent, type Assumption, type Listing, type Project,
 } from "./projects";
 
 // A project is one network with what was computed for it. The start window lists what the server
@@ -129,5 +130,33 @@ describe("opening a project", () => {
 
   it("downloads its file from the server", () => {
     expect(projectFileUrl("kerber-a1")).toBe("/api/v1/datasets/kerber-a1/project.zip");
+  });
+});
+
+describe("what a build assumed", () => {
+  const t = tFor("en");
+  const f = (n: number) => String(n);
+  const cable: Assumption = {
+    code: "cable_default", count: 12, total: 12, weighty: true, cable: "NAYY 4x50 SE", names: { "N1XV 4x50 (NIS)": 10, "": 2 },
+  };
+
+  it("says the default cable with the names it stood in for", () => {
+    expect(assumptionText(t, f, cable)).toBe(
+      "12 of 12 cable sections are built as the default cable, NAYY 4x50 SE: the library does not know their type and the export gives no r/x/c data. "
+      + "Type names in the export: N1XV 4x50 (NIS) (10), no type name (2).");
+    expect(assumptionText(t, f, { ...cable, cable: "", names: {} })).toBe(
+      "12 of 12 cable sections are built as the default cable: the library does not know their type and the export gives no r/x/c data.");
+  });
+
+  it("keeps the build's own words for a fallback this version does not know", () => {
+    expect(assumptionText(t, f, { code: "other", count: 3, total: null, weighty: false, label: "something new" })).toBe("something new (3)");
+    expect(assumptionText(t, f, { code: "customer_no_roof", count: 3, total: 12, weighty: false }))
+      .toBe("3 of 12 customers have no roof area, so no rooftop solar is estimated for them.");
+  });
+
+  it("marks a project only for what moves its capacity", () => {
+    expect(isAssumed({ ...NO_SUMMARY, assumptions: [cable] })).toBe(true);
+    expect(isAssumed({ ...NO_SUMMARY, assumptions: [{ code: "customer_no_roof", count: 3, total: 12, weighty: false }] })).toBe(false);
+    expect(isAssumed(NO_SUMMARY)).toBe(false);
   });
 });

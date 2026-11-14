@@ -291,7 +291,8 @@ def test_the_listing_says_what_each_network_is(api, tmp_path):
     of the static and of the hourly study: read from the network's own files, None when not there."""
     c, ds, _ = api
     empty = c.get("/api/v1/datasets").json()
-    assert empty["items"] == [] and set(empty["reference"]["summary"].values()) == {None}
+    summary = empty["reference"]["summary"]
+    assert empty["items"] == [] and summary.pop("assumptions") == [] and set(summary.values()) == {None}
     _computed(tmp_path, customers=120, static=413.45, hourly=608.84, quick=False)
     ds_id = _dataset(ds)
     listed = c.get("/api/v1/datasets").json()
@@ -300,7 +301,8 @@ def test_the_listing_says_what_each_network_is(api, tmp_path):
     assert (ref["static_kw"], ref["hourly_kw"], ref["quick"]) == (413.45, 608.84, False)
     assert ref["years"] == [2023, 2025] and ref["n_years"] == 3 and ref["computed_at"].startswith("2026-11-12")
     item = listed["items"][0]
-    assert item["id"] == ds_id and set(item["summary"].values()) == {None}      # uploaded, nothing computed
+    uploaded = dict(item["summary"])                                          # uploaded, nothing computed
+    assert item["id"] == ds_id and uploaded.pop("assumptions") == [] and set(uploaded.values()) == {None}
     _computed(ds.DATASETS / ds_id)
     item = c.get("/api/v1/datasets").json()["items"][0]
     assert item["summary"]["customers"] == 27 and item["summary"]["hourly_kw"] == 77.5
@@ -455,7 +457,7 @@ def test_an_example_network_says_it_is_made_up(api, tmp_path, monkeypatch):
     monkeypatch.delenv("KAPACITET_DATASET", raising=False)
     assert ds.current_origin() == {"kind": "reference"}
     assert c.get("/api/v1/meta").json()["dataset"] == {
-        "id": "reference", "imported": False, "origin": {"kind": "reference"}, "synthetic": False}
+        "id": "reference", "imported": False, "origin": {"kind": "reference"}, "synthetic": False, "assumptions": []}
 
     files = templates.files("dickert-short")
     example = c.post("/api/v1/datasets", json={"name": "Short feeders", "files": files, "origin": {

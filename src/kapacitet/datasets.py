@@ -131,6 +131,46 @@ def _read(path: Path) -> dict:
     return doc if isinstance(doc, dict) else {}
 
 
+# What a build assumed, as importer/build.py counts it (a fallback's label and how many elements it
+# touched), turned into what the interface says: a code, the count and what it is counted against.
+# The weighty ones change the capacity itself, a cable's or the transformer's impedance, so a project
+# built on one is not presented as simply ready (the technical review's task 1.2).
+ASSUMPTIONS = {
+    "cable type assumed": ("cable_default", "lines", True),
+    "transformer vk assumed": ("trafo_vk", None, True),
+    "transformer vkr assumed": ("trafo_vkr", None, True),
+    "bus without coordinates": ("bus_no_coordinates", "buses", False),
+    "customer without a roof area": ("customer_no_roof", "customers", False),
+    "PV AC rating taken from its kWp": ("equipment_pv_ac", None, False),
+    "EV charger phases taken as three": ("equipment_ev_three", None, False),
+    "EV charger phases taken as one (single-phase service)": ("equipment_ev_one", None, False),
+    "battery with only one rating not counted": ("equipment_battery", None, False),
+}
+
+
+def assumptions(grid: dict) -> list[dict]:
+    """The fallbacks a network was built on (its grid/summary.json), the weighty ones first: each as
+    {code, count, total, weighty}, and for the default cable which cable and which type names."""
+    out = []
+    for label, n in (grid.get("fallbacks") or {}).items():
+        if not isinstance(n, (int, float)) or n <= 0:
+            continue
+        code, of, weighty = ASSUMPTIONS.get(label, ("other", None, False))
+        total = grid.get(of) if of else None
+        if of == "buses" and isinstance(total, int):
+            total -= 1                     # the medium-voltage bus the build adds has no place to draw
+        item = {"code": code, "count": int(n), "total": int(total) if isinstance(total, int) else None,
+                "weighty": weighty}
+        if code == "cable_default":
+            detail = grid.get("assumed_cable") or {}
+            item["cable"] = str(detail.get("type") or "")
+            item["names"] = {str(k): int(v) for k, v in (detail.get("names") or {}).items()}
+        if code == "other":
+            item["label"] = str(label)
+        out.append(item)
+    return sorted(out, key=lambda a: (not a["weighty"], a["code"]))
+
+
 def summary(root: Path | None = None) -> dict:
     """What a project list shows of the network in `root` (the reference network's folder by
     default): its size, its transformer, when and how it was computed, and the capacity of the
@@ -151,7 +191,8 @@ def summary(root: Path | None = None) -> dict:
             "computed_at": meta.get("computed_at"), "quick": meta.get("quick"),
             "reference_year": meta.get("reference_year"),
             "years": [min(years), max(years)] if years else None, "n_years": len(years) or None,
-            "static_kw": median_kw("static"), "hourly_kw": median_kw("timeseries")}
+            "static_kw": median_kw("static"), "hourly_kw": median_kw("timeseries"),
+            "assumptions": assumptions(grid)}
 
 
 # ---------------------------------------------------------------- which network is in use

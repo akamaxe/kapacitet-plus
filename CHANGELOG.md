@@ -109,6 +109,13 @@ Changes before 12 November 2026 are only in that history.
   required value blank or writes a word where a number goes; each says what to do. A blank fuse no
   longer passes the check to fail later in the build. *New project* offers one way out for unknown
   cable types: build them with the site's default cable, which the check then reports as a warning.
+- **A project built on assumptions looked ready like any other.** The build counted each fallback
+  (a cable built as the default type, the transformer's impedance from the contract's default) and
+  no screen read the count. The project's card now lists what the build assumed, with how many
+  elements each touches and the type names a default cable stood in for; a project whose cables or
+  transformer rest on an assumption says "Ready, with assumptions" in the start window, and the
+  output window lists them when its build ends. `GET /datasets` and `/meta` carry them as
+  `assumptions`.
 - **A CSV saved by older versions of Excel (Windows-1252) ended in a traceback**, and in the browser
   its å, ä and ö turned into replacement characters without a word. Such a file is now read as
   Windows-1252, with a note in the report, by the command and by the browser alike.
