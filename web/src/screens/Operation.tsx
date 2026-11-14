@@ -16,6 +16,7 @@ import { API, ApiError, apiWrite, getJSON, useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
 import { RoleNote } from "../components/RoleNote";
 import { type Tokens } from "../lib/colors";
+import { readCsvFile } from "../lib/decode";
 import { refusalOf, refusalText } from "../lib/errors";
 import { hourLabel, monthLong, monthNames, studyDate, useFmt } from "../lib/format";
 import { useT, type TFn } from "../lib/i18n";
@@ -551,7 +552,7 @@ function MeterCheck({ cid, date, name }: { cid: number; date: string; name: stri
   const fromFile = async (input: HTMLInputElement) => {
     const file = input.files?.[0];
     input.value = ""; // the same file chosen again is a new check
-    if (file) await run(await file.text(), false, file.name);
+    if (file) await run((await readCsvFile(file)).text, false, file.name);
   };
 
   const R = res?.body;

@@ -103,6 +103,18 @@ Changes before 12 November 2026 are only in that history.
 - The README said the API had no authentication, that re-issuing during the day was outside the
   prototype, that an application was stored with the address, and that 1 146 hours were limited
   on the day-ahead basis (1 240). It now also says that the intraday replica fails its scorecard.
+- **A real export could describe another network and still pass the check.** The check now stops
+  an export whose cable types the library does not know (named as a NIS names them, without r/x/c),
+  whose lengths read like kilometres, whose coordinates are SWEREF 99 TM metres, or that leaves a
+  required value blank or writes a word where a number goes; each says what to do. A blank fuse no
+  longer passes the check to fail later in the build. *New project* offers one way out for unknown
+  cable types: build them with the site's default cable, which the check then reports as a warning.
+- **A CSV saved by older versions of Excel (Windows-1252) ended in a traceback**, and in the browser
+  its å, ä and ö turned into replacement characters without a word. Such a file is now read as
+  Windows-1252, with a note in the report, by the command and by the browser alike.
+- **POST /check and a new project read every CSV with commas and decimal points**, so a semicolon
+  export from Swedish Excel, which `kapacitet check` read correctly, came out wrong in the browser.
+  Every reader of the contract now reads a file the same way.
 - The full test run with data failed in `tests/test_mv_band.py` depending on the order of the
   modules: a test server's warm-up, still loading the reference network, filled the caches while
   the next module read the tiny grid. The warm-up now stops once the caches are emptied under it

@@ -243,23 +243,22 @@ def clean_origin(origin: dict | None) -> dict:
     return out
 
 
-def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | None = None) -> dict:
+def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | None = None,
+           decoded_as: dict[str, str] | None = None, options: dict | None = None) -> dict:
     """Validate an export and keep it as a new network, ready to build. Nothing is written for an
-    export that does not pass the check."""
-    import io
-
-    import pandas as pd
-
+    export that does not pass the check. `options` are what the user chose in the check
+    (validate.validate's `default_cable`); the build applies the same ones."""
     from .importer.contract import BY_NAME
-    from .importer.validate import validate
+    from .importer.validate import read_files, validate
 
     # the API refuses these first; whoever calls this directly gets the same answer
     unknown = sorted(set(files) - set(BY_NAME))
     if unknown:
         raise DatasetError("not_in_contract", tables=", ".join(unknown))
     origin = clean_origin(origin)             # before anything is written
-    data = {k: pd.read_csv(io.StringIO(v)) for k, v in files.items()}
-    report = validate(data)
+    chosen = {"default_cable": True} if (options or {}).get("default_cable") else {}
+    data = read_files(files, decoded_as)
+    report = validate(data, default_cable=bool(chosen.get("default_cable")))
     if not report.usable:
         raise DatasetError("not_usable")
     slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")[:24] or "network"
@@ -274,6 +273,8 @@ def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | 
     rec = {"id": ds_id, "name": name.strip()[:80] or ds_id, "created": _now(), "status": "uploaded", "quick": quick,
            "origin": origin, "report": report.to_dict(), "customers": int(len(data["customers"])),
            "steps": [{"name": s, "status": "waiting"} for s in STEPS]}
+    if chosen:
+        rec["options"] = chosen
     return _save(rec)
 
 
@@ -490,7 +491,9 @@ def _real_steps(ds_id: str, workers: int, quick: bool) -> dict:
     def do_import():
         from .importer.build import import_directory
 
-        network, _report, applied = import_directory(folder(ds_id) / "import")
+        chosen = record(ds_id).get("options") or {}
+        network, _report, applied = import_directory(folder(ds_id) / "import",
+                                                     default_cable=bool(chosen.get("default_cable")))
         return {"summary": {k: network.summary[k] for k in ("customers", "feeders", "buses", "lines", "trafo_type")},
                 "fallbacks": applied}
 

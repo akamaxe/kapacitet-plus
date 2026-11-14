@@ -41,6 +41,10 @@ class Origin(BaseModel):
 class NewDataset(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     files: dict[str, str] = Field(..., description="the contract's four tables as CSV text, as for /check")
+    decoded_as: dict[str, Literal["utf-8", "windows-1252"]] = Field(
+        default_factory=dict, description="as for /check: the tables the browser read as Windows-1252")
+    options: dict[str, bool] = Field(default_factory=dict, description="as for /check: {'default_cable': true} "
+                                                                       "builds unknown cable types as the default cable")
     quick: bool = Field(True, description="one weather year and fewer adoption orders: minutes, not an hour")
     origin: Origin | None = Field(None, description="where the network comes from; an export when left out")
 
@@ -98,7 +102,8 @@ def create_dataset(body: NewDataset) -> dict:
         raise refusal(err) from err
     try:
         rec = ds.create(body.name, body.files, quick=body.quick,
-                        origin=body.origin.model_dump(exclude_none=True) if body.origin else None)
+                        origin=body.origin.model_dump(exclude_none=True) if body.origin else None,
+                        decoded_as=body.decoded_as, options=body.options)
     except ds.DatasetError as err:
         raise refusal(err, 422) from err
     except Exception as err:    # a table pandas cannot read

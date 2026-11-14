@@ -16,6 +16,7 @@ import { RoleNote } from "./RoleNote";
 import { toast } from "./Toast";
 import { API, apiWrite, getJSON, useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
+import { decodedAs, readCsvFile, type Encoding } from "../lib/decode";
 import { refusalOf, refusalText, responseRefusal } from "../lib/errors";
 import { useFmt } from "../lib/format";
 import { useT } from "../lib/i18n";
@@ -31,13 +32,23 @@ export interface OriginIn {
 
 type Files = Record<string, string>;
 
+/** What the user chose about the export's shortcomings at the check (POST /check's `options`). */
+export interface CheckOptions {
+  /** build the cable types the library does not know as the site's default cable */
+  default_cable?: boolean;
+}
+
 /**
  * The last step, also offered under a check on the method screen: name the project, choose how
  * much to compute, and start its build.
  */
-export function CreateProjectForm({ files, origin, defaultName, onCreated, before }: {
+export function CreateProjectForm({ files, origin, defaultName, onCreated, before, decoded, options }: {
   files: Files;
   origin: OriginIn;
+  /** how each table was read (lib/decode.ts): the ones not in UTF-8 are said in the report */
+  decoded?: Record<string, Encoding>;
+  /** what the check was told: the build applies the same */
+  options?: CheckOptions;
   defaultName?: string;
   onCreated?: (rec: RawNet) => void;
   /** an action that comes before the form's own in its row (the steps' Back) */
@@ -54,7 +65,10 @@ export function CreateProjectForm({ files, origin, defaultName, onCreated, befor
   const create = async () => {
     setBusy(true);
     setError(null);
-    const r = await apiWrite("/datasets", { name: name.trim() || t("new.defaultName"), files, quick, origin }).catch(() => null);
+    const r = await apiWrite("/datasets", {
+      name: name.trim() || t("new.defaultName"), files, quick, origin,
+      decoded_as: decodedAs(decoded ?? {}), options: options ?? {},
+    }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
     if (!r.ok) return setError(await responseRefusal(t, r));
@@ -100,6 +114,9 @@ const STEPS = ["source", "check", "build"] as const;
 
 interface Draft {
   files: Files;
+  /** how each table was read; a project file's and an example's are UTF-8 */
+  decoded: Record<string, Encoding>;
+  options: CheckOptions;
   origin: OriginIn;
   /** the name the project is offered, which the last step lets the user change */
   name: string;
@@ -138,14 +155,15 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
   const check = async (next: Draft) => {
     setBusy(true);
     setError(null);
+    // at once, so a choice made on the report (the default cable) shows before the new report arrives
+    setDraft(next);
     try {
-      const r = await apiWrite("/check", { files: next.files });
+      const r = await apiWrite("/check", { files: next.files, decoded_as: decodedAs(next.decoded), options: next.options });
       const body = await r.json();
       if (!r.ok) {
         setError(refusalText(t, refusalOf(body), String(r.status)));
         return;
       }
-      setDraft(next);
       setReport(body as Report);
       setStep(2);
     } catch {
@@ -158,15 +176,20 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
   const fromCsv = async (list: FileList | null) => {
     if (!list?.length) return;
     const files: Files = {};
+    const decoded: Record<string, Encoding> = {};
     const skipped: string[] = [];
     for (const file of Array.from(list)) {
       const name = file.name.toLowerCase().replace(/\.csv$/, "");
-      if (names.includes(name)) files[name] = await file.text();
-      else skipped.push(file.name);
+      if (names.includes(name)) {
+        // as bytes: file.text() would read a Windows-1252 export as UTF-8 and lose å, ä and ö unsaid
+        const read = await readCsvFile(file);
+        files[name] = read.text;
+        decoded[name] = read.encoding;
+      } else skipped.push(file.name);
     }
     setIgnored(skipped);
     if (!Object.keys(files).length) return setError(t("met.imp.noneMatched"));
-    await check({ files, origin: { kind: "csv" }, name: "", label: t("new.from.csv") });
+    await check({ files, decoded, options: {}, origin: { kind: "csv" }, name: "", label: t("new.from.csv") });
   };
 
   const fromTemplate = async () => {
@@ -176,7 +199,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
     setError(null);
     try {
       const doc = await getJSON<{ files: Files }>(`/templates/${picked.id}`);
-      await check({ files: doc.files, origin: { kind: "template", template: picked.id }, name: picked.name, label: t("new.from.template", { name: picked.name }) });
+      await check({ files: doc.files, decoded: {}, options: {}, origin: { kind: "template", template: picked.id }, name: picked.name, label: t("new.from.template", { name: picked.name }) });
     } catch {
       setBusy(false);
       setError(t("ui.offline"));
@@ -193,6 +216,8 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
         const doc = await readProjectFile(await file.arrayBuffer(), names);
         await check({
           files: doc.files,
+          decoded: doc.decoded,
+          options: {},
           origin: { kind: "project_file", name: file.name, synthetic: doc.synthetic },
           name: doc.name ?? file.name.replace(/\.zip$/i, ""),
           label: t("new.from.file", { name: file.name }),
@@ -220,6 +245,13 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
     setError(null);
     setStep(1);
   };
+
+  // The one shortcoming the check lets the user accept: cable types the library does not know,
+  // built as the site's default cable. Offered only when nothing else stops the export, and kept on
+  // view once chosen, so it can be taken back.
+  const cables = report?.findings.find((x) => x.code === "cable_type_unknown" || x.code === "cable_type_unknown_assumed");
+  const onlyCables = !!report && report.findings.filter((x) => x.severity === "error").every((x) => x.code === "cable_type_unknown");
+  const offerCable = !!cables && !!draft && (draft.options.default_cable || (!report?.usable && onlyCables));
 
   return (
     <div className="page-inner start-main new-project">
@@ -306,6 +338,17 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
           <p className="caption">{draft.label}</p>
           <CheckReport report={report} />
           {!report.usable && <p className="caption">{t("new.check.unusable")}</p>}
+          {offerCable && cables && (
+            <div className="stack">
+              <label className="new-assume">
+                <input type="checkbox" checked={!!draft.options.default_cable} disabled={busy}
+                  onChange={(e) => void check({ ...draft, options: { ...draft.options, default_cable: e.currentTarget.checked } })} />
+                <span>{t("new.check.defaultCable", { n: f(cables.count ?? 0), cable: String(cables.params?.cable ?? "") })}</span>
+              </label>
+              <p className="caption-muted">{t("new.check.defaultCableNote")}</p>
+            </div>
+          )}
+          {error && <p className="decision-error" role="alert"><Icon name="alert" size={15} />{error}</p>}
           <div className="answer-actions">
             <button className="btn ghost" onClick={back}>{t("new.back")}</button>
             <button className="btn" disabled={!report.usable} onClick={() => setStep(3)}>{t("new.continue")}</button>
@@ -317,7 +360,8 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
         <section className="block stack" aria-labelledby="new-build">
           <div className="block-head"><h2 id="new-build">{t("new.build.title")}</h2></div>
           <p className="caption">{draft.label}</p>
-          <CreateProjectForm files={draft.files} origin={draft.origin} defaultName={draft.name} onCreated={onDone}
+          <CreateProjectForm files={draft.files} decoded={draft.decoded} options={draft.options} origin={draft.origin}
+            defaultName={draft.name} onCreated={onDone}
             before={<button className="btn ghost" onClick={() => setStep(2)}>{t("new.back")}</button>} />
         </section>
       )}

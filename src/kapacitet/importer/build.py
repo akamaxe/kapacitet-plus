@@ -33,13 +33,14 @@ class ImportError_(ValueError):
 
 
 def import_directory(directory: str | Path, save_to_disk: bool = True,
-                     equipment: bool = True) -> tuple[Network, Report, dict]:
+                     equipment: bool = True, default_cable: bool = False) -> tuple[Network, Report, dict]:
     """`equipment=False` leaves an equipment.csv in the folder out (a study's station takes its
-    equipment in a step of its own)."""
+    equipment in a step of its own). `default_cable`: build a cable type the library does not know
+    as the site's default cable, as the user asked when the project was made (validate.validate)."""
     data = read_export(directory)
     if not equipment:
         data.pop("equipment", None)
-    report = validate(data)
+    report = validate(data, default_cable=default_cable)
     if not report.usable:
         raise ImportError_(report.text())
     network, applied = build_from_export(data)
@@ -242,7 +243,7 @@ def _customer_table(net, cust_in, index, buses, feeder, depth, note) -> pd.DataF
         if footprint is None or (isinstance(footprint, float) and math.isnan(footprint)):
             footprint = 0.0
             no_roof += 1
-        fuse = int(r.fuse_a)
+        fuse = int(round(float(r.fuse_a)))          # the check refuses a blank or a word
         b = by_bus.loc[bus]
         phase = getattr(r, "phase", None)
         phase = PHASE_ALIAS.get(str(phase).strip().lower(), str(phase).strip().lower()) if isinstance(phase, str) and phase.strip() else ""

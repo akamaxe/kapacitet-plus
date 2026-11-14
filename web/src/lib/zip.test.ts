@@ -169,7 +169,7 @@ describe("readProjectFile", () => {
 
   it("opens a plain zip of the CSV files, and one whose project.json cannot be read", async () => {
     const plain = await readProjectFile(await zip([{ name: "buses.csv", text: "bus_id\nB1\n" }]), TABLES);
-    expect(plain).toEqual({ name: null, files: { buses: "bus_id\nB1\n" }, synthetic: false });
+    expect(plain).toEqual({ name: null, files: { buses: "bus_id\nB1\n" }, decoded: { buses: "utf-8" }, synthetic: false });
     const odd = await readProjectFile(await zip([{ name: "project.json", text: "{" }, { name: "lines.csv", text: "line_id\n" }]), TABLES);
     expect(odd.name).toBeNull();
     expect(odd.synthetic).toBe(false);

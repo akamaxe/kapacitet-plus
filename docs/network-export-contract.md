@@ -3,7 +3,7 @@
 
 # Network export contract
 
-Four CSV files in one directory, UTF-8, comma separated, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there.
+Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there. Comma separated, or semicolon separated with a decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel save it, which the report then notes. Lengths are metres and coordinates WGS84 degrees.
 Run `python -m kapacitet check <directory>` to get a data-quality report before sending anything.
 
 ## `buses.csv`
@@ -15,8 +15,8 @@ Every point where something connects: the substation, cable cabinets and service
 | `bus_id` | - | yes | Unique identifier, any string or integer. | - |
 | `kind` | - | yes | substation, cabinet or service. | - |
 | `name` | - | no | Label for the map and the reports. | the identifier |
-| `lon` | degrees | no | Longitude, WGS84. | no map, the engine still runs |
-| `lat` | degrees | no | Latitude, WGS84. | no map, the engine still runs |
+| `lon` | degrees | no | Longitude, WGS84 degrees (SWEREF 99 TM metres are refused). | no map, the engine still runs |
+| `lat` | degrees | no | Latitude, WGS84 degrees. | no map, the engine still runs |
 
 ## `lines.csv`
 
@@ -28,7 +28,7 @@ Low-voltage cables and overhead spans, one row per section. The sections must fo
 | `from_bus` | - | yes | bus_id at the substation end. | - |
 | `to_bus` | - | yes | bus_id at the far end. | - |
 | `length_m` | m | yes | Route length of the section. | - |
-| `std_type` | - | no | Cable type name, for example NAYY 4x150 SE. | the r/x/c columns, or the site default cable |
+| `std_type` | - | no | Cable type name, for example NAYY 4x150 SE. A name the library does not know needs the r/x/c columns. | the r/x/c columns, or the site default cable |
 | `r_ohm_per_km` | ohm/km | no | Positive-sequence resistance. | looked up from std_type |
 | `x_ohm_per_km` | ohm/km | no | Positive-sequence reactance. | looked up from std_type |
 | `c_nf_per_km` | nF/km | no | Positive-sequence capacitance. | looked up from std_type |

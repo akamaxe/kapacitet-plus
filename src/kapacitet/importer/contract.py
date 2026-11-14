@@ -23,6 +23,12 @@ class Column:
     description: str
     required: bool = True
     fallback: str = ""
+    count: bool = False         # a number without a unit (a tap position, cables in parallel)
+
+    @property
+    def numeric(self) -> bool:
+        """Whether the column holds numbers: a unit says so, and so does `count`."""
+        return self.count or self.unit not in ("-", "date")
 
 
 @dataclass(frozen=True)
@@ -48,9 +54,9 @@ BUSES = Table(
         Column("kind", "-", "substation, cabinet or service."),
         Column("name", "-", "Label for the map and the reports.", required=False,
                fallback="the identifier"),
-        Column("lon", "degrees", "Longitude, WGS84.", required=False,
+        Column("lon", "degrees", "Longitude, WGS84 degrees (SWEREF 99 TM metres are refused).", required=False,
                fallback="no map, the engine still runs"),
-        Column("lat", "degrees", "Latitude, WGS84.", required=False,
+        Column("lat", "degrees", "Latitude, WGS84 degrees.", required=False,
                fallback="no map, the engine still runs"),
     ],
 )
@@ -65,7 +71,8 @@ LINES = Table(
         Column("from_bus", "-", "bus_id at the substation end."),
         Column("to_bus", "-", "bus_id at the far end."),
         Column("length_m", "m", "Route length of the section."),
-        Column("std_type", "-", "Cable type name, for example NAYY 4x150 SE.", required=False,
+        Column("std_type", "-", "Cable type name, for example NAYY 4x150 SE. A name the library does not know needs "
+               "the r/x/c columns.", required=False,
                fallback="the r/x/c columns, or the site default cable"),
         Column("r_ohm_per_km", "ohm/km", "Positive-sequence resistance.", required=False,
                fallback="looked up from std_type"),
@@ -76,7 +83,7 @@ LINES = Table(
         Column("max_i_ka", "kA", "Continuous current rating.", required=False,
                fallback="looked up from std_type"),
         Column("parallel", "-", "Cables in parallel on this section.", required=False,
-               fallback="1"),
+               fallback="1", count=True),
     ],
 )
 
@@ -92,7 +99,7 @@ TRANSFORMER = Table(
                required=False, fallback="1.325"),
         Column("vector_group", "-", "Winding connection, for example Dyn.", required=False,
                fallback="Dyn, which is what a Swedish distribution transformer is"),
-        Column("tap_pos", "-", "Off-load tap position.", required=False, fallback="0"),
+        Column("tap_pos", "-", "Off-load tap position.", required=False, fallback="0", count=True),
     ],
 )
 
@@ -159,8 +166,10 @@ NO = frozenset({"no", "n", "false", "0", "nej"})
 def as_markdown() -> str:
     """The contract as a document to hand to an operator."""
     out = ["# Network export contract", "",
-           "Four CSV files in one directory, UTF-8, comma separated, with a header row, and an "
-           "optional fifth, `equipment.csv`, which is checked and used when it is there.",
+           "Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, "
+           "which is checked and used when it is there. Comma separated, or semicolon separated with a "
+           "decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel "
+           "save it, which the report then notes. Lengths are metres and coordinates WGS84 degrees.",
            "Run `python -m kapacitet check <directory>` to get a data-quality report before "
            "sending anything.", ""]
     for table in ALL_TABLES:

@@ -26,7 +26,7 @@ from collections.abc import Iterable
 from contextlib import asynccontextmanager, contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 import numpy as np
@@ -594,11 +594,21 @@ def get_assumptions() -> dict:
 
 # ---------------------------------------------------------------- network export check
 
+class CheckOptions(BaseModel):
+    """What the user chose about an export's shortcomings."""
+
+    default_cable: bool = Field(False, description="build cable types the library does not know as the site's "
+                                                   "default cable, an assumption the project then shows")
+
+
 class ExportCheck(BaseModel):
     """The contract CSV files as text, one entry per table."""
 
     files: dict[str, str] = Field(
         description="table name to CSV contents, for example {'buses': 'bus_id,kind\n...'}")
+    decoded_as: dict[str, Literal["utf-8", "windows-1252"]] = Field(
+        default_factory=dict, description="the tables the browser could not read as UTF-8 and read as Windows-1252")
+    options: CheckOptions = Field(default_factory=CheckOptions)
 
 
 @app.get(f"{API}/contract", tags=["import"])
@@ -658,12 +668,8 @@ def contract_example_zip() -> Response:
 @app.post(f"{API}/check", tags=["import"])
 def post_check(body: ExportCheck) -> dict:
     """Data-quality report on an export, before anybody promises a capacity for it."""
-    import io
-
-    import pandas as pd
-
     from ..importer.contract import BY_NAME
-    from ..importer.validate import validate
+    from ..importer.validate import read_files, validate
 
     unknown = set(body.files) - set(BY_NAME)
     if unknown:
@@ -672,12 +678,12 @@ def post_check(body: ExportCheck) -> dict:
     if big:
         raise api_error(413, "too_large", mb=CHECK_MAX_BYTES // 1_000_000, tables=", ".join(sorted(big)))
     data = {}
-    for name, text in body.files.items():
+    for name, text in body.files.items():        # one at a time, so the refusal names the table
         try:
-            data[name] = pd.read_csv(io.StringIO(text))
+            data.update(read_files({name: text}, body.decoded_as))
         except Exception as err:
             raise api_error(422, "unreadable_csv", table=name, detail=str(err)) from err
-    return validate(data, phase_cost_pct=_phase_cost_pct()).to_dict()
+    return validate(data, phase_cost_pct=_phase_cost_pct(), default_cable=body.options.default_cable).to_dict()
 
 
 def _phase_cost_pct() -> float | None:

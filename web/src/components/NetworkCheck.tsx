@@ -4,6 +4,7 @@ import { Icon } from "./Icon";
 import { CreateProjectForm } from "./NewProject";
 import { API, apiWrite, useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
+import { decodedAs, readCsvFile, type Encoding } from "../lib/decode";
 import { RoleNote } from "./RoleNote";
 import { useT } from "../lib/i18n";
 import { refusalOf, refusalText } from "../lib/errors";
@@ -25,19 +26,21 @@ export function NetworkCheck() {
   const [ignored, setIgnored] = useState<string[]>([]);
   // the files behind the report on screen, so a usable export can become a network
   const [checked, setChecked] = useState<Record<string, string> | null>(null);
+  const [decoded, setDecoded] = useState<Record<string, Encoding>>({});
   const input = useRef<HTMLInputElement>(null);
   const tables: any[] = contract.data?.tables ?? [];
   const names = new Set(tables.map((tb) => tb.name));
-  const check = async (files: Record<string, string>) => {
+  const check = async (files: Record<string, string>, read: Record<string, Encoding> = {}) => {
     setBusy(true);
     setError(null);
     try {
-      const r = await apiWrite("/check", { files });
+      const r = await apiWrite("/check", { files, decoded_as: decodedAs(read) });
       const body = await r.json();
       if (!r.ok) setError(refusalText(t, refusalOf(body), String(r.status)));
       else {
         setReport(body);
         setChecked(files);
+        setDecoded(read);
       }
     } catch {
       setError(t("ui.offline"));
@@ -49,14 +52,18 @@ export function NetworkCheck() {
   const fromDisk = async (list: FileList | null) => {
     if (!list?.length) return;
     const files: Record<string, string> = {};
+    const read: Record<string, Encoding> = {};
     const skipped: string[] = [];
     for (const file of Array.from(list)) {
       const name = file.name.toLowerCase().replace(/\.csv$/, "");
-      if (names.has(name)) files[name] = await file.text();
-      else skipped.push(file.name);
+      if (names.has(name)) {
+        const got = await readCsvFile(file);       // bytes, decoded as the server reads a file
+        files[name] = got.text;
+        read[name] = got.encoding;
+      } else skipped.push(file.name);
     }
     setIgnored(skipped);
-    if (Object.keys(files).length) await check(files);
+    if (Object.keys(files).length) await check(files, read);
     else setError(t("met.imp.noneMatched"));
   };
 
@@ -111,7 +118,7 @@ export function NetworkCheck() {
             {report.usable && checked && (
               <div className="stack netcreate">
                 <h4>{t("new.build.title")}</h4>
-                <CreateProjectForm files={checked} origin={{ kind: "csv" }} onCreated={() => useStore.getState().setView("start")} />
+                <CreateProjectForm files={checked} decoded={decoded} origin={{ kind: "csv" }} onCreated={() => useStore.getState().setView("start")} />
               </div>
             )}
           </div>

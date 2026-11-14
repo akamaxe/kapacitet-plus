@@ -13,21 +13,44 @@ knowing that costs nothing.
 Every finding carries a `code` and its `params` next to the English `message`, so the interface
 can say it in any of its languages (`chk.msg.<code>` in web/src/lib/i18n); `MESSAGES` is the one
 place the English wording lives, and tests/test_messages.py holds both languages to it.
+
+Structure is not enough. A real export can be well formed and describe another network: cable types
+named as the operator's NIS names them, which no library knows; lengths in kilometres in the metres
+column; SWEREF 99 TM metres in the degree columns; a required value left blank. Each of those is an
+error here, with what to do (tests/test_dirty_exports.py, the twelve exports of the technical review
+of 14-11-2026). The one explicit way out is `default_cable`: build the unknown types with the site's
+default cable, which the project then carries as an assumption it shows.
+
+Every reader of the contract's CSV goes through `read_table` (a file) or `read_files` (text from the
+browser), so the CLI, POST /check and a new project read a file alike: comma or semicolon separated,
+a decimal comma with the semicolon, and UTF-8 or else Windows-1252, which older versions of Excel
+write for "CSV (semicolon)" in Sweden, said in a note.
 """
 
 from __future__ import annotations
 
 import csv
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 
+from ..cache import memo
 from .contract import ALL_TABLES, BY_NAME, NO, PV_PHASE_LABELS, TABLES, YES
 
 ERROR, WARNING, NOTE = "error", "warning", "note"
+UTF8, CP1252 = "utf-8", "windows-1252"
 LV_MAX_SECTION_M = 2000.0
+# below either, the lengths are not metres: a low-voltage section is tens of metres, and a network
+# has at least a service cable's worth of route per customer
+MIN_MEDIAN_SECTION_M = 3.0
+MIN_ROUTE_PER_CUSTOMER_M = 1.0
+# WGS84 degrees of Sweden (as a study's [site] takes them, study/config.py), and the SWEREF 99 TM
+# metres (EPSG:3006) the country's own maps use, which a NIS export often has in its x/y columns
+SWEDEN_LAT, SWEDEN_LON = (55.0, 69.5), (10.5, 24.5)
+SWEREF_E, SWEREF_N = (200_000.0, 1_000_000.0), (6_100_000.0, 7_700_000.0)
 PLAUSIBLE_FUSES = {16, 20, 25, 35, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400}
 # identifiers are read as text, so "007" stays "007" and matches a meter or equipment record
 IDENTIFIERS = dict.fromkeys(("bus_id", "line_id", "from_bus", "to_bus", "lv_bus", "bus", "customer_id"), str)
@@ -47,7 +70,13 @@ MESSAGES = {
                        "the network cannot be used: open each ring at its normal open point, and give cables laid "
                        "in parallel as one section with its `parallel` count"),
     "cable_type": "sections with neither a type name nor full r/x/c data; the site default cable will be assumed",
+    "cable_type_unknown": ("sections whose cable type is not in the library and has no r/x/c data: {types}. Give "
+                           "their r_ohm_per_km, x_ohm_per_km, c_nf_per_km and max_i_ka, or a type the library has"),
+    "cable_type_unknown_assumed": ("sections whose cable type is not in the library: {types}. The default cable "
+                                   "{cable} is assumed for them, as asked, and the project says so"),
     "cable_length_missing": "sections with a missing or non-positive length",
+    "cable_length_units": ("the sections are {median} m long at the median, which reads like kilometres in "
+                           "length_m: the contract's lengths are metres"),
     "cable_length_long": "sections longer than {m} m, which is unusual at low voltage and often means metres and feet are mixed",
     "transformer_rating": "sn_mva is {value}, which is not a distribution transformer",
     "vector_group": "not given, Dyn assumed",
@@ -63,6 +92,15 @@ MESSAGES = {
     "annual_kwh_column": "no annual_kwh column, so the synthetic household profiles cannot be compared with metered consumption",
     "annual_kwh_blank": "customers without annual_kwh, whose synthetic household profiles cannot be compared with metered consumption",
     "no_coordinates": "buses.csv has no usable lon/lat, so the map cannot be drawn",
+    "coordinates_partial": "buses without lon/lat, which the map cannot place",
+    "coordinates_sweref": ("lon/lat look like SWEREF 99 TM metres, for example E {e} and N {n}, not WGS84 degrees: "
+                           "give longitude and latitude in degrees"),
+    "coordinates_out_of_range": "lon/lat outside the range of degrees, for example {lon}, {lat}",
+    "coordinates_outside_sweden": "buses with coordinates outside Sweden, for example {lon}, {lat}",
+    "required_blank": "{table}.csv has rows without {column}, for example {key} {example}",
+    "not_a_number": "{table}.csv has {column} values that are not numbers, for example {value}",
+    "encoding_cp1252": ("{tables}: not UTF-8, so read as Windows-1252, as older versions of Excel save a CSV. "
+                        "Check that å, ä and ö look right"),
     "empty_export": "no contract files found in {directory}",
     # a CGMES network's conversion (importer/cim.py), before there is a contract to check
     "cim_unmapped_consumer": "EnergyConsumers that cim_customers.csv does not name, for example {mrid}: each needs a customer_id and a fuse_a",
@@ -183,17 +221,55 @@ class Report:
         return "\n".join(lines)
 
 
-def read_table(path: str | Path, dtype=None) -> pd.DataFrame:
-    """A CSV file a DSO hands over: comma or semicolon separated (with a decimal comma), UTF-8 with
-    or without a BOM."""
-    path = Path(path)
-    with path.open(encoding="utf-8-sig", newline="") as fh:
-        sample = fh.read(4096)
+def decode(raw: bytes) -> tuple[str, str]:
+    """A CSV file's bytes as text, and the encoding they were read in: UTF-8 (a BOM dropped), else
+    Windows-1252. The browser decodes a chosen file by the same rule (web/src/lib/decode.ts)."""
+    if raw.startswith(b"\xef\xbb\xbf"):
+        raw = raw[3:]
+    try:
+        return raw.decode("utf-8"), UTF8
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace"), CP1252
+
+
+def read_text(text: str, dtype=None) -> pd.DataFrame:
+    """CSV text: comma or semicolon separated, the semicolon with a decimal comma."""
+    text = text.lstrip("\ufeff")
+    sample = text[:4096]
     try:
         sep = csv.Sniffer().sniff(sample, delimiters=",;").delimiter if sample else ","
     except csv.Error:
         sep = ","
-    return pd.read_csv(path, sep=sep, decimal="," if sep == ";" else ".", encoding="utf-8-sig", dtype=dtype)
+    return pd.read_csv(io.StringIO(text), sep=sep, decimal="," if sep == ";" else ".", dtype=dtype)
+
+
+def read_table(path: str | Path, dtype=None) -> pd.DataFrame:
+    """A CSV file a DSO hands over (`read_text`), UTF-8 or Windows-1252; the encoding it was read in
+    is in `attrs["encoding"]`, for the report's note."""
+    text, encoding = decode(Path(path).read_bytes())
+    df = read_text(text, dtype)
+    df.attrs["encoding"] = encoding
+    return df
+
+
+def read_files(files: dict[str, str], decoded_as: dict[str, str] | None = None) -> dict[str, pd.DataFrame]:
+    """The contract's tables from CSV text (POST /check, a new project), read as `read_export` reads
+    the files: separator, decimal comma and identifiers as text alike. `decoded_as` says which
+    tables the browser had to read as Windows-1252."""
+    out = {}
+    for name, text in files.items():
+        df = read_text(text, dtype=IDENTIFIERS)
+        df.attrs["encoding"] = CP1252 if (decoded_as or {}).get(name) == CP1252 else UTF8
+        out[name] = df
+    return out
+
+
+@memo(maxsize=1)
+def known_cable_types() -> frozenset[str]:
+    """The cable types a section may name: pandapower's library, which the build looks them up in."""
+    import pandapower as pp
+
+    return frozenset(pp.available_std_types(pp.create_empty_network(), "line").index.astype(str))
 
 
 def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
@@ -207,16 +283,22 @@ def read_export(directory: str | Path) -> dict[str, pd.DataFrame]:
     return out
 
 
-def validate(data: dict[str, pd.DataFrame], phase_cost_pct: float | None = None) -> Report:
+def validate(data: dict[str, pd.DataFrame], phase_cost_pct: float | None = None,
+             default_cable: bool = False) -> Report:
     """`phase_cost_pct`: what not knowing the phases costs on the reference grid, when the caller has
-    computed it (results/phases.json), so the warning can say so; without it the warning says less."""
+    computed it (results/phases.json), so the warning can say so; without it the warning says less.
+    `default_cable`: a cable type the library does not know is built as the site's default cable
+    (a warning and an assumption the project shows) instead of stopping the import."""
     report = Report(tables={k: len(v) for k, v in data.items()})
+    _check_encoding(data, report)
     if not _check_tables_and_columns(data, report):
         return report
     _check_identifiers(data, report)
+    _check_values(data, report)
     _check_topology(data, report)
-    _check_electrical_data(data, report)
+    _check_electrical_data(data, report, default_cable)
     _check_customers(data, report, phase_cost_pct)
+    _check_coordinates(data["buses"], report)
     if "equipment" in data:
         _check_equipment(data["equipment"], data["customers"], report)
     return report
@@ -243,6 +325,35 @@ def _check_tables_and_columns(data: dict[str, pd.DataFrame], report: Report) -> 
     return ok
 
 
+def _check_encoding(data: dict[str, pd.DataFrame], report: Report) -> None:
+    read = [name for name, df in data.items() if df.attrs.get("encoding") == CP1252]
+    if read:
+        report.add(NOTE, "encoding", "encoding_cp1252", len(read), tables=", ".join(f"{n}.csv" for n in read))
+
+
+def _numbers(values: pd.Series) -> pd.Series:
+    return pd.to_numeric(values, errors="coerce")
+
+
+def _check_values(data: dict[str, pd.DataFrame], report: Report) -> None:
+    """A required value left blank, and a number that is not one. The checks after this read the
+    numbers as numbers (`_numbers`), so text in a numeric column is said here and nowhere else."""
+    for table in TABLES:
+        df = data[table.name]
+        for col in table.columns:
+            if col.name not in df.columns or col.name == table.key:
+                continue
+            blank = _blank(df[col.name])
+            if col.required and blank.any():
+                report.add(ERROR, "required value", "required_blank", int(blank.sum()), table=table.name,
+                           column=col.name, key=table.key, example=str(df.loc[blank, table.key].iloc[0]))
+            if col.numeric:
+                bad = ~blank & _numbers(df[col.name]).isna()
+                if bad.any():
+                    report.add(ERROR, "not a number", "not_a_number", int(bad.sum()), table=table.name,
+                               column=col.name, value=str(df.loc[bad, col.name].iloc[0])[:40])
+
+
 def _check_identifiers(data: dict[str, pd.DataFrame], report: Report) -> None:
     for table in TABLES:
         df = data[table.name]
@@ -262,7 +373,7 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
     buses, lines, trafo = data["buses"], data["lines"], data["transformer"]
     known = set(buses["bus_id"].astype(str))
     for col in ("from_bus", "to_bus"):
-        unknown = set(lines[col].astype(str)) - known
+        unknown = set(lines.loc[~_blank(lines[col]), col].astype(str)) - known      # a blank: required_blank
         if unknown:
             report.add(ERROR, "dangling cable", "dangling_cable", len(unknown), column=col)
     if len(trafo) == 1 and str(trafo["lv_bus"].iloc[0]) not in known:
@@ -299,28 +410,54 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
         report.add(ERROR, "meshed network", "meshed_network", loops, n=loops)
 
 
-def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report) -> None:
+def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report, default_cable: bool = False) -> None:
     lines = data["lines"]
     electrical = ["r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka"]
-    has_type = lines["std_type"].notna() if "std_type" in lines else pd.Series(False, index=lines.index)
+    names = (lines["std_type"].where(~_blank(lines["std_type"])).astype("string").str.strip()
+             if "std_type" in lines else pd.Series(pd.NA, index=lines.index, dtype="string"))
+    has_type = names.notna()
     has_values = pd.Series(True, index=lines.index)
     for col in electrical:
-        has_values &= lines[col].notna() if col in lines else pd.Series(False, index=lines.index)
+        has_values &= _numbers(lines[col]).notna() if col in lines else pd.Series(False, index=lines.index)
     undefined = int((~has_type & ~has_values).sum())
     if undefined:
         report.add(WARNING, "cable type", "cable_type", undefined)
+    # A name the library does not know is a cable nobody can compute: built as the default cable, the
+    # network would be another one, with a report that says "usable" (H1 of the review of 14-11-2026).
+    unknown = has_type & ~names.isin(known_cable_types()).fillna(False).astype(bool) & ~has_values
+    if unknown.any():
+        counts = names[unknown].value_counts()
+        listed = ", ".join(f"{name} ({n})" for name, n in counts.head(5).items())
+        if len(counts) > 5:
+            listed += f" and {len(counts) - 5} more"
+        from ..config import A
 
-    bad_length = int(((lines["length_m"] <= 0) | lines["length_m"].isna()).sum())
+        cable = str(A("service_cable_type"))        # named in the error too: the way out the steps offer
+        if default_cable:
+            report.add(WARNING, "cable type", "cable_type_unknown_assumed", int(unknown.sum()), types=listed,
+                       cable=cable)
+        else:
+            report.add(ERROR, "cable type", "cable_type_unknown", int(unknown.sum()), types=listed, cable=cable)
+
+    length = _numbers(lines["length_m"])
+    bad_length = int((length <= 0).sum())          # a blank or a word is said by _check_values
     if bad_length:
         report.add(ERROR, "cable length", "cable_length_missing", bad_length)
-    long_sections = int((lines["length_m"] > LV_MAX_SECTION_M).sum())
+    positive = length[length > 0]
+    if len(positive):
+        median = float(positive.median())
+        per_customer = float(positive.sum()) / max(len(data["customers"]), 1)
+        if median < MIN_MEDIAN_SECTION_M or per_customer < MIN_ROUTE_PER_CUSTOMER_M:
+            report.add(ERROR, "cable length", "cable_length_units", len(positive), median=f"{median:.3g}")
+    long_sections = int((length > LV_MAX_SECTION_M).sum())
     if long_sections:
         report.add(WARNING, "cable length", "cable_length_long", long_sections, m=f"{LV_MAX_SECTION_M:.0f}")
 
     trafo = data["transformer"]
     if len(trafo) == 1:
         row = trafo.iloc[0]
-        if not (0.0 < float(row["sn_mva"]) < 5.0):
+        sn = _numbers(trafo["sn_mva"]).iloc[0]
+        if pd.notna(sn) and not (0.0 < float(sn) < 5.0):
             report.add(ERROR, "transformer rating", "transformer_rating", value=str(row["sn_mva"]))
         if "vector_group" not in trafo or pd.isna(row.get("vector_group")):
             report.add(NOTE, "vector group", "vector_group")
@@ -329,13 +466,14 @@ def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report) -> Non
 def _check_customers(data: dict[str, pd.DataFrame], report: Report, phase_cost_pct: float | None) -> None:
     cust, buses = data["customers"], data["buses"]
     known = set(buses["bus_id"].astype(str))
-    orphan = int((~cust["bus"].astype(str).isin(known)).sum())
+    orphan = int((~_blank(cust["bus"]) & ~cust["bus"].astype(str).isin(known)).sum())
     if orphan:
         report.add(ERROR, "orphan customer", "orphan_customer", orphan)
 
-    odd = cust.loc[~cust["fuse_a"].isin(PLAUSIBLE_FUSES), "fuse_a"]
+    fuse = _numbers(cust["fuse_a"])
+    odd = fuse[fuse.notna() & ~fuse.isin(PLAUSIBLE_FUSES)]
     if len(odd):
-        report.add(WARNING, "fuse rating", "fuse_rating", len(odd), fuse=str(odd.iloc[0]))
+        report.add(WARNING, "fuse rating", "fuse_rating", len(odd), fuse=f"{odd.iloc[0]:g}")
 
     if "phase" not in cust.columns:
         if phase_cost_pct is None:
@@ -362,8 +500,38 @@ def _check_customers(data: dict[str, pd.DataFrame], report: Report, phase_cost_p
             if n:
                 report.add(WARNING, f"{col} missing", f"{code}_blank", n)
 
-    if "lon" not in buses.columns or buses["lon"].isna().all():
+
+def _check_coordinates(buses: pd.DataFrame, report: Report) -> None:
+    """WGS84 degrees, in Sweden. Metres of SWEREF 99 TM in the degree columns are named as such,
+    whichever column holds the easting."""
+    if "lon" not in buses.columns or "lat" not in buses.columns:
         report.add(WARNING, "no coordinates", "no_coordinates")
+        return
+    lon, lat = _numbers(buses["lon"]), _numbers(buses["lat"])
+    given = lon.notna() & lat.notna()
+    if not given.any():
+        report.add(WARNING, "no coordinates", "no_coordinates")
+        return
+    if (~given).any():
+        report.add(WARNING, "coordinates", "coordinates_partial", int((~given).sum()))
+    x, y = lon[given], lat[given]
+    degrees = x.between(-180, 180) & y.between(-90, 90)
+    if not degrees.all():
+        bad = ~degrees
+        e_first = x.between(*SWEREF_E) & y.between(*SWEREF_N)
+        n_first = y.between(*SWEREF_E) & x.between(*SWEREF_N)
+        i = bad.idxmax()
+        if (e_first | n_first)[bad].all():
+            e, n = (x[i], y[i]) if e_first[i] else (y[i], x[i])
+            report.add(ERROR, "coordinates", "coordinates_sweref", int(bad.sum()), e=f"{e:.0f}", n=f"{n:.0f}")
+        else:
+            report.add(ERROR, "coordinates", "coordinates_out_of_range", int(bad.sum()), lon=f"{x[i]:g}", lat=f"{y[i]:g}")
+        return
+    outside = ~(y.between(*SWEDEN_LAT) & x.between(*SWEDEN_LON))
+    if outside.any():
+        i = outside.idxmax()
+        report.add(WARNING, "coordinates", "coordinates_outside_sweden", int(outside.sum()),
+                   lon=f"{x[i]:.5f}", lat=f"{y[i]:.5f}")
 
 
 # ---------------------------------------------------------------- equipment.csv
@@ -517,11 +685,11 @@ def _check_equipment_values(eq: pd.DataFrame, report: Report) -> None:
                 report.add(ERROR, check, code, int(bad.sum()), **{param: repr(eq.loc[bad, col].iloc[0])})
 
 
-def check_directory(directory: str | Path) -> Report:
+def check_directory(directory: str | Path, default_cable: bool = False) -> Report:
     data = read_export(directory)
     if not data:
         report = Report()
         report.add(ERROR, "empty export", "empty_export", directory=str(directory))
         return report
-    return validate(data)
+    return validate(data, default_cable=default_cable)
 

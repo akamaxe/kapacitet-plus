@@ -7,6 +7,7 @@
  * archive. So this reads only what such a file holds: a handful of entries, stored or deflated,
  * no encryption, no zip64, within fixed limits; anything else is refused by name.
  */
+import { decodeCsv, type Encoding } from "./decode";
 
 export type ZipProblem = "not_zip" | "encrypted" | "zip64" | "too_many" | "too_large" | "unsupported" | "corrupt";
 
@@ -123,6 +124,8 @@ export interface ProjectFile {
   name: string | null;
   /** the contract's tables found in the file, as CSV text */
   files: Record<string, string>;
+  /** how each table was read: a file written by another tool may be Windows-1252 (lib/decode.ts) */
+  decoded: Record<string, Encoding>;
   /** the file says its network is synthetic (made from an example network) */
   synthetic: boolean;
 }
@@ -135,9 +138,14 @@ export async function readProjectFile(buf: ArrayBuffer, tables: Iterable<string>
   const entries = await readZip(buf);
   const text = new TextDecoder("utf-8");
   const files: Record<string, string> = {};
+  const decoded: Record<string, Encoding> = {};
   for (const table of tables) {
     const data = entries.get(`${table}.csv`);
-    if (data) files[table] = text.decode(data);
+    if (data) {
+      const read = decodeCsv(data);
+      files[table] = read.text;
+      decoded[table] = read.encoding;
+    }
   }
   if (Object.keys(files).length === 0) throw new ZipError("not_zip");
   let name: string | null = null;
@@ -152,5 +160,5 @@ export async function readProjectFile(buf: ArrayBuffer, tables: Iterable<string>
       /* a project.json nobody can read: the tables still say what the network is */
     }
   }
-  return { name, files, synthetic };
+  return { name, files, decoded, synthetic };
 }

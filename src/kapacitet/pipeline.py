@@ -490,7 +490,7 @@ def cmd_import(args: argparse.Namespace) -> None:
 
     try:
         with step(f"Import network from {args.directory}"):
-            network, report, fallbacks = import_directory(args.directory)
+            network, report, fallbacks = import_directory(args.directory, default_cable=args.default_cable)
     except ImportError_ as err:
         print(err)
         sys.exit(1)
@@ -629,7 +629,7 @@ def cmd_check(args: argparse.Namespace) -> None:
     """Data-quality report on a network export, before anybody promises a capacity."""
     from .importer import check_directory
 
-    report = check_directory(args.directory)
+    report = check_directory(args.directory, default_cable=args.default_cable)
     print(report.text())
     if not report.usable:
         sys.exit(1)
@@ -895,6 +895,8 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("import", help="build the engine's tables from a network export")
     p.add_argument("directory", help="directory holding the contract CSV files")
+    p.add_argument("--default-cable", action="store_true",
+                   help="build cable types the library does not know as the site's default cable (an assumption)")
     p.set_defaults(func=cmd_import)
 
     p = sub.add_parser("compliance", help="audit trail and annual filing for a computed year")
@@ -986,6 +988,8 @@ def main(argv: list[str] | None = None) -> None:
 
     p = sub.add_parser("check", help="data-quality report on a network export")
     p.add_argument("directory", help="directory holding buses.csv, lines.csv, transformer.csv, customers.csv")
+    p.add_argument("--default-cable", action="store_true",
+                   help="report cable types the library does not know as the default cable, not as an error")
     p.set_defaults(func=cmd_check)
 
     p = sub.add_parser("export-grid", help="write the built network in the export contract")
