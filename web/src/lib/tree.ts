@@ -36,6 +36,9 @@ export interface TreeInput {
   /** the transformer's type, when the network says it */
   trafo?: string | null;
   houses: TreeHouse[];
+  /** the screens this installation shows and their names (lib/features.ts); all of them when left out */
+  screens?: Screen[];
+  label?: (s: Screen) => string;
 }
 
 /** The houses of a network answer, as the tree needs them. */
@@ -56,7 +59,8 @@ export function byAddress(a: string, b: string): number {
 }
 
 export function buildTree(t: TFn, input: TreeInput): TreeNode {
-  const screen = (s: Screen): TreeNode => ({ id: `screen:${s}`, kind: "screen", label: t(`tab.${s}`), screen: s });
+  const screen = (s: Screen): TreeNode => ({ id: `screen:${s}`, kind: "screen", label: input.label ? input.label(s) : t(`tab.${s}`), screen: s });
+  const shown = (list: Screen[]) => list.filter((s) => !input.screens || input.screens.includes(s)).map(screen);
   const feeders = new Map<number, TreeHouse[]>();
   for (const h of input.houses) {
     if (!feeders.has(h.feeder)) feeders.set(h.feeder, []);
@@ -80,26 +84,23 @@ export function buildTree(t: TFn, input: TreeInput): TreeNode {
       })),
     };
   });
-  return {
-    id: "project",
-    kind: "project",
-    label: input.site,
-    children: [
+  const groups: TreeNode[] = [
       {
         id: "group:network",
         kind: "group",
         label: t("tree.network"),
         children: [
-          screen("twin"),
+          ...shown(["twin"]),
           { id: "trafo", kind: "trafo", label: input.trafo ? t("tree.trafoOf", { type: input.trafo }) : t("tree.trafo") },
           ...feederNodes,
         ],
       },
-      { id: "group:studies", kind: "group", label: t("tree.studies"), children: [screen("compare"), screen("request"), screen("operation"), screen("scenarios")] },
-      { id: "group:results", kind: "group", label: t("tree.results"), children: [screen("report"), screen("method")] },
-      { id: "group:reference", kind: "group", label: t("tree.reference"), children: [screen("national")] },
-    ],
-  };
+      { id: "group:studies", kind: "group", label: t("tree.studies"), children: shown(["compare", "request", "operation", "scenarios"]) },
+      { id: "group:results", kind: "group", label: t("tree.results"), children: shown(["report", "method"]) },
+      { id: "group:reference", kind: "group", label: t("tree.reference"), children: shown(["national"]) },
+  ];
+  // a group whose screens are all switched off is not shown at all
+  return { id: "project", kind: "project", label: input.site, children: groups.filter((g) => (g.children?.length ?? 0) > 0) };
 }
 
 /** What is open the first time: everything but the feeders, whose houses would bury the rest. */

@@ -14,6 +14,7 @@ import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { faultText } from "../lib/reasons";
 import { SCENARIOS, useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
 import { nightOpacity, solarElevation } from "../lib/sun";
 
 type ColorBy = "voltage" | "power";
@@ -53,8 +54,15 @@ const yearStart = (year: number) => Date.UTC(year, 0, 1) - 3600_000;
 export default function Twin() {
   const t = useT();
   const pt = useProjectT();
-  const scenario = useStore((s) => s.scenario);
+  const wanted = useStore((s) => s.scenario);
   const setScenario = useStore((s) => s.setScenario);
+  // the scenarios of the envelopes (their houses without control, and with their limits) only where
+  // they are on; a link or a tour step that asks for one opens the static one (lib/features.ts)
+  const envelopes = useFeatures().envelopes;
+  const scenario = envelopes || wanted === "static" ? wanted : "static";
+  useEffect(() => {
+    if (scenario !== wanted) setScenario(scenario);
+  }, [scenario, wanted, setScenario]);
   const theme = useStore((s) => s.theme);
   const selectedCid = useStore((s) => s.selectedCid);
   const select = useStore((s) => s.select);
@@ -351,7 +359,7 @@ export default function Twin() {
 
         <div className="stack">
           <div className="seg" role="group" aria-label={t("twin.scenario")}>
-            {SCENARIOS.map((s) => (
+            {SCENARIOS.filter((s) => envelopes || s === "static").map((s) => (
               <button key={s} aria-pressed={scenario === s} onClick={() => setScenario(s)}>
                 {t(`scn.${s}`)}
               </button>

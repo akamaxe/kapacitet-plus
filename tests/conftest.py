@@ -28,6 +28,10 @@ os.environ["KAPACITET_INBOX_WORKER"] = "0"
 # A test server's warm-up would outlive its test and fill the caches while the next module reads
 # another network (the tiny grid meeting the reference network's customers, 13-11-2026).
 os.environ["KAPACITET_WARM"] = "0"
+# Every part of the product on, whatever the shell says, so each test sees the routes it tests;
+# tests/test_features.py switches them off itself (kapacitet/features.py).
+os.environ["KAPACITET_FEATURES"] = "all"
+os.environ.pop("KAPACITET_ENVELOPES", None)
 # Sign-in stays off whatever a developer's shell or .env says; tests/test_auth.py turns it on itself.
 os.environ["KAPACITET_AUTH"] = "off"
 # Starlette's TestClient sends `Host: testserver`; the guard reads its hosts when the app is built.

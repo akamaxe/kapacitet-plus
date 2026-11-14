@@ -16,7 +16,8 @@ import { useFmt } from "../lib/format";
 import { LANGS, LANG_NAMES, useT } from "../lib/i18n";
 import { menuActions, type Menu } from "../lib/menus";
 import { lastScreen, projectsOf, type Listing } from "../lib/projects";
-import { SCREENS, applyTheme, useStore, type Screen } from "../lib/store";
+import { screenLabel, useFeatures, visibleScreens } from "../lib/features";
+import { applyTheme, useStore, type Screen } from "../lib/store";
 import { toast } from "./Toast";
 
 type Item = {
@@ -58,15 +59,16 @@ export function Palette({ open, onClose, menus }: {
     }
   }, [open]);
 
+  const features = useFeatures();
   const items = useMemo<Item[]>(() => {
     const go = (s: Screen) => () => {
       setScreen(s);
       onClose();
     };
-    const screens: Item[] = SCREENS.map((s, i) => ({
+    const screens: Item[] = visibleScreens(features).map((s, i) => ({
       id: `screen:${s}`,
       group: t("pal.screens"),
-      label: t(`tab.${s}`),
+      label: screenLabel(t, s, features),
       hint: String(i + 1),
       icon: s,
       run: go(s),

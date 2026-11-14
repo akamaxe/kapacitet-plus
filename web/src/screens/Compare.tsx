@@ -17,6 +17,7 @@ import { hourLabel, hoursInYear, median, monthNames, monthStarts, useFmt } from 
 import { useT } from "../lib/i18n";
 import { useStore } from "../lib/store";
 import { bindingLimit, curveMarks, uncontrolledPasses } from "../lib/verdicts";
+import { useFeatures } from "../lib/features";
 
 const MEASURES = ["static", "fixed_cap", "timeseries", "doe"] as const;
 
@@ -24,6 +25,7 @@ export default function Compare() {
   const t = useT();
   const f = useFmt();
   const lang = useStore((s) => s.lang);
+  const envelopes = useFeatures().envelopes;
   const hosting = useApi<any>("/hosting");
   // the heatmaps are a third of the showcase and drawn far down: they load as their section nears
   const show = useApi<any>("/showcase?heatmaps=false");
@@ -379,7 +381,7 @@ export default function Compare() {
             {curtRange && <p className="caption">{t("cmp.reinf.curtRange", curtRange)}</p>}
             <PriceBasis P={RF.prices} />
             <p className="caption-muted">{t("cmp.reinf.note", { year: RF.price_level_year, span: priceSpan(RF.envelopes.price_years), order: RF.order })}</p>
-            <Deferral />
+            {envelopes && <Deferral />}
           </section>
         )}
 

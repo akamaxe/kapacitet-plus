@@ -16,11 +16,11 @@ from datetime import datetime
 from typing import Literal
 
 import numpy as np
-from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from .. import brand, dso, market, seals, telemetry
+from .. import brand, dso, features, market, seals, telemetry
 from ..config import A
 from ..paths import processed_ro
 from .combos import COMMAND, POLICY_PATTERN, operation_index, resolve
@@ -122,7 +122,7 @@ class BrandLogo(BaseModel):
                             description="the PNG, base64 (a data: URL is accepted); at most 256 kB decoded")
 
 
-@router.put("/settings/brand-logo")
+@router.put("/settings/brand-logo", dependencies=[Depends(features.require("portal"))])
 def put_brand_logo(body: BrandLogo) -> dict:
     """The DSO's logo on the applicant's portal: a PNG of at most 256 kB and 1024 pixels a side,
     checked chunk by chunk (signature, IHDR, CRCs) and kept with only its image chunks. Sealed by
@@ -134,7 +134,7 @@ def put_brand_logo(body: BrandLogo) -> dict:
     return brand.public(logo=logo)
 
 
-@router.delete("/settings/brand-logo")
+@router.delete("/settings/brand-logo", dependencies=[Depends(features.require("portal"))])
 def delete_brand_logo() -> dict:
     """Remove the portal's logo; the removal is sealed with the digest it had."""
     brand.remove_logo()
@@ -149,7 +149,7 @@ def put_rule_signature(body: dso.RuleSignatureIn) -> dict:
     return _settings_reply(dso.sign_rule(body))
 
 
-@router.get("/operation/index")
+@router.get("/operation/index", dependencies=[Depends(features.require("envelopes"))])
 def get_index() -> dict:
     """Which combinations of rule and basis were computed, and what each verified to."""
     idx = operation_index()
@@ -191,7 +191,7 @@ def _pack(basis: str, policy: str | None) -> tuple[dict, str]:
     return pack, combo.policy
 
 
-@router.get("/eipack")
+@router.get("/eipack", dependencies=[Depends(features.require("envelopes"))])
 def eipack(basis: str = Query("dayahead", pattern="^(foresight|dayahead)$"),
            policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     """Each of Ei's conditions for conditional agreements (Ei2025:01) beside what the prototype can
@@ -216,7 +216,7 @@ def _sealed_pack(pack: dict, entry: dict, basis: str, policy: str) -> Response:
                     headers=_sealed_headers(entry, f"kapacitet-ei-evidence-{basis}-{policy}.json"))
 
 
-@router.post("/eipack/export")
+@router.post("/eipack/export", dependencies=[Depends(features.require("envelopes"))])
 def eipack_export(body: PackOut, idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> Response:
     """Download the pack, sealed with what it showed. Each export is a seal of its own, unless it
     repeats an Idempotency-Key: then the pack sealed under that key comes back as it was."""
@@ -269,7 +269,7 @@ def _day_ahead(cid: int, date: str, policy: str | None):
     return combo, year, day, limits, desired, default_kw, float(dc["kappa"])
 
 
-@router.get("/operation/schedule")
+@router.get("/operation/schedule", dependencies=[Depends(features.require("envelopes"))])
 def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
              policy: str | None = Query(None, pattern=POLICY_PATTERN),
              format: str = Query("json", pattern="^(json|csv)$"),  # noqa: A002 - the API's own word
@@ -299,7 +299,7 @@ def schedule(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PA
             "provenance": _provenance(combo.envelopes, combo.result("issued.json"))}
 
 
-@router.get("/operation/schedule.xml")
+@router.get("/operation/schedule.xml", dependencies=[Depends(features.require("envelopes"))])
 def schedule_xml(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
                  policy: str | None = Query(None, pattern=POLICY_PATTERN),
                  resolution: int | None = Query(None, description=RESOLUTION_DOC)) -> Response:
@@ -324,7 +324,7 @@ def _has_charging_profile(cid: int) -> bool:
             and not import_status(meta)["stale"])
 
 
-@router.get("/operation/schedule.ocpp.json")
+@router.get("/operation/schedule.ocpp.json", dependencies=[Depends(features.require("envelopes"))])
 def schedule_ocpp(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
                   resolution: int | None = Query(None, description=RESOLUTION_DOC)) -> Response:
     """A preview, like the XML route's GET: never sealed and never sent anywhere. A house's EV charger
@@ -409,7 +409,7 @@ def _market_terms(body: Issue, step: int, rows: list[dict]) -> dict:
             "delivery": span(rows, step)}
 
 
-@router.post("/operation/schedule/issue")
+@router.post("/operation/schedule/issue", dependencies=[Depends(features.require("envelopes"))])
 def issue_schedule(body: Issue, idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> Response:
     """Issue the day to the house's inverter: the DERControlList, sealed with what was sent, to
     whom and for which day. An issue that repeats an Idempotency-Key gets the document of the
@@ -466,7 +466,7 @@ def _issue(body: Issue, idempotency_key: str | None, sp) -> Response:
     return Response(der_control_list(body.cid, rows, issued), media_type="application/sep+xml", headers=headers)
 
 
-@router.get("/operation/default.xml")
+@router.get("/operation/default.xml", dependencies=[Depends(features.require("envelopes"))])
 def default_xml(cid: int = Query(..., ge=0), policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
     """The limit the inverter keeps when it holds no schedule: DefaultDERControl."""
     from ..engine.csipaus import default_der_control
@@ -483,14 +483,14 @@ def default_xml(cid: int = Query(..., ge=0), policy: str | None = Query(None, pa
 
 # ---------------------------------------------------------------- the market alternatives
 
-@router.get("/operation/market-alternatives")
+@router.get("/operation/market-alternatives", dependencies=[Depends(features.require("envelopes"))])
 def market_alternatives() -> dict:
     """Every record of the market alternatives the DSO consulted, newest first, each with its seal."""
     return {"entries": market.with_seals(), "scopes": list(market.SCOPES), "kinds": list(market.KINDS),
             "market_result_local": dso.load().market_result_local}
 
 
-@router.post("/operation/market-alternatives")
+@router.post("/operation/market-alternatives", dependencies=[Depends(features.require("envelopes"))])
 def record_market_alternatives(body: market.RecordIn,
                                idempotency_key: str | None = Header(None, pattern=IDEMPOTENCY_KEY)) -> dict:
     """Record the alternatives studied before signing an agreement or before a period of
@@ -505,7 +505,7 @@ def record_market_alternatives(body: market.RecordIn,
 
 # ---------------------------------------------------------------- the season in the shadow
 
-@router.get("/operation/shadow")
+@router.get("/operation/shadow", dependencies=[Depends(features.require("envelopes"))])
 def shadow(policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     """The season replayed day by day: what the day-ahead envelope did, beside perfect foresight,
     and the pilot's two criteria (no hour above a limit; every agreement within its level)."""
@@ -562,7 +562,7 @@ class MeterIn(BaseModel):
     resolution: Literal[15, 60] | None = Field(None, description=RESOLUTION_DOC)
 
 
-@router.post("/operation/meter-check")
+@router.post("/operation/meter-check", dependencies=[Depends(features.require("envelopes"))])
 def meter_check(body: MeterIn) -> dict:
     """A house's measured export against the limits it was issued the day before."""
     from ..engine.delivery import MeterError
@@ -584,7 +584,7 @@ def meter_check(body: MeterIn) -> dict:
     return {"cid": body.cid, "policy": combo.policy, **out}
 
 
-@router.get("/operation/meter-example")
+@router.get("/operation/meter-example", dependencies=[Depends(features.require("envelopes"))])
 def meter_example(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DATE_PATTERN),
                   policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
     """A synthetic day of 5-minute readings for a house, with one deliberate breach (labelled)."""
@@ -600,7 +600,7 @@ def meter_example(cid: int = Query(..., ge=0), date: str = Query(..., pattern=DA
 
 # ---------------------------------------------------------------- the fleet
 
-@router.get("/operation/meter-compliance")
+@router.get("/operation/meter-compliance", dependencies=[Depends(features.require("envelopes"))])
 def meter_compliance() -> dict:
     """Every agreement's metered export against the day-ahead envelopes it was sent, as
     `kapacitet meter-compliance` wrote it (engine/meter_compliance.py). `readings` says whether
@@ -610,7 +610,7 @@ def meter_compliance() -> dict:
     return {"data": result("meter_compliance.json"), "provenance": _provenance(result_path("meter_compliance.json"))}
 
 
-@router.get("/operation/meter-compliance_sv.txt")
+@router.get("/operation/meter-compliance_sv.txt", dependencies=[Depends(features.require("envelopes"))])
 def meter_compliance_text() -> Response:
     """The same check as a page in Swedish."""
     from .main import not_computed, result_path

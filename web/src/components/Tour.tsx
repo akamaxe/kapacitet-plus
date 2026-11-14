@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Icon } from "./Icon";
 import { useApi } from "../lib/api";
+import { useFeatures } from "../lib/features";
 import { useT } from "../lib/i18n";
 import { useStore, type Scenario, type Screen } from "../lib/store";
 
@@ -13,6 +14,8 @@ interface Step {
   cid?: "example";
   /** on a map screen the card sits on the map, away from the panel the step talks about */
   place?: "map" | "map-wide";
+  /** its words, `tour.<key>.title` and `tour.<key>.text`; the envelope tour's steps keep their numbers */
+  key?: string;
 }
 
 /** The two-minute tour: each step puts a real screen in front of the viewer and says what it answers. */
@@ -24,6 +27,13 @@ const STEPS: Step[] = [
   { screen: "operation" },
   { screen: "report", cid: "example" },
   { screen: "method" },
+];
+/** Where the envelopes are off: the capacity, the network, a request and the sources, said without them. */
+const CAPACITY_STEPS: Step[] = [
+  { screen: "compare", key: "cap1" },
+  { screen: "twin", scenario: "static", place: "map", key: "cap2" },
+  { screen: "request", place: "map-wide", key: "cap3" },
+  { screen: "method", key: "cap4" },
 ];
 export const TOUR_STEPS = STEPS.length;
 const SEEN = "kap.tour";
@@ -53,8 +63,11 @@ export function Tour() {
   const t = useT();
   const step = useStore((s) => s.tour);
   const instant = useStore((s) => s.tourInstant);
+  const envelopes = useFeatures().envelopes;
+  const steps = envelopes ? STEPS : CAPACITY_STEPS;
   const meta = useApi<any>(step !== null ? "/meta" : null);
-  const comp = useApi<any>(step !== null ? "/compliance" : null);
+  // the house the published year curtails most: an envelope's figure, asked only where they are on
+  const comp = useApi<any>(step !== null && envelopes ? "/compliance" : null);
   const next = useRef<HTMLButtonElement>(null);
   const close = () => {
     markTourSeen();
@@ -63,7 +76,8 @@ export function Tour() {
 
   useEffect(() => {
     if (step === null) return;
-    const s = STEPS[step];
+    const s = steps[step];
+    if (!s) return;
     const st = useStore.getState();
     if (s.scenario) st.setScenario(s.scenario);
     if (s.hour === "showcase" && typeof meta.data?.showcase_hour === "number") {
@@ -74,7 +88,7 @@ export function Tour() {
       if (typeof cid === "number") st.select(cid);
     }
     if (st.screen !== s.screen) st.setScreen(s.screen);
-  }, [step, meta.data, comp.data]);
+  }, [step, meta.data, comp.data, steps]);
 
   useEffect(() => {
     if (step !== null) next.current?.focus({ preventScroll: true });
@@ -90,20 +104,20 @@ export function Tour() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step]);
 
-  if (step === null) return null;
-  const last = step === STEPS.length - 1;
-  const place = STEPS[step].place;
+  if (step === null || !steps[step]) return null;
+  const last = step === steps.length - 1;
+  const { place, key } = steps[step];
   return (
     // keyed by where it sits: moving to the other side of the screen enters again rather than jumping
     <aside key={place ?? "page"} data-place={place} className={`tour${instant ? " instant" : ""}`} role="dialog" aria-modal="false" aria-labelledby="tour-title" aria-describedby="tour-text">
       <div className="tour-head">
-        <span className="tour-count">{t("tour.of", { n: step + 1, total: STEPS.length })}</span>
+        <span className="tour-count">{t("tour.of", { n: step + 1, total: steps.length })}</span>
         <button className="icon-btn" aria-label={t("tour.close")} title={t("tour.close")} onClick={close}>
           <Icon name="close" size={15} />
         </button>
       </div>
-      <h2 id="tour-title">{t(`tour.title.${step + 1}`)}</h2>
-      <p id="tour-text">{t(`tour.text.${step + 1}`)}</p>
+      <h2 id="tour-title">{t(key ? `tour.${key}.title` : `tour.title.${step + 1}`)}</h2>
+      <p id="tour-text">{t(key ? `tour.${key}.text` : `tour.text.${step + 1}`)}</p>
       <div className="tour-actions">
         {step > 0 && (
           <button className="btn ghost small" onClick={() => useStore.getState().setTour(step - 1)}>

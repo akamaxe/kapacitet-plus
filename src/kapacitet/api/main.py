@@ -30,14 +30,14 @@ from typing import Any, Literal
 
 import httpx
 import numpy as np
-from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .. import __version__, actor, geo, telemetry
+from .. import __version__, actor, features, geo, telemetry
 from ..cache import generation, memo, on_clear
 from ..config import assumptions, settings
 from ..engine.summaries import RATES as SUMMARY_RATES
@@ -197,8 +197,8 @@ from .setup import router as setup_router  # noqa: E402
 
 app.include_router(evidence_router)
 app.include_router(operation_router)
-app.include_router(inbox.router)
-app.include_router(apply_router)
+app.include_router(inbox.router, dependencies=[Depends(features.require("portal"))])
+app.include_router(apply_router, dependencies=[Depends(features.require("portal"))])
 app.include_router(datasets_router)
 app.include_router(setup_router)
 app.include_router(auth_router)
@@ -252,6 +252,7 @@ _WRITTEN_BY = {
 # Refusals the interface translates: `{code, message, params}` in the detail, `err.<code>` in
 # web/src/lib/i18n. tests/test_messages.py holds both languages to these templates.
 API_ERRORS = {
+    "feature_off": "{feature} is switched off on this installation (KAPACITET_FEATURES)",
     "no_reinforcement_case": "the reinforcement is priced for a 0.63 MVA unit, and this network's sensitivity "
                              "has no such case",
     "reinforcement_no_gain": "the envelopes connect no more solar than the hourly study without control, so there "
@@ -499,7 +500,9 @@ def health() -> dict:
     return {"status": "ok", "version": __version__, "time": datetime.now(timezone.utc).isoformat(),
             "results_ready": parts["results"]["ready"], "parts": parts, "dataset": ds.current(), "boot": BOOT,
             # the setup page may take a data bundle from the browser (api/setup.py)
-            "setup_upload": setup_closed_because() is None}
+            "setup_upload": setup_closed_because() is None,
+            # which parts of the product this installation shows (kapacitet/features.py)
+            "features": features.enabled()}
 
 
 @memo(maxsize=2)
@@ -517,7 +520,7 @@ def meta() -> dict:
     cfg = settings()
     out = {"site": cfg.site.name, "center": [cfg.site.center_lon, cfg.site.center_lat],
            "reference_year": cfg.reference_year, "weather_years": list(cfg.weather_years),
-           "bidding_zone": cfg.site.bidding_zone, "version": __version__}
+           "bidding_zone": cfg.site.bidding_zone, "version": __version__, "features": features.enabled()}
     for name in ("meta.json",):
         p = processed("results", name)
         if p.exists():
@@ -891,7 +894,7 @@ def zones() -> Response:
 
 # ------------------------------------------------------------------------------ results
 
-@app.get(f"{API}/national", tags=["national"])
+@app.get(f"{API}/national", tags=["national"], dependencies=[Depends(features.require("national"))])
 def national() -> dict:
     return with_prov(result("national.json"), "esett", "elprisetjustnu", "zones", "capacity_maps",
                      files=[result_path("national.json")])
@@ -916,6 +919,8 @@ def _state_path(name: str, suffix: str, basis: str | None, policy: str | None):
     """A scenario's state file. The envelope scenario follows the rule and basis asked for (the DSO's
     rule by default); the other two do not depend on them."""
     name = _state_name(name)
+    if name == "doe" and not features.on("envelopes"):
+        raise api_error(404, "feature_off", feature="envelopes")
     if name == "doe":
         return resolve(basis, policy).state(suffix)
     return processed("ui", f"state_{name}.{suffix}")
@@ -986,7 +991,7 @@ def risk() -> dict:
     return with_prov(result("risk.json"), "smhi_strang", "smhi_metobs", files=[result_path("risk.json")])
 
 
-@app.get(f"{API}/scenarios", tags=["scenarios"])
+@app.get(f"{API}/scenarios", tags=["scenarios"], dependencies=[Depends(features.require("scenarios"))])
 def scenarios() -> dict:
     return with_prov(result("scenarios.json"), "smhi_strang", "smhi_metobs", "scb", files=[result_path("scenarios.json")])
 
@@ -1054,7 +1059,7 @@ def reinforcement() -> dict:
 BUSINESS_RATES = SUMMARY_RATES
 
 
-@app.get(f"{API}/business", tags=["hosting"])
+@app.get(f"{API}/business", tags=["hosting"], dependencies=[Depends(features.require("envelopes"))])
 def business(years: int | None = Query(None, ge=1, le=40)) -> dict:
     """The DSO's case for deferring the reinforcement with envelopes: what deferring is worth at Ei's
     real rate against what the curtailment costs the houses, for every horizon up to 20 years."""
@@ -1079,7 +1084,7 @@ def _combo_json(combo, name: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-@app.get(f"{API}/compliance", tags=["compliance"])
+@app.get(f"{API}/compliance", tags=["compliance"], dependencies=[Depends(features.require("envelopes"))])
 def compliance_report(basis: str | None = Query(None, pattern=BASIS_PATTERN),
                       policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     """The annual filing for conditional connection agreements, with the worst hour's index, for a
@@ -1100,7 +1105,7 @@ def compliance_report(basis: str | None = Query(None, pattern=BASIS_PATTERN),
                      files=[combo.result("compliance.json")])
 
 
-@app.get(f"{API}/compliance.txt", tags=["compliance"])
+@app.get(f"{API}/compliance.txt", tags=["compliance"], dependencies=[Depends(features.require("envelopes"))])
 def compliance_text(basis: str | None = Query(None, pattern=BASIS_PATTERN),
                     policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> Response:
     combo = resolve(basis, policy)
@@ -1112,7 +1117,7 @@ def compliance_text(basis: str | None = Query(None, pattern=BASIS_PATTERN),
                     headers={"Content-Disposition": f'attachment; filename="kapacitet-filing-{year}-{combo.basis}-{combo.policy}.txt"'})
 
 
-@app.get(f"{API}/redispatch", tags=["compliance"])
+@app.get(f"{API}/redispatch", tags=["compliance"], dependencies=[Depends(features.require("envelopes"))])
 def redispatch() -> dict:
     """The year's non-market-based redispatch (Regulation (EU) 2019/943, art. 13.4): the solar the
     conditional agreements curtailed on the day-ahead basis that is issued, with the compensation
@@ -1121,7 +1126,7 @@ def redispatch() -> dict:
                      files=[result_path("redispatch.json")])
 
 
-@app.get(f"{API}/redispatch_sv.txt", tags=["compliance"])
+@app.get(f"{API}/redispatch_sv.txt", tags=["compliance"], dependencies=[Depends(features.require("envelopes"))])
 def redispatch_text() -> Response:
     """The same report as a page in Swedish, to file."""
     path = result_path("redispatch_sv.txt")
@@ -1205,7 +1210,7 @@ def audit_csv(cid: int | None = Query(None, ge=0), basis: str | None = Query(Non
                     headers={"Content-Disposition": f'attachment; filename="{name}"'})
 
 
-@app.get(f"{API}/envelopes/{{cid}}", tags=["doe"])
+@app.get(f"{API}/envelopes/{{cid}}", tags=["doe"], dependencies=[Depends(features.require("envelopes"))])
 def envelope(cid: int, basis: str | None = Query(None, pattern=BASIS_PATTERN),
              policy: str | None = Query(None, pattern=POLICY_PATTERN)) -> dict:
     combo = resolve(basis, policy)

@@ -7,6 +7,7 @@
  * app.css lets it take the accent's place in the light theme only: the server holds it to 4.5:1
  * against white, which says nothing about a night ground.
  */
+import { useFeatures } from "../lib/features";
 import type { CSSProperties, ReactNode } from "react";
 import { Logo } from "../components/Logo";
 import { useApi } from "../lib/api";
@@ -24,7 +25,8 @@ export interface Brand {
 export const PRODUCT = "Kapacitet+";
 
 export function useBrand() {
-  return useApi<Brand>("/apply/brand");
+  // the portal's own (src/kapacitet/features.py): asked only where it is on
+  return useApi<Brand>(useFeatures().portal ? "/apply/brand" : null);
 }
 
 /** Whether the DSO put its own name or logo on the portal. */

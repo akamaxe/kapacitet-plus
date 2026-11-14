@@ -11,7 +11,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useApi } from "../lib/api";
 import { useT } from "../lib/i18n";
-import { SCREENS, useStore, type Screen } from "../lib/store";
+import { featuresOf, screenLabel, useFeatures, visibleScreens } from "../lib/features";
+import { useStore, type Screen } from "../lib/store";
 import { buildTree, keyMove, openAtFirst, pathTo, rowsOf, treeHouses, type TreeNode } from "../lib/tree";
 import { Icon } from "./Icon";
 
@@ -27,7 +28,9 @@ function useTree(): TreeNode | null {
   const meta = useApi<any>("/meta");
   return useMemo(() => {
     if (!net.data || !meta.data) return null;
-    return buildTree(t, { site: meta.data.site, trafo: meta.data.grid?.trafo_type ?? null, houses: treeHouses(net.data.features) });
+    const f = featuresOf(meta.data);
+    return buildTree(t, { site: meta.data.site, trafo: meta.data.grid?.trafo_type ?? null, houses: treeHouses(net.data.features),
+      screens: visibleScreens(f), label: (s) => screenLabel(t, s, f) });
   }, [t, net.data, meta.data]);
 }
 
@@ -177,15 +180,17 @@ export function TreeRail({ onOpen }: { onOpen: () => void }) {
   const t = useT();
   const view = useStore((s) => s.view);
   const screen = useStore((s) => s.screen);
+  const features = useFeatures();
+  const shown = visibleScreens(features);
   return (
     <nav className="tree-rail" aria-label={t("tree.title")}>
       <button className="rail-btn" onClick={onOpen} aria-label={t("tree.open")} title={`${t("tree.open")} (T)`}>
         <Icon name="tree" size={18} />
       </button>
-      {RAIL.map((group, n) => (
+      {RAIL.map((group) => group.filter((s) => shown.includes(s))).filter((group) => group.length > 0).map((group, n) => (
         <div className="rail-group" key={n}>
           {group.map((s) => (
-            <a key={s} className="rail-btn" href={`#/${s}`} aria-label={t(`tab.${s}`)} title={`${t(`tab.${s}`)} (${SCREENS.indexOf(s) + 1})`}
+            <a key={s} className="rail-btn" href={`#/${s}`} aria-label={screenLabel(t, s, features)} title={`${screenLabel(t, s, features)} (${shown.indexOf(s) + 1})`}
               aria-current={view === "work" && screen === s ? "page" : undefined}>
               <Icon name={s} size={18} />
             </a>

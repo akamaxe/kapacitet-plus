@@ -12,7 +12,8 @@ import { Mark, Status } from "../components/bits";
 import { HouseSearch, type HouseOption } from "../components/HouseSearch";
 import { Icon } from "../components/Icon";
 import { OwnerFigures } from "../components/OwnerCase";
-import { API, apiWrite, useApi } from "../lib/api";
+import { API, ApiError, apiWrite, useApi } from "../lib/api";
+import { useFeatures, useFeaturesKnown } from "../lib/features";
 import { refusalOf, refusalText } from "../lib/errors";
 import { follow, type Failure, type Following } from "../lib/evaluate";
 import { dateTime, round, useFmt } from "../lib/format";
@@ -50,7 +51,9 @@ export default function Apply() {
   // undefined while it loads (the bar waits rather than flash the product's name), null if it failed
   const brandQ = useBrand();
   const brand = brandQ.data ?? (brandQ.isError ? null : undefined);
-  const houses = useApi<{ items: HouseOption[]; form: { pv_min_kwp: number; battery_max_kwh: number; ev_kw: number[] } }>("/apply/houses");
+  const portal = useFeatures();
+  const portalKnown = useFeaturesKnown();
+  const houses = useApi<{ items: HouseOption[]; form: { pv_min_kwp: number; battery_max_kwh: number; ev_kw: number[] } }>(portal.portal ? "/apply/houses" : null);
   const [cid, setCid] = useState<number | null>(null);
   const [pv, setPv] = useState(10);
   const [ev, setEv] = useState(0);
@@ -157,6 +160,20 @@ export default function Apply() {
     if (!quiet) setError(null);
     setStatus(body);
     writeRef(code);
+  }
+
+  // the portal is a part of its own (src/kapacitet/features.py): off, it says so and asks nothing
+  const off = (portalKnown && !portal.portal) || (houses.error instanceof ApiError && houses.error.info?.code === "feature_off");
+  if (off) {
+    return (
+      <div className="portal">
+        <PortalHeader brand={null} />
+        <main className="portal-main">
+          <h1 className="headline">{t("apply.off.title")}</h1>
+          <p className="headline-sub">{t("apply.off.text")}</p>
+        </main>
+      </div>
+    );
   }
 
   return (

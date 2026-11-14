@@ -19,6 +19,10 @@ const PY = process.env.KAPACITET_PY
 const PORT = 8131;
 const UPLOAD = resolve(HERE, "e2e/.upload-data");
 const UPLOAD_PORT = 8132;
+const SHIPPED_PORT = 8133;
+// its own empty folder: one server writes a data folder at a time (api/records.py)
+const SHIPPED = resolve(HERE, "e2e/.empty-shipped");
+mkdirSync(SHIPPED, { recursive: true });
 // emptied once per run, by the main process: the workers load this file too
 if (!process.env.TEST_WORKER_INDEX) rmSync(UPLOAD, { recursive: true, force: true });
 mkdirSync(UPLOAD, { recursive: true });
@@ -34,7 +38,17 @@ export default defineConfig({
       command: `"${PY}" -m kapacitet serve --port ${PORT}`,
       cwd: ROOT,
       url: `http://127.0.0.1:${PORT}/api/v1/health`,
-      env: { ...(process.env as Record<string, string>), KAPACITET_DATA_DIR: EMPTY },
+      // every part on, so the portal's tests reach it; the parts as shipped are the third server's
+      env: { ...(process.env as Record<string, string>), KAPACITET_DATA_DIR: EMPTY, KAPACITET_FEATURES: "all" },
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+    {
+      // the parts as an installation ships them: the envelopes, Sweden, 2030 and the portal off
+      command: `"${PY}" -m kapacitet serve --port ${SHIPPED_PORT}`,
+      cwd: ROOT,
+      url: `http://127.0.0.1:${SHIPPED_PORT}/api/v1/health`,
+      env: { ...(process.env as Record<string, string>), KAPACITET_DATA_DIR: SHIPPED, KAPACITET_FEATURES: "", KAPACITET_ENVELOPES: "" },
       reuseExistingServer: false,
       timeout: 120_000,
     },

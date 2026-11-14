@@ -44,6 +44,12 @@ export interface MenuState {
   /** the docks of the workbench; undefined where the frame has none */
   treeOpen?: boolean;
   outputOpen?: boolean;
+  /** the screens this installation shows, in their order, and each one's name (lib/features.ts);
+      all of them, under their own names, when left out */
+  screens?: Screen[];
+  label?: (s: Screen) => string;
+  /** the envelopes are on: the DSO's settings, which live with their operation, are offered */
+  envelopes?: boolean;
 }
 
 /** What the menus do. The frame supplies these; the list only says which is where. */
@@ -87,11 +93,12 @@ const THEMES: Theme[] = ["light", "dark", "system"];
 export function buildMenus(t: TFn, s: MenuState, a: MenuActions): Menu[] {
   const work = s.view === "work";
   // a screen needs results to show
+  const shown = s.screens ?? SCREENS;
   const screens = (menu: "view" | "study" | "results"): MenuItem[] =>
-    SCREENS.filter((sc) => SCREEN_MENU[sc] === menu).map((sc) => ({
+    shown.filter((sc) => SCREEN_MENU[sc] === menu).map((sc) => ({
       id: `screen.${sc}`,
-      label: t(`tab.${sc}`),
-      keys: String(SCREENS.indexOf(sc) + 1),
+      label: s.label ? s.label(sc) : t(`tab.${sc}`),
+      keys: String(shown.indexOf(sc) + 1),
       run: () => a.screen(sc),
       disabled: !s.ready,
       current: work && s.screen === sc,
@@ -157,7 +164,7 @@ export function buildMenus(t: TFn, s: MenuState, a: MenuActions): Menu[] {
     items: [
       { id: "tools.search", label: t("menu.tools.search"), keys: "Ctrl K", run: a.search },
       { id: "tools.check", label: t("menu.tools.check"), run: a.networkCheck, disabled: !s.ready, sep: true },
-      { id: "tools.settings", label: t("menu.tools.settings"), run: a.settings, disabled: !s.ready },
+      ...(s.envelopes === false ? [] : [{ id: "tools.settings", label: t("menu.tools.settings"), run: a.settings, disabled: !s.ready }]),
       { id: "tools.keys", label: t("menu.tools.keys"), keys: "?", run: a.keys, sep: true },
     ],
   };

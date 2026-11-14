@@ -33,5 +33,6 @@ web/playwright-report/
 *.pem
 # Playwright: the data folder of the upload server, emptied at every run
 web/e2e/.upload-data/
+web/e2e/.empty-shipped/
 # a study holds a DSO's data and lives outside the repository (study/); never commit one
 studies/

@@ -11,6 +11,7 @@ import { clock, dateTime, listJoin, monthLong, round, useFmt } from "../lib/form
 import { useT } from "../lib/i18n";
 import { useProjectT } from "../lib/project";
 import { useStore } from "../lib/store";
+import { useFeatures } from "../lib/features";
 
 /** One entry of config/assumptions.toml, as /assumptions serves it. */
 interface Input {
@@ -67,15 +68,17 @@ export default function Method() {
   const val = useApi<any>("/validation");
   const meta = useApi<any>("/meta");
   const host = useApi<any>("/hosting");
-  const fc = useApi<any>("/forecast");
+  // the forecast ladder and the intraday replica are the envelopes': asked only where they are on
+  const envelopes = useFeatures().envelopes;
+  const fc = useApi<any>(envelopes ? "/forecast" : null);
   const prot = useApi<any>("/protection");
   const P = prot.data?.data;
   const FC = fc.data?.data;
   const [tag, setTag] = useState<string>("all");
   const V = val.data?.data;
-  const F = host.data?.data?.foresight;
+  const F = envelopes ? host.data?.data?.foresight : undefined;
   // the envelopes re-issued during the day, replayed after the fact (intraday.json)
-  const ID = host.data?.data?.intraday;
+  const ID = envelopes ? host.data?.data?.intraday : undefined;
   // the MV band, a sensitivity beside the published envelopes (mv_band.json), and what the static
   // figure assumes (hosting_summary.json)
   const MV = host.data?.data?.mv_band;
@@ -128,7 +131,7 @@ export default function Method() {
     { id: "sources", label: t("met.sources") },
     { id: "inputs", label: t("met.assumptions") },
     ...(V || val.isLoading ? [{ id: "validation", label: t("met.validation") }] : []),
-    ...(F || host.isLoading ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
+    ...(F || (envelopes && host.isLoading) ? [{ id: "forecast", label: t("met.nav.fc") }] : []),
     ...(ID ? [{ id: "intraday", label: t("met.nav.id") }] : []),
     ...(MV ? [{ id: "mvband", label: t("met.nav.mv") }] : []),
     ...(P ? [{ id: "protection", label: t("met.nav.prot") }] : []),

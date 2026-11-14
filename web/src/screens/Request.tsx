@@ -27,6 +27,7 @@ import { refusalOf, refusalText } from "../lib/errors";
 import { scrollToInScroller } from "../lib/scroll";
 import { useStore } from "../lib/store";
 import { staticNoteKey } from "../lib/verdicts";
+import { useFeatures } from "../lib/features";
 
 type Stage = "static" | "envelope" | "verify" | "risk" | "economics" | "done";
 const STAGES: Stage[] = ["static", "envelope", "verify", "risk", "economics"];
@@ -45,6 +46,8 @@ interface Job {
 
 export default function Request() {
   const t = useT();
+  // the envelope scenario is a baseline only where the envelopes are on (lib/features.ts)
+  const envelopes = useFeatures().envelopes;
   const f = useFmt();
   const lang = useStore((s) => s.lang);
   const theme = useStore((s) => s.theme);
@@ -469,7 +472,7 @@ export default function Request() {
               <legend>{t("req.baseline")}</legend>
               <div className="seg" role="group" aria-label={t("req.baseline")}>
                 <button aria-pressed={baseline === "static"} onClick={() => setBaseline("static")}>{t("req.base.static")}</button>
-                <button aria-pressed={baseline === "doe"} onClick={() => setBaseline("doe")}>{t("req.base.doe")}</button>
+                {envelopes && <button aria-pressed={baseline === "doe"} onClick={() => setBaseline("doe")}>{t("req.base.doe")}</button>}
                 {!!queue?.approved && (
                   <button aria-pressed={baseline === "queue"} disabled={queue.updating} onClick={() => setBaseline("queue")}>
                     {t("req.base.queue", { n: f(queue.approved) })}

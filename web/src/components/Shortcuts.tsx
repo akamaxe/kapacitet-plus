@@ -5,12 +5,13 @@
  */
 import { Dialog } from "./Dialog";
 import { useT } from "../lib/i18n";
-import { SCREENS, useStore } from "../lib/store";
+import { useStore } from "../lib/store";
+import { useFeatures, visibleScreens } from "../lib/features";
 
 /** key hint, i18n key. The handler in App.tsx walks the same list. */
 export const KEYS: [string, string][] = [
   ["0", "keys.start"],
-  [`1 – ${SCREENS.length}`, "keys.screens"],
+  ["1 – N", "keys.screens"],
   ["Ctrl + ← →", "keys.step"],
   ["PageUp / PageDown", "keys.page"],
   ["⌘ / Ctrl + K", "keys.palette"],
@@ -26,12 +27,14 @@ export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => voi
   const t = useT();
   const singleKeys = useStore((s) => s.singleKeys);
   const setSingleKeys = useStore((s) => s.setSingleKeys);
+  // the screens this installation shows: the digits go as far as they do
+  const shownCount = visibleScreens(useFeatures()).length;
   return (
     <Dialog open={open} onClose={onClose} title={t("keys.title")} width={460}>
       <div className="sheet">
         <h2>{t("keys.title")}</h2>
         <dl className="keys">
-          {KEYS.map(([k, label]) => (
+          {KEYS.map(([key, label]) => [key.replace("N", String(shownCount)), label]).map(([k, label]) => (
             <div key={k}>
               <dt>
                 {k.split(" ").map((part, i) =>
@@ -50,7 +53,7 @@ export function Shortcuts({ open, onClose }: { open: boolean; onClose: () => voi
         </dl>
         <label className="keys-toggle">
           <input type="checkbox" checked={singleKeys} onChange={(e) => setSingleKeys(e.target.checked)} />
-          <span>{t("keys.single")}<small>{t("keys.singleNote", { n: SCREENS.length })}</small></span>
+          <span>{t("keys.single")}<small>{t("keys.singleNote", { n: shownCount })}</small></span>
         </label>
       </div>
     </Dialog>

@@ -22,7 +22,8 @@ import { SignIn } from "./components/SignIn";
 import { useCan, useMe } from "./lib/auth";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
 import { useApi } from "./lib/api";
-import { SCREENS, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
+import { OPENING, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
+import { featuresOf, screenLabel, visibleScreens } from "./lib/features";
 
 initUrlSync();
 
@@ -69,6 +70,21 @@ function Main() {
   // a fresh clone has no results: say how to make them instead of showing empty screens
   const health = useApi<any>("/health");
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
+  // the parts this installation shows: a screen of a part that is off is nowhere, and a link to it
+  // opens the capacity screen (lib/features.ts)
+  const features = featuresOf(health.data);
+  const shown = visibleScreens(features);
+  const shownRef = useRef(shown);
+  shownRef.current = shown;
+  // the screen drawn: never one of a part that is off, not even for the moment the redirect takes
+  const showing: Screen = !health.data || shown.includes(screen) ? screen : OPENING;
+  useEffect(() => {
+    if (!health.data || view !== "work" || shown.includes(screen)) return;
+    toast.info(t("ui.screenOff", { name: t(`tab.${screen}`) }));
+    useStore.getState().setScreen(OPENING);
+    // the parts are known once /health has answered; until then nothing is redirected
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [health.data, view, screen]);
   // the project the server is on goes into every link; a link made on another one says so once
   const serverDataset: string | undefined = health.data?.dataset;
   // the project's name, once there is something computed to name
@@ -125,7 +141,7 @@ function Main() {
   // heading, so a screen reader announces where it has arrived (not on the first load, and not
   // while the tour holds the focus on its own card)
   const firstScreen = useRef(true);
-  const place = view === "start" ? t("start.title") : t(`tab.${screen}`);
+  const place = view === "start" ? t("start.title") : screenLabel(t, screen, features);
   // The document is named for the screen and, inside a project, for the project. Installed with a
   // window of its own, that window already carries the program's name before the title.
   const titled = [place, view === "work" ? site : undefined, window.matchMedia?.("(display-mode: standalone)").matches ? undefined : "Kapacitet+"]
@@ -216,7 +232,8 @@ function Main() {
       st().setScreen(to);
       whenThere(id, (el) => settleOn(el, 72));
     };
-    return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown, outputOpen }, {
+    return buildMenus(t, { view, screen, ready, canProjects, theme, lang, treeOpen: treeShown, outputOpen,
+      screens: shown, label: (s) => screenLabel(t, s, features), envelopes: features.envelopes }, {
       screen: (s) => st().setScreen(s),
       start: () => { if (st().view !== "start") st().setView("start"); },
       newProject: () => {
@@ -265,7 +282,7 @@ function Main() {
       manual: () => window.open(MANUAL, "_blank", "noopener,noreferrer"),
       about: () => openDialog("about"),
     });
-  }, [t, view, screen, ready, canProjects, theme, lang, treeShown, outputOpen]);
+  }, [t, view, screen, ready, canProjects, theme, lang, treeShown, outputOpen, shown.join(), features.envelopes]);
   const toggleTreeRef = useRef(toggleTree);
   toggleTreeRef.current = toggleTree;
 
@@ -289,6 +306,7 @@ function Main() {
       }
       if (typing) return;
       const st = useStore.getState();
+      const SCREENS = shownRef.current;
       const i = SCREENS.indexOf(st.screen);
       // a one-character shortcut answers only while they are on (the key sheet turns them off)
       const plain = !e.ctrlKey && !e.metaKey && e.key.length === 1;
@@ -382,16 +400,16 @@ function Main() {
           </Suspense>
         </ErrorBoundary>
         ) : (
-        <ErrorBoundary where={t(`tab.${screen}`)} onReset={() => setAttempt((a) => a + 1)} key={`${screen}-${attempt}`}>
-          <Suspense fallback={<ScreenSkeleton screen={screen} />}>
-            {screen === "national" && <National />}
-            {screen === "twin" && <Twin />}
-            {screen === "compare" && <Compare />}
-            {screen === "request" && <Request />}
-            {screen === "operation" && <Operation />}
-            {screen === "report" && <Report />}
-            {screen === "scenarios" && <Scenarios />}
-            {screen === "method" && <Method />}
+        <ErrorBoundary where={screenLabel(t, showing, features)} onReset={() => setAttempt((a) => a + 1)} key={`${showing}-${attempt}`}>
+          <Suspense fallback={<ScreenSkeleton screen={showing} />}>
+            {showing === "national" && <National />}
+            {showing === "twin" && <Twin />}
+            {showing === "compare" && <Compare />}
+            {showing === "request" && <Request />}
+            {showing === "operation" && <Operation />}
+            {showing === "report" && <Report />}
+            {showing === "scenarios" && <Scenarios />}
+            {showing === "method" && <Method />}
           </Suspense>
         </ErrorBoundary>
         )}
