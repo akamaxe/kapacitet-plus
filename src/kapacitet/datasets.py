@@ -173,16 +173,22 @@ def assumptions(grid: dict) -> list[dict]:
 
 def summary(root: Path | None = None) -> dict:
     """What a project list shows of the network in `root` (the reference network's folder by
-    default): its size, its transformer, when and how it was computed, and the capacity of the
-    static and of the hourly study. Read from the network's own files; what is not there is None,
-    never a guess."""
+    default): its size, its transformer, when and how it was computed, the capacity of the static
+    and of the hourly study for solar and for EV chargers, and what its build assumed. Read from the
+    network's own files; what is not there is None, never a guess."""
     base = (HOME if root is None else Path(root)) / "processed"
     grid = _read(base / "grid" / "summary.json")
     meta = _read(base / "results" / "meta.json")
     measures = _read(base / "results" / "hosting_summary.json").get("measures") or {}
+    devices = _read(base / "results" / "consumption.json").get("devices") or {}
 
     def median_kw(name: str) -> float | None:
         value = ((measures.get(name) or {}).get("kw_ac") or {}).get("median")
+        return float(value) if isinstance(value, (int, float)) else None
+
+    def chargers(device: str) -> float | None:
+        """New devices the street takes, median over the orders (results/consumption.json)."""
+        value = ((devices.get(device) or {}).get("adopters") or {}).get("median")
         return float(value) if isinstance(value, (int, float)) else None
 
     years = [y for y in meta.get("years") or [] if isinstance(y, int)]
@@ -192,6 +198,8 @@ def summary(root: Path | None = None) -> dict:
             "reference_year": meta.get("reference_year"),
             "years": [min(years), max(years)] if years else None, "n_years": len(years) or None,
             "static_kw": median_kw("static"), "hourly_kw": median_kw("timeseries"),
+            # new EV chargers by the hourly study, and by the static convention (a constant load)
+            "ev_chargers": chargers("ev"), "ev_chargers_static": chargers("flat"),
             "assumptions": assumptions(grid)}
 
 

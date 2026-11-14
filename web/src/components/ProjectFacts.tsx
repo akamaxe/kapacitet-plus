@@ -54,6 +54,13 @@ export function ProjectFacts({ p }: { p: Project }) {
           value={p.summary.hourly_kw === null ? "–" : f(p.summary.hourly_kw)}
           unit={p.summary.hourly_kw === null ? undefined : "kW"}
         />
+        {p.summary.ev_chargers !== null && (
+          <Tile
+            label={t("proj.d.chargers")}
+            value={f(p.summary.ev_chargers, 1)}
+            note={p.summary.ev_chargers_static === null ? undefined : t("proj.d.chargersNote", { n: f(p.summary.ev_chargers_static, 1) })}
+          />
+        )}
         <Tile
           label={t("proj.d.years")}
           mark={years ? "real" : undefined}

@@ -2045,6 +2045,8 @@ ol.list {
 /* the budget the bound is held to, said beside the figure it qualifies */
 .basis-mark { padding: 0 var(--space-2); border: 1px solid var(--border-strong); border-radius: var(--radius-sm); font-size: var(--text-caption); font-weight: 500; color: var(--text-secondary); white-space: nowrap; }
 .answer-ratio { color: var(--good); font-weight: 600; }
+/* the consumption section's one comparison, said as the answer's own ratio is */
+.cons-ratio { margin: 0; color: var(--good); font-weight: 600; }
 /* each stop's length against the bound, under its figure: pencil, the green solid to the low end
    of the issuable range and hatched to its high end, and the quiet green line of the bound */
 .as-bar { display: block; height: 6px; margin: 2px 0 var(--space-1); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }

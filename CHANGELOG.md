@@ -25,6 +25,12 @@ Changes before 12 November 2026 are only in that history.
 - **Installable.** The browser can install the interface with a window and an icon of its own
   (a web manifest; no service worker, nothing cached).
 
+- **The consumption capacity, on screen.** It was computed for every project and shown nowhere:
+  the capacity screen now has a section with the new EV chargers, heat pumps and constant loads the
+  street takes by the hourly study, against the static study's convention (a constant load of the
+  charger's rating in every hour): 24.5 chargers against 3 on the reference network. A house's panel
+  says the load it alone can add, and the start window's card the chargers a project takes.
+
 ### Changed
 
 - **Links to a screen are unchanged; a link to nothing opens the start window.** `#/compare` and

@@ -582,3 +582,25 @@ def test_the_fleet_check_adds_up_and_names_its_readings(results):
         assert (p["status"] == "no_readings") == (p["intervals_checked"] == 0), p["cid"]
         if p["intervals_above"]:
             assert p["worst"]["excess_kw"] > r["tolerance_kw"] and p["energy_above_kwh"] > 0
+
+
+def test_the_consumption_section_shows_what_the_file_holds(results):
+    """The consumption section (web/src/components/Consumption.tsx) shows each device's median, its
+    p10-p90 and min-max over the adoption orders, how many houses have one today and how many could
+    add one, the hourly study against the static convention (a constant load of the charger rating),
+    and the per-house figures: the file must hold them, coherent, for every device."""
+    try:
+        c = results("consumption")
+    except FileNotFoundError:
+        pytest.skip("no consumption.json (run: python -m kapacitet compute --stage extra --only consumption)")
+    assert set(c["devices"]) == {"ev", "hp", "flat"}
+    for name, d in c["devices"].items():
+        a = d["adopters"]
+        assert a["min"] <= a["p10"] <= a["median"] <= a["p90"] <= a["max"], name
+        assert d["existing"] + d["candidates"] == c["customers"], name
+        assert 0 <= a["max"] <= d["candidates"], name
+    assert c["devices"]["ev"]["device_kw"] == c["devices"]["flat"]["device_kw"]     # one rating, two conventions
+    for basis in ("timeseries", "static"):
+        n = c["nodal_kw"][basis]
+        assert n["min"] <= n["p10"] <= n["median"] <= n["p90"] <= n["max"], basis
+    assert len(c["nodal"]["timeseries_kw"]) == len(c["nodal"]["static_kw"]) == c["customers"]

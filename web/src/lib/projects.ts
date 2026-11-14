@@ -43,12 +43,16 @@ export interface Summary {
   /** medians over the adoption orders, in kW AC */
   static_kw: number | null;
   hourly_kw: number | null;
+  /** new EV chargers it takes, median over the orders: by the hourly study, and by the static convention */
+  ev_chargers: number | null;
+  ev_chargers_static: number | null;
   assumptions: Assumption[];
 }
 
 export const NO_SUMMARY: Summary = {
   customers: null, feeders: null, buses: null, lines: null, trafo_type: null, computed_at: null, quick: null,
-  reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null, assumptions: [],
+  reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null, ev_chargers: null,
+  ev_chargers_static: null, assumptions: [],
 };
 
 /** An assumption as one sentence, with its counts. Pure. */

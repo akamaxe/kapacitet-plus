@@ -534,6 +534,12 @@ function Inspector({ house, rows, st, scenario, curtailed, onClear }: {
         <Tile label={t("dt.feeder")} value={house.feeder + 1} />
         <Tile label={t("dt.dist")} value={f(house.dist_m, 0)} unit="m" />
         <Tile label={t("dt.loads")} value={<span className="t-word">{loads || t("dt.loadsNone")}</span>} note={t("dt.loadsNote")} mark="synthetic" />
+        {house.nodal_import_kw != null && (
+          // the load this house alone can add: in every hour of the record when the consumption
+          // stage has run, else the static winter snapshot's
+          <Tile label={t("dt.import")} value={f(house.nodal_import_kw_ts ?? house.nodal_import_kw, 1)} unit="kW"
+            note={house.nodal_import_kw_ts != null ? t("dt.importNote", { kw: f(house.nodal_import_kw, 1) }) : t("dt.importStatic")} />
+        )}
         {fault && (
           <Tile label={t("req.fault")} value={f(fault.ik1_min_a)} unit="A"
             note={faultText(t, f, fault, prot.data.data.criterion.disconnect_s)} mark="synthetic" />

@@ -413,6 +413,14 @@ export default function Request() {
                 <dt>{t("req.fuse")}</dt><dd>{house.fuse_a} A ({f(house.fuse_kva, 1)} kVA)</dd>
                 <dt><Term id="feeder">{t("req.feeder")}</Term></dt><dd>{house.feeder + 1}</dd>
                 <dt>{t("req.distance")}</dt><dd>{f(house.dist_m)} m</dd>
+                {house.nodal_import_kw != null && (
+                  <>
+                    <dt>{t("dt.import")}</dt>
+                    <dd>{house.nodal_import_kw_ts != null
+                      ? t("req.importValue", { ts: f(house.nodal_import_kw_ts, 1), st: f(house.nodal_import_kw, 1) })
+                      : t("req.importStatic", { st: f(house.nodal_import_kw, 1) })}</dd>
+                  </>
+                )}
                 {(() => {
                   const h = (prot.data?.data?.houses as any[] | undefined)?.find((x) => x.cid === house.cid);
                   return h ? <><dt>{t("req.fault")}</dt><dd>{faultText(t, f, h, prot.data.data.criterion.disconnect_s)}</dd></> : null;

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { AnswerStops, heroStops } from "../components/AnswerStops";
 import { Deferral } from "../components/Business";
+import { ConsumptionRegion } from "../components/Consumption";
 import { PriceBasis, rangeParams } from "../components/PriceBasis";
 import { Chart } from "../components/LazyChart";
 import { axisStyle } from "../lib/chartStyle";
@@ -100,6 +101,7 @@ export default function Compare() {
   const sensBasis = H.tornado ? t(sensYears === 1 ? "cmp.basis.sens.oneYear" : "cmp.basis.sens", { order: H.tornado.order, n: sensYears }) : undefined;
   const sections: Section[] = [
     { id: "capacity", label: t("cmp.sec.capacity") },
+    { id: "consumption", label: t("cmp.sec.consumption") },
     { id: "verify", label: t("cmp.sec.verify") },
     ...(S ? [{ id: "when", label: t("cmp.sec.when") }] : []),
     { id: "fair", label: t("cmp.sec.fair") },
@@ -197,6 +199,9 @@ export default function Compare() {
             )}
           </section>
         </section>
+
+        {/* ---------------------------------------------------------------- consumption */}
+        <ConsumptionRegion c={H.consumption} />
 
         {/* ---------------------------------------------------------------- verification */}
         <section className="region" id="verify">

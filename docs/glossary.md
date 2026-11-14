@@ -11,6 +11,9 @@ Swedish-speaking DSO engineer should check it before it is shown to one.
 | static limit, static study (worst case) | statisk gräns, statisk studie (värsta fall) | |
 | dynamic operating envelope, envelope | dynamisk exportgräns, exportgräns | an export limit per house that changes hour by hour |
 | import limit (of an EV charger) | importgräns | the import-side envelope, issued the day before |
+| consumption capacity | förbrukningskapacitet | how many new EV chargers, heat pumps or constant loads a network takes, house after house, before an hour of the weather record breaks an import-side limit |
+| load it can add (a house) | last som kan tillkomma | the most constant load one house alone can add in every hour of the record |
+| static convention (consumption) | statisk konvention | a new device counted as a constant load of its rating in every hour, as a static study does |
 | planning ceiling | planeringstak | the most a house is assumed to import when its import limit is set (the demand the other weather years reached near that date, plus a margin, with no solar); an hour it imports more is an hour over it |
 | with envelopes | med dynamiska gränser | |
 | curtailment, curtailed | nedreglering, nedreglerad | of solar export |
