@@ -8,6 +8,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Status } from "../components/bits";
+import { CheckReport, type Report } from "../components/CheckReport";
+import { readCsvFile } from "../lib/decode";
 import { DataTable, type Col } from "../components/DataTable";
 import { Icon } from "../components/Icon";
 import { RoleNote } from "../components/RoleNote";
@@ -85,6 +87,15 @@ export default function Study({ id }: { id: string }) {
     }
   };
 
+  const [meterReport, setMeterReport] = useState<Report | null>(null);
+  const uploadMeters = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const files: Record<string, string> = {};
+    for (const file of Array.from(list)) files[file.name] = (await readCsvFile(file)).text;
+    const out = await act("meters", "/meters", { files }, "PUT");
+    if (out) setMeterReport(out.report as Report);
+  };
+
   const build = async (quick: boolean) => {
     if (await act("build", "/build", { quick, force: false }, "POST", false)) {
       log.step(t("study.log.buildStarted", { name: d?.study.name ?? id }));
@@ -153,6 +164,19 @@ export default function Study({ id }: { id: string }) {
         </div>
         {d.log.length > 0 && isBuilding && <pre className="study-log" aria-label={t("study.build.log")}>{d.log.slice(-4).join("\n")}</pre>}
         <RoleNote action="studies" />
+      </section>
+
+      <section className="block stack" aria-labelledby="study-meters">
+        <div className="block-head"><h2 id="study-meters">{t("study.meters.title")}</h2></div>
+        <p className="caption">{t("study.meters.lead")}</p>
+        <div className="answer-actions">
+          <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
+            <input type="file" accept=".csv,text/csv" multiple className="sr-only" disabled={!can.ok || isBuilding || !!busy}
+              onChange={(e) => { const list = e.currentTarget.files; void uploadMeters(list).finally(() => { e.target.value = ""; }); }} />
+            <Icon name="upload" size={15} />{t("study.meters.add")}
+          </label>
+        </div>
+        {meterReport && <CheckReport report={meterReport} />}
       </section>
 
       <section className="block stack" aria-labelledby="study-stations">

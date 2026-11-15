@@ -41,6 +41,11 @@ function SiteFacts({ p }: { p: Project }) {
       <dd>{s ? t("proj.site.pricesOwn", { zone: s.prices.zone, years: span(s.prices.years) }) : t("proj.site.reference")}</dd>
       <dt>{t("proj.site.households")}</dt>
       <dd>{t("proj.site.householdsPool")}</dd>
+      <dt>{t("proj.meters")}</dt>
+      <dd>{p.summary.meters && p.summary.meters.meters > 0
+        ? t("proj.metersSome", { n: f(p.summary.meters.meters), of: f(p.summary.meters.customers),
+          first: p.summary.meters.first ?? "–", last: p.summary.meters.last ?? "–", fitted: f(p.summary.meters.fitted ?? 0) })
+        : t("proj.metersNone")}</dd>
     </dl>
   );
 }

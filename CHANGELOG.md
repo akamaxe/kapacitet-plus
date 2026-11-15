@@ -45,6 +45,17 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **Meter readings in the shapes metering systems write, and from the app.** Besides the long
+  format with each instant's offset, the reader takes Swedish local time without an offset (a file
+  whose every time lacks one: the hour the clocks show twice in October is taken in the meter's
+  order, summer time first; a time shown once there, or the hour skipped in March, is left out and
+  said), Wh, readings by the hour (`minutes` = 60, a complete hour in one reading), and one row per
+  meter and day with 24 or 25 hourly or 96 to 100 quarter-hourly columns (`ingest/meter_formats.py`).
+  Readings are uploaded to a project (*Add meter readings…* on its card, `PUT /datasets/{id}/meters`)
+  or to a study (its screen, `PUT /studies/{id}/meters`) and checked at once; a project's build has
+  the meters step a station has (the metered load in place of the pool's), and its card says how
+  many customers have readings and over which period. A test builds and validates a station of the
+  demonstration with readings in rows of a day and the tolerances of `study.toml`.
 - **A study builds as many stations at once as the memory holds.** `study build` no longer runs six
   station processes by default: it runs what the free memory holds (the smaller of the memory
   available and the commit left, less 2 GB kept for the rest of the machine), at the largest peak a

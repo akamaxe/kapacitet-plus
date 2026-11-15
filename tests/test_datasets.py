@@ -686,3 +686,24 @@ def test_an_imported_network_is_computed_by_its_own_build(api, monkeypatch):
     assert main.command_for("forecast.json") == f"{build} --part envelopes"
     assert main.command_for("scenarios.json") == f"{build} --part envelopes"
     assert main.not_computed("showcase.json").detail["command"] == f"{build} --part envelopes"
+
+
+def test_meter_readings_are_uploaded_to_a_project_and_checked_against_its_customers(api):
+    """Task 2.4: the readings go to the project's inputs/meters, in any shape the reader takes (one
+    row per meter and day here), and the answer is the check against the project's customers."""
+    c, ds, _ = api
+    ds_id = _dataset(ds)
+    (ds.DATASETS / ds_id / "import" / "customers.csv").write_text("customer_id,bus,fuse_a\nC1,B1,25\nC2,B2,25\n",
+                                                                  encoding="utf-8")
+    hours = ",".join(f"h{k}" for k in range(1, 26))
+    day = ",".join(["0.5"] * 24) + ","                       # an ordinary day: the 25th column blank
+    body = {"files": {"day-rows.csv": f"customer_id,date,{hours}\nC1,2025-05-01,{day}\nC9,2025-05-01,{day}\n"}}
+    r = c.put(f"/api/v1/datasets/{ds_id}/meters", json=body)
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["files"] == ["day-rows.csv"] and (ds.DATASETS / ds_id / "inputs" / "meters" / "day-rows.csv").is_file()
+    codes = {f["code"] for f in out["report"]["findings"]}
+    assert {"meter_wide", "meter_hourly", "meter_unmapped"} <= codes and out["report"]["usable"]
+    # a second upload replaces the first
+    c.put(f"/api/v1/datasets/{ds_id}/meters", json={"files": {"other.csv": body["files"]["day-rows.csv"]}})
+    assert [p.name for p in (ds.DATASETS / ds_id / "inputs" / "meters").iterdir()] == ["other.csv"]

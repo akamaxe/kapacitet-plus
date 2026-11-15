@@ -61,6 +61,18 @@ export interface Summary {
   /** the project's own site (its build's site step); null: the reference site's weather and prices */
   site: ProjectSite | null;
   assumptions: Assumption[];
+  /** the meter readings its build took (the meters step); null: none */
+  meters?: ProjectMeters | null;
+}
+
+export interface ProjectMeters {
+  meters: number;
+  customers: number;
+  hours: number;
+  first: string | null;
+  last: string | null;
+  /** the customers whose household load is now their metered one, corrected for temperature */
+  fitted: number | null;
 }
 
 export const NO_SUMMARY: Summary = {

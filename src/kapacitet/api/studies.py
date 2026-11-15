@@ -491,6 +491,63 @@ def diff_run(study_id: str, run: str, body: DiffIn | None = None) -> dict:
     return {"changes": len(out["rows"]), "since": out["from"], "runs": runs_of(study)}
 
 
+# ---------------------------------------------------------------- meter readings (task 2.4)
+
+MAX_METER_BYTES = 50_000_000          # every file of one upload together; more goes in the folder by hand
+
+
+def write_meter_files(folder: Path, files: dict[str, str]) -> list[Path]:
+    """The uploaded readings as the folder's files, in place of what it held: each under its own
+    name only (never a folder the caller names), as .csv."""
+    from ..atomic import write_bytes_atomic
+
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in folder.iterdir():
+        if old.is_file():
+            old.unlink()
+    out = []
+    for name, text in files.items():
+        stem = Path(str(name).replace("\\", "/")).name
+        stem = stem[:-4] if stem.lower().endswith(".csv") else stem
+        if not stem or stem.startswith("."):
+            continue
+        path = folder / f"{stem}.csv"
+        write_bytes_atomic(path, text.encode("utf-8"))
+        out.append(path)
+    return out
+
+
+def check_meter_files(paths: list[Path], keep=None, known=None) -> dict:
+    """The meter check of `paths` (ingest/meters.py, every shape it reads), nothing written."""
+    from ..ingest import meters
+
+    rd = meters.read(paths)
+    try:
+        return meters.check(rd, keep=keep, known=known).to_dict()
+    finally:
+        rd.con.close()
+
+
+class MetersIn(BaseModel):
+    files: dict[str, str] = Field(..., description="file name to the readings as CSV text, in any shape "
+                                                   "ingest/meters.py reads")
+
+
+@router.put("/studies/{study_id}/meters")
+def put_study_meters(study_id: str, body: MetersIn) -> dict:
+    """The study's inputs/meters, written whole, and checked against the study's customers: each
+    station whose customers have readings is built again with them next time."""
+    from ..study.station import _study_customer_ids
+
+    study = _study(study_id)
+    if sum(len(t.encode("utf-8")) for t in body.files.values()) > MAX_METER_BYTES:
+        raise refusal(413, "too_large", what="the readings", mb=MAX_METER_BYTES // 1_000_000)
+    if build_pid(study):
+        raise refusal(409, "study_building", pid=build_pid(study))
+    paths = write_meter_files(study.inputs / "meters", body.files)
+    return {"files": [p.name for p in paths], "report": check_meter_files(paths, known=_study_customer_ids(study))}
+
+
 @router.get("/studies/{study_id}/runs/{run}/files")
 def run_files(study_id: str, run: str) -> dict:
     """Every file of the run, by its path under runs/<run>, with its size."""

@@ -342,6 +342,10 @@ export default function Start({ onKeys, onAbout }: {
                         {t("proj.stop")}
                       </button>
                     )}
+                    {!picked.reference && picked.state !== "building" && (
+                      <MeterUpload id={picked.id} disabled={switching || !role.ok} title={role.reason}
+                        onDone={() => void refresh()} />
+                    )}
                     {picked.state !== "empty" && (
                       <a className="btn ghost" href={projectFileUrl(picked.id)} download>
                         <Icon name="download" size={15} />{t("proj.export")}
@@ -438,5 +442,36 @@ function StudyList({ data, error, picked, onPick }: {
         </>
       )}
     </section>
+  );
+}
+
+/** Meter readings for a project (PUT /datasets/{id}/meters): any shape the reader takes, checked at
+ *  once; its next build uses them, so the card says to build it again. */
+function MeterUpload({ id, disabled, title, onDone }: { id: string; disabled: boolean; title?: string; onDone: () => void }) {
+  const t = useT();
+  const f = useFmt();
+  const upload = async (list: FileList | null) => {
+    if (!list?.length) return;
+    const { readCsvFile } = await import("../lib/decode");
+    const { apiWrite } = await import("../lib/api");
+    const { responseRefusal } = await import("../lib/errors");
+    const files: Record<string, string> = {};
+    for (const file of Array.from(list)) files[file.name] = (await readCsvFile(file)).text;
+    const r = await apiWrite(`/datasets/${id}/meters`, { files }, "PUT");
+    if (!r.ok) return toast.error(await responseRefusal(t, r));
+    const out = (await r.json()) as { files: string[]; report: { usable: boolean; findings: { severity: string }[] } };
+    const problems = out.report.findings.filter((x) => x.severity !== "note").length;
+    (out.report.usable ? log.ok : log.error)(t(out.report.usable ? "proj.metersSaved" : "proj.metersRefused",
+      { n: f(out.files.length), problems: f(problems) }));
+    (out.report.usable ? toast.info : toast.error)(t(out.report.usable ? "proj.metersSaved" : "proj.metersRefused",
+      { n: f(out.files.length), problems: f(problems) }));
+    onDone();
+  };
+  return (
+    <label className="btn ghost" aria-disabled={disabled || undefined} title={title}>
+      <input type="file" accept=".csv,text/csv" multiple className="sr-only" disabled={disabled}
+        onChange={(e) => { const list = e.currentTarget.files; void upload(list).finally(() => { e.target.value = ""; }); }} />
+      <Icon name="upload" size={15} />{t("proj.metersAdd")}
+    </label>
   );
 }

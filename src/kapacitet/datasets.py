@@ -46,7 +46,7 @@ REFERENCE = "reference"
 RESTART = 75                       # the exit code that asks the supervisor for a restart
 PROJECT_SCHEMA = "kapacitet.project/1"
 ORIGIN_KINDS = ("csv", "template", "project_file")
-STEPS = ("import", "households", "site", "profiles", "compute")
+STEPS = ("import", "households", "site", "profiles", "meters", "compute")
 # the envelope studies of a network already built: a second build, offered where the envelopes are on
 ENVELOPE_STEPS = ("envelopes",)
 PARTS = ("capacity", "envelopes")
@@ -271,7 +271,9 @@ def summary(root: Path | None = None) -> dict:
             "site": _read(base / "site.json") or None,
             # new EV chargers by the hourly study, and by the static convention (a constant load)
             "ev_chargers": chargers("ev"), "ev_chargers_static": chargers("flat"),
-            "assumptions": assumptions(grid)}
+            "assumptions": assumptions(grid),
+            # the meter readings the build took (processed/meters/summary.json, the meters step)
+            "meters": _read(base / "meters" / "summary.json") or None}
 
 
 # ---------------------------------------------------------------- which network is in use
@@ -730,6 +732,12 @@ def _real_steps(ds_id: str, workers: int, quick: bool, envelopes: bool = False) 
         check = _annual_check(settings().reference_year)
         return {"annual_kwh": check} if check else {}
 
+    def do_meters():
+        # the customers' readings in inputs/meters, checked and summed to complete hours, and the
+        # metered customers' load in place of their pool profile (profiles/metered.py), as a
+        # station's meters and load steps do; after the profiles, whose weather the fit needs
+        return place_meters(folder(ds_id))
+
     def do_compute():
         # what the four screens of an installation read: the capacity per order, the hourly
         # deployment, the consumption capacity, the request's static baseline, the sensitivity, the
@@ -768,7 +776,47 @@ def _real_steps(ds_id: str, workers: int, quick: bool, envelopes: bool = False) 
         return {"not_written": notes} if notes else {}
 
     return {"import": do_import, "households": do_households, "site": do_site, "profiles": do_profiles,
-            "compute": do_compute, "envelopes": do_envelopes}
+            "meters": do_meters, "compute": do_compute, "envelopes": do_envelopes}
+
+
+def meters_folder(root: Path) -> Path:
+    """Where a project keeps the meter readings it is given (PUT /datasets/{id}/meters)."""
+    return Path(root) / "inputs" / "meters"
+
+
+def place_meters(root: Path) -> dict:
+    """The meters step of a project: processed/meters from inputs/meters, the metered load, and
+    processed/meters/summary.json for its card. Without readings, nothing (and nothing left over)."""
+    import json as _json
+
+    import pandas as pd
+
+    from .ingest import meters
+    from .paths import PROCESSED
+    from .profiles import metered
+
+    out = PROCESSED / "meters"
+    out.mkdir(parents=True, exist_ok=True)
+    for f in out.iterdir():
+        if f.is_file():
+            f.unlink()
+    for f in (PROCESSED / "households").glob("metered_*.npy"):
+        f.unlink()
+    files = meters.meter_files(meters_folder(root))
+    if not files:
+        return {"files": 0}
+    ids = set(pd.read_parquet(PROCESSED / "grid" / "customers.parquet")["osm_id"].astype(str))
+    report, hourly = meters.ingest(files, out, keep=ids)
+    if hourly is None:
+        raise RuntimeError(report.text())
+    fit = metered.build() or {}
+    n = int(hourly["customer_id"].nunique())
+    doc = {"files": len(files), "meters": n, "customers": len(ids), "hours": int(len(hourly)),
+           "first": None if not n else f"{hourly['start'].min():%Y-%m-%d}",
+           "last": None if not n else f"{hourly['start'].max():%Y-%m-%d}",
+           "fitted": ((fit.get("customers") or {}).get("fitted")), "report": report.to_dict()}
+    (out / "summary.json").write_text(_json.dumps(doc, indent=1, default=str), encoding="utf-8")
+    return {k: doc[k] for k in ("files", "meters", "hours", "fitted")}
 
 
 def log_tail(ds_id: str, lines: int = 40) -> list[str]:

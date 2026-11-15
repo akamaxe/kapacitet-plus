@@ -570,8 +570,10 @@ def test_the_meters_step_keeps_the_stations_readings_and_the_load_step_says_what
     assert any("daytime import understates" in t for t in rec["provenance"]["assumed"])
 
     # readings it has to refuse fail the step, and the record says why
+    # (a file wholly in local time is read as Swedish time since task 2.4; one that mixes times with
+    # and without their offset is not, and its naive times are refused)
     bad = meters_tiny.frame(customers=(ids[0],))
-    bad["start"] = bad["start"].str[:19]
+    bad.loc[bad.index[:10], "start"] = bad.loc[bad.index[:10], "start"].str[:19]
     meters_tiny.write(study.inputs / "meters", bad)
     with pytest.raises(RuntimeError, match="UTC offset"):
         station.place_meters(study, sid, rec, note)

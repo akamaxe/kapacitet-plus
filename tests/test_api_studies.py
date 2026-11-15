@@ -189,3 +189,21 @@ def test_the_studies_router_writes_only_in_the_studies_folder(client, studies, t
     client.post(f"{API}/studies/{made['id']}/import", json={})
     after = {p for p in tmp_path.rglob("*") if p.is_file() and studies not in p.parents}
     assert after == before
+
+
+def test_meter_readings_are_uploaded_to_a_study_and_checked_against_its_customers(client, studies):
+    """Task 2.4: the study's inputs/meters, in local time here, checked against every station's customers."""
+    from kapacitet.study import open_study
+
+    made = client.post(f"{API}/studies", json={"kind": "demo"}).json()["study"]
+    study = open_study(studies / made["id"])
+    sid = study.station_ids()[0]
+    import pandas as pd
+
+    customer = str(pd.read_csv(study.station_dir(sid) / "import" / "customers.csv", dtype=str)["customer_id"].iloc[0])
+    rows = "\n".join(f"{customer},2025-05-01T{h:02d}:{m:02d}:00,0.1" for h in range(24) for m in (0, 15, 30, 45))
+    r = client.put(f"{API}/studies/{made['id']}/meters", json={"files": {"lokal.csv": f"customer_id,start,kwh_import\n{rows}\n"}})
+    assert r.status_code == 200, r.text
+    report = r.json()["report"]
+    assert report["usable"] and "meter_local_time" in {f["code"] for f in report["findings"]}
+    assert (study.inputs / "meters" / "lokal.csv").is_file()

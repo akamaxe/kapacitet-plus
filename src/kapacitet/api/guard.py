@@ -137,6 +137,10 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
         "write", "a build process for data/datasets/<id>: its capacity, or (?part=envelopes) its envelope studies",
         "not the network in use, and at most KAPACITET_MAX_BUILDS builds at once; the envelope studies only "
         "where the envelopes are on, for a network that is ready", roles=ADMIN),
+    ("PUT", f"{API}/datasets/{{ds_id}}/meters"): Policy(
+        "write", "data/datasets/<id>/inputs/meters, which its next build reads", "not while it builds", roles=ADMIN),
+    ("PUT", f"{API}/studies/{{study_id}}/meters"): Policy(
+        "write", "the study's inputs/meters, which its next build reads", "not while it builds", roles=PLANNER_UP),
     ("POST", f"{API}/datasets/{{ds_id}}/cancel"): Policy("write", "stops the build process; its record says so",
                                                         "only a build that is running", roles=ADMIN),
     ("DELETE", f"{API}/datasets/{{ds_id}}"): Policy("write", "removes data/datasets/<id>",

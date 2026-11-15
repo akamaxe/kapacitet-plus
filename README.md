@@ -819,9 +819,12 @@ checked like the rest of the contract, into the `existing_*` columns of its cust
 inverter's recorded phase, like a single-phase service's, wins over the phase allocation rule.
 The existing PV is firm in every scenario, at its own kWp and AC rating, and a recorded heat pump
 or charger of a metered customer is taken to be in the metered load rather than added to it; the
-batteries and the chargers' ratings are not modelled yet. Quarter-hour meter readings go in
-`inputs/meters/` as CSV files (`customer_id` or `meter_id`, `start` in ISO 8601 with its UTC
-offset, `kwh_import`, and optionally `kwh_export` and `v_l1`–`v_l3`), comma or semicolon separated.
+batteries and the chargers' ratings are not modelled yet. Meter readings go in `inputs/meters/` as
+CSV files (`customer_id` or `meter_id`, `start` in ISO 8601 with its UTC offset, `kwh_import`, and
+optionally `kwh_export`, `minutes` and `v_l1`–`v_l3`), comma or semicolon separated, or uploaded from
+the study's screen; Swedish local time without an offset, Wh and one row per meter and day with 24
+or 96 columns are read as well (`ingest/meter_formats.py`, docs/study-inputs.md). A project of the
+app takes them too: *Add meter readings…* on its card, and its next build uses them.
 They are read with DuckDB (`ingest/meters.py`) and checked: a time without its offset is refused,
 and a wrong daylight-saving offset, a time off the 15-minute grid, a negative or unreadable value,
 conflicting copies and unmapped meters are left out and counted. An hour counts only with all four

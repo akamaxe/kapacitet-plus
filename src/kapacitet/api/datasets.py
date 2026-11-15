@@ -199,6 +199,36 @@ def rebuild(ds_id: str, part: str = Query("capacity", pattern="^(capacity|envelo
     return ds.record(ds_id)
 
 
+class MetersIn(BaseModel):
+    files: dict[str, str] = Field(..., description="file name to the readings as CSV text, in any shape "
+                                                   "ingest/meters.py reads")
+
+
+@router.put("/datasets/{ds_id}/meters")
+def put_meters(ds_id: str, body: MetersIn) -> dict:
+    """The project's inputs/meters, written whole, and checked against its customers; its next
+    build takes them (the meters step), so the readings change nothing until then."""
+    import pandas as pd
+
+    from .studies import MAX_METER_BYTES, check_meter_files, write_meter_files
+    from .main import api_error
+
+    try:
+        rec = ds.record(ds_id)
+    except ds.DatasetError as err:
+        raise refusal(err, 404) from err
+    if rec.get("status") == "building":
+        raise refusal(ds.DatasetError("building", id=ds_id))
+    if sum(len(t.encode("utf-8")) for t in body.files.values()) > MAX_METER_BYTES:
+        raise api_error(413, "too_large", mb=MAX_METER_BYTES // 1_000_000, tables="meters")
+    root = ds.folder(ds_id)
+    grid = root / "processed" / "grid" / "customers.parquet"
+    ids = (set(pd.read_parquet(grid)["osm_id"].astype(str)) if grid.is_file()
+           else set(pd.read_csv(root / "import" / "customers.csv", dtype=str)["customer_id"].astype(str).str.strip()))
+    paths = write_meter_files(ds.meters_folder(root), body.files)
+    return {"files": [p.name for p in paths], "report": check_meter_files(paths, keep=ids)}
+
+
 @router.post("/datasets/{ds_id}/cancel")
 def cancel_build(ds_id: str) -> dict:
     """Stop a network's build and the processes it started; its record says where it stopped."""

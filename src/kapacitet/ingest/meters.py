@@ -9,6 +9,11 @@ header row:
     kwh_import                energy taken from the grid in the quarter-hour, kWh
     kwh_export                optional: energy fed into the grid, kWh
     v_l1, v_l2, v_l3          optional: the phase voltages, V
+    minutes                   optional: 15 (the default) or 60, for readings by the hour
+
+Readings in Swedish local time without an offset, in Wh, or as one row per meter and day with 24
+or 96 columns are turned into these rows first (ingest/meter_formats.py), and what that did is a
+finding of the report.
 
 The separator is sniffed and a decimal comma is read as a point, so the Swedish Excel dialect
 (`;`, decimal comma) reads as well as RFC 4180. Everything is read as text first, so a value the
@@ -56,6 +61,9 @@ class Readings:
     voltages: list[str] = field(default_factory=list)
     has_export: bool = False
     checked: bool = False
+    # what turning the files into long rows found (meter_formats.normalise): (severity, code, count, params)
+    notes: list = field(default_factory=list)
+    has_minutes: bool = False
 
 
 def meter_files(folder: str | Path) -> list[Path]:
@@ -75,13 +83,26 @@ def read(files: Collection[str | Path]) -> Readings:
     """Every row of `files` as text, in a table `raw` with the column names in lower case."""
     import duckdb
 
+    import tempfile
+
+    from .meter_formats import normalise
+
     files = [Path(f) for f in files]
     con = duckdb.connect()
     con.execute("SET TimeZone='UTC'")
     if not files:
         con.execute("CREATE TABLE raw (file VARCHAR)")
         return Readings(con, files, [], None)
-    listed = "[" + ", ".join(_quote(f.as_posix()) for f in files) + "]"
+    with tempfile.TemporaryDirectory() as tmp:
+        # every shape as long rows first; DuckDB copies the rows in, so the converted files can go
+        readable, notes = normalise(files, Path(tmp))
+        rd = _read_long(con, files, readable)
+    rd.notes = notes
+    return rd
+
+
+def _read_long(con, files: list[Path], readable: list[Path]) -> "Readings":
+    listed = "[" + ", ".join(_quote(f.as_posix()) for f in readable) + "]"
     source = (f"read_csv({listed}, all_varchar = true, header = true, union_by_name = true, "
               "filename = true)")
     names = [r[0] for r in con.execute(f"DESCRIBE SELECT * FROM {source}").fetchall()]
@@ -94,7 +115,7 @@ def read(files: Collection[str | Path]) -> Readings:
     con.execute(f'CREATE TABLE raw AS SELECT row_number() OVER () AS "row", filename AS file, {cols} FROM {source}')
     id_column = next((c for c in ID_COLUMNS if c in picked), None)
     return Readings(con, files, list(picked), id_column, voltages=[v for v in VOLTAGES if v in picked],
-                    has_export="kwh_export" in picked)
+                    has_export="kwh_export" in picked, has_minutes="minutes" in picked)
 
 
 def _number(column: str) -> str:
@@ -112,6 +133,8 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
     (a study's), defaulting to `keep`, and a meter outside it is an unmapped one."""
     con = rd.con
     report = Report(title="Meter readings check")
+    for severity, code, n, params in rd.notes:
+        report.add(severity, "format", code, n, **params)
     report.tables = {"readings": int(con.execute("SELECT count(*) FROM raw").fetchone()[0])}
     if not rd.files or report.tables["readings"] == 0:
         report.add(ERROR, "no readings", "meter_empty")
@@ -126,6 +149,8 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
     exp = _number("kwh_export") if rd.has_export else "NULL::DOUBLE"
     exp_blank = _blank("kwh_export") if rd.has_export else "true"
     volts = "".join(f', {_number(v)} AS "{v}"' for v in rd.voltages)
+    # 60 for a reading of the whole hour, 15 (a quarter-hour) otherwise
+    mins = ("CASE WHEN TRY_CAST(trim(minutes) AS INTEGER) = 60 THEN 60 ELSE 15 END" if rd.has_minutes else "15")
     con.execute(f"""
         CREATE OR REPLACE TABLE parsed AS
         WITH s AS (
@@ -134,7 +159,7 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
                                   '\\1:00\\2') AS start_text,
                    {_number("kwh_import")} AS kwh_import, {_blank("kwh_import")} AS imp_blank,
                    {exp} AS kwh_export, {exp_blank} AS exp_blank,
-                   kwh_import AS imp_text {volts}
+                   kwh_import AS imp_text, {mins} AS minutes {volts}
             FROM raw)
         SELECT *, regexp_extract(start_text, '([Zz]|[+-][0-9]{{2}}(:?[0-9]{{2}})?)$') AS off_text,
                TRY_CAST(start_text AS TIMESTAMPTZ) AS t
@@ -177,7 +202,7 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
              USING (customer_id)""")
     con.execute("CREATE OR REPLACE TABLE flagged AS SELECT *, "
                 "(offsets > 1 OR meter_offsets > 1) AND off_min <> sweden_min AS dst, "
-                "(epoch_us(t) % 900000000) <> 0 AS off_grid, "
+                "(epoch_us(t) % (CAST(minutes AS BIGINT) * 60000000)) <> 0 AS off_grid, "
                 "(NOT imp_blank AND kwh_import IS NULL) OR (NOT exp_blank AND kwh_export IS NULL) AS unreadable, "
                 "imp_blank AS empty, "
                 "coalesce(kwh_import < 0, false) OR coalesce(kwh_export < 0, false) AS negative "
@@ -211,7 +236,7 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
     vsel = "".join(f', "{v}"' for v in rd.voltages)
     con.execute(f"""
         CREATE OR REPLACE TABLE good AS
-        SELECT customer_id, t, kwh_import, kwh_export {vsel} FROM flagged
+        SELECT customer_id, t, minutes, kwh_import, kwh_export {vsel} FROM flagged
         WHERE NOT (dst OR off_grid OR unreadable OR empty OR negative) AND {mine}""")
 
     # copies of one reading: the same values once, different values not at all
@@ -227,7 +252,8 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
         report.add(WARNING, "duplicate reading", "meter_duplicate", int(dup[2]), example=str(dup[3]))
     con.execute(f"""
         CREATE OR REPLACE TABLE quarters AS
-        SELECT customer_id, t, any_value(kwh_import) AS kwh_import, any_value(kwh_export) AS kwh_export
+        SELECT customer_id, t, any_value(minutes) AS minutes, any_value(kwh_import) AS kwh_import,
+               any_value(kwh_export) AS kwh_export
                {''.join(f', any_value("{v}") AS "{v}"' for v in rd.voltages)}
         FROM good GROUP BY customer_id, t
         HAVING count(DISTINCT (coalesce(kwh_import, -1), coalesce(kwh_export, -1))) = 1
@@ -236,13 +262,14 @@ def check(rd: Readings, keep: Collection[str] | None = None, known: Collection[s
 
     # gaps, and how many hours are complete
     per = con.execute("""
-        WITH q AS (SELECT customer_id, min(t) AS first, max(t) AS last, count(*) AS present
-                   FROM quarters GROUP BY customer_id),
+        WITH q AS (SELECT customer_id, min(t) AS first, max(t) AS last, count(*) AS present,
+                          max(minutes) AS step FROM quarters GROUP BY customer_id),
              h AS (SELECT customer_id, count(*) AS complete FROM
-                     (SELECT customer_id, date_trunc('hour', t) AS hr FROM quarters GROUP BY 1, 2 HAVING count(*) = 4)
+                     (SELECT customer_id, date_trunc('hour', t) AS hr FROM quarters GROUP BY 1, 2
+                      HAVING (count(*) = 4 AND max(minutes) = 15) OR (count(*) = 1 AND max(minutes) = 60))
                    GROUP BY customer_id)
         SELECT q.customer_id, present,
-               CAST((epoch(last) - epoch(first)) / 900 AS BIGINT) + 1 AS span,
+               CAST((epoch(last) - epoch(first)) / (60 * step) AS BIGINT) + 1 AS span,
                coalesce(h.complete, 0) AS complete,
                CAST((epoch(date_trunc('hour', last)) - epoch(date_trunc('hour', first))) / 3600 AS BIGINT) + 1 AS hours
         FROM q LEFT JOIN h USING (customer_id) ORDER BY q.customer_id""").fetchdf()
@@ -278,8 +305,10 @@ def to_hourly(rd: Readings, folder: str | Path | None = None) -> pd.DataFrame:
     con = rd.con
     df = con.execute("""
         SELECT customer_id, date_trunc('hour', t) AS start, sum(kwh_import) AS kwh_import,
-               CASE WHEN count(kwh_export) = 4 THEN sum(kwh_export) END AS kwh_export
-        FROM quarters GROUP BY 1, 2 HAVING count(*) = 4 ORDER BY 1, 2""").fetchdf()
+               CASE WHEN count(kwh_export) = count(*) THEN sum(kwh_export) END AS kwh_export
+        FROM quarters GROUP BY 1, 2
+        HAVING (count(*) = 4 AND max(minutes) = 15) OR (count(*) = 1 AND max(minutes) = 60)
+        ORDER BY 1, 2""").fetchdf()
     start = pd.DatetimeIndex(pd.to_datetime(df["start"], utc=True)).as_unit("ns")
     df["start"] = start
     # an hour's year is its calendar year in UTC+1, its position the hours since that year's
@@ -298,11 +327,13 @@ def to_hourly(rd: Readings, folder: str | Path | None = None) -> pd.DataFrame:
         if rd.voltages:
             cols = ", ".join(f'"{v}"' for v in rd.voltages)
             target = (folder / "voltage_15min.parquet").as_posix()
-            con.execute(f"COPY (SELECT customer_id, t AS start, {cols} FROM quarters ORDER BY customer_id, t) "
+            con.execute(f"COPY (SELECT customer_id, t AS start, {cols} FROM quarters WHERE minutes = 15 "
+                        "ORDER BY customer_id, t) "
                         f"TO {_quote(target)} (FORMAT PARQUET)")
         if rd.has_export:
             target = (folder / "export_15min.parquet").as_posix()
-            con.execute("COPY (SELECT customer_id, t AS start, kwh_export FROM quarters WHERE kwh_export IS NOT NULL "
+            con.execute("COPY (SELECT customer_id, t AS start, kwh_export FROM quarters "
+                        "WHERE kwh_export IS NOT NULL AND minutes = 15 "
                         f"ORDER BY customer_id, t) TO {_quote(target)} (FORMAT PARQUET)")
     return df
 
