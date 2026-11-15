@@ -95,10 +95,47 @@ def create(path: Path, stations: int) -> list[str]:
     return made
 
 
-def _timed(args: list[str]) -> dict:
+def _timed(args: list[str], memory: list | None = None, every_s: float = 15.0) -> dict:
+    """A command with a clock around it; with `memory`, the machine's free memory sampled every
+    `every_s` while it runs (kapacitet.machine.free_memory), appended to that list."""
+    import threading
+
+    from kapacitet.machine import free_memory
+
+    stop = threading.Event()
     t0 = time.perf_counter()
+
+    def sample() -> None:
+        while True:
+            m = free_memory()
+            if m:
+                memory.append({"t": round(time.perf_counter() - t0, 1),
+                               **{k: None if v is None else round(v, 2) for k, v in m.items()}})
+            if stop.wait(every_s):
+                return
+
+    watcher = threading.Thread(target=sample, daemon=True) if memory is not None else None
+    if watcher:
+        watcher.start()
     code = subprocess.run([sys.executable, "-m", "kapacitet", *args]).returncode
+    stop.set()
+    if watcher:
+        watcher.join(timeout=every_s + 1)
     return {"command": "kapacitet " + " ".join(args), "seconds": round(time.perf_counter() - t0, 1), "exit": code}
+
+
+def memory_summary(samples: list[dict]) -> dict | None:
+    """The least free memory the samples saw: what the acceptance of task 2.7 reads (at least 2 GB
+    of commit free with the default number of processes)."""
+    if not samples:
+        return None
+
+    def least(key: str):
+        values = [s[key] for s in samples if s.get(key) is not None]
+        return min(values) if values else None
+
+    return {"samples": len(samples), "min_available_gb": least("available_gb"),
+            "min_commit_free_gb": least("commit_free_gb"), "total_gb": samples[0].get("total_gb")}
 
 
 def run(path: Path, jobs: int | None, full: bool, run_id: str | None) -> dict:
@@ -108,13 +145,14 @@ def run(path: Path, jobs: int | None, full: bool, run_id: str | None) -> dict:
     study = open_study(path)
     q = run_id or runs.current(study.config.publication.cadence)
     build = ["study", "build", str(path)] + ([] if full else ["--quick"]) + (["--jobs", str(jobs)] if jobs else [])
-    steps = [_timed(build)]
+    samples: list[dict] = []
+    steps = [_timed(build, samples)]
     if steps[0]["exit"] in (0, 1):                 # 1: some station failed; the others are still collected
         steps.append(_timed(["study", "collect", str(path), "--run", q]))
         if steps[-1]["exit"] == 0:
             steps.append(_timed(["study", "publish", str(path), "--run", q]))
     doc = {"run": q, "mode": "full" if full else "quick", "jobs": jobs, "steps": steps, "machine": machine(),
-           "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
+           "memory": memory_summary(samples), "at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
     (path / "scale.json").write_text(json.dumps(doc, indent=1), encoding="utf-8")
     return doc
 
@@ -126,6 +164,12 @@ def machine() -> dict:
 
 def folder_bytes(folder: Path) -> int:
     return sum(p.stat().st_size for p in folder.rglob("*") if p.is_file())
+
+
+def linked_bytes(folder: Path) -> int:
+    """What of `folder` is hard links (more than one name for the same data, such as the household
+    pool a station links from the reference network): counted in its size, kept on disk once."""
+    return sum(st.st_size for st in (p.stat() for p in folder.rglob("*") if p.is_file()) if st.st_nlink > 1)
 
 
 def measure(path: Path) -> dict:
@@ -142,13 +186,15 @@ def measure(path: Path) -> dict:
                      "status": rec.get("status"), "quick": bool(rec.get("quick")),
                      "compute_s": steps.get("compute"), "profiles_s": steps.get("profiles"),
                      "build_s": round(sum(v for v in steps.values() if v), 1) if steps else None,
-                     "disk_mb": round(folder_bytes(folder) / 1e6, 1)})
+                     "disk_mb": round(folder_bytes(folder) / 1e6, 1), "linked_mb": round(linked_bytes(folder) / 1e6, 1),
+                     "peak_memory_mb": rec.get("peak_memory_mb")})
     scale = path / "scale.json"
     ready = [r for r in rows if r["status"] == "ready"]
     return {"study": study.id, "stations": len(rows), "ready": len(ready),
             "customers": sum(r["customers"] or 0 for r in rows),
             "build_s_sum": round(sum(r["build_s"] or 0.0 for r in ready), 1),
             "disk_mb": round(sum(r["disk_mb"] for r in rows), 1),
+            "linked_mb": round(sum(r.get("linked_mb") or 0.0 for r in rows), 1),
             "study_disk_mb": round(folder_bytes(path) / 1e6, 1),
             "wall": json.loads(scale.read_text(encoding="utf-8")) if scale.exists() else None, "rows": rows}
 
@@ -164,13 +210,23 @@ def table(doc: dict) -> str:
                      f"{cell(r['profiles_s'])} | {cell(r['compute_s'])} | {cell(r['build_s'])} | {r['disk_mb']} |")
     lines += ["", f"{doc['ready']} of {doc['stations']} stations ready, {doc['customers']} customers; the builds add up "
                   f"to {doc['build_s_sum']} s of station time and the stations to {doc['disk_mb']} MB "
-                  f"(the whole study folder: {doc['study_disk_mb']} MB)."]
+                  f"(the whole study folder: {doc['study_disk_mb']} MB), of which {doc.get('linked_mb', 0.0)} MB "
+                  "are hard links, such as the household pool linked from the reference network, kept on disk once."]
+    peaks = [r["peak_memory_mb"] for r in doc["rows"] if r.get("peak_memory_mb")]
+    if peaks:
+        lines.append(f"A station process took at most {max(peaks):.0f} MB (its peak commit, as each station "
+                     "recorded it).")
     wall = doc.get("wall")
     if wall:
         m = wall["machine"]
         lines += ["", f"Wall clock ({wall['mode']} mode, {wall['jobs'] or 'default'} station processes at a time, "
                       f"{m['cores']} cores, {m['platform']}):", ""]
         lines += [f"- `{s['command']}`: {s['seconds']} s, exit {s['exit']}" for s in wall["steps"]]
+        mem = wall.get("memory")
+        if mem:
+            commit = "unknown" if mem.get("min_commit_free_gb") is None else f"{mem['min_commit_free_gb']:.1f} GB"
+            lines += ["", f"While it built, the least free memory was {mem['min_available_gb']:.1f} GB and the "
+                          f"least commit free {commit} ({mem['samples']} samples, of {mem.get('total_gb') or 0:.0f} GB)."]
     return "\n".join(lines)
 
 

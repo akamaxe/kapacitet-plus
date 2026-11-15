@@ -47,7 +47,7 @@ import warnings
 from pathlib import Path
 from typing import Callable
 
-from .. import paths, procs, telemetry
+from .. import machine, paths, procs, telemetry
 from . import PROVENANCE, SCHEMA, Study, StudyError, code_version, value_digest
 from .config import METHOD_VERSION
 
@@ -92,6 +92,8 @@ def build(study: Study, sid: str, quick: bool = False,
                               what="station build")
         sp.set(outcome=out.get("status"))
     out["pid"] = None
+    # what this process took at most: the next build of the study runs as many at once as that allows
+    out["peak_memory_mb"] = machine.peak_memory_mb()
     study.save(out)
     return out
 

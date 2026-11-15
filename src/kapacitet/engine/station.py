@@ -32,8 +32,14 @@ phases (three_phase_min_known_share) there is no three-phase figure, and the blo
 
 The weakest point (`worst_point`). Each customer's residual headroom for a constant addition, by
 the linear model (request.export_headroom_all / import_headroom_all) on today's grid in every
-hour of the record; the WORST_K lowest are then searched with the nonlinear flow and confirmed on
-every hour, and the lowest of them is the station's weakest point.
+hour of the record; the WORST_K lowest are then searched with the nonlinear flow on their tightest
+hours, and the lowest of them is confirmed on every hour (searched again with any hour it missed).
+Each of the others is then solved on every hour at that figure: one that holds it has at least as
+much room; one that does not is weaker, and is confirmed in turn. The station's weakest point is the
+lowest confirmed, with a figure that passes every hour and one just above that does not: the same
+customer and figure as confirming every candidate at its own figure (`confirm="all"`, kept to
+compare), whose rounds of searching again cost more than the capacity search itself (finding H18 of
+the technical review of 14-11-2026).
 """
 
 from __future__ import annotations
@@ -58,6 +64,7 @@ STUDY_ORDERS = 21
 QUICK_ORDERS = 5
 WORST_K = 5                  # customers the weakest-point search confirms with the nonlinear flow
 WORST_MAX_KW = 250.0
+WORST_TOP = 24               # hours of each year each candidate is searched on first: a round less to search again
 EXPORT_LIMITS = ("voltage", "cable", "transformer", "nonconverged")
 IMPORT_LIMITS = EXPORT_LIMITS
 
@@ -771,16 +778,24 @@ def add_constant(p: np.ndarray, q: np.ndarray, j: int, kw: float, side: str) -> 
 
 
 def worst_point(model: NetModel, side: str = "export", years=None, hp=None, ev=None, k: int = WORST_K,
-                top: int = hosting.CANDIDATES_PER_YEAR, max_kw: float = WORST_MAX_KW, max_rounds: int = 20) -> dict:
+                top: int = WORST_TOP, max_kw: float = WORST_MAX_KW, max_rounds: int = 20,
+                confirm: str = "best") -> dict:
     """The customer with the least room for a constant addition on `side` ("export": generation,
     "import": consumption) on today's grid, at `model`'s MV voltage.
 
     The linear headroom of every customer in every hour (request.export_headroom_all or
     import_headroom_all, on request.build_state of today's grid) ranks them; the `k` lowest are
-    searched with the nonlinear flow on their `top` tightest hours of each year, confirmed on every
-    hour (each one solved), searched again with any hour they missed, and the lowest
-    confirmed value is the weakest point: it passes on every hour, and `hi` (a bisection step
-    above it) does not."""
+    searched with the nonlinear flow on their `top` tightest hours of each year. The lowest of
+    them is confirmed on every hour (each one solved) and searched again with any hour it missed,
+    until it holds. Every other candidate is then solved on every hour at that figure: one that
+    holds it (`holds_weakest`) has at least that much room; one that breaks a limit is weaker, is
+    searched again with the hours it broke and confirmed, and its figure becomes the one the rest
+    are checked at. The weakest point is the lowest confirmed: it passes on every hour while
+    `above_kw` (a bisection step above it) does not. `confirm="all"` confirms every candidate at its
+    own figure, as before, and keeps the lowest. In `checked`, a candidate not confirmed has the
+    room of its tightest hours, which can only be more than its room on every hour."""
+    if confirm not in ("best", "all"):
+        raise ValueError(f"confirm is 'best' or 'all', not {confirm!r}")
     years = _years(years)
     hp, ev = _masks(model.C, hp, ev)
     cust = customers()
@@ -804,8 +819,9 @@ def worst_point(model: NetModel, side: str = "export", years=None, hp=None, ev=N
     cand = {int(j): {y: np.argpartition(head[y][j], min(top, head[y].shape[1]) - 1)[:top].astype(int)
                      for y, _, _ in states} for j in ranked}
     value, upper = {}, {}
-    todo = [int(j) for j in ranked]
-    for _ in range(max_rounds):
+
+    def search(todo: list[int]) -> None:
+        """Bisect each of `todo` on its candidate hours, all of them in one batch of flows."""
         P, Q, rows, owner = [], [], [], []
         for t, j in enumerate(todo):
             for y, p, q in states:
@@ -816,22 +832,59 @@ def worst_point(model: NetModel, side: str = "export", years=None, hp=None, ev=N
                 owner.append(np.full(len(h), t))
         lo, hi = _bisect(model, np.concatenate(P, axis=1), np.concatenate(Q, axis=1), np.concatenate(rows),
                          np.concatenate(owner), len(todo), side, max_kw)
-        failed = []
         for t, j in enumerate(todo):
             value[j], upper[j] = float(lo[t]), float(hi[t])
-            for y, p, q in states:
-                missed = crit(*add_constant(p, q, j, value[j], side))
-                if len(missed):
-                    cand[j][y] = np.union1d(cand[j][y], missed).astype(int)
-                    failed.append(j)
-        if not failed:
-            break
-        log.info("worst point: %d customers met a limit outside their candidate hours; searching again",
-                 len(set(failed)))
-        todo = sorted(set(failed))
+
+    def breaks(c: int, kw: float) -> bool:
+        """Whether `kw` at customer c breaks a limit in some hour (every hour solved); those hours
+        join its candidates."""
+        found = False
+        for y, p, q in states:
+            hours = crit(*add_constant(p, q, c, kw, side))
+            if len(hours):
+                cand[c][y] = np.union1d(cand[c][y], hours).astype(int)
+                found = True
+        return found
+
+    def confirm_one(c: int) -> None:
+        """Search c again with every hour its figure broke until its figure holds on every hour."""
+        for _ in range(max_rounds):
+            if not breaks(c, value[c]):
+                return
+            log.info("worst point: customer %d met a limit outside its candidate hours; searching again", c)
+            search([c])
+        raise RuntimeError(f"worst_point: customer {c} not confirmed after {max_rounds} rounds")
+
+    search([int(j) for j in ranked])
+    confirmed: set[int] = set()
+    holds: set[int] = set()
+    if confirm == "all":
+        todo = [int(j) for j in ranked]
+        for _ in range(max_rounds):
+            failed = [c for c in todo if breaks(c, value[c])]
+            confirmed |= set(todo) - set(failed)
+            if not failed:
+                break
+            log.info("worst point: %d customers met a limit outside their candidate hours; searching again",
+                     len(failed))
+            todo = sorted(set(failed))
+            search(todo)
+        else:
+            raise RuntimeError(f"worst_point: {len(todo)} customers not confirmed after {max_rounds} rounds")
+        j = min(confirmed, key=lambda c: (value[c], c))
     else:
-        raise RuntimeError(f"worst_point: {len(todo)} customers not confirmed after {max_rounds} rounds")
-    j = min(value, key=lambda c: (value[c], c))
+        order = sorted((int(c) for c in ranked), key=lambda c: (value[c], float(linear[c]), c))
+        j = order[0]
+        confirm_one(j)
+        confirmed.add(j)
+        for c in order[1:]:
+            if not breaks(c, value[j]):
+                holds.add(c)                  # c has at least j's room on every hour
+                continue
+            confirm_one(c)                    # weaker than j: its hours that broke are its candidates now
+            confirmed.add(c)
+            if (value[c], c) < (value[j], j):
+                j = c
     y_min = int(states[int(np.argmin(per_year_min[:, j]))][0])
     worst = {"limit": None}
     if upper[j] < max_kw:
@@ -839,7 +892,10 @@ def worst_point(model: NetModel, side: str = "export", years=None, hp=None, ev=N
     out.update(status="ok", cid=j, customer_id=str(cust.loc[j, "osm_id"]) if "osm_id" in cust.columns else str(j),
                kw=value[j], above_kw=upper[j], linear_kw=float(linear[j]), year=y_min,
                hour=int(np.argmin(head[y_min][j])), binding=worst,
-               checked=[{"cid": int(c), "kw": value[c], "linear_kw": float(linear[c])} for c in ranked])
+               confirm=confirm,
+               checked=[{"cid": int(c), "kw": value[c], "linear_kw": float(linear[c]),
+                         "confirmed": int(c) in confirmed, "holds_weakest": int(c) in holds or int(c) in confirmed}
+                        for c in ranked])
     return out
 
 

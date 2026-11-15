@@ -6,8 +6,11 @@ without data, on a study of two stations and on made-up records.
 """
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
 TOOL = ROOT / "tools" / "study_scale.py"
@@ -78,12 +81,50 @@ def test_the_table_reads_each_stations_own_record(tmp_path):
     assert "- `kapacitet study build d --quick --jobs 2`: 300.5 s, exit 0" in m.table(m.measure(tmp_path / "scale"))
 
 
-def test_the_document_carries_no_timing_until_the_measurement_is_run():
-    """The page says how to measure, and has no seconds or megabytes of its own to go stale."""
+def test_the_document_keeps_its_figures_in_one_dated_section():
+    """The page says how a study uses the machine and how to measure it; its seconds and its
+    megabytes and gigabytes are only in the dated section, which names the machine and the commit."""
     import re
 
     text = DOC.read_text(encoding="utf-8")
-    assert "has not been measured beyond three stations" in text and "has not been made" in text
-    assert not re.search(r"\b\d+(?:[.,]\d+)?\s*(?:s|seconds|min|minutes|h|hours|MB)\b", text.split("## The measurement")[0])
+    before, _, measured = text.partition("## Measured on ")
+    assert measured, "the dated section of figures is missing"
+    assert not re.search(r"\b\d+(?:[.,]\d+)?\s*(?:s|seconds|min|minutes|h|hours|MB|GB)\b", before)
+    assert re.search(r"commit [0-9a-f]{7}", measured) and "16 GB" in measured and "12 cores" in measured
     for command in ("create", "run", "measure"):
         assert f"tools/study_scale.py {command} " in text
+
+
+SCALE = os.environ.get("KAPACITET_SCALE_TEST") == "1"
+
+
+@pytest.mark.skipif(not SCALE, reason="five stations built for real: KAPACITET_SCALE_TEST=1 (the weekly data suite sets it)")
+def test_five_quick_stations_build_and_say_how_long(tmp_path):
+    """A study of five stations built in quick mode with the default number of processes, timed
+    (task 2.7): the data suite writes the table to its summary, so a slower build shows from one
+    week to the next. It needs the reference network's weather and household pool."""
+    import time
+
+    from test_study import _has_reference_profiles
+
+    from kapacitet.study import open_study, portfolio
+
+    if not _has_reference_profiles():
+        pytest.skip("no reference weather and household pool (run: python -m kapacitet all)")
+    m = _load()
+    m.create(tmp_path / "scale", 5)
+    study = open_study(tmp_path / "scale")
+    t0 = time.perf_counter()
+    out = portfolio.run(study, quick=True, timeout=1800)
+    wall = time.perf_counter() - t0
+    doc = m.measure(tmp_path / "scale")
+    how = out["jobs"]
+    text = (m.table(doc) + f"\n\nWall clock {wall:.0f} s, {how['jobs']} station processes at a time "
+            f"(decided by {how['basis']}).")
+    print(text)
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as fh:
+            fh.write("## Five quick stations\n\n" + text + "\n")
+    assert all(r["status"] == "ready" for r in out["built"].values()), out["built"]
+    assert doc["ready"] == 5 and all(r["peak_memory_mb"] for r in doc["rows"])

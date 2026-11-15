@@ -33,6 +33,31 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **A study builds as many stations at once as the memory holds.** `study build` no longer runs six
+  station processes by default: it runs what the free memory holds (the smaller of the memory
+  available and the commit left, less 2 GB kept for the rest of the machine), at the largest peak a
+  station of the study recorded in the same mode, or 1.5 GB before one has, and never more than the
+  cores. `--jobs` still decides when given, and `study cases`, `options`, `devplan` and `scenarios`
+  follow the same rule. The build says how many and why. Each station records the most memory its
+  process took (`peak_memory_mb`): on the laptop it was measured on, 1.1 GB for 12 customers and
+  1.7 GB for 146 in quick mode. While a study builds, Windows is asked not to suspend
+  (`SetThreadExecutionState`); a jump of the clock all the same (a lid closed) is said after the
+  build and marked on each station that was building then (`suspended_s`), since its seconds include
+  that time. A station still runs in its own process: its imports cost about 3 s
+  (`python -X importtime`), against the risk of one station's caches or paths reaching the next.
+- **The weakest point takes fewer flows, with the same answer.** The five customers with the least
+  linear headroom are searched with the nonlinear flow on their tightest hours, as before; the lowest
+  is confirmed on every hour, and each of the other four is solved on every hour at that figure only:
+  one that breaks a limit there is weaker, and is confirmed in turn. Before, each of the five was
+  confirmed at its own figure, with its own rounds of searching again (`worst_point(confirm="all")`,
+  kept to compare). The candidates are also searched on the 24 tightest hours of each year at the
+  start, not 3, which saves rounds. On the 13 example networks in quick mode (generation at both ends
+  of the MV band, consumption at the low end), both ways give the same customer and figure in all 39
+  cases, in 231 s against 532 s; a small network with nothing to search again takes as long as before.
+- **`tools/study_scale.py`** samples the free memory while the build runs and reports the least,
+  counts hard links apart (the household pool a station links from the reference network is kept on
+  disk once, though each station's folder counts it), and shows each station's peak. The weekly data
+  suite builds five stations and writes their table to its summary.
 - **A project can have a site of its own.** The last step of *New project* takes its position (the
   export's transformer, or typed) and its bidding zone, which is chosen, never guessed
   (`POST /datasets` `site`). The build's new `site` step finds the nearest SMHI temperature station

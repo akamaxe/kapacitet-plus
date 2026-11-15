@@ -36,3 +36,9 @@ jobs:
           python -m kapacitet unbundle "$RUNNER_TEMP/kapacitet-data.zip" --expect-sha256 "$sha"
           test -f data/processed/results/showcase.json
       - run: python -m pytest -p no:cacheprovider -rfE
+      # five stations of a synthetic study built for real, with the default number of processes; the
+      # table of seconds, disk and memory goes to the run's summary (task 2.7 of the technical review)
+      - name: Build five stations and time them
+        env:
+          KAPACITET_SCALE_TEST: "1"
+        run: python -m pytest tests/test_study_scale.py -k five -p no:cacheprovider -rfE -s

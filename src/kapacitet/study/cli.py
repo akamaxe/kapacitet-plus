@@ -44,7 +44,9 @@ def register(sub: argparse._SubParsersAction) -> None:
     q = add("check", "data-quality report on every station's network")
     q.add_argument("--station", action="append", default=None, help="only this station (repeatable)")
     q = add("build", "build the stations whose inputs changed, side by side")
-    q.add_argument("--jobs", type=int, default=None, help="station processes at a time (default: 6, at most the cores)")
+    q.add_argument("--jobs", type=int, default=None,
+                   help="station processes at a time (default: what the free memory holds, 2 GB kept free, "
+                        "at most the cores)")
     q.add_argument("--force", action="store_true", help="build every station again")
     q.add_argument("--quick", action="store_true", help="one weather year and fewer adoption orders")
     q.add_argument("--prefer-identified", action="store_true",
@@ -234,7 +236,10 @@ def _build(args) -> None:
 
     study = open_study(args.dir, allow_git=args.allow_git)
     out = run(study, stations=args.station, jobs=args.jobs, force=args.force, quick=args.quick,
-              allow_git=args.allow_git, prefer_identified=args.prefer_identified)
+              allow_git=args.allow_git, prefer_identified=args.prefer_identified, announce=_announce)
+    for gap in out.get("suspended") or []:
+        print(f"  the machine was away from {gap['from']} to {gap['to']} ({gap['seconds'] / 60:.0f} min): "
+              "the stations building then took that much longer than their seconds say")
     for sid, why in out["skipped"].items():
         print(f"  {sid}: {why}, not built")
     for sid, r in out["built"].items():
@@ -242,6 +247,21 @@ def _build(args) -> None:
         print(f"  {sid}: {r['status']} in {r['seconds']:.0f} s{tail}")
     if any(r["status"] != "ready" for r in out["built"].values()):
         sys.exit(1)
+
+
+def _announce(todo: list[str], how: dict) -> None:
+    """The line before a build: how many stations, how many at once, and what decided it."""
+    n, jobs = len(todo), how["jobs"]
+    head = f"Building {n} station{'s' if n != 1 else ''}, {jobs} at a time"
+    if how["basis"] == "asked":
+        print(f"{head} (--jobs).", flush=True)
+        return
+    if how.get("free_gb") is None:
+        print(f"{head}: the free memory could not be read.", flush=True)
+        return
+    each = "as a build of this study measured" if how.get("per_station") == "measured" else "until a build measures it"
+    print(f"{head}: {how['free_gb']:.1f} GB free, {how['per_station_gb']:.1f} GB a station ({each}), "
+          f"{how['keep_free_gb']:.0f} GB kept free, {how['cores']} cores.", flush=True)
 
 
 def _status(args) -> None:

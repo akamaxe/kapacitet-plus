@@ -328,16 +328,15 @@ def run_stations(study: Study, action: str, batch: str, work: dict[str, dict], j
     each wrote, or {"failed": code} for a station whose process did not finish. `runner` stands in
     for the process in a test: runner(study, sid, action, batch) -> exit code. The work files go
     in cases/<batch>/work, or in `work_dir`."""
-    import os
-
-    from .portfolio import MAX_JOBS
+    from .portfolio import jobs_for
 
     folder = work_dir or batch_dir(study, batch) / "work"
     for sid, doc in work.items():
         write_json_atomic(folder / f"{sid}.json", doc)
         (study.station_dir(sid) / action / f"{batch}.json").unlink(missing_ok=True)
     run = runner or (lambda st, sid, act, b: spawn(st, sid, act, b, allow_git=allow_git))
-    n = max(1, min(jobs or MAX_JOBS, os.cpu_count() or 1, len(work) or 1))
+    # as many at once as the free memory holds for a station process (study build's rule), or --jobs
+    n = jobs_for(study, len(work) or 1, jobs, None)["jobs"]
 
     def one(sid: str) -> dict:
         code = run(study, sid, action, batch)

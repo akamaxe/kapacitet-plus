@@ -268,6 +268,25 @@ def test_the_worst_point_passes_the_nonlinear_check_and_fails_just_above(tiny_pr
         assert violating(w["kw"]) == 0
         assert violating(w["kw"] + 1e-3) > 0
         assert w["binding"]["limit"] in es.EXPORT_LIMITS
+        # the weakest confirmed on every hour, and every other candidate holds its figure there
+        assert next(c for c in w["checked"] if c["cid"] == w["cid"])["confirmed"]
+        assert all(c["holds_weakest"] for c in w["checked"])
+
+
+@pytest.mark.parametrize("side,vm", [("export", 1.06), ("export", 0.98), ("import", 1.02), ("import", 1.04)])
+def test_confirming_the_lowest_finds_what_confirming_all_five_finds(tiny_processed, side, vm):
+    """The weakest point confirmed for the lowest candidate, the others only checked at its figure
+    (task 2.7), is the customer and the figure that confirming all five on every hour gives."""
+    from kapacitet.engine import station as es
+    from kapacitet.engine.netmodel import get_model
+
+    with tiny_grid(tiny_processed):
+        m = get_model(vm_slack=vm)
+        best, every = es.worst_point(m, side, YEARS), es.worst_point(m, side, YEARS, confirm="all")
+        assert every["status"] == best["status"] == "ok"
+        assert (best["cid"], best["kw"], best["above_kw"]) == (every["cid"], every["kw"], every["above_kw"])
+        assert all(c["confirmed"] for c in every["checked"])
+        assert best["binding"] == every["binding"]
 
 
 # ---------------------------------------------------------------- measured validation

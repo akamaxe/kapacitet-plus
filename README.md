@@ -833,7 +833,8 @@ A station's figures (Module 1, `engine/station.py`) go to `processed/results/cap
   the band, with the static winter count as a reference. A grid that already breaks an import
   limit today is a finding with its hours, never 0 kW.
 - **Weakest point**: every customer's linear headroom on today's grid, the five lowest searched
-  and confirmed with the nonlinear flow on every hour.
+  with the nonlinear flow on their tightest hours, and the lowest of them confirmed on every hour:
+  a figure that holds in every hour and one just above it that does not.
 - **Verification**: each published deployment is solved on every hour of every year; a count the
   searches' linear screens accepted but the full check does not is stepped down until it passes.
 - **Three-phase check** (`three_phase`): both published deployments solved again on every hour

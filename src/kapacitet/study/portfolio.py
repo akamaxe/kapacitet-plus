@@ -1,8 +1,12 @@
 """A study's stations, built side by side: a bounded pool of station processes, incremental.
 
 `run` starts `kapacitet station build <sid> --study <dir>` for every station that needs it, at most
-`jobs` at a time (six by default, what 16 GB holds, and never more than the machine's cores). Each
-runs as its own process, with its own environment:
+`jobs` at a time. By default that is what the free memory holds (machine.station_jobs): 2 GB kept for
+the rest of the machine, and per station the largest peak a build of this study recorded in the same
+mode, or 1.5 GB before one has; never more than the cores. While it builds, Windows is asked not to
+suspend, and a jump of the clock is said. Each station runs as its own process, with its own
+environment (a process per station costs about 3 s of imports, measured with -X importtime, against
+the risk of one station's caches or paths reaching the next):
 
     KAPACITET_DATA_DIR       stations/<sid>        the only folder it writes
     KAPACITET_HOME           <study>
@@ -29,11 +33,11 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Callable
 
-from .. import paths, procs, seals
+from .. import machine, paths, procs, seals
 from . import NOT_A_TRIGGER, Study, StudyError
 from .config import METHOD_VERSION
 
-MAX_JOBS = 6
+PEAK_MARGIN = 1.1          # a station's recorded peak, with this margin, is what the next build reserves for it
 BUILD = ("forced", "never built", "failed", "inputs changed", "method changed", "mode changed", "interrupted")
 
 
@@ -101,10 +105,37 @@ def command(study: Study, sid: str, quick: bool = False, allow_git: bool = False
     return cmd
 
 
+def per_station_gb(study: Study, quick: bool | None) -> tuple[float, str]:
+    """What a station process takes at most, in GB, and how that is known: the largest peak a build
+    of this study recorded in the same mode (any mode for None; station.json `peak_memory_mb`), with PEAK_MARGIN
+    ("measured"), or machine.STATION_GB before any did ("default")."""
+    peaks = []
+    for sid in study.station_ids():
+        rec = study.record(sid)
+        if rec.get("peak_memory_mb") and (quick is None or bool(rec.get("quick")) == bool(quick)):
+            peaks.append(float(rec["peak_memory_mb"]))
+    if peaks:
+        return max(peaks) / 1024 * PEAK_MARGIN, "measured"
+    return machine.STATION_GB, "default"
+
+
+def jobs_for(study: Study, todo: int, jobs: int | None, quick: bool | None) -> dict:
+    """How many station processes run at once, and why (machine.station_jobs's account, or
+    {"basis": "asked"} for --jobs, which still never exceeds the cores or the stations)."""
+    if jobs:
+        return {"jobs": max(1, min(jobs, os.cpu_count() or 1, todo)), "basis": "asked"}
+    per, how = per_station_gb(study, quick)
+    return {**machine.station_jobs(todo, per), "per_station": how}
+
+
 def run(study: Study, stations: list[str] | None = None, jobs: int | None = None, force: bool = False,
         quick: bool = False, allow_git: bool = False, timeout: float | None = None,
-        make_command: Callable[[Study, str], list[str]] | None = None, prefer_identified: bool = False) -> dict:
-    """Build what needs building; returns {"built": {sid: outcome}, "skipped": {sid: reason}}.
+        make_command: Callable[[Study, str], list[str]] | None = None, prefer_identified: bool = False,
+        announce: Callable[[list[str], dict], None] | None = None) -> dict:
+    """Build what needs building; returns {"built": {sid: outcome}, "skipped": {sid: reason},
+    "jobs": how many at once and why, "suspended": the clock's jumps while it built}. A station
+    that was building during a jump has its `suspended_s`, in its outcome and its record: its
+    seconds include that time. `announce(todo, jobs)` is told before the first station starts.
     `make_command` replaces the station process's command line (a test's stand-in). Refused while
     another process builds the same study."""
     holder = procs.claim(lock(study))
@@ -115,24 +146,46 @@ def run(study: Study, stations: list[str] | None = None, jobs: int | None = None
         todo = [sid for sid, r in why.items() if r in BUILD]
         skipped = {sid: r for sid, r in why.items() if r not in BUILD}
         if not todo:
-            return {"built": {}, "skipped": skipped}
-        n = max(1, min(jobs or MAX_JOBS, os.cpu_count() or 1, len(todo)))
+            return {"built": {}, "skipped": skipped, "jobs": None, "suspended": []}
+        how = jobs_for(study, len(todo), jobs, quick)
+        if announce:
+            announce(todo, how)
 
         def one(sid: str) -> dict:
             cmd = make_command(study, sid) if make_command else command(study, sid, quick, allow_git, prefer_identified)
             return _run_one(study, sid, cmd, timeout)
 
-        with ThreadPoolExecutor(max_workers=n) as ex:
+        with machine.awake() as gaps, ThreadPoolExecutor(max_workers=how["jobs"]) as ex:
             built = dict(zip(todo, ex.map(one, todo)))
-        return {"built": built, "skipped": skipped}
+        _mark_suspended(study, built, list(gaps))
+        return {"built": built, "skipped": skipped, "jobs": how, "suspended": list(gaps)}
     finally:
         lock(study).unlink(missing_ok=True)
+
+
+def _mark_suspended(study: Study, built: dict[str, dict], gaps: list[dict]) -> None:
+    """Each station whose build spans a jump of the clock gets how long the machine was away."""
+    from datetime import datetime
+
+    spans = [(datetime.fromisoformat(g["from"]).timestamp(), datetime.fromisoformat(g["to"]).timestamp())
+             for g in gaps]
+    for sid, out in built.items():
+        start, end = out.pop("_wall", (None, None))
+        if start is None or not spans:
+            continue
+        away = sum(max(0.0, min(end, b) - max(start, a)) for a, b in spans)
+        if away > 0:
+            out["suspended_s"] = round(away, 1)
+            rec = study.record(sid)
+            rec["suspended_s"] = out["suspended_s"]
+            study.save(rec)
 
 
 def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> dict:
     folder = study.station_dir(sid)
     folder.mkdir(parents=True, exist_ok=True)
     t0 = time.perf_counter()
+    wall0 = time.time()
     code: int | None
     with open(folder / procs.LOG, "ab") as log:
         log.write(f"\n=== {procs.now()} {' '.join(cmd)}\n".encode("utf-8"))
@@ -148,7 +201,7 @@ def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> d
         # another live process holds the station (it refused to start): its build and its lock
         # are its own, and stay as they are
         return {"status": "building", "code": code, "seconds": round(time.perf_counter() - t0, 1),
-                "error": f"station {sid} is being built by another process"}
+                "error": f"station {sid} is being built by another process", "_wall": (wall0, time.time())}
     if error and (rec.get("status") != "failed" or code is None):
         # the process ended before it could say so itself: say it here, in its record only
         rec.update(status="failed", error=error, finished=procs.now(), pid=None)
@@ -158,7 +211,7 @@ def _run_one(study: Study, sid: str, cmd: list[str], timeout: float | None) -> d
         study.save(rec)
         procs.lock_path(folder).unlink(missing_ok=True)
     return {"status": rec["status"], "code": code, "seconds": round(time.perf_counter() - t0, 1),
-            "error": rec.get("error")}
+            "error": rec.get("error"), "_wall": (wall0, time.time())}
 
 
 def validate(study: Study, stations: list[str] | None = None, allow_git: bool = False,
