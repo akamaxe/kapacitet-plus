@@ -668,7 +668,7 @@ class ExportCheck(BaseModel):
 
 @app.get(f"{API}/cable-types", tags=["contract"])
 def cable_types() -> dict:
-    """The catalogue of Swedish low-voltage cables (config/cable_types_se.csv): each type with its
+    """The catalogue of Swedish low-voltage cables (config/cable_types_se.toml): each type with its
     electrical data, its rating and its manufacturer's source, for an export's cable_types.csv."""
     from ..importer.cables import catalogue
 

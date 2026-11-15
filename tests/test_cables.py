@@ -16,6 +16,7 @@ from __future__ import annotations
 import csv
 import io
 import re
+import tomllib
 
 import pytest
 from fastapi.testclient import TestClient
@@ -59,12 +60,12 @@ def built(files: dict[str, str]):
 # ------------------------------------------------------------------------------------ the catalogue
 
 def test_every_type_of_the_catalogue_cites_its_source():
-    with open(cables.CATALOGUE, encoding="utf-8", newline="") as fh:
-        rows = list(csv.DictReader(fh))
+    with open(cables.CATALOGUE, "rb") as fh:
+        rows = tomllib.load(fh)["cable"]
     assert len(rows) >= 6
     for row in rows:
         name = row["type"]
-        assert row["source"].strip() and row["rating"].strip(), name
+        assert row["source"].strip() and row["rating"].strip() and row["note"].strip(), name
         assert re.match(r"https://\S+$", row["url"]), name
         assert re.fullmatch(r"20\d\d-\d\d-\d\d", row["accessed"]), name
         values = {k: float(row[k]) for k in cables.FIELDS}
@@ -78,8 +79,8 @@ def test_a_type_without_its_source_does_not_enter(tmp_path, monkeypatch, blank):
     row = {"type": "X 4x50", "r_ohm_per_km": "0.6", "x_ohm_per_km": "0.07", "c_nf_per_km": "0",
            "max_i_ka": "0.1", "source": "a datasheet", "url": "https://example.org/x.pdf",
            "accessed": "2026-11-15", blank: ""}
-    path = tmp_path / "cable_types_se.csv"
-    path.write_text(as_text([row]), encoding="utf-8")
+    path = tmp_path / "cable_types_se.toml"
+    path.write_text("[[cable]]\n" + "".join(f'{k} = "{v}"\n' for k, v in row.items()), encoding="utf-8")
     monkeypatch.setattr(cables, "CATALOGUE", path)
     cables.catalogue.cache_clear()
     try:

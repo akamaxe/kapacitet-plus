@@ -1,0 +1,96 @@
+# Swedish low-voltage cable types, for a network export's cable names (importer/cables.py).
+#
+# Each type has its resistance (r, ohm/km), reactance (x, ohm/km), capacitance (c, nF/km) and
+# current rating (max_i, kA) from its manufacturer's datasheet, with the document (source), its
+# address (url) and the day it was read (accessed). A type without the three does not enter the
+# catalogue (cables.catalogue refuses it), and tests/test_cables.py checks every one.
+
+[[cable]]
+type = "AXQJ 4x50/16"
+conductor = "Al"
+cores = 4
+section_mm2 = 50
+r_ohm_per_km = 0.641
+x_ohm_per_km = 0.066
+c_nf_per_km = 0.0
+max_i_ka = 0.117
+rating = "three-phase, buried directly in the ground (D2), ground 20 °C, conductor 90 °C"
+source = "Nexans, AXQJ Easy 1 kV 4X50/16: max. DC resistance of the conductor at 20 °C 0.641 ohm/km, nominal inductance 0.21 mH/km; current ratings of the AXQJ/IFSI/AMCMK HF Easy 1 kV family, aluminium, D2"
+url = "https://www.nexans.no/en/products/Building-Wires-and-Cables/Low-fire-hazard-cables/Low-fire-hazard-Installation-cables/IFSI-EASY™-1-kV/product~10573741~.html"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the nominal inductance; r is the datasheet's at 20 °C; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"
+
+[[cable]]
+type = "AXQJ 4x95/29"
+conductor = "Al"
+cores = 4
+section_mm2 = 95
+r_ohm_per_km = 0.32
+x_ohm_per_km = 0.0534
+c_nf_per_km = 0.0
+max_i_ka = 0.172
+rating = "three-phase, buried directly in the ground (D2), ground 20 °C, conductor 90 °C"
+source = "Nexans, AXQJ Easy 1 kV 4X95/29: max. DC resistance of the conductor at 20 °C 0.32 ohm/km, nominal inductance 0.17 mH/km; current ratings of the AXQJ/IFSI/AMCMK HF Easy 1 kV family, aluminium, D2"
+url = "https://www.nexans.no/en/products/Building-Wires-and-Cables/Low-fire-hazard-cables/Low-fire-hazard-Installation-cables/IFSI-EASY™-1-kV/product~10573742~.html"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the nominal inductance; r is the datasheet's at 20 °C; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"
+
+[[cable]]
+type = "AXQJ 4x150/41"
+conductor = "Al"
+cores = 4
+section_mm2 = 150
+r_ohm_per_km = 0.206
+x_ohm_per_km = 0.0471
+c_nf_per_km = 0.0
+max_i_ka = 0.22
+rating = "three-phase, buried directly in the ground (D2), ground 20 °C, conductor 90 °C"
+source = "Nexans, AXQJ Easy 1 kV 4X150/41: max. DC resistance of the conductor at 20 °C 0.206 ohm/km, nominal inductance 0.15 mH/km; current ratings of the AXQJ/IFSI/AMCMK HF Easy 1 kV family, aluminium, D2"
+url = "https://www.nexans.no/en/products/Building-Wires-and-Cables/Low-fire-hazard-cables/Low-fire-hazard-Installation-cables/IFSI-EASY™-1-kV/product~10573743~.html"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the nominal inductance; r is the datasheet's at 20 °C; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"
+
+[[cable]]
+type = "AXQJ 4x240/72"
+conductor = "Al"
+cores = 4
+section_mm2 = 240
+r_ohm_per_km = 0.125
+x_ohm_per_km = 0.0408
+c_nf_per_km = 0.0
+max_i_ka = 0.343
+rating = "three-phase, buried directly in the ground (D2), ground 20 °C, conductor 90 °C"
+source = "Nexans, AXQJ Easy 1 kV 4X240/72: max. DC resistance of the conductor at 20 °C 0.125 ohm/km, nominal inductance 0.13 mH/km; current ratings of the AXQJ/IFSI/AMCMK HF Easy 1 kV family, aluminium, D2"
+url = "https://www.nexans.no/en/products/Building-Wires-and-Cables/Low-fire-hazard-cables/Low-fire-hazard-Installation-cables/IFSI-EASY™-1-kV/product~10573745~.html"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the nominal inductance; r is the datasheet's at 20 °C; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"
+
+[[cable]]
+type = "N1XV 4x10"
+conductor = "Cu"
+cores = 4
+section_mm2 = 10
+r_ohm_per_km = 1.83
+x_ohm_per_km = 0.0873
+c_nf_per_km = 0.0
+max_i_ka = 0.0927
+rating = "single cable in the ground, ground 20 °C, 1.0 K.m/W, 0.7 m deep"
+source = "NKT, N1XV Cu 0,6/1 kV datasheet CTL00201 rev. 1: 4x10 RE, max. effective resistance at 20 °C 1.83 ohm/km, inductance 0.278 mH/km, current carrying capacity single cable in ground 92.7 A"
+url = "https://nkt.widen.net/content/4nd6fzuegt/pdf/Datasheet_N1XV_Cu_0_6_1_kV_EN_12705.pdf"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the inductance; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"
+
+[[cable]]
+type = "N1XV 4x16"
+conductor = "Cu"
+cores = 4
+section_mm2 = 16
+r_ohm_per_km = 1.15
+x_ohm_per_km = 0.0829
+c_nf_per_km = 0.0
+max_i_ka = 0.1209
+rating = "single cable in the ground, ground 20 °C, 1.0 K.m/W, 0.7 m deep"
+source = "NKT, N1XV Cu 0,6/1 kV datasheet CTL00201 rev. 1: 4x16 RM, max. effective resistance at 20 °C 1.15 ohm/km, inductance 0.264 mH/km, current carrying capacity single cable in ground 120.9 A"
+url = "https://nkt.widen.net/content/4nd6fzuegt/pdf/Datasheet_N1XV_Cu_0_6_1_kV_EN_12705.pdf"
+accessed = "2026-11-15"
+note = "x = 2 pi 50 Hz times the inductance; the datasheet gives no capacitance, so c = 0 (its charging is negligible at 0.4 kV)"

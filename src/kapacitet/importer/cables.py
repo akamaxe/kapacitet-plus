@@ -3,7 +3,7 @@
 A NIS names its cables its own way ("AXQJ 4x150/41", "N1XE-AR 4G150"), which pandapower's library does
 not know (H1 of the technical review of 14-11-2026). Two things meet that:
 
-- the **catalogue**, `config/cable_types_se.csv`: common Swedish LV cables with their resistance,
+- the **catalogue**, `config/cable_types_se.toml`: common Swedish LV cables with their resistance,
   reactance, capacitance and current rating, each row with the manufacturer's document it comes from,
   its address and the day it was read. A type without a source does not enter (`catalogue` refuses it);
 - the optional table **`cable_types.csv`** of an export: each name of `lines.csv`'s std_type translated to
@@ -16,21 +16,21 @@ error of the check that names it.
 
 from __future__ import annotations
 
-import csv
 import math
+import tomllib
 
 import pandas as pd
 
 from ..cache import memo
 from ..paths import CONFIG
 
-CATALOGUE = CONFIG / "cable_types_se.csv"
+CATALOGUE = CONFIG / "cable_types_se.toml"
 FIELDS = ("r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka")
 SOURCE = ("source", "url", "accessed")
 
 
 class CatalogueError(ValueError):
-    """config/cable_types_se.csv has a row that cannot be used."""
+    """config/cable_types_se.toml has a type that cannot be used."""
 
 
 @memo(maxsize=1)
@@ -38,21 +38,22 @@ def catalogue() -> dict[str, dict]:
     """The catalogue by type: its electrical data as numbers, its rating and its source. A row
     without its source, its address or the day it was read is refused, as is one without a number."""
     out: dict[str, dict] = {}
-    with open(CATALOGUE, encoding="utf-8", newline="") as fh:
-        for row in csv.DictReader(fh):
-            name = (row.get("type") or "").strip()
-            if not name:
-                continue
-            missing = [k for k in SOURCE if not (row.get(k) or "").strip()]
-            if missing:
-                raise CatalogueError(f"{name}: without its {', '.join(missing)} a type does not enter the catalogue")
-            try:
-                values = {k: float(row[k]) for k in FIELDS}
-            except (KeyError, TypeError, ValueError):
-                raise CatalogueError(f"{name}: r, x, c and max_i are numbers") from None
-            if values["r_ohm_per_km"] <= 0 or values["max_i_ka"] <= 0:
-                raise CatalogueError(f"{name}: r and max_i are positive")
-            out[name] = {**{k: (v or "").strip() for k, v in row.items()}, **values}
+    with open(CATALOGUE, "rb") as fh:
+        rows = tomllib.load(fh).get("cable", [])
+    for row in rows:
+        name = str(row.get("type") or "").strip()
+        if not name:
+            continue
+        missing = [k for k in SOURCE if not str(row.get(k) or "").strip()]
+        if missing:
+            raise CatalogueError(f"{name}: without its {', '.join(missing)} a type does not enter the catalogue")
+        try:
+            values = {k: float(row[k]) for k in FIELDS}
+        except (KeyError, TypeError, ValueError):
+            raise CatalogueError(f"{name}: r, x, c and max_i are numbers") from None
+        if values["r_ohm_per_km"] <= 0 or values["max_i_ka"] <= 0:
+            raise CatalogueError(f"{name}: r and max_i are positive")
+        out[name] = {**{k: v.strip() if isinstance(v, str) else v for k, v in row.items()}, **values}
     return out
 
 

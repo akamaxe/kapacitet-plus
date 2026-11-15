@@ -18,7 +18,7 @@ export interface CableName {
 export interface CableType {
   type: string;
   conductor: string;
-  section_mm2: string;
+  section_mm2: number;
   max_i_ka: number;
   source: string;
   url: string;

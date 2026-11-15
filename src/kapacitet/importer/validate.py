@@ -99,7 +99,7 @@ MESSAGES = {
     "coordinates_converted": ("lon/lat are SWEREF 99 TM metres, for example E {e} and N {n}: converted to degrees, "
                               "{lat}, {lon} there"),
     "cable_map_type": ("cable_types.csv translates {name} to {type}, which the catalogue does not have, and gives no "
-                       "electrical data of its own: name a type of config/cable_types_se.csv, or give r, x, c and max_i"),
+                       "electrical data of its own: name a type of config/cable_types_se.toml, or give r, x, c and max_i"),
     "coordinates_out_of_range": "lon/lat outside the range of degrees, for example {lon}, {lat}",
     "coordinates_outside_sweden": "buses with coordinates outside Sweden, for example {lon}, {lat}",
     "required_blank": "{table}.csv has rows without {column}, for example {key} {example}",

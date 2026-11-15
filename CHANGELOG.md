@@ -67,9 +67,9 @@ Changes before 12 November 2026 are only in that history.
   weather, the prices and the households come from. Without a site, the reference site's, as before.
 - **Swedish cable types, and a table for the names of a network information system.** A NIS names
   its cables its own way (`AXQJ 4x150/41`, `N1XE-AR 4G150`), which pandapower's library does not
-  know. `config/cable_types_se.csv` is a catalogue of Swedish low-voltage cables with their
-  resistance, reactance, capacitance and current rating, each row with its manufacturer's
-  datasheet, its address and the day it was read; a type without them is refused. It starts with
+  know. `config/cable_types_se.toml` is a catalogue of Swedish low-voltage cables with their
+  resistance, reactance, capacitance and current rating, each type with its manufacturer's
+  datasheet, its address and the day it was read; a type without them is refused. The catalogue is TOML, like the rest of config/. It starts with
   AXQJ 4x50/16 to 4x240/72 (Nexans) and N1XV 4x10 and 4x16 (NKT); the datasheets give no
   capacitance, so it is 0 and the row says so. An export can bring an optional `cable_types.csv`
   that translates each name of `lines.csv` to a catalogue type or to its own data, and the build

@@ -55,7 +55,7 @@ resultat, som beräknas på nytt där filen öppnas.
 
 Kabelnamn som programmet inte känner till stoppar kontrollen, med namnet och antalet sträckor. I
 steg 2 översätter du varje namn till en typ i katalogen över svenska kablar
-(`config/cable_types_se.csv`, där varje typ har sin tillverkares datablad), och översättningen sparas
+(`config/cable_types_se.toml`, där varje typ har sin tillverkares datablad), och översättningen sparas
 som projektets `cable_types.csv`. Exporten kan också ha med en egen `cable_types.csv`, som översätter
 namnen till katalogtyper eller till egna data.
 

@@ -84,7 +84,7 @@ Optional. What is already connected behind each meter: solar PV, batteries, EV c
 
 ## `cable_types.csv` (optional)
 
-Optional. How the network information system names its cables, translated: each std_type of lines.csv to a type of Kapacitet+'s catalogue of Swedish cables (config/cable_types_se.csv, every row with its manufacturer's source), or to its own electrical data. A name neither this table, the catalogue nor pandapower's library knows is an error that names it.
+Optional. How the network information system names its cables, translated: each std_type of lines.csv to a type of Kapacitet+'s catalogue of Swedish cables (config/cable_types_se.toml, every type with its manufacturer's source), or to its own electrical data. A name neither this table, the catalogue nor pandapower's library knows is an error that names it.
 
 | column | unit | required | meaning | if missing |
 | --- | --- | --- | --- | --- |
