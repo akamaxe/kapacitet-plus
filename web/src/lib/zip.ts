@@ -63,10 +63,14 @@ async function inflate(data: Uint8Array, expected: number): Promise<Uint8Array> 
 }
 
 /**
- * The files of an archive by name (the last part of the path; folders are skipped). Two entries
- * with one name, an entry outside the limits or one this cannot read refuse the whole archive.
+ * The files of an archive by name (the last part of the path; folders are skipped), or with
+ * `keys = "path"` by their whole path inside the archive, with "/" between its parts (a study's
+ * archive holds one folder per station, each with the same file names). Two entries with one key,
+ * a path that climbs out of the archive, an entry outside the limits or one this cannot read refuse
+ * the whole archive.
  */
-export async function readZip(buf: ArrayBuffer, limits: ZipLimits = PROJECT_LIMITS): Promise<Map<string, Uint8Array>> {
+export async function readZip(buf: ArrayBuffer, limits: ZipLimits = PROJECT_LIMITS,
+  keys: "name" | "path" = "name"): Promise<Map<string, Uint8Array>> {
   const bytes = new Uint8Array(buf);
   const view = new DataView(buf);
   // the end record is the last thing in the file, before a comment of at most 65 535 bytes
@@ -112,7 +116,9 @@ export async function readZip(buf: ArrayBuffer, limits: ZipLimits = PROJECT_LIMI
     if (start + packed > bytes.length) throw new ZipError("corrupt");
     const data = bytes.subarray(start, start + packed);
     if (method === 0 && packed !== size) throw new ZipError("corrupt");
-    const name = path.split(/[\\/]/).pop() ?? path;
+    const parts = path.split(/[\\/]/).filter((x) => x !== "" && x !== ".");
+    if (keys === "path" && (parts.includes("..") || /^[A-Za-z]:/.test(path))) throw new ZipError("corrupt");
+    const name = keys === "path" ? parts.join("/") : (path.split(/[\\/]/).pop() ?? path);
     if (out.has(name)) throw new ZipError("corrupt");
     out.set(name, method === 0 ? data.slice() : await inflate(data, size));
   }

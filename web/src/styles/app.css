@@ -2686,6 +2686,44 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .new-cables h3 { margin: 0; font-size: var(--text-h3); font-weight: 600; }
 .new-cables table.data select { min-width: 26ch; max-width: 100%; }
 .new-cables-done { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; }
+.new-name { display: grid; gap: var(--space-1); max-width: 40ch; font-size: var(--text-small); font-weight: 500; }
+
+/* ---------------------------------------------------------------- a study of many stations (screens/Study.tsx) */
+.start-studies { margin-top: var(--space-6); }
+.study { display: flex; flex-direction: column; gap: var(--space-5); }
+.study .block { display: flex; flex-direction: column; gap: var(--space-3); }
+.study .block > p { margin: 0; }
+.study-layout { display: grid; grid-template-columns: minmax(160px, 220px) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.study-tree { position: sticky; top: var(--space-2); max-height: 60vh; overflow-y: auto; border-right: 1px solid var(--border); padding-right: var(--space-2); }
+.study-tree ul { list-style: none; margin: 0; padding: 0; }
+.study-tree button { display: flex; align-items: center; gap: var(--space-2); width: 100%; min-height: 32px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: none; color: var(--text-secondary); font: inherit; font-size: var(--text-small); text-align: left; cursor: pointer; }
+.study-tree button:hover { background: var(--bg-inset); color: var(--text-primary); }
+.study-tree button[aria-current="true"] { background: var(--accent-quiet); color: var(--text-primary); font-weight: 600; }
+.study-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--border-strong); }
+.study-dot[data-state="ready"] { background: var(--good-fill); }
+.study-dot[data-state="building"] { background: var(--warning-fill); }
+.study-dot[data-state="failed"] { background: var(--danger-fill); }
+.study-log { margin: 0; padding: var(--space-2) var(--space-3); max-height: 8.5em; overflow: auto; background: var(--bg-inset); border-radius: var(--radius-sm); font-size: var(--text-caption); white-space: pre-wrap; color: var(--text-secondary); }
+.study-run-pick { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
+.study-steps { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--border); max-width: 92ch; }
+.study-step { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; gap: var(--space-3); align-items: center; padding: var(--space-3) 0; border-bottom: 1px solid var(--border); }
+.study-step-mark { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border: 1px solid var(--border-strong); border-radius: 50%; color: var(--good); }
+.study-step[data-done] .study-step-mark { border-color: var(--good); background: var(--good-quiet); }
+.study-step-body { display: grid; gap: var(--space-1); min-width: 0; }
+.study-step-body .caption-muted { font-size: var(--text-small); }
+.study-signer { display: grid; gap: var(--space-1); max-width: 44ch; font-size: var(--text-small); }
+.study-findings { margin: 0; padding-left: var(--space-5); font-size: var(--text-small); color: var(--warning); }
+.study-files { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-1); max-width: 92ch; font-size: var(--text-small); }
+.study-files li { display: flex; justify-content: space-between; gap: var(--space-3); padding: var(--space-1) 0; border-bottom: 1px solid var(--border); }
+.study-files a { display: inline-flex; align-items: center; gap: var(--space-2); overflow-wrap: anywhere; }
+@media (max-width: 900px) {
+  .study-layout { grid-template-columns: minmax(0, 1fr); }
+  .study-tree { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--border); padding: 0 0 var(--space-2); }
+  .study-tree ul { display: flex; flex-wrap: wrap; gap: var(--space-1); }
+  .study-tree button { width: auto; }
+  .study-step { grid-template-columns: 24px minmax(0, 1fr); }
+  .study-step > .btn { grid-column: 2; justify-self: start; }
+}
 .nt-name { color: var(--text-primary); font-weight: 500; }
 .nt-fact { color: var(--text-secondary); text-align: right; white-space: nowrap; }
 .new-form { align-items: flex-start; gap: var(--space-3); }

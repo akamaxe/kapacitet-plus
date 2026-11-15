@@ -8,6 +8,18 @@ Changes before 12 November 2026 are only in that history.
 
 ### Added
 
+- **A study of many stations in the workbench.** The start window lists the studies of the studies'
+  folder (`KAPACITET_STUDY_DIR`), and *New study…* (also in the File menu) makes the demonstration,
+  an empty study, or one from contract folders (a .zip with one folder per station, read in the
+  browser) or from CGMES files with their table of customers. A study's screen (`#/study?id=`)
+  builds its stations in a process of its own, with each station's step as it goes, shows each
+  one's state, published capacities, binding limits and margin, and takes a run through collect,
+  review, sign, publish and compare, with every file of the run to download. Opening a study
+  restarts nothing: it is read from its folder. The routes (`/api/v1/studies…`, `api/studies.py`)
+  call what `kapacitet study` calls, and a test checks that what the app publishes is byte for byte
+  what the command publishes; they are the API's third place to write. Signing takes the approver's
+  or the administrator's role, the rest a planner's.
+
 - **A start window, and projects.** The interface opens on the projects of the server: the
   reference network and every network made in the app. *New project…* makes one in three steps
   from a network export (four CSV tables), from one of thirteen example networks (pandapower's

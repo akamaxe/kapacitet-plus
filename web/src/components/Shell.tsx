@@ -197,12 +197,13 @@ export function StatusBar({ onKeys }: { onKeys: () => void }) {
         </span>
       )}
       <OutputLast />
-      <span className="sb-legend">
+      {/* what is real and what synthetic in the open project: not what a study shows */}
+      {view !== "study" && <span className="sb-legend">
         {!(example && borrowed) && <span><Mark kind="real" />{ownSite
           ? t(example ? "tb.real.siteOnExample" : "tb.real.site", { zone: ownSite.zone }) : pt("tb.real")}</span>}
         <span><Mark kind="synthetic" />{cables ? t("tb.synthetic.withCables", { n: f(cables.count) }) : pt("tb.synthetic")}</span>
         {borrowed && <span><Mark kind="reference" />{t("tb.borrowed")}</span>}
-      </span>
+      </span>}
       <div className="sb-lang" role="group" aria-label={t("shell.language")}>
         {LANGS.map((l) => (
           <button key={l} className="sb-btn" lang={l} aria-pressed={lang === l} title={LANG_NAMES[l]} onClick={() => void setLang(l)}>

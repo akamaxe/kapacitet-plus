@@ -195,6 +195,7 @@ from .operation import router as operation_router  # noqa: E402
 from .publications import router as publications_router  # noqa: E402
 from .setup import closed_because as setup_closed_because  # noqa: E402
 from .setup import router as setup_router  # noqa: E402
+from .studies import router as studies_router  # noqa: E402
 
 app.include_router(evidence_router)
 app.include_router(operation_router)
@@ -204,6 +205,7 @@ app.include_router(datasets_router)
 app.include_router(setup_router)
 app.include_router(auth_router)
 app.include_router(publications_router)
+app.include_router(studies_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]

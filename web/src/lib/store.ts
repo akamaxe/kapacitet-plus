@@ -4,7 +4,7 @@ import { isLang, loadLang, type Lang } from "./i18n/core";
 export type Screen = "national" | "twin" | "compare" | "request" | "operation" | "report" | "scenarios" | "method";
 export const SCREENS: Screen[] = ["national", "twin", "compare", "request", "operation", "report", "scenarios", "method"];
 /** The start window (the projects) or the workbench of the project that is open. */
-export type View = "start" | "work";
+export type View = "start" | "work" | "study";
 /** The screen a project opens on the first time; afterwards it opens where it was left. */
 export const OPENING: Screen = "compare";
 export type Scenario = "static" | "uncontrolled" | "doe" | "hourly";
@@ -35,7 +35,7 @@ function writeLS(key: string, value: string) {
 /**
  * `#/<screen>?hour=…&scenario=…&cid=…` — what someone is looking at, so a view can be
  * sent to a colleague and a figure in a report can be traced back to it. `#/start`, or an address
- * with nothing after it, is the start window.
+ * with nothing after it, is the start window; `#/study?id=<study>` is a study of many stations.
  *
  * Only things that change what the numbers mean travel: the hour, the scenario, the selected
  * house and, on the request screen, the saved assessment being read (`job`). A link that
@@ -63,7 +63,12 @@ export interface UrlView {
   date?: string;
   /** the network the link was made on (an imported one; the reference network writes none) */
   ds?: string;
+  /** a study of many stations, by its id (`#/study?id=`) */
+  study?: string;
 }
+
+/** A study's id: its folder's name (study.valid_id on the server). */
+export const STUDY_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
 
 /** A saved assessment's id (data/requests/<id>.json.gz). */
 export const JOB_ID = /^[0-9a-f]{12}$/;
@@ -74,6 +79,10 @@ export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 export function parseHash(hash: string = window.location.hash): UrlView {
   const raw = hash.replace(/^#\/?/, "");
   const [path, search] = raw.split("?");
+  if (path === "study") {
+    const id = new URLSearchParams(search ?? "").get("id");
+    return id && STUDY_ID.test(id) ? { screen: OPENING, study: id } : { screen: OPENING, start: true };
+  }
   const known = (SCREENS as string[]).includes(path);
   const screen = known ? (path as Screen) : OPENING;
   const q = new URLSearchParams(search ?? "");
@@ -114,7 +123,7 @@ let written = "";
 
 /** The parts of the view a link carries. */
 export type LinkedView = Pick<State, "screen" | "hourTouched" | "hour" | "scenario" | "selectedCid" | "job"> &
-  Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset" | "view">>;
+  Partial<Pick<State, "basis" | "policy" | "opDate" | "dataset" | "view" | "study">>;
 
 /** The basis a report opens on: what is issued the day before. Perfect foresight is the planning
  *  bound, which nobody can issue, so it is the one a link has to ask for. */
@@ -124,6 +133,8 @@ export const DEFAULT_BASIS: Basis = "dayahead";
 export function hashFor(st: LinkedView): string {
   // the start window is the same place on every project, so it carries nothing else
   if (st.view === "start") return "#/start";
+  // a study is read from its folder, whatever project is open: its id is all the link needs
+  if (st.view === "study" && st.study) return `#/study?id=${encodeURIComponent(st.study)}`;
   const q = new URLSearchParams();
   // omit anything at its default, and anything this screen does not read: an hour on the
   // method appendix is noise in a link somebody is meant to paste somewhere
@@ -207,7 +218,11 @@ interface State {
   /** a link named a screen that does not exist; App says so once */
   notFound: string | null;
   /** what the start window was asked to begin on arriving: a new project, from the file given or from nothing */
-  startIntent: { file: File | null } | null;
+  startIntent: { file: File | null; study?: boolean } | null;
+  /** the study of many stations on screen in the study view (its folder's name) */
+  study: string | null;
+  /** open a study: the study view, with its id in the address */
+  openStudy: (study: string) => void;
   /** the project the start window was asked to show on arriving (the search found it) */
   startPick: string | null;
   /** the project tree is open beside the screen (a wide window), not folded to its rail */
@@ -246,7 +261,8 @@ function storedScreen(): Screen {
 }
 
 export const useStore = create<State>((set) => ({
-  view: initial.start ? "start" : "work",
+  view: initial.study ? "study" : initial.start ? "start" : "work",
+  study: initial.study ?? null,
   screen: initial.start ? storedScreen() : initial.screen,
   // an unknown stored language would leave every lookup empty, so it falls back to English
   lang: ((v) => (isLang(v) ? v : "en"))(readLS("kap.lang", "en")),
@@ -287,6 +303,10 @@ export const useStore = create<State>((set) => ({
   },
   setView: (view) => {
     set({ view });
+    writeHash(true);
+  },
+  openStudy: (study) => {
+    set({ view: "study", study });
     writeHash(true);
   },
   setLang: async (lang) => {
@@ -373,7 +393,8 @@ function onHashChange() {
   written = window.location.hash;
   useStore.setState({
     // the start window keeps the screen the project was on, for when it is opened again
-    ...(v.start ? { view: "start" as const } : { view: "work" as const, screen: v.screen }),
+    ...(v.study ? { view: "study" as const, study: v.study }
+      : v.start ? { view: "start" as const } : { view: "work" as const, screen: v.screen }),
     ...(v.hour !== undefined ? { hour: v.hour, hourTouched: true } : {}),
     ...(v.scenario ? { scenario: v.scenario } : {}),
     // a link without a parameter means "this screen", not "forget what I had selected"

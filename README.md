@@ -23,8 +23,9 @@ as four CSV tables or as CGMES ([Running it on someone else's network](#running-
   through the static study and the hourly study: every weather year with all it asks for. A request
   either study connects firm is approved in a queue that checks every weather year again with the
   full power flow, and the next request meets the grid with it in place.
-- **Many substations.** `kapacitet study` builds a DSO's stations, each in its own process, then
-  collects, reviews, signs and publishes a quarter's run ([A study of many stations](#a-study-of-many-stations)).
+- **Many substations.** A study builds a DSO's stations, each in its own process, then collects,
+  reviews, signs and publishes a quarter's run, from the start window or with `kapacitet study`
+  ([A study of many stations](#a-study-of-many-stations)).
 
 The dynamic operating envelopes, the Sweden screen, the 2030 scenarios and the applicant's portal
 stay in the code and are off unless an installation switches them on
@@ -725,17 +726,29 @@ inside a git working tree, or when one is kept in a `datasets/` folder inside on
 `tests/test_no_data_committed.py` fails when anything under `data/`, or a data file outside
 `tests/fixtures/`, is tracked.
 
-The API writes to two places: `data/requests/` of the network in use, and `data/datasets/`.
-A third, only on a copy without results and only when `KAPACITET_SETUP_UPLOAD=1`: the data bundle
-uploaded from the setup page, unpacked into `data/processed/` and `data/raw/` and nowhere else.
+The API writes to three places: `data/requests/` of the network in use, `data/datasets/`, and the
+studies' folder (`KAPACITET_STUDY_DIR`, by default `%USERPROFILE%\kapacitet-studies`), where the
+studies made and built from the app live. A fourth, only on a copy without results and only when
+`KAPACITET_SETUP_UPLOAD=1`: the data bundle uploaded from the setup page, unpacked into
+`data/processed/` and `data/raw/` and nowhere else.
 
 ### A study of many stations
 
 A DSO's network is hundreds of secondary substations, not one. A *study* is a folder of its own
 that holds them, kept outside the code and outside any git work tree (by default
 `%USERPROFILE%\kapacitet-studies\<id>`, or `KAPACITET_STUDY_DIR`), because it holds the DSO's data.
-What hundreds of stations cost in time and disk has not been measured beyond three:
-[docs/study-scale.md](docs/study-scale.md) says how to measure it.
+What a study costs in time, memory and disk, and how to measure it on another machine, is in
+[docs/study-scale.md](docs/study-scale.md): twenty stations in quick mode took 15 minutes on a
+laptop, with as many station processes at once as its free memory held.
+
+In the app, the start window lists the studies of the studies' folder, and *New study…* makes the
+demonstration (three synthetic stations), an empty study, or one from contract folders (a .zip with
+one folder per station) or from CGMES files with their table of customers. The study's screen
+builds the stations, shows each one's state, its capacity for generation and consumption, the limit
+that binds and its margin, and takes a run through collect, review, sign, publish and compare, with
+the files of the run to download. A study is read from its folder, so opening one restarts nothing,
+and every step calls the code the command line calls (`api/studies.py`): what the app publishes is,
+byte for byte, what `study publish` publishes (`tests/test_api_studies.py`).
 
 ```bash
 .venv/Scripts/python -m kapacitet study demo  demo        # three synthetic stations, from pandapower's LV benchmarks

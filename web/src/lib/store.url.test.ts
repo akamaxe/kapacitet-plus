@@ -181,3 +181,21 @@ describe("the portal's address", () => {
     expect(useStore.getState().screen).toBe("twin");
   });
 });
+
+describe("a study's address", () => {
+  const base: LinkedView = { screen: "twin", hourTouched: false, hour: 4000, scenario: "doe", selectedCid: null, job: null };
+
+  it("opens the study view by the study's id, and anything else is the start window", () => {
+    expect(parseHash("#/study?id=elnat-ab-1a2b3c")).toMatchObject({ study: "elnat-ab-1a2b3c" });
+    expect(parseHash("#/study?id=elnat-ab-1a2b3c").start).toBeUndefined();
+    for (const bad of ["#/study", "#/study?id=", "#/study?id=..%2Fx", "#/study?id=a%20b"]) {
+      expect(parseHash(bad).start, bad).toBe(true);
+      expect(parseHash(bad).study, bad).toBeUndefined();
+    }
+  });
+
+  it("is written from the study on screen, whatever screen the project was left on", () => {
+    expect(hashFor({ ...base, view: "study", study: "elnat-ab-1a2b3c" })).toBe("#/study?id=elnat-ab-1a2b3c");
+    expect(hashFor({ ...base, view: "study", study: null })).toBe("#/twin");
+  });
+});

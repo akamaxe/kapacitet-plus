@@ -36,6 +36,7 @@ const Report = lazy(() => import("./screens/Report"));
 const Scenarios = lazy(() => import("./screens/Scenarios"));
 const Method = lazy(() => import("./screens/Method"));
 const Start = lazy(() => import("./screens/Start"));
+const Study = lazy(() => import("./screens/Study"));
 const FrameDialogs = lazy(() => import("./components/FrameDialogs"));
 
 /**
@@ -65,8 +66,9 @@ export default function App() {
 function Main() {
   const t = useT();
   const screen = useStore((s) => s.screen);
-  // the start window (the projects), or the workbench on `screen`
+  // the start window (the projects), the workbench on `screen`, or a study of many stations
   const view = useStore((s) => s.view);
+  const studyId = useStore((s) => s.study);
   // a fresh clone has no results: say how to make them instead of showing empty screens
   const health = useApi<any>("/health");
   const setupNeeded = health.data && health.data.parts && !health.data.parts.results?.ready;
@@ -143,7 +145,8 @@ function Main() {
   // heading, so a screen reader announces where it has arrived (not on the first load, and not
   // while the tour holds the focus on its own card)
   const firstScreen = useRef(true);
-  const place = view === "start" ? t("start.title") : screenLabel(t, screen, features, envView);
+  const place = view === "start" ? t("start.title") : view === "study" ? t("study.place")
+    : screenLabel(t, screen, features, envView);
   // The document is named for the screen and, inside a project, for the project. Installed with a
   // window of its own, that window already carries the program's name before the title.
   const titled = [place, view === "work" ? site : undefined, window.matchMedia?.("(display-mode: standalone)").matches ? undefined : "Kapacitet+"]
@@ -240,6 +243,10 @@ function Main() {
       start: () => { if (st().view !== "start") st().setView("start"); },
       newProject: () => {
         useStore.setState({ startIntent: { file: null } });
+        if (st().view !== "start") st().setView("start");
+      },
+      newStudy: () => {
+        useStore.setState({ startIntent: { file: null, study: true } });
         if (st().view !== "start") st().setView("start");
       },
       // The picker opens in the click itself: a browser shows it only from a press of the
@@ -399,6 +406,12 @@ function Main() {
         <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`start-${attempt}`}>
           <Suspense fallback={<PageSkeleton blocks={2} />}>
             <Start onKeys={() => setKeys(true)} onAbout={() => openDialog("about")} />
+          </Suspense>
+        </ErrorBoundary>
+        ) : view === "study" && studyId ? (
+        <ErrorBoundary where={place} onReset={() => setAttempt((a) => a + 1)} key={`study-${studyId}-${attempt}`}>
+          <Suspense fallback={<PageSkeleton blocks={2} />}>
+            <div className="page"><Study id={studyId} /></div>
           </Suspense>
         </ErrorBoundary>
         ) : (

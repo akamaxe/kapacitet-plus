@@ -10,7 +10,7 @@ const t = tFor("en");
 
 function actions(): MenuActions {
   return {
-    screen: vi.fn(), start: vi.fn(), newProject: vi.fn(), importFile: vi.fn(), exportProject: vi.fn(),
+    screen: vi.fn(), start: vi.fn(), newProject: vi.fn(), newStudy: vi.fn(), importFile: vi.fn(), exportProject: vi.fn(),
     properties: vi.fn(), print: vi.fn(), fullscreen: vi.fn(), theme: vi.fn(), lang: vi.fn(), computation: vi.fn(),
     search: vi.fn(), networkCheck: vi.fn(), settings: vi.fn(), keys: vi.fn(), tour: vi.fn(), manual: vi.fn(),
     about: vi.fn(),

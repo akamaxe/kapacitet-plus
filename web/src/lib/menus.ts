@@ -39,6 +39,8 @@ export interface MenuState {
   ready: boolean;
   /** the signed-in role may make, open and change projects */
   canProjects: boolean;
+  /** whether this role may make and build studies (undefined: it may) */
+  canStudies?: boolean;
   theme: Theme;
   lang: Lang;
   /** the docks of the workbench; undefined where the frame has none */
@@ -57,6 +59,7 @@ export interface MenuActions {
   screen: (s: Screen) => void;
   start: () => void;
   newProject: () => void;
+  newStudy: () => void;
   importFile: () => void;
   exportProject: () => void;
   properties: () => void;
@@ -109,12 +112,13 @@ export function buildMenus(t: TFn, s: MenuState, a: MenuActions): Menu[] {
     label: t("menu.file"),
     items: [
       { id: "file.new", label: t("start.new"), run: a.newProject, disabled: !s.canProjects },
+      { id: "file.newStudy", label: t("menu.file.newStudy"), run: a.newStudy, disabled: s.canStudies === false },
       { id: "file.open", label: t("menu.file.open"), keys: "0", run: a.start },
       { id: "file.import", label: t("menu.file.import"), run: a.importFile, disabled: !s.canProjects },
       { id: "file.export", label: t("menu.file.export"), run: a.exportProject, disabled: !s.ready, sep: true },
       { id: "file.properties", label: t("menu.file.properties"), run: a.properties },
       { id: "file.print", label: t("menu.file.print"), keys: "Ctrl P", run: a.print, disabled: !work || !s.ready, sep: true },
-      { id: "file.close", label: t("menu.file.close"), run: a.start, disabled: !work, sep: true },
+      { id: "file.close", label: t("menu.file.close"), run: a.start, disabled: s.view === "start", sep: true },
     ],
   };
 

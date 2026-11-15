@@ -144,6 +144,28 @@ ROUTE_POLICY: dict[tuple[str, str], Policy] = {
     ("POST", f"{API}/datasets/{{ds_id}}/activate"): Policy(
         "write", "data/active.json, then the server restarts on that network",
         "KAPACITET_SUPERVISED=1 (set by `kapacitet serve`) and no job running", roles=ADMIN),
+    ("POST", f"{API}/studies"): Policy("write", "a new study folder in KAPACITET_the study's folder in KAPACITET_STUDY_DIR_DIR, its stations imported",
+                                       "a folder outside any git work tree", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/import"): Policy("write", "the study's folder in KAPACITET_STUDY_DIR: its stations' import folders and records",
+                                                          "not while it builds", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/build"): Policy(
+        "write", "a `kapacitet study build` process, which writes the stations of the study's folder in KAPACITET_STUDY_DIR",
+        "one build of a study at a time", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/cancel"): Policy("write", "stops the study's build and its station processes",
+                                                          "only a build that is running", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/collect"): Policy("write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/stations.parquet",
+                                                                        roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/review"): Policy("write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/review.csv",
+                                                                       "a collected run", roles=PLANNER_UP),
+    ("PUT", f"{API}/studies/{{study_id}}/runs/{{run}}/corrections"): Policy(
+        "write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/corrections.csv and review.csv", "a collected run", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/sign"): Policy(
+        "write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/signoff.json and a seal in its evidence chain", "a reviewed run",
+        roles=ADMIN_APPROVER),
+    ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/publish"): Policy(
+        "write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/publication, a draft unless signed", "a collected run", roles=PLANNER_UP),
+    ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/diff"): Policy("write", "the study's folder in KAPACITET_STUDY_DIR: runs/<run>/changes.csv",
+                                                                     "two collected runs", roles=PLANNER_UP),
     ("PUT", f"{API}/setup/upload"): Policy(
         "upload", "data/processed and data/raw, then the server restarts",
         "KAPACITET_SETUP_UPLOAD=1, the reference network and no results yet", body=OCTET, roles=ADMIN),

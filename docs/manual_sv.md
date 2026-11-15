@@ -194,6 +194,12 @@ förseglats.
 ## Publiceringen per kvartal eller månad
 
 En studie täcker många nätstationer och ligger i en egen mapp utanför Kapacitet+:s egna filer.
+Startfönstret listar studierna i studiernas mapp, och *Ny studie…* skapar demonstrationen (tre
+syntetiska nätstationer), en tom studie eller en från kontraktsmappar (en .zip med en mapp per
+nätstation) eller från CGMES-filer med kundernas tabell. Studiens vy bygger nätstationerna, så många
+samtidigt som det lediga minnet räcker till, visar varje nätstations läge, kapacitet, begränsning och
+marginal, och tar en körning genom insamling, granskning, signatur, publicering och jämförelse, med
+körningens filer att ladda ner. Appen kör samma kod som kommandona nedan.
 En körning är ett kvartal (skrivet som `ÅÅÅÅQn`) eller en månad (`ÅÅÅÅ-MM`). Med
 `cadence = "monthly"` under `[publication]` i `study.toml` blir månaden standard när `--run`
 utelämnas. Studiens indata beskrivs i [study-inputs.md](study-inputs.md).

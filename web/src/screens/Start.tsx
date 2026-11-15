@@ -15,6 +15,7 @@ import { RoleNote } from "../components/RoleNote";
 import { PageSkeleton } from "../components/Skeleton";
 import { toast } from "../components/Toast";
 import { useApi } from "../lib/api";
+import type { StudySummary } from "../lib/studies";
 import { useCan } from "../lib/auth";
 import { responseRefusal } from "../lib/errors";
 import { dateTime, useFmt } from "../lib/format";
@@ -29,6 +30,7 @@ import { useStore } from "../lib/store";
 import { useFeatures } from "../lib/features";
 
 const NewProject = lazy(() => import("../components/NewProject"));
+const NewStudy = lazy(() => import("../components/NewStudy"));
 
 /** A list this long gets a search field; a shorter one is read at a glance. */
 const SEARCH_FROM = 6;
@@ -101,8 +103,13 @@ export default function Start({ onKeys, onAbout }: {
   useEffect(() => {
     if (!intent) return;
     useStore.setState({ startIntent: null });
-    if (role.ok) setMaking({ file: intent.file });
+    if (intent.study) setMakingStudy(true);
+    else if (role.ok) setMaking({ file: intent.file });
   }, [intent, role.ok]);
+  const [makingStudy, setMakingStudy] = useState(false);
+  const studies = useApi<{ folder: string; items: StudySummary[] }>("/studies");
+  const [studyPick, setStudyPick] = useState<string | null>(null);
+  const studyRole = useCan("studies");
 
   const projects = useMemo(() => (list.data ? sortProjects(projectsOf(list.data), readRecents()) : []), [list.data]);
   const picked = projects.find((p) => p.id === selected) ?? projects.find((p) => p.current) ?? projects[0] ?? null;
@@ -219,8 +226,12 @@ export default function Start({ onKeys, onAbout }: {
       <aside className="start-side" aria-label={t("start.side")}>
         <h2>{t("start.title")}</h2>
         <div className="start-actions">
-          <button className="btn ghost" aria-pressed={making !== null} disabled={!role.ok} title={role.reason} onClick={() => setMaking({ file: null })}>
+          <button className="btn ghost" aria-pressed={making !== null} disabled={!role.ok} title={role.reason} onClick={() => { setMakingStudy(false); setMaking({ file: null }); }}>
             <Icon name="plus" size={16} />{t("start.new")}
+          </button>
+          <button className="btn ghost" aria-pressed={makingStudy} disabled={!studyRole.ok} title={studyRole.reason}
+            onClick={() => { setMaking(null); setMakingStudy(true); }}>
+            <Icon name="plus" size={16} />{t("start.newStudy")}
           </button>
           <label className="btn ghost" aria-disabled={!role.ok || undefined} title={role.reason}>
             <input type="file" accept=".zip,application/zip" className="sr-only" disabled={!role.ok}
@@ -242,7 +253,12 @@ export default function Start({ onKeys, onAbout }: {
       </aside>
 
       <div className="page">
-        {making ? (
+        {makingStudy ? (
+          <Suspense fallback={<PageSkeleton blocks={1} />}>
+            <NewStudy onCancel={() => setMakingStudy(false)}
+              onDone={(id) => { setMakingStudy(false); void studies.refetch(); useStore.getState().openStudy(id); }} />
+          </Suspense>
+        ) : making ? (
           <Suspense fallback={<PageSkeleton blocks={1} />}>
             <NewProject
               key={making.file ? `file:${making.file.name}:${making.file.size}` : "new"}
@@ -348,6 +364,8 @@ export default function Start({ onKeys, onAbout }: {
               )}
             </>
           )}
+
+          <StudyList data={studies.data} error={studies.isError} picked={studyPick} onPick={setStudyPick} />
         </div>
         )}
       </div>
@@ -381,5 +399,44 @@ export default function Start({ onKeys, onAbout }: {
         )}
       </Dialog>
     </div>
+  );
+}
+
+/** The DSO's studies of many stations (GET /studies): each opens in the study view, read from its
+ *  folder, so no server restart is needed. */
+function StudyList({ data, error, picked, onPick }: {
+  data?: { folder: string; items: StudySummary[] }; error: boolean; picked: string | null; onPick: (id: string) => void;
+}) {
+  const t = useT();
+  const f = useFmt();
+  const open = (s: StudySummary) => useStore.getState().openStudy(s.id);
+  const cols: Col<StudySummary>[] = [
+    { key: "name", label: t("start.studies.col.name"), value: (s) => s.name, cell: (s) => <strong>{s.name}</strong> },
+    { key: "stations", label: t("start.studies.col.stations"), value: (s) => s.stations, numeric: true,
+      cell: (s) => f(s.stations ?? 0) },
+    { key: "ready", label: t("start.studies.col.ready"), value: (s) => s.states?.ready ?? 0, numeric: true,
+      cell: (s) => f(s.states?.ready ?? 0) },
+    { key: "run", label: t("start.studies.col.run"), value: (s) => s.last_run ?? "",
+      cell: (s) => (s.building ? <span className="status measured">{t("start.studies.building")}</span> : s.last_run ?? "–") },
+  ];
+  const chosen = data?.items.find((s) => s.id === picked) ?? null;
+  return (
+    <section className="block stack start-studies" aria-labelledby="studies-title">
+      <div className="block-head"><h2 id="studies-title">{t("start.studies")}</h2></div>
+      <p className="caption">{t("start.studiesLead")}</p>
+      {error ? <p className="caption-muted">{t("start.studies.unreadable")}</p> : !data ? null : data.items.length === 0 ? (
+        <p className="caption-muted">{t("start.studies.none", { folder: data.folder })}</p>
+      ) : (
+        <>
+          <DataTable className="start-table" rows={data.items} cols={cols} rowKey={(s) => s.id}
+            caption={t("start.studies.caption", { n: f(data.items.length), folder: data.folder })}
+            searchLabel={t("start.studies.search")} search={data.items.length > SEARCH_FROM}
+            selected={picked} onSelect={(s) => onPick(s.id)} onOpen={open} />
+          <div className="answer-actions">
+            <button className="btn" disabled={!chosen || !!chosen.error} onClick={() => chosen && open(chosen)}>{t("start.studies.open")}</button>
+          </div>
+        </>
+      )}
+    </section>
   );
 }

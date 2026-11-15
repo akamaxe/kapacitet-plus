@@ -46,6 +46,7 @@ def _codes() -> list[tuple[str, str]]:
     from kapacitet.datasets import ERRORS as DATASETS
     from kapacitet.api.main import API_ERRORS
     from kapacitet.api.setup import ERRORS as SETUP
+    from kapacitet.api.studies import STUDY_ERRORS as STUDIES
     from kapacitet.engine.delivery import ERRORS as DELIVERY
     from kapacitet.engine.rules import REASONS as RULE_REASONS
     from kapacitet.engine.queue import ERRORS
@@ -55,7 +56,7 @@ def _codes() -> list[tuple[str, str]]:
 
     pairs = [(f"chk.msg.{c}", t) for c, t in MESSAGES.items()]
     pairs += [(f"err.{c}", t) for c, t in {**API_ERRORS, **ERRORS, **DELIVERY, **INBOX, **DATASETS, **SETUP,
-                                            **MARKET, **_unpack_errors()}.items()]
+                                            **MARKET, **STUDIES, **_unpack_errors()}.items()]
     pairs += [(f"req.reason.{c}", t) for c, t in _REASONS.items()]
     pairs += [(f"inbox.reason.{c}", t) for c, t in RULE_REASONS.items()]
     return pairs
@@ -89,6 +90,7 @@ def test_no_code_means_two_different_sentences():
     from kapacitet.api.inbox import ERRORS as INBOX
     from kapacitet.api.main import API_ERRORS
     from kapacitet.api.setup import ERRORS as SETUP
+    from kapacitet.api.studies import STUDY_ERRORS as STUDIES
     from kapacitet.datasets import ERRORS as DATASETS
     from kapacitet.engine.delivery import ERRORS as DELIVERY
     from kapacitet.engine.queue import ERRORS
@@ -96,7 +98,7 @@ def test_no_code_means_two_different_sentences():
 
     seen: dict[str, str] = {}
     clashes = []
-    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP, MARKET, _unpack_errors()):
+    for source in (API_ERRORS, ERRORS, DELIVERY, INBOX, DATASETS, SETUP, MARKET, STUDIES, _unpack_errors()):
         for code, text in source.items():
             if code in seen and seen[code] != text:
                 clashes.append(code)
