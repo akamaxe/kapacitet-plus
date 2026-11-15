@@ -3,7 +3,7 @@
 
 # Network export contract
 
-Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there. Comma separated, or semicolon separated with a decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel save it, which the report then notes. Lengths are metres; coordinates are WGS84 degrees, or SWEREF 99 TM metres for every bus, which are converted and the report says so.
+Four CSV files in one directory, with a header row, and two optional ones, `equipment.csv` and `cable_types.csv`, which are checked and used when they are there. Comma separated, or semicolon separated with a decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel save it, which the report then notes. Lengths are metres; coordinates are WGS84 degrees, or SWEREF 99 TM metres for every bus, which are converted and the report says so.
 Run `python -m kapacitet check <directory>` to get a data-quality report before sending anything.
 
 ## `buses.csv`
@@ -81,3 +81,16 @@ Optional. What is already connected behind each meter: solar PV, batteries, EV c
 | `heat_pump_kw` | kW | no | Heat pump electrical rating. | the heat pump model's own sizing |
 | `source` | - | no | Where the record comes from, for example the installer's notification. | the record's source is reported as not stated |
 | `connected_on` | date | no | When it was connected, YYYY-MM-DD. | taken as connected before the study |
+
+## `cable_types.csv` (optional)
+
+Optional. How the network information system names its cables, translated: each std_type of lines.csv to a type of Kapacitet+'s catalogue of Swedish cables (config/cable_types_se.csv, every row with its manufacturer's source), or to its own electrical data. A name neither this table, the catalogue nor pandapower's library knows is an error that names it.
+
+| column | unit | required | meaning | if missing |
+| --- | --- | --- | --- | --- |
+| `name` | - | yes | A std_type of lines.csv, exactly as written there. | - |
+| `type` | - | no | A type of the catalogue, for example AXQJ 4x150/41. | the row's own electrical data |
+| `r_ohm_per_km` | Ω/km | no | Resistance per km. | the catalogue type's |
+| `x_ohm_per_km` | Ω/km | no | Reactance per km. | the catalogue type's |
+| `c_nf_per_km` | nF/km | no | Capacitance per km. | the catalogue type's |
+| `max_i_ka` | kA | no | Current rating. | the catalogue type's |

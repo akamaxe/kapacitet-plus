@@ -40,6 +40,19 @@ Changes before 12 November 2026 are only in that history.
   place's STRÅNG irradiance, the station's temperature and the zone's prices into `<project>/raw`;
   `processed/site.json`, `/meta.dataset.site`, the project's card and the status bar say where the
   weather, the prices and the households come from. Without a site, the reference site's, as before.
+- **Swedish cable types, and a table for the names of a network information system.** A NIS names
+  its cables its own way (`AXQJ 4x150/41`, `N1XE-AR 4G150`), which pandapower's library does not
+  know. `config/cable_types_se.csv` is a catalogue of Swedish low-voltage cables with their
+  resistance, reactance, capacitance and current rating, each row with its manufacturer's
+  datasheet, its address and the day it was read; a type without them is refused. It starts with
+  AXQJ 4x50/16 to 4x240/72 (Nexans) and N1XV 4x10 and 4x16 (NKT); the datasheets give no
+  capacitance, so it is 0 and the row says so. An export can bring an optional `cable_types.csv`
+  that translates each name of `lines.csv` to a catalogue type or to its own data, and the build
+  looks a name up there first, then in the catalogue, then in the library. A name none of them
+  knows is an error that names it, with its sections, and step 2 of *New project* has a table to
+  translate each one into the project's `cable_types.csv` (`GET /api/v1/cable-types` lists the
+  catalogue). A translation to a type the catalogue lacks, without data of its own, is an error
+  (`cable_map_type`).
 - **SWEREF 99 TM coordinates are converted.** An export whose buses all give SWEREF 99 TM metres is
   converted to degrees and the check says so (`coordinates_converted`, a warning); metres for some
   buses and degrees for others is still an error. The check offers the transformer's position as the

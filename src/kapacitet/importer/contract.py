@@ -152,8 +152,24 @@ EQUIPMENT = Table(
     ],
 )
 
+CABLE_TYPES = Table(
+    "cable_types", "Optional. How the network information system names its cables, translated: each std_type "
+                   "of lines.csv to a type of Kapacitet+'s catalogue of Swedish cables (config/cable_types_se.csv, "
+                   "every row with its manufacturer's source), or to its own electrical data. A name neither this "
+                   "table, the catalogue nor pandapower's library knows is an error that names it.", "name",
+    [
+        Column("name", "-", "A std_type of lines.csv, exactly as written there."),
+        Column("type", "-", "A type of the catalogue, for example AXQJ 4x150/41.", required=False,
+               fallback="the row's own electrical data"),
+        Column("r_ohm_per_km", "Ω/km", "Resistance per km.", required=False, fallback="the catalogue type's"),
+        Column("x_ohm_per_km", "Ω/km", "Reactance per km.", required=False, fallback="the catalogue type's"),
+        Column("c_nf_per_km", "nF/km", "Capacitance per km.", required=False, fallback="the catalogue type's"),
+        Column("max_i_ka", "kA", "Current rating.", required=False, fallback="the catalogue type's"),
+    ],
+)
+
 TABLES = (BUSES, LINES, TRANSFORMER, CUSTOMERS)          # every export has these
-OPTIONAL_TABLES = (EQUIPMENT,)                            # checked and used when present
+OPTIONAL_TABLES = (EQUIPMENT, CABLE_TYPES)                # checked and used when present
 ALL_TABLES = TABLES + OPTIONAL_TABLES
 BY_NAME = {t.name: t for t in ALL_TABLES}
 # the labels equipment.csv may use for an inverter's phase, and for yes and no
@@ -166,8 +182,8 @@ NO = frozenset({"no", "n", "false", "0", "nej"})
 def as_markdown() -> str:
     """The contract as a document to hand to an operator."""
     out = ["# Network export contract", "",
-           "Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, "
-           "which is checked and used when it is there. Comma separated, or semicolon separated with a "
+           "Four CSV files in one directory, with a header row, and two optional ones, `equipment.csv` and "
+           "`cable_types.csv`, which are checked and used when they are there. Comma separated, or semicolon separated with a "
            "decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel "
            "save it, which the report then notes. Lengths are metres; coordinates are WGS84 degrees, or "
            "SWEREF 99 TM metres for every bus, which are converted and the report says so.",

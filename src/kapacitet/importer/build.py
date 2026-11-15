@@ -90,7 +90,9 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         tap_pos=int(trafo_in.get("tap_pos") or 0))
 
     assumed_cables: dict[str, int] = {}
-    line_rows = _create_lines(net, lines_in, index, note, assumed_cables)
+    from .cables import translation
+
+    line_rows = _create_lines(net, lines_in, index, note, assumed_cables, translation(data))
     lines = pd.DataFrame(line_rows).sort_values("line").reset_index(drop=True)
     feeder, depth, parent = _walk(index[lv_id], lines)
 
@@ -161,9 +163,14 @@ def bus_index(buses_in: pd.DataFrame, lv_bus: str) -> dict[str, int]:
     return {b: i + 1 for i, b in enumerate(ids)}
 
 
-def _create_lines(net, lines_in, index, note, assumed: dict[str, int] | None = None) -> list[dict]:
-    """The sections as pandapower lines. A section with neither a known type nor its r/x/c data is
-    built as the default cable, counted in `note` and, by the name it had ("" for none), in `assumed`."""
+def _create_lines(net, lines_in, index, note, assumed: dict[str, int] | None = None,
+                  mapping: dict[str, dict] | None = None) -> list[dict]:
+    """The sections as pandapower lines. A type name is looked up in the export's cable_types.csv
+    (`mapping`), then in the catalogue of Swedish cables, then in pandapower's library. A section with
+    neither a known type nor its r/x/c data is built as the default cable, counted in `note` and, by
+    the name it had ("" for none), in `assumed`."""
+    from .cables import resolve
+
     default_type = A("service_cable_type")
     rows = []
     electrical = ("r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka")
@@ -175,7 +182,13 @@ def _create_lines(net, lines_in, index, note, assumed: dict[str, int] | None = N
         values = {c: getattr(r, c, None) for c in electrical}
         complete = all(v is not None and not (isinstance(v, float) and math.isnan(v))
                        for v in values.values())
-        if isinstance(std, str) and std in pp.available_std_types(net, "line").index:
+        translated = resolve(std, mapping or {}) if isinstance(std, str) and std.strip() else None
+        if translated is not None:
+            used, data = translated
+            li = pp.create_line_from_parameters(
+                net, f, t, length_km=km, parallel=parallel, r_ohm_per_km=data["r_ohm_per_km"],
+                x_ohm_per_km=data["x_ohm_per_km"], c_nf_per_km=data["c_nf_per_km"], max_i_ka=data["max_i_ka"])
+        elif isinstance(std, str) and std in pp.available_std_types(net, "line").index:
             li = pp.create_line(net, f, t, length_km=km, std_type=std, parallel=parallel)
             used = std
         elif complete:

@@ -2682,6 +2682,10 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .new-templates label:hover { background: var(--bg-inset); }
 .new-templates label[data-picked] { background: var(--accent-quiet); }
 .new-templates input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.new-cables { max-width: 78ch; }
+.new-cables h3 { margin: 0; font-size: var(--text-h3); font-weight: 600; }
+.new-cables table.data select { min-width: 26ch; max-width: 100%; }
+.new-cables-done { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; }
 .nt-name { color: var(--text-primary); font-weight: 500; }
 .nt-fact { color: var(--text-secondary); text-align: right; white-space: nowrap; }
 .new-form { align-items: flex-start; gap: var(--space-3); }

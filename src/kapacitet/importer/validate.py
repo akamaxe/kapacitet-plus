@@ -70,8 +70,9 @@ MESSAGES = {
                        "the network cannot be used: open each ring at its normal open point, and give cables laid "
                        "in parallel as one section with its `parallel` count"),
     "cable_type": "sections with neither a type name nor full r/x/c data; the site default cable will be assumed",
-    "cable_type_unknown": ("sections whose cable type is not in the library and has no r/x/c data: {types}. Give "
-                           "their r_ohm_per_km, x_ohm_per_km, c_nf_per_km and max_i_ka, or a type the library has"),
+    "cable_type_unknown": ("sections whose cable type neither cable_types.csv, the catalogue of Swedish cables nor "
+                           "the library knows, and that have no r/x/c data: {types}. Translate the names in "
+                           "cable_types.csv, or give their r_ohm_per_km, x_ohm_per_km, c_nf_per_km and max_i_ka"),
     "cable_type_unknown_assumed": ("sections whose cable type is not in the library: {types}. The default cable "
                                    "{cable} is assumed for them, as asked, and the project says so"),
     "cable_length_missing": "sections with a missing or non-positive length",
@@ -97,6 +98,8 @@ MESSAGES = {
                            "degrees: give every bus in one system, longitude and latitude in degrees or SWEREF 99 TM"),
     "coordinates_converted": ("lon/lat are SWEREF 99 TM metres, for example E {e} and N {n}: converted to degrees, "
                               "{lat}, {lon} there"),
+    "cable_map_type": ("cable_types.csv translates {name} to {type}, which the catalogue does not have, and gives no "
+                       "electrical data of its own: name a type of config/cable_types_se.csv, or give r, x, c and max_i"),
     "coordinates_out_of_range": "lon/lat outside the range of degrees, for example {lon}, {lat}",
     "coordinates_outside_sweden": "buses with coordinates outside Sweden, for example {lon}, {lat}",
     "required_blank": "{table}.csv has rows without {column}, for example {key} {example}",
@@ -430,7 +433,28 @@ def _check_topology(data: dict[str, pd.DataFrame], report: Report) -> None:
         report.add(ERROR, "meshed network", "meshed_network", loops, n=loops)
 
 
+def _check_cable_types(data: dict[str, pd.DataFrame], report: Report) -> None:
+    """The optional cable_types.csv: a row has to name a type of the catalogue or give its own data."""
+    table = data.get("cable_types")
+    if table is None or "name" not in table.columns:
+        return
+    from .cables import translation
+
+    usable = translation(data)
+    bad = []
+    for r in table.itertuples(index=False):
+        name = str(getattr(r, "name", "") or "").strip()
+        if name and name.lower() != "nan" and name not in usable:
+            bad.append((name, str(getattr(r, "type", "") or "").strip()))
+    if bad:
+        name, kind = bad[0]
+        report.add(ERROR, "cable type", "cable_map_type", len(bad), name=name, type=kind or "nothing")
+
+
 def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report, default_cable: bool = False) -> None:
+    from .cables import catalogue, translation
+
+    _check_cable_types(data, report)
     lines = data["lines"]
     electrical = ["r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka"]
     names = (lines["std_type"].where(~_blank(lines["std_type"])).astype("string").str.strip()
@@ -444,7 +468,9 @@ def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report, defaul
         report.add(WARNING, "cable type", "cable_type", undefined)
     # A name the library does not know is a cable nobody can compute: built as the default cable, the
     # network would be another one, with a report that says "usable" (H1 of the review of 14-11-2026).
-    unknown = has_type & ~names.isin(known_cable_types()).fillna(False).astype(bool) & ~has_values
+    # known: by the export's cable_types.csv, by the catalogue of Swedish cables, or by pandapower's library
+    known = known_cable_types() | frozenset(catalogue()) | frozenset(translation(data))
+    unknown = has_type & ~names.isin(known).fillna(False).astype(bool) & ~has_values
     if unknown.any():
         counts = names[unknown].value_counts()
         listed = ", ".join(f"{name} ({n})" for name, n in counts.head(5).items())
@@ -453,11 +479,14 @@ def _check_electrical_data(data: dict[str, pd.DataFrame], report: Report, defaul
         from ..config import A
 
         cable = str(A("service_cable_type"))        # named in the error too: the way out the steps offer
+        # every name with its count, for the table that translates them (New project's check)
+        named = [{"name": str(name), "count": int(n)} for name, n in counts.items()]
         if default_cable:
             report.add(WARNING, "cable type", "cable_type_unknown_assumed", int(unknown.sum()), types=listed,
-                       cable=cable)
+                       cable=cable, names=named)
         else:
-            report.add(ERROR, "cable type", "cable_type_unknown", int(unknown.sum()), types=listed, cable=cable)
+            report.add(ERROR, "cable type", "cable_type_unknown", int(unknown.sum()), types=listed, cable=cable,
+                       names=named)
 
     length = _numbers(lines["length_m"])
     bad_length = int((length <= 0).sum())          # a blank or a word is said by _check_values

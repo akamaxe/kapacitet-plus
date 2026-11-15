@@ -53,6 +53,12 @@ exempelnät är syntetiskt och märks så i projektlistan, i statusraden och på
 *Exportera (.zip)* skriver ett projekt som en projektfil: dess tabeller och vad det är, utan
 resultat, som beräknas på nytt där filen öppnas.
 
+Kabelnamn som programmet inte känner till stoppar kontrollen, med namnet och antalet sträckor. I
+steg 2 översätter du varje namn till en typ i katalogen över svenska kablar
+(`config/cable_types_se.csv`, där varje typ har sin tillverkares datablad), och översättningen sparas
+som projektets `cable_types.csv`. Exporten kan också ha med en egen `cable_types.csv`, som översätter
+namnen till katalogtyper eller till egna data.
+
 I sista steget anger du var nätet ligger: läget (transformatorns, om exporten har det, eller
 inskrivet) och elområdet, som du väljer själv; inget gissar det. Bygget hämtar då den platsens
 solinstrålning från SMHI STRÅNG, temperaturen från den närmaste SMHI-stationen som har alla väderår

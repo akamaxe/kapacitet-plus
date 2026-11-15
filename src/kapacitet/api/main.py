@@ -666,6 +666,17 @@ class ExportCheck(BaseModel):
     options: CheckOptions = Field(default_factory=CheckOptions)
 
 
+@app.get(f"{API}/cable-types", tags=["contract"])
+def cable_types() -> dict:
+    """The catalogue of Swedish low-voltage cables (config/cable_types_se.csv): each type with its
+    electrical data, its rating and its manufacturer's source, for an export's cable_types.csv."""
+    from ..importer.cables import catalogue
+
+    keys = ("type", "conductor", "cores", "section_mm2", "r_ohm_per_km", "x_ohm_per_km", "c_nf_per_km", "max_i_ka",
+            "rating", "source", "url", "accessed", "note")
+    return {"types": [{k: row.get(k) for k in keys} for row in catalogue().values()]}
+
+
 @app.get(f"{API}/contract", tags=["import"])
 def get_contract() -> dict:
     """What an operator's network export has to contain, and what each column is for."""

@@ -10,12 +10,14 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Chip } from "./bits";
+import { CableNames } from "./CableNames";
 import { CheckReport, type Report } from "./CheckReport";
 import { Icon } from "./Icon";
 import { RoleNote } from "./RoleNote";
 import { toast } from "./Toast";
 import { API, apiWrite, getJSON, useApi } from "../lib/api";
 import { useCan } from "../lib/auth";
+import { namesOf, withTranslations } from "../lib/cableTypes";
 import { decodedAs, readCsvFile, type Encoding } from "../lib/decode";
 import { refusalOf, refusalText, responseRefusal } from "../lib/errors";
 import { useFmt } from "../lib/format";
@@ -148,6 +150,14 @@ interface Draft {
   name: string;
   /** what the network is, said above its report */
   label: string;
+  /** cable names translated at the check: name to catalogue type, written into cable_types.csv */
+  cables: Record<string, string>;
+}
+
+/** The tables as they are sent: the export's own, with the check's translation of cable names. */
+function sent(d: Draft): Files {
+  const table = withTranslations(d.files.cable_types, d.cables);
+  return table === undefined ? d.files : { ...d.files, cable_types: table };
 }
 
 export default function NewProject({ onDone, onCancel, initialFile }: {
@@ -184,7 +194,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
     // at once, so a choice made on the report (the default cable) shows before the new report arrives
     setDraft(next);
     try {
-      const r = await apiWrite("/check", { files: next.files, decoded_as: decodedAs(next.decoded), options: next.options });
+      const r = await apiWrite("/check", { files: sent(next), decoded_as: decodedAs(next.decoded), options: next.options });
       const body = await r.json();
       if (!r.ok) {
         setError(refusalText(t, refusalOf(body), String(r.status)));
@@ -215,7 +225,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
     }
     setIgnored(skipped);
     if (!Object.keys(files).length) return setError(t("met.imp.noneMatched"));
-    await check({ files, decoded, options: {}, origin: { kind: "csv" }, name: "", label: t("new.from.csv") });
+    await check({ files, decoded, options: {}, origin: { kind: "csv" }, name: "", label: t("new.from.csv"), cables: {} });
   };
 
   const fromTemplate = async () => {
@@ -225,7 +235,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
     setError(null);
     try {
       const doc = await getJSON<{ files: Files }>(`/templates/${picked.id}`);
-      await check({ files: doc.files, decoded: {}, options: {}, origin: { kind: "template", template: picked.id }, name: picked.name, label: t("new.from.template", { name: picked.name }) });
+      await check({ files: doc.files, decoded: {}, options: {}, origin: { kind: "template", template: picked.id }, name: picked.name, label: t("new.from.template", { name: picked.name }), cables: {} });
     } catch {
       setBusy(false);
       setError(t("ui.offline"));
@@ -247,6 +257,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
           origin: { kind: "project_file", name: file.name, synthetic: doc.synthetic },
           name: doc.name ?? file.name.replace(/\.zip$/i, ""),
           label: t("new.from.file", { name: file.name }),
+          cables: {},
         });
       } catch (e) {
         setBusy(false);
@@ -278,6 +289,8 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
   const cables = report?.findings.find((x) => x.code === "cable_type_unknown" || x.code === "cable_type_unknown_assumed");
   const onlyCables = !!report && report.findings.filter((x) => x.severity === "error").every((x) => x.code === "cable_type_unknown");
   const offerCable = !!cables && !!draft && (draft.options.default_cable || (!report?.usable && onlyCables));
+  // the names still untranslated, which the check lists with their sections
+  const unknown = namesOf(cables?.params as Record<string, unknown> | undefined);
 
   return (
     <div className="page-inner start-main new-project">
@@ -364,6 +377,10 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
           <p className="caption">{draft.label}</p>
           <CheckReport report={report} />
           {!report.usable && <p className="caption">{t("new.check.unusable")}</p>}
+          {(unknown.length > 0 || Object.keys(draft.cables).length > 0) && (
+            <CableNames names={unknown} chosen={draft.cables} busy={busy}
+              onApply={(next) => void check({ ...draft, cables: next })} />
+          )}
           {offerCable && cables && (
             <div className="stack">
               <label className="new-assume">
@@ -386,7 +403,7 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
         <section className="block stack" aria-labelledby="new-build">
           <div className="block-head"><h2 id="new-build">{t("new.build.title")}</h2></div>
           <p className="caption">{draft.label}</p>
-          <CreateProjectForm files={draft.files} decoded={draft.decoded} options={draft.options} origin={draft.origin}
+          <CreateProjectForm files={sent(draft)} decoded={draft.decoded} options={draft.options} origin={draft.origin}
             defaultName={draft.name} onCreated={onDone}
             // an example network is laid out around the reference site: its position is made up, so none is offered
             siteHint={draft.origin.kind === "template" ? null : report?.site_hint ?? null}

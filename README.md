@@ -650,7 +650,10 @@ against it before anyone promises a capacity:
 ```
 
 The report is the point. It separates what stops the engine from what only costs accuracy,
-and it prices the gap: a missing cable type falls back to the site default, missing
+and it prices the gap: a cable name it does not know is an error that names it, which an
+optional `cable_types.csv` translates to a type of the catalogue of Swedish cables
+(`config/cable_types_se.csv`, each type with its manufacturer's datasheet) or to its own data, or
+which can be built as the site's default cable, an assumption the project then shows; missing
 coordinates cost the map and nothing else, while no phase column means every service is
 taken as three-phase, which on this grid with single-phase inverters reports 402 kW of static
 hosting capacity where the median placement of unknown phases allows 225 kW. Errors, such as a cable to a bus that does not exist or a section of zero length,
