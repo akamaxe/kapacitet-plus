@@ -8,6 +8,16 @@ Changes before 12 November 2026 are only in that history.
 
 ### Added
 
+- **A report a DSO can file.** `kapacitet report` writes the project's capacity report as DOCX in
+  Swedish (`--study <dir> --run <run>`: a study's run), *File > Export report (.docx)* downloads it
+  (`GET /api/v1/report.docx`), and a study's screen links its run's report beside the files
+  (`GET /api/v1/studies/{id}/runs/{run}/report.docx`). It states the input data and their quality,
+  the method and its criteria (the DSO's static profile), the static and the hourly study for
+  generation and consumption, the validation, the version that computed them, the signature of a
+  run, and that no native speaker has reviewed the Swedish. The DOCX is written with the standard
+  library (`report/docx.py`: headings, paragraphs, tables, a header and a footer), and a test opens
+  it again and checks each figure against its file.
+
 - **A study of many stations in the workbench.** The start window lists the studies of the studies'
   folder (`KAPACITET_STUDY_DIR`), and *New study…* (also in the File menu) makes the demonstration,
   an empty study, or one from contract folders (a .zip with one folder per station, read in the

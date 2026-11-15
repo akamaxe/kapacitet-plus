@@ -213,6 +213,12 @@ anslutningspunkten och för belastning. Standardprofilen är dagens statiska stu
 siffrorna ändras när kapaciteten beräknas igen; vyn visar kommandot. En studie anger samma värden i
 `study.toml` under `[assumptions]`, och nätbolagets egna statiska resultat per kund läggs till från
 studiens vy och jämförs vid valideringen.
+
+**Rapporten.** *Arkiv › Exportera rapport (.docx)* laddar ner projektets kapacitetsrapport på svenska:
+indata och deras kvalitet, metoden och kriterierna, den statiska studien och timstudien för produktion
+och förbrukning, valideringen och versionen. En studies körning har sin rapport bredvid körningens
+filer. Samma rapport från kommandoraden: `kapacitet report`, och för en körning
+`kapacitet report --study <studie> --run <körning>`.
 En körning är ett kvartal (skrivet som `ÅÅÅÅQn`) eller en månad (`ÅÅÅÅ-MM`). Med
 `cadence = "monthly"` under `[publication]` i `study.toml` blir månaden standard när `--run`
 utelämnas. Studiens indata beskrivs i [study-inputs.md](study-inputs.md).

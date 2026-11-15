@@ -216,3 +216,18 @@ def test_the_dsos_static_results_go_to_the_study_for_its_validation(client, stud
     assert (studies / made["id"] / "inputs" / "dppower" / "static.csv").is_file()
     bad = client.put(f"{API}/studies/{made['id']}/dso-static", json={"csv": "id,kw\n1,2\n"})
     assert bad.status_code == 422 and bad.json()["detail"]["code"] == "study_config"
+
+
+def test_a_runs_report_carries_each_stations_published_figures(client, studies):
+    from kapacitet.report.build import sv
+    from kapacitet.report.docx import text_of
+
+    study = _built(studies)
+    base = f"{API}/studies/{study.id}"
+    early = client.get(f"{base}/runs/{Q2}/report.docx")
+    assert early.status_code == 409 and early.json()["detail"]["code"] == "study_not_collected"
+    client.post(f"{base}/runs/{Q2}/collect", json={})
+    r = client.get(f"{base}/runs/{Q2}/report.docx")
+    assert r.status_code == 200
+    lines = set(text_of(r.content).splitlines())
+    assert {"Station S1", sv(120.0), sv(80.0), "Körningen är inte signerad."} <= lines

@@ -596,6 +596,22 @@ def put_dso_static(study_id: str, body: DsoStaticIn) -> dict:
     return {"rows": int(len(frame)), "columns": sorted(cols & {"gen_kw", "load_kw"})}
 
 
+@router.get("/studies/{study_id}/runs/{run}/report.docx")
+def run_report(study_id: str, run: str):
+    """The report of a run, as DOCX in Swedish: each station's published figures and the run's signature."""
+    from fastapi.responses import Response
+
+    from ..report.build import study_report
+
+    study = _study(study_id)
+    try:
+        doc = study_report(study, _run(study, run))
+    except StudyError as err:
+        raise _refused(err) from err
+    return Response(doc.to_bytes(), media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    headers={"Content-Disposition": f'attachment; filename="rapport_{run}.docx"'})
+
+
 @router.get("/studies/{study_id}/runs/{run}/files")
 def run_files(study_id: str, run: str) -> dict:
     """Every file of the run, by its path under runs/<run>, with its size."""

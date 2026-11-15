@@ -261,6 +261,11 @@ export default function Study({ id }: { id: string }) {
         {files.data && files.data.files.length > 0 && run && (
           <div className="stack">
             <h3>{t("study.files.title")}</h3>
+            {state?.collected && (
+              <p><a className="btn ghost small" href={`${API}/studies/${id}/runs/${run}/report.docx`} download>
+                <Icon name="download" size={14} />{t("study.report")}
+              </a></p>
+            )}
             <ul className="study-files">
               {files.data.files.map((x) => (
                 <li key={x.path}>

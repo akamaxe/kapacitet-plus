@@ -613,6 +613,30 @@ def cmd_method_dossier(args: argparse.Namespace) -> None:
         print(f"  missing {m['file']}: run {m['command']}")
 
 
+def cmd_report(args: argparse.Namespace) -> None:
+    """The report a DSO files (report/): the project in this data folder, or with --study and
+    --run a study's run, as DOCX in Swedish."""
+    from .report.build import project_report, study_report
+
+    if args.study:
+        from .study import StudyError, open_study, runs
+
+        try:
+            study = open_study(args.study)
+            run = args.run or runs.current(study.config.publication.cadence)
+            doc = study_report(study, run)
+        except StudyError as err:
+            print(f"No report: {err}")
+            sys.exit(1)
+        out = Path(args.out or study.runs / run / f"rapport_{run}.docx")
+    else:
+        doc = project_report()
+        out = Path(args.out or "kapacitetsrapport.docx")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(doc.to_bytes())
+    print(f"Report written to {out}")
+
+
 def cmd_metrics(args: argparse.Namespace) -> None:
     """The investor metrics the product computes itself: metrics.json, metrics.md and metrics_sv.md
     (kapacitet/metrics.py)."""
@@ -938,6 +962,11 @@ def main(argv: list[str] | None = None) -> None:
     p.add_argument("--out", default=None, help="the folder to write into (default: results/, or the study's folder)")
     p.set_defaults(func=cmd_method_dossier)
 
+    p = sub.add_parser("report", help="the report a DSO files, as DOCX in Swedish: this project, or a study's run")
+    p.add_argument("--study", default=None, help="a study's folder: its run's report instead of the project's")
+    p.add_argument("--run", default=None, help="with --study: the run (this period by default)")
+    p.add_argument("--out", default=None, help="where to write it (kapacitetsrapport.docx, or the run's folder)")
+    p.set_defaults(func=cmd_report)
     p = sub.add_parser("metrics", help="the investor metrics the product computes itself, each with its source and period")
     p.add_argument("--study", default=None, help="a study's folder (default: this data folder)")
     p.set_defaults(func=cmd_metrics)

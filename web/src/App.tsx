@@ -21,7 +21,7 @@ import { Setup } from "./components/Setup";
 import { SignIn } from "./components/SignIn";
 import { useCan, useMe } from "./lib/auth";
 import { Tour, TourOffer, tourSeen } from "./components/Tour";
-import { useApi } from "./lib/api";
+import { API, useApi } from "./lib/api";
 import { OPENING, initUrlSync, scrollPositions, syncUrl, useStore, type Screen } from "./lib/store";
 import { featuresOf, screenLabel, useEnvelopeView, visibleScreens } from "./lib/features";
 
@@ -244,6 +244,14 @@ function Main() {
       newProject: () => {
         useStore.setState({ startIntent: { file: null } });
         if (st().view !== "start") st().setView("start");
+      },
+      report: () => {
+        // the report of the project in view, from the server; the browser saves it
+        const a = document.createElement("a");
+        a.href = `${API}/report.docx`;
+        a.download = "kapacitetsrapport.docx";
+        a.click();
+        log.info(t("menu.file.reportLog"));
       },
       newStudy: () => {
         useStore.setState({ startIntent: { file: null, study: true } });

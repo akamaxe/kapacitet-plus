@@ -20,6 +20,20 @@ KEYS = ("static_pv_factor", "static_load_rule", "static_min_load_factor", "stati
         "static_v_rise_limit_pct", "static_max_loading_pct")
 
 
+DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+@router.get("/report.docx")
+def project_report_docx():
+    """The report of the project in use, as DOCX in Swedish (report/build.py)."""
+    from fastapi.responses import Response
+
+    from ..report.build import project_report
+
+    return Response(project_report().to_bytes(), media_type=DOCX,
+                    headers={"Content-Disposition": 'attachment; filename="kapacitetsrapport.docx"'})
+
+
 @router.get("/method-profile")
 def get_profile() -> dict:
     from ..config import A
