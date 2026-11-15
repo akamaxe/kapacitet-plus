@@ -3,7 +3,7 @@
 
 # Network export contract
 
-Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there. Comma separated, or semicolon separated with a decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel save it, which the report then notes. Lengths are metres and coordinates WGS84 degrees.
+Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, which is checked and used when it is there. Comma separated, or semicolon separated with a decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel save it, which the report then notes. Lengths are metres; coordinates are WGS84 degrees, or SWEREF 99 TM metres for every bus, which are converted and the report says so.
 Run `python -m kapacitet check <directory>` to get a data-quality report before sending anything.
 
 ## `buses.csv`
@@ -15,8 +15,8 @@ Every point where something connects: the substation, cable cabinets and service
 | `bus_id` | - | yes | Unique identifier, any string or integer. | - |
 | `kind` | - | yes | substation, cabinet or service. | - |
 | `name` | - | no | Label for the map and the reports. | the identifier |
-| `lon` | degrees | no | Longitude, WGS84 degrees (SWEREF 99 TM metres are refused). | no map, the engine still runs |
-| `lat` | degrees | no | Latitude, WGS84 degrees. | no map, the engine still runs |
+| `lon` | degrees | no | Longitude, WGS84 degrees, or the SWEREF 99 TM easting (metres, converted). | no map, the engine still runs |
+| `lat` | degrees | no | Latitude, WGS84 degrees, or the SWEREF 99 TM northing (metres, converted). | no map, the engine still runs |
 
 ## `lines.csv`
 

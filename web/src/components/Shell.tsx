@@ -179,6 +179,8 @@ export function StatusBar({ onKeys }: { onKeys: () => void }) {
   const borrowed = ((dataset?.shared_from_reference ?? []) as string[]).some((x) => x === "weather" || x === "prices");
   const cables = ((dataset?.assumptions ?? []) as { code: string; count: number }[]).find((a) => a.code === "cable_default");
   const example = !!dataset?.imported && !!dataset?.synthetic;
+  // a site of its own: its weather and its zone's prices are real, that place's (task 2.3)
+  const ownSite = dataset?.site as { zone: string } | undefined;
   // asked again every half minute, so the bar says when the server has gone
   const health = useApi<any>("/health", { refetchMs: 30_000 });
   return (
@@ -196,7 +198,8 @@ export function StatusBar({ onKeys }: { onKeys: () => void }) {
       )}
       <OutputLast />
       <span className="sb-legend">
-        {!(example && borrowed) && <span><Mark kind="real" />{pt("tb.real")}</span>}
+        {!(example && borrowed) && <span><Mark kind="real" />{ownSite
+          ? t(example ? "tb.real.siteOnExample" : "tb.real.site", { zone: ownSite.zone }) : pt("tb.real")}</span>}
         <span><Mark kind="synthetic" />{cables ? t("tb.synthetic.withCables", { n: f(cables.count) }) : pt("tb.synthetic")}</span>
         {borrowed && <span><Mark kind="reference" />{t("tb.borrowed")}</span>}
       </span>

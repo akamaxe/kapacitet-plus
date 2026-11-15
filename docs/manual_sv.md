@@ -53,6 +53,13 @@ exempelnät är syntetiskt och märks så i projektlistan, i statusraden och på
 *Exportera (.zip)* skriver ett projekt som en projektfil: dess tabeller och vad det är, utan
 resultat, som beräknas på nytt där filen öppnas.
 
+I sista steget anger du var nätet ligger: läget (transformatorns, om exporten har det, eller
+inskrivet) och elområdet, som du väljer själv; inget gissar det. Bygget hämtar då den platsens
+solinstrålning från SMHI STRÅNG, temperaturen från den närmaste SMHI-stationen som har alla väderår
+och elområdets priser, och projektets kort säger varifrån väder, priser och hushåll kommer. Utan
+läge används referensplatsens väder och priser, och det sägs. Koordinater i SWEREF 99 TM räknas om
+till grader.
+
 Bygget beräknar först projektets kapacitet: acceptansgränsen med den statiska studien och med
 timstudien, förbrukningskapaciteten, utgångsläget för en ansökan och kontrollerna. Projektet går att
 öppna så snart den delen är klar. Är de dynamiska gränserna påslagna erbjuder startfönstret sedan

@@ -22,6 +22,8 @@ export interface Report {
   score: number;
   tables?: Record<string, number>;
   findings: Finding[];
+  /** where the transformer is, in degrees, for the site a new project is offered */
+  site_hint?: { lat: number; lon: number } | null;
 }
 
 const SEVERITY: Record<string, "critical" | "warning"> = { error: "critical", warning: "warning" };

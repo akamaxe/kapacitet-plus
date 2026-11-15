@@ -21,6 +21,7 @@ METOBS_ARCHIVE_URL = (
     "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/{param}/station/{station}/"
     "period/corrected-archive/data.csv"
 )
+METOBS_STATIONS_URL = "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/{param}.json"
 METOBS_LATEST_URL = (
     "https://opendata-download-metobs.smhi.se/api/version/1.0/parameter/{param}/station/{station}/"
     "period/{period}/data.json"
@@ -79,6 +80,65 @@ def read_strang(param: int, year: int) -> pd.Series:
     idx = pd.to_datetime([d["date_time"] for d in data], utc=True)
     vals = pd.to_numeric(pd.Series([d["value"] for d in data], index=idx), errors="coerce")
     return vals.clip(lower=0.0).astype(float)
+
+
+def stations_path(param: int = 1) -> Path:
+    return raw("smhi", f"metobs_stations_p{param}.json")
+
+
+def fetch_stations(param: int = 1, *, refresh: bool = False) -> Path:
+    """Every station of a metobs parameter (1: air temperature, hourly), with its position and the
+    period its data cover."""
+    dest = stations_path(param)
+    entry = f"smhi_metobs_stations_p{param}"
+    if cached(entry, dest, refresh=refresh):
+        return dest
+    url = METOBS_STATIONS_URL.format(param=param)
+    stations = http("GET", url, timeout=90).json().get("station") or []
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    dest.write_text(json.dumps(stations), encoding="utf-8")
+    record(entry, source="smhi_metobs", path=dest, url=url, rows=len(stations),
+           notes="The stations of the parameter, with their position and the period of their data.")
+    return dest
+
+
+def _km(lat0: float, lon0: float, lat1: float, lon1: float) -> float:
+    """Great-circle distance, km."""
+    import math
+
+    p0, p1 = math.radians(lat0), math.radians(lat1)
+    dp, dl = p1 - p0, math.radians(lon1 - lon0)
+    a = math.sin(dp / 2) ** 2 + math.cos(p0) * math.cos(p1) * math.sin(dl / 2) ** 2
+    return 2 * 6371.0 * math.asin(math.sqrt(a))
+
+
+def nearest_station(lat: float, lon: float, first_year: int, last_year: int, param: int = 1,
+                    stations: list[dict] | None = None) -> dict:
+    """The station of `param` nearest (lat, lon) whose data cover every year from `first_year` to
+    `last_year`, as {id, name, lat, lon, distance_km, from, to}. `stations` replaces the downloaded
+    list (a test's). A list without such a station raises ValueError."""
+    if stations is None:
+        stations = json.loads(fetch_stations(param).read_text(encoding="utf-8"))
+    start = int(pd.Timestamp(f"{first_year}-01-01", tz="UTC").timestamp() * 1000)
+    end = int(pd.Timestamp(f"{last_year}-12-31", tz="UTC").timestamp() * 1000)
+    best: dict | None = None
+    for s in stations:
+        try:
+            frm, to = int(s["from"]), int(s["to"])
+            la, lo = float(s["latitude"]), float(s["longitude"])
+            sid = int(s["id"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if frm > start or to < end:
+            continue
+        d = _km(lat, lon, la, lo)
+        if best is None or d < best["distance_km"]:
+            best = {"id": sid, "name": str(s.get("name", sid)), "lat": la, "lon": lo, "distance_km": d,
+                    "from": pd.Timestamp(frm, unit="ms", tz="UTC").date().isoformat(),
+                    "to": pd.Timestamp(to, unit="ms", tz="UTC").date().isoformat()}
+    if best is None:
+        raise ValueError(f"no SMHI station of parameter {param} has data from {first_year} to {last_year}")
+    return {**best, "distance_km": round(best["distance_km"], 1)}
 
 
 def metobs_name(station: int, param: int = 1) -> str:

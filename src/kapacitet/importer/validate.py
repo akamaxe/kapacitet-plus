@@ -93,8 +93,10 @@ MESSAGES = {
     "annual_kwh_blank": "customers without annual_kwh, whose synthetic household profiles cannot be compared with metered consumption",
     "no_coordinates": "buses.csv has no usable lon/lat, so the map cannot be drawn",
     "coordinates_partial": "buses without lon/lat, which the map cannot place",
-    "coordinates_sweref": ("lon/lat look like SWEREF 99 TM metres, for example E {e} and N {n}, not WGS84 degrees: "
-                           "give longitude and latitude in degrees"),
+    "coordinates_sweref": ("some lon/lat look like SWEREF 99 TM metres, for example E {e} and N {n}, and others like "
+                           "degrees: give every bus in one system, longitude and latitude in degrees or SWEREF 99 TM"),
+    "coordinates_converted": ("lon/lat are SWEREF 99 TM metres, for example E {e} and N {n}: converted to degrees, "
+                              "{lat}, {lon} there"),
     "coordinates_out_of_range": "lon/lat outside the range of degrees, for example {lon}, {lat}",
     "coordinates_outside_sweden": "buses with coordinates outside Sweden, for example {lon}, {lat}",
     "required_blank": "{table}.csv has rows without {column}, for example {key} {example}",
@@ -176,6 +178,8 @@ class Report:
     findings: list[Finding] = field(default_factory=list)
     tables: dict[str, int] = field(default_factory=dict)
     title: str = "Network export check"
+    # where the transformer is, in degrees (its LV bus), for the site a new project is offered
+    site_hint: dict | None = None
 
     def add(self, severity: str, check: str, code: str, count: int = 0, **params) -> None:
         self.findings.append(Finding(severity, check, MESSAGES[code].format(**params), count, code, params))
@@ -207,6 +211,7 @@ class Report:
             "tables": self.tables,
             "findings": [f.__dict__ for f in self.findings],
             "text": self.text(),
+            "site_hint": self.site_hint,
         }
 
     def text(self) -> str:
@@ -299,9 +304,24 @@ def validate(data: dict[str, pd.DataFrame], phase_cost_pct: float | None = None,
     _check_electrical_data(data, report, default_cable)
     _check_customers(data, report, phase_cost_pct)
     _check_coordinates(data["buses"], report)
+    report.site_hint = _site_hint(data)
     if "equipment" in data:
         _check_equipment(data["equipment"], data["customers"], report)
     return report
+
+
+def _site_hint(data: dict[str, pd.DataFrame]) -> dict | None:
+    """The transformer's position in degrees (its LV bus's, SWEREF converted), when it is in Sweden."""
+    try:
+        buses, _, _ = degrees_from_sweref(data["buses"])
+        lv = str(data["transformer"].iloc[0]["lv_bus"])
+        row = buses[buses["bus_id"].astype(str) == lv]
+        lat, lon = float(_numbers(row["lat"]).iloc[0]), float(_numbers(row["lon"]).iloc[0])
+    except (KeyError, IndexError, TypeError, ValueError):
+        return None
+    if not (SWEDEN_LAT[0] <= lat <= SWEDEN_LAT[1] and SWEDEN_LON[0] <= lon <= SWEDEN_LON[1]):
+        return None
+    return {"lat": round(lat, 5), "lon": round(lon, 5)}
 
 
 def check_equipment(equipment: pd.DataFrame, customers: pd.DataFrame) -> Report:
@@ -501,12 +521,43 @@ def _check_customers(data: dict[str, pd.DataFrame], report: Report, phase_cost_p
                 report.add(WARNING, f"{col} missing", f"{code}_blank", n)
 
 
+def degrees_from_sweref(buses: pd.DataFrame) -> tuple[pd.DataFrame, int, dict | None]:
+    """The buses with lon/lat in WGS84 degrees: when every bus that has coordinates gives SWEREF 99 TM
+    metres (the easting in either column), they are converted (pyproj, geo.to_wgs84) and the count and
+    the first bus's metres and degrees come back; otherwise the buses as they are, 0 and None."""
+    if "lon" not in buses.columns or "lat" not in buses.columns:
+        return buses, 0, None
+    x, y = _numbers(buses["lon"]), _numbers(buses["lat"])
+    given = x.notna() & y.notna()
+    if not given.any():
+        return buses, 0, None
+    gx, gy = x[given], y[given]
+    e_first = gx.between(*SWEREF_E) & gy.between(*SWEREF_N)
+    n_first = gy.between(*SWEREF_E) & gx.between(*SWEREF_N)
+    if not (e_first.all() or n_first.all()):
+        return buses, 0, None
+    from ..geo import to_wgs84
+
+    e, n = (gx, gy) if e_first.all() else (gy, gx)
+    out = buses.copy()
+    lon = pd.Series(float("nan"), index=buses.index, dtype=float)
+    lat = pd.Series(float("nan"), index=buses.index, dtype=float)
+    for i in e.index:
+        lon[i], lat[i] = to_wgs84(float(e[i]), float(n[i]))
+    out["lon"], out["lat"] = lon, lat
+    i = e.index[0]
+    return out, int(given.sum()), {"e": f"{e[i]:.0f}", "n": f"{n[i]:.0f}", "lon": f"{lon[i]:.5f}", "lat": f"{lat[i]:.5f}"}
+
+
 def _check_coordinates(buses: pd.DataFrame, report: Report) -> None:
-    """WGS84 degrees, in Sweden. Metres of SWEREF 99 TM in the degree columns are named as such,
-    whichever column holds the easting."""
+    """WGS84 degrees, in Sweden. SWEREF 99 TM metres for every bus are converted, and the report says
+    so (whichever column holds the easting); metres for some buses and degrees for others are an error."""
     if "lon" not in buses.columns or "lat" not in buses.columns:
         report.add(WARNING, "no coordinates", "no_coordinates")
         return
+    buses, converted, example = degrees_from_sweref(buses)
+    if converted:
+        report.add(WARNING, "coordinates", "coordinates_converted", converted, **example)
     lon, lat = _numbers(buses["lon"]), _numbers(buses["lat"])
     given = lon.notna() & lat.notna()
     if not given.any():

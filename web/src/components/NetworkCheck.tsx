@@ -118,7 +118,8 @@ export function NetworkCheck() {
             {report.usable && checked && (
               <div className="stack netcreate">
                 <h4>{t("new.build.title")}</h4>
-                <CreateProjectForm files={checked} decoded={decoded} origin={{ kind: "csv" }} onCreated={() => useStore.getState().setView("start")} />
+                <CreateProjectForm files={checked} decoded={decoded} origin={{ kind: "csv" }} siteHint={report.site_hint ?? null}
+                  onCreated={() => useStore.getState().setView("start")} />
               </div>
             )}
           </div>

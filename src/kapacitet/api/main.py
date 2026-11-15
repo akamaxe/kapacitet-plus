@@ -590,7 +590,13 @@ def meta() -> dict:
             out["site"] = out["dataset"]["name"]
         except ds.DatasetError:
             pass
-        out["dataset"]["shared_from_reference"] = ["weather", "prices", "households"]
+        # a site of its own (the build's site step, site.json): its weather and prices are that
+        # place's, and only the households are the reference network's
+        own = processed("site.json")
+        site = json.loads(own.read_text(encoding="utf-8")) if own.exists() else None
+        if site:
+            out["dataset"]["site"] = site
+        out["dataset"]["shared_from_reference"] = ["households"] if site else ["weather", "prices", "households"]
     return out
 
 

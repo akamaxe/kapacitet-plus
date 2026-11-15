@@ -46,7 +46,7 @@ REFERENCE = "reference"
 RESTART = 75                       # the exit code that asks the supervisor for a restart
 PROJECT_SCHEMA = "kapacitet.project/1"
 ORIGIN_KINDS = ("csv", "template", "project_file")
-STEPS = ("import", "households", "profiles", "compute")
+STEPS = ("import", "households", "site", "profiles", "compute")
 # the envelope studies of a network already built: a second build, offered where the envelopes are on
 ENVELOPE_STEPS = ("envelopes",)
 PARTS = ("capacity", "envelopes")
@@ -80,7 +80,68 @@ ERRORS = {
     "too_many_builds": "{n} network builds are already running; start this one when one has finished",
     "not_building": "network {id} is not being built",
     "wrong_folder": "the build of network {id} would write into {data}, which is not its own folder",
+    "bad_site": "the site needs a latitude and a longitude in degrees",
+    "site_zone": "the site's bidding zone is SE1, SE2, SE3 or SE4, and it is chosen: nothing guesses it",
+    "site_outside": "the site lies outside Sweden: latitude {lat}, longitude {lon}",
 }
+
+# ---------------------------------------------------------------- a project's own site (task 2.3)
+
+ZONES = ("SE1", "SE2", "SE3", "SE4")
+# the downloads of the reference folder that do not depend on the place, linked into a project with a
+# site of its own: everything but its weather and its prices, which are fetched for the project
+_SHARED_RAW = ("esett", "osm", "scb", "zones", "prices", "smhi")
+
+
+def clean_site(site: dict | None) -> dict | None:
+    """A project's site as the record keeps it ({name, lat, lon, zone}), or None for none. The zone is
+    the user's choice: a site without one is refused, never guessed."""
+    if not site:
+        return None
+    try:
+        lat, lon = float(site["lat"]), float(site["lon"])
+    except (KeyError, TypeError, ValueError):
+        raise DatasetError("bad_site") from None
+    if site.get("zone") not in ZONES:
+        raise DatasetError("site_zone")
+    if not (55.0 <= lat <= 69.5 and 10.5 <= lon <= 24.5):
+        raise DatasetError("site_outside", lat=f"{lat:g}", lon=f"{lon:g}")
+    return {"name": str(site.get("name") or "").strip()[:80], "lat": round(lat, 5), "lon": round(lon, 5),
+            "zone": site["zone"]}
+
+
+def share_raw(root: Path) -> int:
+    """Link the reference downloads that do not depend on the place into a project with a site of its
+    own (<project>/raw), and copy their manifest, which each download of the project then adds to.
+    Run by the server, whose downloads are the reference network's (HOME/raw when it is on another)."""
+    src = RAW if current() == REFERENCE else HOME / "raw"
+    linked = sum(procs.link_files(src / part, root / "raw" / part, replace=False) for part in _SHARED_RAW)
+    manifest = root / "raw" / "manifest.json"
+    if not manifest.exists() and (src / "manifest.json").exists():
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src / "manifest.json", manifest)     # copied, never linked: the project writes it
+    return linked
+
+
+def site_key(ds_id: str) -> str:
+    """The site key of a project (study.toml's [site] key): its id, as long as the key may be."""
+    return ds_id[:41]
+
+
+def write_study_toml(root: Path, ds_id: str, name: str, site: dict, station: dict | None = None) -> Path:
+    """The project's study.toml: its [site] layer, which config._merge_study lays over site.toml in its
+    build and in the server that opens it. Before the station is found only the key, the name and the
+    zone (study/config.Site needs a temperature station beside a position)."""
+    lines = ["# The site of this project (kapacitet/datasets.py), read as a study's [site] layer.", "",
+             "[site]", f'key = "{site_key(ds_id)}"', f"name = {json.dumps(site.get('name') or name)}",
+             f'zone = "{site["zone"]}"']
+    if station is not None:
+        lines += [f"lat = {site['lat']}", f"lon = {site['lon']}", f"temperature_station = {int(station['id'])}"]
+    path = root / "study.toml"
+    from .atomic import write_text_atomic
+
+    write_text_atomic(path, "\n".join(lines) + "\n")
+    return path
 
 
 _now = procs.now
@@ -143,6 +204,7 @@ ASSUMPTIONS = {
     "transformer vk assumed": ("trafo_vk", None, True),
     "transformer vkr assumed": ("trafo_vkr", None, True),
     "bus without coordinates": ("bus_no_coordinates", "buses", False),
+    "coordinates converted from SWEREF 99 TM": ("coordinates_converted", "buses", False),
     "customer without a roof area": ("customer_no_roof", "customers", False),
     "PV AC rating taken from its kWp": ("equipment_pv_ac", None, False),
     "EV charger phases taken as three": ("equipment_ev_three", None, False),
@@ -204,6 +266,9 @@ def summary(root: Path | None = None) -> dict:
             # whether the envelope studies are computed (the showcase is on disk): nothing to say
             # before the capacity is
             "envelopes": (base / "results" / "showcase.json").exists() if measures else None,
+            # where its weather and prices come from (site.json, the build's site step); None: the
+            # reference site's
+            "site": _read(base / "site.json") or None,
             # new EV chargers by the hourly study, and by the static convention (a constant load)
             "ev_chargers": chargers("ev"), "ev_chargers_static": chargers("flat"),
             "assumptions": assumptions(grid)}
@@ -235,7 +300,11 @@ def child_env(ds_id: str | None = None) -> dict[str, str]:
     ds_id = ds_id or active()
     if ds_id == REFERENCE:
         return procs.child_env(home=HOME, dataset=ds_id)
-    return procs.child_env(folder(ds_id), home=HOME, raw=RAW, dataset=ds_id)
+    root = folder(ds_id)
+    if (root / "study.toml").exists():
+        # a site of its own: its study.toml is the site layer, and its downloads are its own
+        return procs.child_env(root, home=HOME, raw=root / "raw", dataset=ds_id, study=root)
+    return procs.child_env(root, home=HOME, raw=RAW, dataset=ds_id)
 
 
 def current() -> str:
@@ -299,7 +368,7 @@ def clean_origin(origin: dict | None) -> dict:
 
 
 def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | None = None,
-           decoded_as: dict[str, str] | None = None, options: dict | None = None) -> dict:
+           decoded_as: dict[str, str] | None = None, options: dict | None = None, site: dict | None = None) -> dict:
     """Validate an export and keep it as a new network, ready to build. Nothing is written for an
     export that does not pass the check. `options` are what the user chose in the check
     (validate.validate's `default_cable`); the build applies the same ones."""
@@ -311,6 +380,7 @@ def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | 
     if unknown:
         raise DatasetError("not_in_contract", tables=", ".join(unknown))
     origin = clean_origin(origin)             # before anything is written
+    site = clean_site(site)
     chosen = {"default_cable": True} if (options or {}).get("default_cable") else {}
     data = read_files(files, decoded_as)
     report = validate(data, default_cable=bool(chosen.get("default_cable")))
@@ -330,6 +400,10 @@ def create(name: str, files: dict[str, str], quick: bool = True, origin: dict | 
            "steps": [{"name": s, "status": "waiting"} for s in STEPS]}
     if chosen:
         rec["options"] = chosen
+    if site is not None:
+        rec["site"] = site
+        write_study_toml(root, ds_id, rec["name"], site)
+        share_raw(root)
     return _save(rec)
 
 
@@ -598,6 +672,54 @@ def _real_steps(ds_id: str, workers: int, quick: bool, envelopes: bool = False) 
     def do_households():
         return {"files": _copy_households(PROCESSED)}
 
+    def do_site():
+        """The project's own site: the nearest SMHI temperature station with every weather year, the
+        site layer written, and the downloads of that place, beside links to the reference
+        downloads that do not depend on it. Without a site, the reference site's weather and prices."""
+        rec = record(ds_id)
+        site = rec.get("site")
+        if not site:
+            return {"site": "reference"}
+        from . import cache, config
+        from .ingest import prices, smhi
+        from .paths import RAW as here_raw
+
+        root = folder(ds_id)
+        # its downloads are its own (child_env): never the reference network's folder
+        if Path(here_raw).resolve() != (root / "raw").resolve():
+            raise DatasetError("wrong_folder", id=ds_id, data=str(here_raw))
+        cfg = config.settings()
+        station = smhi.nearest_station(site["lat"], site["lon"], cfg.weather_years[0], cfg.weather_years[-1])
+        write_study_toml(root, ds_id, rec["name"], site, station)
+        config.study_config.cache_clear()
+        config.settings.cache_clear()
+        cache.clear_all()
+        cfg = config.settings()
+        for year in cfg.weather_years:
+            smhi.fetch_strang(cfg.strang["ghi"], year)
+            smhi.fetch_strang(cfg.strang["dni"], year)
+        smhi.fetch_strang(cfg.strang["dhi"], cfg.reference_year)
+        smhi.fetch_metobs(cfg.temperature_station)
+        years = sorted(set(cfg.weather_years) | set(cfg.price_years))
+        early = [y for y in years if prices.source_for_year(y) == "entsoe"]
+        for year in years:
+            if year not in early:
+                prices.fetch_elpris_year(site["zone"], year)
+        priced_early = bool(early) and prices.entsoe_token() is not None
+        if priced_early:
+            prices.fetch_ecb_eursek(early[0], early[-1])
+            for year in early:
+                prices.fetch_entsoe_day_ahead(site["zone"], year)
+        doc = {"name": site.get("name") or rec["name"], "lat": site["lat"], "lon": site["lon"], "zone": site["zone"],
+               "strang": {"lat": cfg.site.strang_point[0], "lon": cfg.site.strang_point[1]},
+               "station": station,
+               "prices": {"zone": site["zone"],
+                          "years": [y for y in years if y not in early or priced_early],
+                          "sources": ["elprisetjustnu"] + (["entsoe"] if priced_early else [])},
+               "households": "the reference network's synthetic household pool"}
+        procs.write_json(root / "processed" / "site.json", doc)
+        return {"site": doc}
+
     def do_profiles():
         from .config import settings
         from .profiles import build as profiles
@@ -645,8 +767,8 @@ def _real_steps(ds_id: str, workers: int, quick: bool, envelopes: bool = False) 
             notes["meter_compliance"] = str(err)
         return {"not_written": notes} if notes else {}
 
-    return {"import": do_import, "households": do_households, "profiles": do_profiles, "compute": do_compute,
-            "envelopes": do_envelopes}
+    return {"import": do_import, "households": do_households, "site": do_site, "profiles": do_profiles,
+            "compute": do_compute, "envelopes": do_envelopes}
 
 
 def log_tail(ds_id: str, lines: int = 40) -> list[str]:

@@ -42,7 +42,9 @@ export interface CheckOptions {
  * The last step, also offered under a check on the method screen: name the project, choose how
  * much to compute, and start its build.
  */
-export function CreateProjectForm({ files, origin, defaultName, onCreated, before, decoded, options }: {
+export function CreateProjectForm({ files, origin, defaultName, onCreated, before, decoded, options, siteHint }: {
+  /** where the export puts its transformer (the check's site_hint): the site the form offers */
+  siteHint?: { lat: number; lon: number } | null;
   files: Files;
   origin: OriginIn;
   /** how each table was read (lib/decode.ts): the ones not in UTF-8 are said in the report */
@@ -58,6 +60,13 @@ export function CreateProjectForm({ files, origin, defaultName, onCreated, befor
   const client = useQueryClient();
   const [name, setName] = useState(defaultName ?? "");
   const [quick, setQuick] = useState(true);
+  // where it is: the transformer's position when the export gives one, or typed; the bidding zone is
+  // always chosen, never guessed. Left empty, the reference site's weather and prices, said so
+  const [lat, setLat] = useState(siteHint ? String(Math.round(siteHint.lat * 1e5) / 1e5) : "");
+  const [lon, setLon] = useState(siteHint ? String(Math.round(siteHint.lon * 1e5) / 1e5) : "");
+  const [zone, setZone] = useState("");
+  const placed = lat.trim() !== "" || lon.trim() !== "";
+  const siteReady = !placed || (Number.isFinite(Number(lat)) && Number.isFinite(Number(lon)) && lat.trim() !== "" && lon.trim() !== "" && zone !== "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const role = useCan("datasets");
@@ -68,6 +77,7 @@ export function CreateProjectForm({ files, origin, defaultName, onCreated, befor
     const r = await apiWrite("/datasets", {
       name: name.trim() || t("new.defaultName"), files, quick, origin,
       decoded_as: decodedAs(decoded ?? {}), options: options ?? {},
+      site: placed ? { name: name.trim(), lat: Number(lat), lon: Number(lon), zone } : null,
     }).catch(() => null);
     setBusy(false);
     if (!r) return setError(t("ui.offline"));
@@ -89,9 +99,25 @@ export function CreateProjectForm({ files, origin, defaultName, onCreated, befor
         <button type="button" aria-pressed={!quick} onClick={() => setQuick(false)}>{t("new.full")}</button>
       </div>
       <p className="caption">{t(quick ? "new.quickNote" : "new.fullNote")}</p>
+      <fieldset className="stack new-site">
+        <legend>{t("new.site.title")}</legend>
+        <p className="caption">{t(siteHint ? "new.site.fromExport" : "new.site.lead")}</p>
+        <div className="new-site-row">
+          <label className="field-inline"><span>{t("new.site.lat")}</span>
+            <input inputMode="decimal" value={lat} placeholder="59.33" onChange={(e) => setLat(e.target.value)} /></label>
+          <label className="field-inline"><span>{t("new.site.lon")}</span>
+            <input inputMode="decimal" value={lon} placeholder="18.06" onChange={(e) => setLon(e.target.value)} /></label>
+          <label className="field-inline"><span>{t("new.site.zone")}</span>
+            <select value={zone} onChange={(e) => setZone(e.target.value)} aria-describedby="new-site-why">
+              <option value="">{t("new.site.zoneChoose")}</option>
+              {["SE1", "SE2", "SE3", "SE4"].map((z) => <option key={z} value={z}>{z}</option>)}
+            </select></label>
+        </div>
+        <p className="caption-muted" id="new-site-why">{t(placed ? "new.site.note" : "new.site.reference")}</p>
+      </fieldset>
       <div className="answer-actions">
         {before}
-        <button className="btn" disabled={busy || !role.ok} title={role.reason} onClick={() => void create()}>
+        <button className="btn" disabled={busy || !role.ok || !siteReady} title={role.reason} onClick={() => void create()}>
           {busy ? t("new.creating") : t("new.create")}
         </button>
       </div>
@@ -362,6 +388,8 @@ export default function NewProject({ onDone, onCancel, initialFile }: {
           <p className="caption">{draft.label}</p>
           <CreateProjectForm files={draft.files} decoded={draft.decoded} options={draft.options} origin={draft.origin}
             defaultName={draft.name} onCreated={onDone}
+            // an example network is laid out around the reference site: its position is made up, so none is offered
+            siteHint={draft.origin.kind === "template" ? null : report?.site_hint ?? null}
             before={<button className="btn ghost" onClick={() => setStep(2)}>{t("new.back")}</button>} />
         </section>
       )}

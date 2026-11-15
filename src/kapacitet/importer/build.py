@@ -50,7 +50,10 @@ def import_directory(directory: str | Path, save_to_disk: bool = True,
 
 
 def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
-    buses_in = data["buses"].copy()
+    from .validate import degrees_from_sweref
+
+    # SWEREF 99 TM metres for every bus are converted to degrees, as the check said they would be
+    buses_in, converted, _ = degrees_from_sweref(data["buses"].copy())
     lines_in = data["lines"].copy()
     trafo_in = data["transformer"].iloc[0]
     cust_in = data["customers"].copy()
@@ -60,6 +63,7 @@ def build_from_export(data: dict[str, pd.DataFrame]) -> tuple[Network, dict]:
         if n:
             applied[key] = applied.get(key, 0) + int(n)
 
+    note("coordinates converted from SWEREF 99 TM", converted)
     lv_id = str(trafo_in["lv_bus"])
     index = bus_index(buses_in, lv_id)
     ids = list(index)

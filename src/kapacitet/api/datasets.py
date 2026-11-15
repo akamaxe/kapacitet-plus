@@ -38,6 +38,13 @@ class Origin(BaseModel):
     synthetic: bool | None = Field(None, description="with kind project_file: what the file says of itself")
 
 
+class SiteIn(BaseModel):
+    name: str = Field("", max_length=80)
+    lat: float = Field(..., ge=-90, le=90)
+    lon: float = Field(..., ge=-180, le=180)
+    zone: str = Field(..., description="the bidding zone, SE1 to SE4: the user's choice, never guessed")
+
+
 class NewDataset(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     files: dict[str, str] = Field(..., description="the contract's four tables as CSV text, as for /check")
@@ -47,6 +54,8 @@ class NewDataset(BaseModel):
                                                                        "builds unknown cable types as the default cable")
     quick: bool = Field(True, description="one weather year and fewer adoption orders: minutes, not an hour")
     origin: Origin | None = Field(None, description="where the network comes from; an export when left out")
+    site: SiteIn | None = Field(None, description="where it is and its bidding zone: its weather, temperature "
+                                                  "station and prices are that place's; the reference site's without")
 
 
 @memo(maxsize=16)
@@ -103,7 +112,8 @@ def create_dataset(body: NewDataset) -> dict:
     try:
         rec = ds.create(body.name, body.files, quick=body.quick,
                         origin=body.origin.model_dump(exclude_none=True) if body.origin else None,
-                        decoded_as=body.decoded_as, options=body.options)
+                        decoded_as=body.decoded_as, options=body.options,
+                        site=body.site.model_dump() if body.site else None)
     except ds.DatasetError as err:
         raise refusal(err, 422) from err
     except Exception as err:    # a table pandas cannot read

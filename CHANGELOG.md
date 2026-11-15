@@ -33,6 +33,17 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **A project can have a site of its own.** The last step of *New project* takes its position (the
+  export's transformer, or typed) and its bidding zone, which is chosen, never guessed
+  (`POST /datasets` `site`). The build's new `site` step finds the nearest SMHI temperature station
+  with every weather year, writes the project's `study.toml` (a study's site layer) and fetches that
+  place's STRÅNG irradiance, the station's temperature and the zone's prices into `<project>/raw`;
+  `processed/site.json`, `/meta.dataset.site`, the project's card and the status bar say where the
+  weather, the prices and the households come from. Without a site, the reference site's, as before.
+- **SWEREF 99 TM coordinates are converted.** An export whose buses all give SWEREF 99 TM metres is
+  converted to degrees and the check says so (`coordinates_converted`, a warning); metres for some
+  buses and degrees for others is still an error. The check offers the transformer's position as the
+  new project's site (`site_hint`).
 - **A computation has two parts, and a project is built for its capacity first.** `compute --part
   capacity` computes what the four screens of an installation read: the capacity per adoption order
   by the static and the hourly study, the hourly study's deployment, the consumption capacity, the

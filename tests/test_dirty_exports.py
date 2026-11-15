@@ -112,7 +112,8 @@ VARIANTS = {
                           False, {"cable_type_unknown"}),
     "v06_ring": ("a closed ring between two service points", ring, {}, False, {"meshed_network"}),
     "v07_length_km": ("lengths written in km in length_m", kilometres, {}, False, {"cable_length_units"}),
-    "v08_sweref99": ("SWEREF 99 TM metres in lon/lat", sweref, {}, False, {"coordinates_sweref"}),
+    # converted to degrees since task 2.3 of the review, and said so (an error in task 1.1)
+    "v08_sweref99": ("SWEREF 99 TM metres in lon/lat", sweref, {}, True, {"coordinates_converted"}),
     "v09_sv_headers": ("lines.csv with Swedish column names", swedish_headers, {}, False, {"missing_column"}),
     "v10_orphan": ("a customer on a bus that does not exist", orphan, {}, False, {"orphan_customer"}),
     "v11_two_meters": ("a second meter on the same service point", second_meters, {}, True, set()),
@@ -182,9 +183,14 @@ def test_kilometres_and_sweref_say_what_they_look_like(base, tmp_path):
     km = next(f for f in validate(read_export(variant(base, "v07_length_km", tmp_path))).errors
               if f.code == "cable_length_units")
     assert float(km.params["median"]) < 1
-    xy = next(f for f in validate(read_export(variant(base, "v08_sweref99", tmp_path))).errors
-              if f.code == "coordinates_sweref")
-    assert xy.params == {"e": "670000", "n": "6582000"}
+    xy = next(f for f in validate(read_export(variant(base, "v08_sweref99", tmp_path))).warnings
+              if f.code == "coordinates_converted")
+    assert xy.params["e"] == "670000" and xy.params["n"] == "6582000"
+    # E 670 000, N 6 582 000 of SWEREF 99 TM is in Stockholm
+    assert 59.2 < float(xy.params["lat"]) < 59.5 and 17.9 < float(xy.params["lon"]) < 18.3
+    # and the transformer's position is the site a new project is offered (task 2.3)
+    hint = validate(read_export(variant(base, "v08_sweref99", tmp_path))).site_hint
+    assert hint is not None and 59.2 < hint["lat"] < 59.5
 
 
 def test_a_blank_fuse_is_an_error_with_an_example_and_never_reaches_the_build(base, tmp_path):
@@ -250,3 +256,21 @@ def test_the_api_takes_the_default_cable_as_an_option(base, tmp_path, client):
     assert body["usable"]
     assert {f["code"] for f in body["findings"] if f["severity"] == "warning"} >= {"cable_type_unknown_assumed"}
     assert not [f for f in body["findings"] if f["severity"] == ERROR]
+
+
+def test_sweref_metres_are_built_in_degrees_and_a_mix_of_systems_is_refused(base, tmp_path):
+    """A network in SWEREF 99 TM is drawn where it is; one that mixes metres and degrees cannot be."""
+    from kapacitet.importer.build import build_from_export
+    from kapacitet.importer.validate import read_export
+
+    network, applied = build_from_export(read_export(variant(base, "v08_sweref99", tmp_path)))
+    assert applied["coordinates converted from SWEREF 99 TM"] == len(base["buses"])
+    lat = network.buses["lat"].dropna()
+    assert len(lat) and lat.between(59.2, 59.5).all()
+
+    mixed = copy.deepcopy(base)
+    sweref(mixed)
+    mixed["buses"][0]["lon"], mixed["buses"][0]["lat"] = "18.05", "59.35"
+    write(tmp_path / "mixed", mixed)
+    report = validate(read_export(tmp_path / "mixed"))
+    assert not report.usable and "coordinates_sweref" in {f.code for f in report.errors}

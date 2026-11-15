@@ -2371,6 +2371,11 @@ table.data tbody tr[tabindex] { cursor: pointer; }
 .field-inline input[type="checkbox"] { min-height: 0; width: 18px; height: 18px; padding: 0; accent-color: var(--accent); }
 /* an assumption the user takes at the check (the default cable): its box and what it means, read as one line */
 .new-assume { display: flex; align-items: flex-start; gap: var(--space-2); max-width: 70ch; cursor: pointer; }
+/* where a new project is: its position and its bidding zone, in one row that wraps */
+.new-site { border: 0; padding: 0; margin: 0; }
+.new-site legend { padding: 0; font-weight: 600; }
+.new-site-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); }
+.new-site-row input { width: 11ch; }
 .new-assume input[type="checkbox"] { flex: none; min-height: 0; width: 18px; height: 18px; margin: 2px 0 0; padding: 0; accent-color: var(--accent); }
 .portal-answer { padding-top: var(--space-2); }
 .portal-points { display: grid; gap: var(--space-1); margin: 0; padding-left: var(--space-4); }
@@ -2642,6 +2647,8 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .proj-states { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
 /* what the build assumed: a filet and a short list under the facts; the ones that move the
    capacity carry the warning mark, the others are plain lines */
+/* where a project's weather, prices and households come from (ProjectFacts, task 2.3) */
+.proj-site { padding-top: var(--space-3); border-top: 1px solid var(--border); font-size: var(--text-small); }
 .proj-assume { padding-top: var(--space-3); border-top: 1px solid var(--border); }
 .proj-assume h3 { margin: 0 0 var(--space-2); font-size: var(--text-small); font-weight: 600; color: var(--text-secondary); }
 .proj-assume ul { display: grid; gap: var(--space-2); margin: 0; padding: 0; list-style: none; max-width: 78ch; }

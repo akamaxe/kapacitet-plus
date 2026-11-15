@@ -27,6 +27,16 @@ export interface Assumption {
   label?: string;
 }
 
+/** Where a project with a site of its own takes its weather and prices from (processed/site.json). */
+export interface ProjectSite {
+  name: string;
+  lat: number;
+  lon: number;
+  zone: string;
+  station: { id: number; name: string; distance_km: number };
+  prices: { zone: string; years: number[]; sources: string[] };
+}
+
 /** What a project list shows of a network, read from the network's own files (null: not there). */
 export interface Summary {
   customers: number | null;
@@ -48,13 +58,15 @@ export interface Summary {
   ev_chargers_static: number | null;
   /** whether the envelope studies are computed (the second part of a build) */
   envelopes: boolean | null;
+  /** the project's own site (its build's site step); null: the reference site's weather and prices */
+  site: ProjectSite | null;
   assumptions: Assumption[];
 }
 
 export const NO_SUMMARY: Summary = {
   customers: null, feeders: null, buses: null, lines: null, trafo_type: null, computed_at: null, quick: null,
   reference_year: null, years: null, n_years: null, static_kw: null, hourly_kw: null, ev_chargers: null,
-  ev_chargers_static: null, envelopes: null, assumptions: [],
+  ev_chargers_static: null, envelopes: null, site: null, assumptions: [],
 };
 
 /** An assumption as one sentence, with its counts. Pure. */

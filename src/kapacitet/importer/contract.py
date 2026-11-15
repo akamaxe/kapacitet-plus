@@ -54,9 +54,9 @@ BUSES = Table(
         Column("kind", "-", "substation, cabinet or service."),
         Column("name", "-", "Label for the map and the reports.", required=False,
                fallback="the identifier"),
-        Column("lon", "degrees", "Longitude, WGS84 degrees (SWEREF 99 TM metres are refused).", required=False,
+        Column("lon", "degrees", "Longitude, WGS84 degrees, or the SWEREF 99 TM easting (metres, converted).", required=False,
                fallback="no map, the engine still runs"),
-        Column("lat", "degrees", "Latitude, WGS84 degrees.", required=False,
+        Column("lat", "degrees", "Latitude, WGS84 degrees, or the SWEREF 99 TM northing (metres, converted).", required=False,
                fallback="no map, the engine still runs"),
     ],
 )
@@ -169,7 +169,8 @@ def as_markdown() -> str:
            "Four CSV files in one directory, with a header row, and an optional fifth, `equipment.csv`, "
            "which is checked and used when it is there. Comma separated, or semicolon separated with a "
            "decimal comma as Excel writes it in Sweden; UTF-8, or Windows-1252 as older versions of Excel "
-           "save it, which the report then notes. Lengths are metres and coordinates WGS84 degrees.",
+           "save it, which the report then notes. Lengths are metres; coordinates are WGS84 degrees, or "
+           "SWEREF 99 TM metres for every bus, which are converted and the report says so.",
            "Run `python -m kapacitet check <directory>` to get a data-quality report before "
            "sending anything.", ""]
     for table in ALL_TABLES:

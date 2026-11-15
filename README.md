@@ -668,7 +668,19 @@ from, and a separate process builds the network in its own folder,
 `python -m kapacitet dataset build <id> --workers 2` with `KAPACITET_DATA_DIR` on that folder and
 `KAPACITET_RAW_DIR` on the reference network's downloads. It reads the export, copies the
 reference network's household profiles, builds the profiles for every weather year and computes
-the capacity part (`compute --part capacity`): the project is ready to open when it ends. A *quick*
+the capacity part (`compute --part capacity`): the project is ready to open when it ends.
+
+A project can have a **site of its own**: its position (the export's transformer, or typed) and its
+bidding zone, which the user picks in the last step; nothing guesses the zone. Its build then has a
+`site` step: the nearest SMHI station with air temperature for every weather year (from SMHI's list
+of metobs stations), and the project's `study.toml` with that site layer, the one a study's station
+has (`config._merge_study`). Its downloads go to `<project>/raw`, beside links to the reference
+downloads that do not depend on the place: STRÅNG irradiance at its position, the station's
+temperature and the zone's prices (ENTSO-E's before 2023 only with a token). The server that opens
+it reads the same layer. `processed/site.json` says where each comes from, and the project's card
+and the status bar say it too; the households are the reference network's synthetic pool. Without a
+site, a project takes the reference site's weather and prices, and says so. Coordinates in SWEREF 99 TM
+metres are converted to degrees, and the check says so. A *quick*
 build (one weather year and fewer adoption orders in the computation) of the 12-house example
 network takes under a minute. Where the envelopes are on, the start window then offers *Compute
 envelope studies*, a second build (`dataset build <id> --part envelopes`,

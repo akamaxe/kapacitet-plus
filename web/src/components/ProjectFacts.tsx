@@ -26,6 +26,25 @@ export function useKind() {
   };
 }
 
+/** A project's sources: its own site's weather and prices, or the reference site's, and the households. */
+function SiteFacts({ p }: { p: Project }) {
+  const t = useT();
+  const f = useFmt();
+  const s = p.summary.site;
+  const span = (ys: number[]) => (ys.length ? (ys.length === 1 ? String(ys[0]) : `${Math.min(...ys)}–${Math.max(...ys)}`) : "–");
+  return (
+    <dl className="kv proj-site">
+      <dt>{t("proj.site.weather")}</dt>
+      <dd>{s ? t("proj.site.weatherOwn", { name: s.name, lat: f(s.lat, 3), lon: f(s.lon, 3), station: s.station.name,
+        id: s.station.id, km: f(s.station.distance_km, 1) }) : t("proj.site.reference")}</dd>
+      <dt>{t("proj.site.prices")}</dt>
+      <dd>{s ? t("proj.site.pricesOwn", { zone: s.prices.zone, years: span(s.prices.years) }) : t("proj.site.reference")}</dd>
+      <dt>{t("proj.site.households")}</dt>
+      <dd>{t("proj.site.householdsPool")}</dd>
+    </dl>
+  );
+}
+
 export function ProjectFacts({ p }: { p: Project }) {
   const t = useT();
   const f = useFmt();
@@ -75,6 +94,8 @@ export function ProjectFacts({ p }: { p: Project }) {
       {(p.summary.static_kw !== null || p.summary.hourly_kw !== null) && (
         <p className="source-line">{t("proj.d.capacityNote")}</p>
       )}
+      {/* where its weather, prices and households come from: the reference project's are its own */}
+      {!p.reference && p.state === "ready" && <SiteFacts p={p} />}
       {p.summary.assumptions.length > 0 && (
         <div className="proj-assume">
           <h3>{t("proj.assume.title")}</h3>

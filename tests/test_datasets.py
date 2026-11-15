@@ -152,6 +152,86 @@ def test_the_envelope_studies_are_a_second_build_that_keeps_the_first(tmp_path, 
     assert seen["envelopes"] is True and again["parts"] == ["capacity", "envelopes"]
 
 
+def test_a_project_may_have_a_site_of_its_own_whose_zone_is_chosen(tmp_path, monkeypatch):
+    """Where it is and its bidding zone (task 2.3 of the technical review of 14-11-2026): the zone is the
+    user's, a site outside Sweden is refused, and a project with a site gets a study.toml (its site
+    layer), its own downloads beside links to the shared ones, and its own environment."""
+    import tomllib
+
+    from kapacitet import datasets as ds
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    shared = tmp_path / "raw"
+    (shared / "esett").mkdir(parents=True)
+    (shared / "esett" / "load.json").write_text("{}", encoding="utf-8")
+    (shared / "manifest.json").write_text('{"x": {}}', encoding="utf-8")
+    monkeypatch.setattr(ds, "RAW", shared)
+    assert ds.clean_site(None) is None
+    for bad, code in (({"lat": 55.6, "lon": 13.0}, "site_zone"), ({"lat": 48.8, "lon": 2.3, "zone": "SE4"}, "site_outside"),
+                      ({"lat": "x", "lon": 13.0, "zone": "SE4"}, "bad_site")):
+        with pytest.raises(ds.DatasetError) as refused:
+            ds.clean_site(bad)
+        assert refused.value.code == code
+    site = ds.clean_site({"name": "Malmö", "lat": 55.605, "lon": 13.003, "zone": "SE4"})
+    ds_id = _dataset(ds)
+    root = ds.folder(ds_id)
+    ds.write_study_toml(root, ds_id, "Test", site)
+    toml = tomllib.loads((root / "study.toml").read_text(encoding="utf-8"))["site"]
+    assert toml == {"key": ds_id, "name": "Malmö", "zone": "SE4"}      # no position before its station
+    ds.write_study_toml(root, ds_id, "Test", site, {"id": 52350})
+    toml = tomllib.loads((root / "study.toml").read_text(encoding="utf-8"))["site"]
+    assert (toml["lat"], toml["lon"], toml["temperature_station"]) == (55.605, 13.003, 52350)
+    assert ds.share_raw(root) == 1 and (root / "raw" / "esett" / "load.json").exists()
+    assert (root / "raw" / "manifest.json").read_text(encoding="utf-8") == '{"x": {}}'
+    env = ds.child_env(ds_id)
+    assert env["KAPACITET_STUDY"] == str(root) and env["KAPACITET_RAW_DIR"] == str(root / "raw")
+
+
+def test_the_site_step_finds_the_station_and_fetches_that_place(tmp_path, monkeypatch):
+    """The build's site step, without the network: the nearest station, the site layer with it, and
+    the place's weather and prices fetched; site.json says where each comes from."""
+    import json as _json
+
+    from kapacitet import config, datasets as ds, paths
+    from kapacitet.ingest import prices, smhi
+
+    monkeypatch.setattr(ds, "DATASETS", tmp_path / "datasets")
+    monkeypatch.setattr(ds, "HOME", tmp_path)
+    ds_id = _dataset(ds)
+    root = ds.folder(ds_id)
+    rec = ds.record(ds_id) | {"site": {"name": "Malmö", "lat": 55.605, "lon": 13.003, "zone": "SE4"}}
+    ds._save(rec)
+    ds.write_study_toml(root, ds_id, "Test", rec["site"])
+    monkeypatch.setattr(paths, "DATA", root)
+    monkeypatch.setattr(paths, "RAW", root / "raw")
+    monkeypatch.setenv("KAPACITET_STUDY", str(root))
+    config.study_config.cache_clear()
+    config.settings.cache_clear()
+    calls = []
+    monkeypatch.setattr(smhi, "nearest_station", lambda lat, lon, a, b: {"id": 52350, "name": "Malmö A", "lat": 55.57,
+                                                                        "lon": 13.07, "distance_km": 5.7})
+    monkeypatch.setattr(smhi, "fetch_strang", lambda param, year: calls.append(("strang", param, year)))
+    monkeypatch.setattr(smhi, "fetch_metobs", lambda station: calls.append(("metobs", station)))
+    monkeypatch.setattr(prices, "fetch_elpris_year", lambda zone, year: calls.append(("elpris", zone, year)))
+    monkeypatch.setattr(prices, "entsoe_token", lambda: None)
+    try:
+        out = ds._real_steps(ds_id, 2, True)["site"]()
+        cfg = config.settings()
+        assert cfg.temperature_station == 52350 and cfg.site.bidding_zone == "SE4"
+        assert cfg.site.strang_point == (55.605, 13.003)
+    finally:
+        config.study_config.cache_clear()
+        config.settings.cache_clear()
+    assert ("metobs", 52350) in calls and {c[1] for c in calls if c[0] == "elpris"} == {"SE4"}
+    assert {c[2] for c in calls if c[0] == "strang"} == set(cfg.weather_years)
+    doc = _json.loads((root / "processed" / "site.json").read_text(encoding="utf-8"))
+    assert doc == out["site"] and doc["station"]["name"] == "Malmö A" and doc["prices"]["sources"] == ["elprisetjustnu"]
+    # without a site, the step says it takes the reference site's
+    ds._save(ds.record(ds_id) | {"site": None})
+    assert ds._real_steps(ds_id, 2, True)["site"]() == {"site": "reference"}
+
+
 def test_a_network_in_use_or_being_built_is_not_deleted(tmp_path, monkeypatch):
     import os
 
