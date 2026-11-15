@@ -2707,6 +2707,8 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .study-dot[data-state="ready"] { background: var(--good-fill); }
 .study-dot[data-state="building"] { background: var(--warning-fill); }
 .study-dot[data-state="failed"] { background: var(--danger-fill); }
+.study-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: var(--space-5) var(--space-6); align-items: start; }
+.study-actions > .block { margin: 0; }
 .study-log { margin: 0; padding: var(--space-2) var(--space-3); max-height: 8.5em; overflow: auto; background: var(--bg-inset); border-radius: var(--radius-sm); font-size: var(--text-caption); white-space: pre-wrap; color: var(--text-secondary); }
 .study-run-pick { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--text-small); color: var(--text-secondary); }
 .study-steps { list-style: none; margin: 0; padding: 0; display: grid; border-top: 1px solid var(--border); max-width: 92ch; }

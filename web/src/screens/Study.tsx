@@ -154,52 +154,54 @@ export default function Study({ id }: { id: string }) {
         <p className="caption-muted">{t("study.where", { folder: d.folder, method: d.study.method_version })}</p>
       </header>
 
-      <section className="block stack" aria-labelledby="study-build">
-        <div className="block-head">
-          <h2 id="study-build">{t("study.build.title")}</h2>
-          {isBuilding && <span className="status measured" role="status">{t("study.build.running")}</span>}
-        </div>
-        <p className="caption">{t("study.build.lead")}</p>
-        <div className="answer-actions">
-          <button className="btn" disabled={!can.ok || isBuilding || !!busy || d.stations.length === 0} title={can.reason}
-            onClick={() => void build(true)}>{t("study.build.quick")}</button>
-          <button className="btn ghost" disabled={!can.ok || isBuilding || !!busy || d.stations.length === 0} title={can.reason}
-            onClick={() => void build(false)}>{t("study.build.full")}</button>
-          {isBuilding && (
-            <button className="btn ghost" disabled={!can.ok || !!busy} title={can.reason}
-              onClick={() => void act("cancel", "/cancel")}>{t("study.build.stop")}</button>
-          )}
-          <button className="btn ghost" disabled={!can.ok || isBuilding || !!busy} title={can.reason}
-            onClick={() => void act("import", "/import")}>{t("study.build.check")}</button>
-        </div>
-        {d.log.length > 0 && isBuilding && <pre className="study-log" aria-label={t("study.build.log")}>{d.log.slice(-4).join("\n")}</pre>}
-        <RoleNote action="studies" />
-      </section>
+      <div className="study-actions">
+        <section className="block stack" aria-labelledby="study-build">
+          <div className="block-head">
+            <h2 id="study-build">{t("study.build.title")}</h2>
+            {isBuilding && <span className="status measured" role="status">{t("study.build.running")}</span>}
+          </div>
+          <p className="caption">{t("study.build.lead")}</p>
+          <div className="answer-actions">
+            <button className="btn" disabled={!can.ok || isBuilding || !!busy || d.stations.length === 0} title={can.reason}
+              onClick={() => void build(true)}>{t("study.build.quick")}</button>
+            <button className="btn ghost" disabled={!can.ok || isBuilding || !!busy || d.stations.length === 0} title={can.reason}
+              onClick={() => void build(false)}>{t("study.build.full")}</button>
+            {isBuilding && (
+              <button className="btn ghost" disabled={!can.ok || !!busy} title={can.reason}
+                onClick={() => void act("cancel", "/cancel")}>{t("study.build.stop")}</button>
+            )}
+            <button className="btn ghost" disabled={!can.ok || isBuilding || !!busy} title={can.reason}
+              onClick={() => void act("import", "/import")}>{t("study.build.check")}</button>
+          </div>
+          {d.log.length > 0 && isBuilding && <pre className="study-log" aria-label={t("study.build.log")}>{d.log.slice(-4).join("\n")}</pre>}
+          <RoleNote action="studies" />
+        </section>
 
-      <section className="block stack" aria-labelledby="study-meters">
-        <div className="block-head"><h2 id="study-meters">{t("study.meters.title")}</h2></div>
-        <p className="caption">{t("study.meters.lead")}</p>
-        <div className="answer-actions">
-          <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
-            <input type="file" accept=".csv,text/csv" multiple className="sr-only" disabled={!can.ok || isBuilding || !!busy}
-              onChange={(e) => { const list = e.currentTarget.files; void uploadMeters(list).finally(() => { e.target.value = ""; }); }} />
-            <Icon name="upload" size={15} />{t("study.meters.add")}
-          </label>
-        </div>
-        {meterReport && <CheckReport report={meterReport} />}
-      </section>
+        <section className="block stack" aria-labelledby="study-meters">
+          <div className="block-head"><h2 id="study-meters">{t("study.meters.title")}</h2></div>
+          <p className="caption">{t("study.meters.lead")}</p>
+          <div className="answer-actions">
+            <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
+              <input type="file" accept=".csv,text/csv" multiple className="sr-only" disabled={!can.ok || isBuilding || !!busy}
+                onChange={(e) => { const list = e.currentTarget.files; void uploadMeters(list).finally(() => { e.target.value = ""; }); }} />
+              <Icon name="upload" size={15} />{t("study.meters.add")}
+            </label>
+          </div>
+          {meterReport && <CheckReport report={meterReport} />}
+        </section>
 
-      <section className="block stack" aria-labelledby="study-dso">
-        <div className="block-head"><h2 id="study-dso">{t("study.dso.title")}</h2></div>
-        <p className="caption">{t("study.dso.lead")}</p>
-        <div className="answer-actions">
-          <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
-            <input type="file" accept=".csv,text/csv" className="sr-only" disabled={!can.ok || isBuilding || !!busy}
-              onChange={(e) => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ""; void uploadStatic(file); }} />
-            <Icon name="upload" size={15} />{t("study.dso.add")}
-          </label>
-        </div>
-      </section>
+        <section className="block stack" aria-labelledby="study-dso">
+          <div className="block-head"><h2 id="study-dso">{t("study.dso.title")}</h2></div>
+          <p className="caption">{t("study.dso.lead")}</p>
+          <div className="answer-actions">
+            <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
+              <input type="file" accept=".csv,text/csv" className="sr-only" disabled={!can.ok || isBuilding || !!busy}
+                onChange={(e) => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ""; void uploadStatic(file); }} />
+              <Icon name="upload" size={15} />{t("study.dso.add")}
+            </label>
+          </div>
+        </section>
+      </div>
 
       <section className="block stack" aria-labelledby="study-stations">
         <div className="block-head"><h2 id="study-stations">{t("study.stations.title")}</h2></div>
