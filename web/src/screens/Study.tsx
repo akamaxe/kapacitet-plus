@@ -96,6 +96,12 @@ export default function Study({ id }: { id: string }) {
     if (out) setMeterReport(out.report as Report);
   };
 
+  const uploadStatic = async (file: File | undefined) => {
+    if (!file) return;
+    const out = await act("dsoStatic", "/dso-static", { csv: (await readCsvFile(file)).text }, "PUT");
+    if (out) toast.info(t("study.dso.saved", { n: f(out.rows) }));
+  };
+
   const build = async (quick: boolean) => {
     if (await act("build", "/build", { quick, force: false }, "POST", false)) {
       log.step(t("study.log.buildStarted", { name: d?.study.name ?? id }));
@@ -108,6 +114,10 @@ export default function Study({ id }: { id: string }) {
     { key: "customers", label: t("study.col.customers"), value: (s) => s.customers, numeric: true,
       cell: (s) => (s.customers === null ? "–" : f(s.customers)) },
     { key: "status", label: t("study.col.state"), value: (s) => s.status, cell: (s) => <StationState s={s} /> },
+    { key: "static", label: t("study.col.static"), value: (s) => s.static_kw, numeric: true, unit: "kW",
+      cell: (s) => (s.static_kw === null || s.static_kw === undefined ? "–" : f(s.static_kw)) },
+    { key: "dso", label: t("study.col.dso"), value: (s) => s.dso_static?.gen_bias_kw ?? null, numeric: true, unit: "kW",
+      cell: (s) => (s.dso_static?.gen_bias_kw == null ? "–" : f(s.dso_static.gen_bias_kw, 1)) },
     { key: "gen", label: t("study.col.generation"), value: (s) => s.generation_kw, numeric: true, unit: "kW",
       cell: (s) => (s.generation_kw === null ? "–" : f(s.generation_kw)) },
     { key: "genLimit", label: t("study.col.genLimit"), value: (s) => s.generation_limit,
@@ -177,6 +187,18 @@ export default function Study({ id }: { id: string }) {
           </label>
         </div>
         {meterReport && <CheckReport report={meterReport} />}
+      </section>
+
+      <section className="block stack" aria-labelledby="study-dso">
+        <div className="block-head"><h2 id="study-dso">{t("study.dso.title")}</h2></div>
+        <p className="caption">{t("study.dso.lead")}</p>
+        <div className="answer-actions">
+          <label className="btn ghost" aria-disabled={!can.ok || isBuilding || !!busy || undefined} title={can.reason}>
+            <input type="file" accept=".csv,text/csv" className="sr-only" disabled={!can.ok || isBuilding || !!busy}
+              onChange={(e) => { const file = e.currentTarget.files?.[0]; e.currentTarget.value = ""; void uploadStatic(file); }} />
+            <Icon name="upload" size={15} />{t("study.dso.add")}
+          </label>
+        </div>
       </section>
 
       <section className="block stack" aria-labelledby="study-stations">

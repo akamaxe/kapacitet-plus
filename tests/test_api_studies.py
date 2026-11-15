@@ -207,3 +207,12 @@ def test_meter_readings_are_uploaded_to_a_study_and_checked_against_its_customer
     report = r.json()["report"]
     assert report["usable"] and "meter_local_time" in {f["code"] for f in report["findings"]}
     assert (study.inputs / "meters" / "lokal.csv").is_file()
+
+
+def test_the_dsos_static_results_go_to_the_study_for_its_validation(client, studies):
+    made = client.post(f"{API}/studies", json={"kind": "demo"}).json()["study"]
+    r = client.put(f"{API}/studies/{made['id']}/dso-static", json={"csv": "customer_id;gen_kw\nC1;12,5\nC2;9\n"})
+    assert r.status_code == 200 and r.json() == {"rows": 2, "columns": ["gen_kw"]}
+    assert (studies / made["id"] / "inputs" / "dppower" / "static.csv").is_file()
+    bad = client.put(f"{API}/studies/{made['id']}/dso-static", json={"csv": "id,kw\n1,2\n"})
+    assert bad.status_code == 422 and bad.json()["detail"]["code"] == "study_config"

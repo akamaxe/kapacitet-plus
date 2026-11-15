@@ -41,6 +41,7 @@ STATIC_LOAD_RULES = {
     "min_daytime_summer": "each household's lowest load on summer days (May-August, 10-16 h, UTC+1) "
                           "in any weather year",
     "no_load": "no household load at all, the strictest reading",
+    "fixed_per_customer": "every household at the DSO's fixed load (static_fixed_load_kw)",
 }
 
 
@@ -54,9 +55,29 @@ def static_load_rule() -> str:
 def min_daytime_load() -> np.ndarray:
     """Per-customer household load (kW) of the static summer snapshot, by `static_load_rule`
     (× the sensitivity factors)."""
-    if static_load_rule() == "no_load":
+    rule = static_load_rule()
+    if rule == "no_load":
         return np.zeros(len(customers()))
+    if rule == "fixed_per_customer":
+        return np.full(len(customers()), float(A("static_fixed_load_kw")))
     return _min_daytime_load() * A("static_min_load_factor") * A("household_load_factor")
+
+
+def static_ok(model: NetModel, res, p: np.ndarray, base_vm: np.ndarray | None = None) -> np.ndarray:
+    """(H,) bool: the columns of a static summer snapshot that pass. The model's export-side limits
+    always; and the DSO's where its method sets them (task 2.5): a loading limit on the cables and
+    the transformer below 100 % (static_max_loading_pct), and a voltage rise at the customers'
+    connection points over `base_vm`, the same snapshot with nobody added (static_v_rise_limit_pct)."""
+    ok = ~model.violations(res, p).export_side
+    limit = float(A("static_max_loading_pct"))
+    if limit < 100.0:
+        ok &= (np.nan_to_num(res.line_loading, nan=np.inf).max(axis=0) <= limit + 1e-6)
+        ok &= (np.nan_to_num(np.asarray(res.trafo_loading, dtype=float), nan=np.inf) <= limit + 1e-6)
+    rise = float(A("static_v_rise_limit_pct"))
+    if rise > 0 and base_vm is not None:
+        vm = np.abs(res.v[model.cust_bus_row])
+        ok &= np.nan_to_num((vm - base_vm[:, None]).max(axis=0), nan=np.inf) <= rise / 100.0 + 1e-9
+    return ok
 
 
 @memo(maxsize=1)
@@ -83,7 +104,12 @@ def static_definition(model: NetModel | None = None) -> dict:
         "load_rule": rule,
         "load_rule_text": STATIC_LOAD_RULES[rule],
         "mv_voltage_pu": float(A("mv_voltage_pu") if model is None else model.vm_slack),
+        # the DSO's own limits on top of the model's, where its method sets them
+        "max_loading_pct": float(A("static_max_loading_pct")),
+        "v_rise_limit_pct": float(A("static_v_rise_limit_pct")) or None,
     }
+    if rule == "fixed_per_customer":
+        out["fixed_load_kw"] = float(A("static_fixed_load_kw"))
     if rule == "min_daytime_summer":
         out.update(months=list(SUMMER_MONTHS), hours=list(DAYTIME_HOURS),
                    load_factor=float(A("static_min_load_factor") * A("household_load_factor")))
@@ -147,13 +173,14 @@ def nodal_pv_hc(model: NetModel, base_pv: np.ndarray | None = None, max_kw: floa
     base_pv = np.zeros(C, dtype=bool) if base_pv is None else base_pv
     p0, q0 = summer_snapshot(base_pv)
     factor = A("static_pv_factor")
+    base_vm = np.abs(model.solve(p0[:, None], q0[:, None]).v[model.cust_bus_row, 0])
     lo, hi = np.zeros(C), np.full(C, max_kw)
     eye = np.eye(C)
     for _ in range(24):
         mid = (lo + hi) / 2.0
         P = p0[:, None] + eye * (factor * mid)[None, :]
         Q = np.repeat(q0[:, None], C, axis=1)
-        ok = ~model.violations(model.solve(P, Q), P).export_side
+        ok = static_ok(model, model.solve(P, Q), P, base_vm)
         lo = np.where(ok, mid, lo)
         hi = np.where(ok, hi, mid)
     return lo
@@ -193,7 +220,9 @@ def static_adopters(model: NetModel, order: np.ndarray, hp_mask: np.ndarray, ev_
     firm = existing_pv_kw() * A("static_pv_factor")
     P = np.where(masks, (cap_kw() * A("static_pv_factor"))[:, None], 0.0) + (firm - load)[:, None]
     Q = np.repeat((-load * tanphi)[:, None], n + 1, axis=1)
-    ok_summer = ~model.violations(model.solve(P, Q), P).export_side
+    res = model.solve(P, Q)
+    # column 0 is the snapshot with nobody added: the voltage a rise is measured from
+    ok_summer = static_ok(model, res, P, np.abs(res.v[model.cust_bus_row, 0]))
     bad = np.flatnonzero(~ok_summer)
     return int(bad[0] - 1) if len(bad) else n
 

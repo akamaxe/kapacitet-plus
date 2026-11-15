@@ -45,6 +45,23 @@ Changes before 12 November 2026 are only in that history.
 
 ### Changed
 
+- **The DSO's static method, as a profile.** The static study can be stated as the DSO states its
+  own: the solar output of the summer snapshot (× AC rating), the household load then (the lowest
+  daytime summer load, none, or a fixed figure per customer, which has no default), and the DSO's
+  own limits on top of the model's: a largest voltage rise at a connection point over the same
+  snapshot with nobody added, and a highest loading below the rating (`static_v_rise_limit_pct`,
+  `static_max_loading_pct`, `static_fixed_load_kw`, new in `config/assumptions.toml`). A project
+  keeps its profile in `data/requests/method_profile.json` (the Method screen, *The DSO's static
+  method*; `GET/PUT /api/v1/method-profile`, with the role that changes the DSO's settings), and
+  every process of that folder reads it into the study layer, so it reaches the engine's workers;
+  a study states the same keys in its `study.toml` `[assumptions]`. The default profile is today's
+  static study (51 installations, 414 kW in adoption order 9 of the reference network), and the
+  solar output at 80 % gives the sensitivity's case (520.2 kW): a test checks both. A saved profile
+  changes the static figures at the next computation of the capacity, and the screen gives the
+  command. A study takes the DSO's own static results per customer from its screen
+  (`PUT /studies/{id}/dso-static`), and its table shows each station's static capacity and model −
+  DSO beside the hourly study once validated. Velander for the consumption snapshot is not in the
+  profile: it is a formula for a group, and the profile does not yet group the customers by element.
 - **Meter readings in the shapes metering systems write, and from the app.** Besides the long
   format with each instant's offset, the reader takes Swedish local time without an offset (a file
   whose every time lacks one: the hour the clocks show twice in October is taken in the meter's

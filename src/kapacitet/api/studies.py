@@ -183,6 +183,21 @@ def summary(study: Study) -> dict:
             "site": study.config.site.name if study.config.site.given else None}
 
 
+def _dso_static(study: Study, sid: str) -> dict | None:
+    """This model's static capacity against the DSO's, per customer (model − DSO, kW), as the
+    station's last validation compared them; None before one has."""
+    path = study.station_dir(sid) / "processed" / "results" / "validation_measured.json"
+    try:
+        cal = json.loads(path.read_text(encoding="utf-8")).get("calibrate_static") if path.is_file() else None
+    except (OSError, ValueError):
+        return None
+    if not cal:
+        return None
+    gen = cal.get("gen_kw") or {}
+    return {"matched": cal.get("matched"), "gen_bias_kw": gen.get("bias"), "gen_mae_kw": gen.get("mae"),
+            "load_bias_kw": (cal.get("load_kw") or {}).get("bias")}
+
+
 def stations_of(study: Study) -> list[dict]:
     """Each station as the study's table shows it: its record (state, step, seconds, memory) and,
     once built, its row of `study collect` (study/collect.row) with the review's margin."""
@@ -201,7 +216,9 @@ def stations_of(study: Study) -> list[dict]:
                     "consumption_kw": row.get("published_consumption_kw"),
                     "consumption_limit": row.get("consumption_limit"),
                     "margin_kw": review.margin(row) if row.get("generation_status") else None,
-                    "validation_status": row.get("validation_status")})
+                    "validation_status": row.get("validation_status"),
+                    "static_kw": (_cap or {}).get("generation", {}).get("static_kw"),
+                    "dso_static": _dso_static(study, sid)})
     return out
 
 
@@ -546,6 +563,37 @@ def put_study_meters(study_id: str, body: MetersIn) -> dict:
         raise refusal(409, "study_building", pid=build_pid(study))
     paths = write_meter_files(study.inputs / "meters", body.files)
     return {"files": [p.name for p in paths], "report": check_meter_files(paths, known=_study_customer_ids(study))}
+
+
+class DsoStaticIn(BaseModel):
+    csv: str = Field(..., max_length=10_000_000, description="customer_id, gen_kw and/or load_kw: the DSO's own "
+                                                             "static capacity per customer")
+
+
+@router.put("/studies/{study_id}/dso-static")
+def put_dso_static(study_id: str, body: DsoStaticIn) -> dict:
+    """The DSO's static results (inputs/dppower/static.csv), which each station's validation compares
+    with this model's static study under the study's method (`study validate`)."""
+    import io
+
+    import pandas as pd
+
+    from ..atomic import write_bytes_atomic
+
+    study = _study(study_id)
+    if build_pid(study):
+        raise refusal(409, "study_building", pid=build_pid(study))
+    try:
+        frame = pd.read_csv(io.StringIO(body.csv), sep=None, engine="python", dtype=str)
+    except Exception as err:  # noqa: BLE001 - a table pandas cannot read is the caller's to correct
+        raise refusal(422, "config", message=f"the DSO's static results cannot be read: {str(err)[:200]}") from err
+    cols = {c.strip().lower() for c in frame.columns}
+    if "customer_id" not in cols or not cols & {"gen_kw", "load_kw"}:
+        raise refusal(422, "config", message="the DSO's static results need customer_id and gen_kw or load_kw")
+    folder = study.inputs / "dppower"
+    folder.mkdir(parents=True, exist_ok=True)
+    write_bytes_atomic(folder / "static.csv", body.csv.encode("utf-8"))
+    return {"rows": int(len(frame)), "columns": sorted(cols & {"gen_kw", "load_kw"})}
 
 
 @router.get("/studies/{study_id}/runs/{run}/files")

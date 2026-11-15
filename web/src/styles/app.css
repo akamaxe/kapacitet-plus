@@ -2687,6 +2687,10 @@ main h1:focus, main h1:focus-visible { outline: none; }
 .new-cables table.data select { min-width: 26ch; max-width: 100%; }
 .new-cables-done { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); margin: 0; }
 .new-name { display: grid; gap: var(--space-1); max-width: 40ch; font-size: var(--text-small); font-weight: 500; }
+.method-profile { max-width: 92ch; }
+.mp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: var(--space-3) var(--space-4); }
+.mp-grid label { display: grid; gap: var(--space-1); font-size: var(--text-small); font-weight: 500; }
+.mp-grid .mp-source { grid-column: 1 / -1; max-width: 60ch; }
 
 /* ---------------------------------------------------------------- a study of many stations (screens/Study.tsx) */
 .start-studies { margin-top: var(--space-6); }

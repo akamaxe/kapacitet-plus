@@ -9,7 +9,7 @@ export type Role = (typeof ROLES)[number];
 /** What a guarded action is called here and in GET /auth/me (api/auth.py ACTIONS). */
 export type Action =
   | "evaluate" | "check" | "decide" | "reset_queue" | "settings" | "sign_rule"
-  | "issue" | "meter_check" | "market" | "export" | "applications" | "datasets" | "ocpp" | "studies" | "sign_study";
+  | "issue" | "meter_check" | "market" | "export" | "applications" | "datasets" | "ocpp" | "studies" | "sign_study" | "method_profile";
 
 export interface Me {
   enabled: boolean;

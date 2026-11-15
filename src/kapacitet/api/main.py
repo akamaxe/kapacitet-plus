@@ -195,6 +195,7 @@ from .operation import router as operation_router  # noqa: E402
 from .publications import router as publications_router  # noqa: E402
 from .setup import closed_because as setup_closed_because  # noqa: E402
 from .setup import router as setup_router  # noqa: E402
+from .method import router as method_router  # noqa: E402
 from .studies import router as studies_router  # noqa: E402
 
 app.include_router(evidence_router)
@@ -206,6 +207,7 @@ app.include_router(setup_router)
 app.include_router(auth_router)
 app.include_router(publications_router)
 app.include_router(studies_router)
+app.include_router(method_router)
 # The interface is served from the same origin, so cross-origin access is off unless an operator
 # lists the origins that may call the API (comma-separated).
 _CORS = [o.strip() for o in os.environ.get("KAPACITET_CORS_ORIGINS", "").split(",") if o.strip()]
@@ -264,6 +266,7 @@ _WRITTEN_BY = {
 # Refusals the interface translates: `{code, message, params}` in the detail, `err.<code>` in
 # web/src/lib/i18n. tests/test_messages.py holds both languages to these templates.
 API_ERRORS = {
+    "method_profile": "the method profile cannot be used: {detail}",
     "feature_off": "{feature} is switched off on this installation (KAPACITET_FEATURES)",
     "no_reinforcement_case": "the reinforcement is priced for a 0.63 MVA unit, and this network's sensitivity "
                              "has no such case",

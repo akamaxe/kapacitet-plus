@@ -37,6 +37,10 @@ export interface StationRow {
   consumption_limit: string | null;
   margin_kw: number | null;
   validation_status: string | null;
+  /** this model's static capacity for generation (the study's method) */
+  static_kw: number | null;
+  /** model − DSO per customer, as the station's last validation compared them */
+  dso_static: { matched: number; gen_bias_kw: number | null; gen_mae_kw: number | null; load_bias_kw: number | null } | null;
 }
 
 export interface RunState {

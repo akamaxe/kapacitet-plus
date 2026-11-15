@@ -1036,8 +1036,38 @@ label = "Household load assumed in the static summer snapshot"
 label_sv = "Hushållslast som antas i den statiska ögonblicksbilden för sommaren"
 source = "Modelling choice: each household's lowest simulated load on summer days (May–August, 10–16 h) in any weather year, scaled by static_min_load_factor"
 url = ""
-note = "The alternative value is 'no_load', no household load at all, the strictest reading."
-note_sv = "Det alternativa värdet är 'no_load', ingen hushållslast alls, den strängaste tolkningen."
+note = "The alternatives are 'no_load', no household load at all, the strictest reading, and 'fixed_per_customer', every household at static_fixed_load_kw (a DSO's own figure)."
+note_sv = "Alternativen är 'no_load', ingen hushållslast alls, den strängaste tolkningen, och 'fixed_per_customer', varje hushåll med static_fixed_load_kw (nätbolagets egen siffra)."
+
+[static_fixed_load_kw]
+value = 0.0
+unit = "kW"
+tag = "team-assumption"
+label = "Household load per customer in the static summer snapshot, with static_load_rule = 'fixed_per_customer'"
+label_sv = "Hushållslast per kund i den statiska ögonblicksbilden för sommaren, med static_load_rule = 'fixed_per_customer'"
+source = "The DSO's own figure in its method profile; unused unless static_load_rule is 'fixed_per_customer'"
+url = ""
+note = ""
+
+[static_v_rise_limit_pct]
+value = 0.0
+unit = "%"
+tag = "team-assumption"
+label = "Largest voltage rise at a connection point in the static summer snapshot, over the same snapshot with nobody added (0: the voltage band alone)"
+label_sv = "Största spänningshöjning i en anslutningspunkt i den statiska ögonblicksbilden för sommaren, jämfört med samma ögonblicksbild utan tillägg (0: bara spänningsbandet)"
+source = "Off by default: the static study checks the voltage band; a DSO that limits the rise its connections cause sets it in its method profile"
+url = ""
+note = ""
+
+[static_max_loading_pct]
+value = 100.0
+unit = "%"
+tag = "team-assumption"
+label = "Highest loading of a cable or the transformer in the static summer snapshot"
+label_sv = "Högsta belastning på en kabel eller transformatorn i den statiska ögonblicksbilden för sommaren"
+source = "100 % by default, the rating; a DSO that keeps a margin on its ratings sets a lower figure in its method profile"
+url = ""
+note = ""
 
 # ---------------------------------------------------------------- sensitivity factors (1 = base case)
 [static_min_load_factor]

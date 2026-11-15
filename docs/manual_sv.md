@@ -205,6 +205,14 @@ Mätaravläsningar läggs till från studiens vy (*Lägg till mätaravläsningar
 kort, och kontrolleras direkt. Läsaren tar långt format med UTC-förskjutning, svensk lokal tid utan
 förskjutning (timmen som klockan visar två gånger i oktober tas i mätarens ordning, sommartid först),
 Wh och en rad per mätare och dag med 24 eller 96 kolumner. Nästa bygge använder dem.
+
+**Nätbolagets statiska metod.** Under Metod & data anger du den statiska studie som nätbolaget redan
+använder: solcellernas effekt i sommarens ögonblicksbild, hushållslasten då (lägsta last dagtid,
+ingen last eller en fast last per kund) och nätbolagets egna gränser för spänningshöjning i
+anslutningspunkten och för belastning. Standardprofilen är dagens statiska studie. De statiska
+siffrorna ändras när kapaciteten beräknas igen; vyn visar kommandot. En studie anger samma värden i
+`study.toml` under `[assumptions]`, och nätbolagets egna statiska resultat per kund läggs till från
+studiens vy och jämförs vid valideringen.
 En körning är ett kvartal (skrivet som `ÅÅÅÅQn`) eller en månad (`ÅÅÅÅ-MM`). Med
 `cadence = "monthly"` under `[publication]` i `study.toml` blir månaden standard när `--run`
 utelämnas. Studiens indata beskrivs i [study-inputs.md](study-inputs.md).

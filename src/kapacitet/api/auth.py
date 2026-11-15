@@ -55,6 +55,7 @@ ACTIONS = {
     "datasets": ("POST", f"{API}/datasets"),
     "studies": ("POST", f"{API}/studies"),
     "sign_study": ("POST", f"{API}/studies/{{study_id}}/runs/{{run}}/sign"),
+    "method_profile": ("PUT", f"{API}/method-profile"),
     "ocpp": ("GET", f"{API}/operation/schedule.ocpp.json"),
 }
 

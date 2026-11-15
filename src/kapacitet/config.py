@@ -207,10 +207,15 @@ _STUDY_LAYER: dict[str, Any] | None = None  # a study's [assumptions]; None unti
 
 
 def _study_layer() -> dict[str, Any]:
+    """The study's [assumptions] (KAPACITET_STUDY), over the method profile of the data folder in use
+    (data/requests/method_profile.json, method_profile.py): read once per process, so a worker the
+    engine starts reads them as its parent does. A study's station has no profile of its own."""
     global _STUDY_LAYER
     if _STUDY_LAYER is None:
+        from .method_profile import profile_layer
+
         study = study_config()
-        _STUDY_LAYER = study.overrides() if study is not None else {}
+        _STUDY_LAYER = {**profile_layer(), **(study.overrides() if study is not None else {})}
     return _STUDY_LAYER
 
 

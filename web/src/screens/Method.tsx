@@ -1,3 +1,4 @@
+import { MethodProfile } from "../components/MethodProfile";
 import { NetworkCheck } from "../components/NetworkCheck";
 import { useMemo, useState } from "react";
 import { Chart, axisStyle } from "../components/Chart";
@@ -444,6 +445,7 @@ export default function Method() {
               <p className="caption">{t("met.imp.caption")}</p>
             </div>
           </div>
+          <MethodProfile />
           <NetworkCheck />
           <section className="block stack" aria-labelledby="nets-title">
             <div className="block-head"><h3 id="nets-title">{t("start.projects")}</h3></div>
