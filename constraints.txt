@@ -34,9 +34,9 @@ shapely==2.2.0
 pyproj==3.8.0
 pvlib==0.16.1
 requests==2.34.2
-fastapi==0.162.0
+fastapi==0.165.0
 starlette==1.10.0
-pydantic==2.14.2
+pydantic==2.14.4
 uvicorn==0.54.0
 httpx==0.28.1
 # the seals' Ed25519 signatures (seals.py), with what cryptography needs on CPython
@@ -44,17 +44,17 @@ cryptography==50.0.2
 cffi==2.1.1
 pycparser==3.12
 # sign-in with OpenID Connect (auth.py), approved 2026-11-06: authlib for PKCE, joserfc for the ID token
-authlib==1.9.5
+authlib==1.9.10
 joserfc==1.8.0
 pytest==9.2.0
 # the property tests (dev extra, tests/test_properties_*.py), approved 2026-11-07, with its one dependency
-hypothesis==6.170.15
+hypothesis==6.170.17
 sortedcontainers==2.4.0
 # the "forecast" extra (engine/nowcast.py), approved 2026-11-06
 lightgbm==4.7.0
 # the "postgres" extra (kapacitet.store), approved 2026-11-06, with what psycopg needs
-psycopg==3.3.8
-psycopg-binary==3.3.8
+psycopg==3.3.9
+psycopg-binary==3.3.9
 # the "telemetry" extra (kapacitet/telemetry.py), approved 2026-11-07, with what it needs
 opentelemetry-api==1.45.2
 opentelemetry-sdk==1.45.2
